@@ -1,0 +1,13 @@
+# Tool versions for Tobby (portable across machines / CI via mise).
+# Matches the versions the project is developed and built with.
+[tools]
+node = "24.18.0"
+pnpm = "10.33.2"
+
+# Run the website / documentation locally.
+#   mise run doc
+# Starts the Astro dev server at http://localhost:4321/tobby-fetch/
+[tasks.doc]
+description = "Serve the website/documentation locally (Astro dev server)"
+dir = "website"
+run = "pnpm install --prefer-offline && pnpm dev"

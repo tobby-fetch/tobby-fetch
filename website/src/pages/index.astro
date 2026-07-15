@@ -1,0 +1,259 @@
+---
+const title = "Tobby";
+const tagline = "Go fetch your OCI assets — across every zone, all the way to air-gap.";
+const description =
+  "Tobby fetches OCI assets — container images, Helm charts, AI models, files — across isolated network zones, all the way to air-gapped environments. Recipe-driven, with a portable registry.";
+const repo = "https://github.com/tobby-fetch/tobby-fetch";
+const carries = ["Container images", "Helm charts", "AI models", "Files"];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="color-scheme" content="dark light" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={tagline} />
+    <meta property="og:type" content="website" />
+    <title>{title} — {tagline}</title>
+    <style>
+      :root {
+        color-scheme: dark light;
+        --bg: #0b0d12;
+        --bg-glow: 240 169 46; /* amber, used in radial glow */
+        --fg: #e8eaf0;
+        --muted: #949aab;
+        --accent: #f0a92e;
+        --accent-soft: #ffc25c;
+        --hair: rgba(255, 255, 255, 0.09);
+        --chip: rgba(255, 255, 255, 0.05);
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #faf9f6;
+          --bg-glow: 201 126 18;
+          --fg: #1a1d24;
+          --muted: #5f6472;
+          --accent: #c97e12;
+          --accent-soft: #a9660b;
+          --hair: rgba(0, 0, 0, 0.1);
+          --chip: rgba(0, 0, 0, 0.04);
+        }
+      }
+
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+
+      body {
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        padding: 2rem 1.5rem;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+          Roboto, Helvetica, Arial, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        overflow: hidden;
+      }
+
+      /* soft amber glow behind the content */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: -20vmax;
+        background:
+          radial-gradient(
+            42vmax 42vmax at 50% 34%,
+            rgb(var(--bg-glow) / 0.14),
+            transparent 60%
+          );
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      main {
+        position: relative;
+        z-index: 1;
+        text-align: center;
+        max-width: 40rem;
+        animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+
+      .mark {
+        width: 4.25rem;
+        height: 4.25rem;
+        margin: 0 auto 1.5rem;
+        display: block;
+        color: var(--accent);
+      }
+      .mark .trajectory {
+        stroke-dasharray: 3 3.5;
+        animation: dash 1.6s linear infinite;
+      }
+
+      h1 {
+        font-size: clamp(2.4rem, 8vw, 3.6rem);
+        line-height: 1;
+        letter-spacing: -0.03em;
+        margin: 0 0 0.85rem;
+        font-weight: 700;
+      }
+      h1 .dot { color: var(--accent); }
+
+      .tagline {
+        font-size: clamp(1.05rem, 3.4vw, 1.35rem);
+        line-height: 1.45;
+        margin: 0 auto;
+        max-width: 30rem;
+        color: var(--fg);
+        font-weight: 500;
+      }
+
+      .lede {
+        font-size: clamp(0.92rem, 2.6vw, 1rem);
+        line-height: 1.6;
+        margin: 1rem auto 0;
+        max-width: 32rem;
+        color: var(--muted);
+      }
+
+      .carries {
+        list-style: none;
+        padding: 0;
+        margin: 1.75rem auto 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: center;
+      }
+      .carries li {
+        font-size: 0.8rem;
+        letter-spacing: 0.01em;
+        color: var(--fg);
+        padding: 0.35rem 0.75rem;
+        border: 1px solid var(--hair);
+        border-radius: 999px;
+        background: var(--chip);
+        white-space: nowrap;
+      }
+
+      .badge {
+        margin-top: 2rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.72rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .badge .pulse {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 0 0 rgb(var(--bg-glow) / 0.5);
+        animation: pulse 2.2s ease-out infinite;
+      }
+
+      .repo {
+        margin-top: 1.5rem;
+        font-size: 0.85rem;
+      }
+      .repo a {
+        color: var(--muted);
+        text-decoration: none;
+        border-bottom: 1px solid var(--hair);
+        padding-bottom: 1px;
+        transition: color 0.15s ease, border-color 0.15s ease;
+      }
+      .repo a:hover {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+
+      @keyframes rise {
+        from { opacity: 0; transform: translateY(14px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes dash {
+        to { stroke-dashoffset: -13; }
+      }
+      @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgb(var(--bg-glow) / 0.5); }
+        70% { box-shadow: 0 0 0 0.5rem rgb(var(--bg-glow) / 0); }
+        100% { box-shadow: 0 0 0 0 rgb(var(--bg-glow) / 0); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        main { animation: none; }
+        .mark .trajectory { animation: none; }
+        .badge .pulse { animation: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg
+        class="mark"
+        viewBox="0 0 48 48"
+        fill="none"
+        role="img"
+        aria-label="Tobby logo"
+      >
+        <!-- source zone (left) and destination zone (right) markers -->
+        <path
+          d="M7 15v-3a2 2 0 0 1 2-2h3M7 33v3a2 2 0 0 0 2 2h3"
+          stroke="currentColor"
+          stroke-width="1.4"
+          stroke-linecap="round"
+          opacity="0.4"
+        />
+        <path
+          d="M41 15v-3a2 2 0 0 0-2-2h-3M41 33v3a2 2 0 0 1-2 2h-3"
+          stroke="currentColor"
+          stroke-width="1.4"
+          stroke-linecap="round"
+          opacity="0.4"
+        />
+        <!-- fetch trajectory across the gap -->
+        <path
+          class="trajectory"
+          d="M11 30C15 19 33 19 37 30"
+          stroke="currentColor"
+          stroke-width="1.3"
+          stroke-linecap="round"
+          opacity="0.7"
+        />
+        <!-- the OCI asset in flight: an isometric cube -->
+        <g stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+          <path d="M24 15.5l7 4v8l-7 4-7-4v-8l7-4z" fill="currentColor" fill-opacity="0.12" />
+          <path d="M24 15.5l7 4-7 4-7-4 7-4z" fill="currentColor" fill-opacity="0.22" />
+          <path d="M24 23.5v8" opacity="0.85" />
+        </g>
+      </svg>
+
+      <h1>Tobby<span class="dot">.</span></h1>
+      <p class="tagline">{tagline}</p>
+      <p class="lede">
+        Transfer OCI assets between network zones — from connected, through
+        restricted, down to fully air-gapped — driven by declarative
+        <strong>Recipes</strong>, with a portable registry built in.
+      </p>
+
+      <ul class="carries">
+        {carries.map((item) => <li>{item}</li>)}
+      </ul>
+
+      <span class="badge"><span class="pulse"></span>Under active development</span>
+
+      <p class="repo">
+        <a href={repo} rel="noopener">github.com/tobby-fetch</a>
+      </p>
+    </main>
+  </body>
+</html>
