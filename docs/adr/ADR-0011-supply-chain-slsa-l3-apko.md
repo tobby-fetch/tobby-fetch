@@ -45,7 +45,7 @@ of every version include the exact commands:
 # verify a release binary against its SLSA provenance
 slsa-verifier verify-artifact tobby-linux-amd64 \
   --provenance-path tobby-linux-amd64.intoto.jsonl \
-  --source-uri github.com/tobby-fetch/tobby \
+  --source-uri github.com/tobby-fetch/tobby-fetch \
   --source-tag v1.0.0
 ```
 

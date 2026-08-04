@@ -4,7 +4,7 @@
 |---|---|
 | Document | Software Requirements Specification (SRS) |
 | Product | Tobby — OCI asset transfer for segmented networks |
-| Repository | `github.com/tobby-fetch/tobby` (this document: `docs/SRS.md`) |
+| Repository | `github.com/tobby-fetch/tobby-fetch` (this document: `docs/SRS.md`) |
 | Related specification | `github.com/tobby-fetch/recipe-spec` |
 | Status | Draft |
 | License of the application | GPL-3.0 (the Recipe format specification and its Go SDK are Apache-2.0, see ADR-0003) |

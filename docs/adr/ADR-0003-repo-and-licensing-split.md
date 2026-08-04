@@ -31,7 +31,7 @@ different licenses:
 | Repository | Contents | License |
 |---|---|---|
 | `tobby-fetch/recipe-spec` | Recipe/Retriever specification, JSON Schemas, Go SDK (parsing, validation, serialization) | **Apache-2.0** |
-| `tobby-fetch/tobby` | The Tobby application (engine, registry, web UI, API) — Go module `github.com/tobby-fetch/tobby` | **GPL-3.0** |
+| `tobby-fetch/tobby-fetch` | The Tobby application (engine, registry, web UI, API) — Go module `github.com/tobby-fetch/tobby-fetch` — plus the project website and the published design documents (`docs/`) | **GPL-3.0** |
 
 Contributions to both repositories are accepted under the **Developer
 Certificate of Origin (DCO)** — a `Signed-off-by` line per commit — rather
