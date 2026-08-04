@@ -1,0 +1,41 @@
+#!/bin/sh
+# Pre-commit gate: no secret ever reaches a commit of this public repository.
+#
+# Runs gitleaks on the staged changes. Fails CLOSED: if gitleaks is not
+# available, the commit is refused rather than silently unchecked — install
+# the pinned toolchain with `mise install` (see mise.toml).
+#
+# Installed per clone with:  git config core.hooksPath .githooks
+
+set -u
+
+if command -v mise >/dev/null 2>&1; then
+  GITLEAKS="mise x -- gitleaks"
+elif command -v gitleaks >/dev/null 2>&1; then
+  GITLEAKS="gitleaks"
+else
+  echo "pre-commit: gitleaks not found — refusing to commit unchecked." >&2
+  echo "            Install the toolchain:  mise install   (pins gitleaks)" >&2
+  exit 1
+fi
+
+# `git --pre-commit --staged` is the modern form (gitleaks >= 8.19);
+# fall back to the legacy `protect --staged` for older binaries.
+if $GITLEAKS git --pre-commit --staged --redact --no-banner 2>/dev/null; then
+  exit 0
+fi
+status=$?
+if [ "$status" -eq 1 ]; then
+  echo "" >&2
+  echo "pre-commit: gitleaks found potential secrets in the staged changes." >&2
+  echo "            Nothing was committed. Remove the secret (and rotate it" >&2
+  echo "            if it ever left your machine), then commit again." >&2
+  exit 1
+fi
+
+# Unknown exit (e.g. old gitleaks without the `git` subcommand): try legacy.
+if $GITLEAKS protect --staged --redact --no-banner; then
+  exit 0
+fi
+echo "pre-commit: gitleaks reported findings or failed — commit refused." >&2
+exit 1
