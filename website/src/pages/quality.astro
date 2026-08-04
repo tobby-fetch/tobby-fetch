@@ -1,0 +1,156 @@
+---
+import "../styles/site.css";
+
+const title = "Quality — Tobby";
+const description =
+  "Tobby's quality model: a five-level test pyramid with strict gates from the first commit, a disposable replica of the target environment (the crucible), and a hardened supply chain.";
+const org = "https://github.com/tobby-fetch";
+const repo = `${org}/tobby-fetch`;
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="color-scheme" content="dark light" />
+    <title>{title}</title>
+    <style>
+      header.page { padding: 3.5rem 0 1rem; }
+      header.page h1 { font-size: clamp(1.8rem, 5vw, 2.6rem); letter-spacing: -0.03em; margin: 0 0 0.6rem; }
+      header.page p { color: var(--muted); max-width: 46rem; margin: 0; }
+      .promise {
+        border-left: 3px solid var(--accent); padding: 0.2rem 0 0.2rem 1rem;
+        margin: 1.2rem 0; font-size: 0.95rem;
+      }
+      .promise strong { color: var(--accent-soft); }
+    </style>
+  </head>
+  <body>
+    <nav class="top">
+      <div class="wrap">
+        <a class="brand" href={`${base}/`}>Tobby<span class="dot">.</span></a>
+        <a href={`${base}/#how`}>How it works</a>
+        <a href={`${base}/quality/`} aria-current="page">Quality</a>
+        <a href={`${base}/roadmap.html`}>Roadmap</a>
+        <a href={`${repo}/tree/main/docs`} rel="noopener">Docs</a>
+        <a href={repo} rel="noopener">GitHub</a>
+      </div>
+    </nav>
+
+    <header class="page">
+      <div class="wrap">
+        <div class="kicker">Quality model</div>
+        <h1>Strict gates from the first commit</h1>
+        <p>
+          Quality is not a phase at the end of the project: it is a permanent
+          entry barrier. The test pyramid and the target-environment replica
+          exist <em>before</em> the features, and nothing merges red. Every
+          milestone publishes its raw acceptance report — trust is measured,
+          not declared.
+        </p>
+      </div>
+    </header>
+
+    <section class="band">
+      <div class="wrap">
+        <div class="kicker">Five levels</div>
+        <h2>The pyramid</h2>
+        <p class="intro">
+          Fast checks run on every push; expensive, realistic ones gate
+          releases. A merge gate must be hermetic and deterministic — realism
+          lives at its own level, where flakiness cannot erode discipline.
+        </p>
+        <div class="scroll-x">
+        <table class="grid">
+          <thead><tr><th>Level</th><th>What runs</th><th>Trigger</th><th>Gates</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Unit</strong></td><td><code>go test -race -count=2</code> (anti-flaky), per-package coverage floors — stricter on security paths</td><td>Every push</td><td>Merge</td></tr>
+            <tr><td><strong>Integration</strong></td><td>Real registries and identity providers in containers — no mocks of the OCI protocol, ever</td><td>Every PR</td><td>Merge</td></tr>
+            <tr><td><strong>e2e core</strong></td><td>Hermetic container topology: seeded public/private registries, an air-gapped network with <em>no route out</em> (proven by an egress canary that must fail), k3s, real <code>helm install</code> at the end</td><td>Every PR</td><td>Merge</td></tr>
+            <tr><td><strong>e2e extended</strong></td><td>Same topology, extended matrix — multi-arch, large blobs, Windows mirror flow on native runners</td><td>Nightly + tags</td><td>Release</td></tr>
+            <tr><td><strong>Crucible</strong></td><td>Disposable replica of the target environment on real VMs (Incus): internet-connected node, physical-transport simulation, air-gapped RKE2 cluster</td><td>On demand + every milestone</td><td>Acceptance</td></tr>
+          </tbody>
+        </table>
+        </div>
+        <ul class="checks" style="margin-top: 1.4rem;">
+          <li>Strict lint (<code>golangci-lint</code>) with zero tolerated findings — style debates are settled by the machine</li>
+          <li>Trivy scans Tobby's own builds with the same default policy Tobby applies to user artifacts — the gate gates itself</li>
+          <li>Fuzzing on the manifest parsers; CSRF and input-validation review before the release candidates</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="wrap">
+        <div class="kicker">The crucible</div>
+        <h2>A disposable replica of the real thing</h2>
+        <p class="intro">
+          Scenarios that containers cannot honestly model run on a throwaway
+          copy of the target environment, driven by
+          <a href="https://linuxcontainers.org/incus/" rel="noopener">Incus</a>
+          on any Linux host with KVM
+          (<a href={`${repo}/blob/main/docs/adr/ADR-0014-crucible-test-infrastructure-incus.md`} rel="noopener">ADR-0014</a>).
+        </p>
+        <div class="cards">
+          <div class="card"><h3>Air gap by absence of path</h3>
+            <p>The isolated side sits on a bridge with no uplink — plus a canary check that attempts egress and <em>must fail</em>. If the topology ever leaks, the canary breaks, not the credibility.</p></div>
+          <div class="card"><h3>The medium is a real device</h3>
+            <p>A block volume attached to the connected node, formatted (exFAT/FAT32 cases included), filled, detached, re-attached air-gap side — faithfully exercising pre-flight checks and dirty-ejection resilience.</p></div>
+          <div class="card"><h3>Scenario reset in seconds</h3>
+            <p>ZFS/btrfs snapshots restore seeded states instantly between runs; fidelity nodes are VMs, fixtures are system containers — one API drives both.</p></div>
+          <div class="card"><h3>Replayable per milestone</h3>
+            <p>Writing its crucible scenarios is part of every milestone's definition of done. Scenarios are tagged by milestone and independently invocable: the whole suite of completed milestones — or any subset — runs on demand, forever.</p></div>
+        </div>
+        <p class="promise">
+          The crown scenario: <strong>bootstrapping an RKE2 cluster on a bare
+          OS in the air-gapped zone, entirely from Tobby</strong> — OS packages
+          from served FileSets, RKE2 artifacts and images from the transported
+          store, the cluster pulling through the zone registry with the
+          generated mirror configuration. Final acceptance is a crucible run
+          that has already passed dozens of times.
+        </p>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="wrap">
+        <div class="kicker">Supply chain</div>
+        <h2>The gate gates itself</h2>
+        <ul class="checks">
+          <li><strong>SLSA Build L3</strong> provenance generated by an isolated trusted builder — a compromised repo workflow cannot forge its own attestations</li>
+          <li><strong>Reproducible builds</strong> — independent rebuild of any tag yields bit-identical binaries; asserted by a double-build comparison job in CI</li>
+          <li><strong>Declarative images</strong> — melange packages the binary as a signed apk, apko assembles it on Wolfi: no Dockerfile, no shell, no package manager, a build-time SBOM</li>
+          <li><strong>Zero known CVEs at release</strong>, held between releases by weekly automated rebuilds and Renovate</li>
+          <li><strong>OpenVEX</strong> statements regenerated for the released artifacts — non-applicable findings are publicly justified, not silently ignored</li>
+          <li><strong>Signed CycloneDX SBOMs</strong> attached to every binary and image</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="wrap">
+        <div class="kicker">Acceptance reports</div>
+        <h2>Raw results, published per milestone</h2>
+        <p class="intro">
+          Each milestone ships its acceptance report — every check listed,
+          including skips and detected defects. Reports will appear here as
+          milestones complete.
+        </p>
+        <div class="btnrow">
+          <a class="btn" href={`${base}/roadmap.html`}>The milestones →</a>
+          <a class="btn" href={`${repo}/tree/main/docs`} rel="noopener">Design documents</a>
+        </div>
+      </div>
+    </section>
+
+    <footer class="site">
+      <div class="wrap">
+        <span>Tobby — GPL-3.0 · Recipe spec &amp; SDK — Apache-2.0</span>
+        <span><a href={org} rel="noopener">github.com/tobby-fetch</a></span>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tobby — Roadmap produit</title>
+<style>
+  :root {
+    --ink: #1b2733;
+    --ink-soft: #4a5a6a;
+    --line: #dde5ec;
+    --bg: #f7f9fb;
+    --card: #ffffff;
+    --accent: #1f5f8b;
+    --accent-soft: #e8f1f8;
+    --tech: #5b4b8a;
+    --clair: #1f6f54;
+    --metier: #9a5b1f;
+    --tech-bg: #f1eefa;
+    --clair-bg: #e9f5f0;
+    --metier-bg: #faf1e6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); background: var(--bg);
+    line-height: 1.55; font-size: 15px;
+  }
+  .page { max-width: 1120px; margin: 0 auto; padding: 40px 28px 64px; }
+
+  header.masthead { border-bottom: 3px solid var(--accent); padding-bottom: 22px; margin-bottom: 26px; }
+  .masthead h1 { font-size: 30px; letter-spacing: -0.5px; }
+  .masthead h1 span { color: var(--accent); }
+  .masthead p.tagline { color: var(--ink-soft); margin-top: 6px; max-width: 70ch; }
+
+  .howto {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px 20px; margin-bottom: 26px; display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
+  }
+  .howto .pill { font-size: 12.5px; font-weight: 600; padding: 3px 10px; border-radius: 99px; white-space: nowrap; }
+  .howto p { color: var(--ink-soft); font-size: 13.5px; flex: 1 1 380px; }
+  .pill.p-tech { color: var(--tech); background: var(--tech-bg); }
+  .pill.p-clair { color: var(--clair); background: var(--clair-bg); }
+  .pill.p-metier { color: var(--metier); background: var(--metier-bg); }
+
+  details.lexique {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    margin-bottom: 34px; overflow: hidden;
+  }
+  details.lexique summary {
+    cursor: pointer; padding: 13px 20px; font-weight: 650; color: var(--accent);
+    list-style: none;
+  }
+  details.lexique summary::before { content: "▸ "; }
+  details.lexique[open] summary::before { content: "▾ "; }
+  .lexique dl { display: grid; grid-template-columns: 150px 1fr; gap: 7px 16px; padding: 4px 20px 18px; }
+  .lexique dt { font-weight: 650; font-size: 13.5px; color: var(--ink); }
+  .lexique dd { font-size: 13.5px; color: var(--ink-soft); }
+
+  .principes { margin-bottom: 36px; }
+  .principes h2 { font-size: 17px; margin-bottom: 10px; }
+  .principes ol { padding-left: 22px; color: var(--ink-soft); font-size: 14px; }
+  .principes li { margin-bottom: 4px; }
+  .principes li strong { color: var(--ink); }
+
+  .milestone {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    margin-bottom: 30px; overflow: visible;
+  }
+  .m-head {
+    display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap;
+    padding: 18px 24px 14px; border-bottom: 1px solid var(--line);
+    background: linear-gradient(0deg, var(--accent-soft), #ffffff);
+    border-radius: 12px 12px 0 0;
+  }
+  .m-num {
+    background: var(--accent); color: #fff; font-weight: 700; font-size: 14px;
+    border-radius: 8px; padding: 4px 11px; align-self: center; white-space: nowrap;
+  }
+  .m-head h2 { font-size: 20px; }
+  .m-head .m-goal { flex-basis: 100%; color: var(--ink-soft); font-size: 14px; max-width: 90ch; }
+
+  /* ── Rail sticky + zone features ─────────────────────────── */
+  .m-body { display: grid; grid-template-columns: 118px minmax(0, 1fr); }
+  .m-rail { border-right: 1px solid var(--line); background: #fbfcfe; }
+  .rail-sticky {
+    position: sticky; top: 14px;
+    margin: 16px 12px; padding: 10px 8px 12px;
+    background: var(--accent); color: #fff; border-radius: 10px;
+    text-align: center;
+  }
+  .rail-sticky .rs-k { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.75; }
+  .rail-sticky .rs-n { display: block; font-size: 26px; font-weight: 800; line-height: 1.1; }
+  .rail-sticky .rs-t { display: block; font-size: 11.5px; margin-top: 5px; line-height: 1.3; opacity: 0.95; }
+
+  .feature { padding: 18px 24px; border-bottom: 1px solid var(--line); scroll-margin-top: 12px; }
+  .m-features .feature:last-of-type { border-bottom: none; }
+  .feature h3 { font-size: 15.5px; margin-bottom: 10px; }
+  .fnum {
+    display: inline-block; color: var(--accent); background: var(--accent-soft);
+    font-weight: 700; font-size: 13px; border-radius: 6px; padding: 1px 8px;
+    margin-right: 8px; vertical-align: 1px;
+  }
+  .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .col { border-radius: 8px; padding: 10px 13px; font-size: 13.5px; }
+  .col b.tag { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 5px; }
+  .col.c-tech   { background: var(--tech-bg);   } .col.c-tech b.tag   { color: var(--tech); }
+  .col.c-clair  { background: var(--clair-bg);  } .col.c-clair b.tag  { color: var(--clair); }
+  .col.c-metier { background: var(--metier-bg); } .col.c-metier b.tag { color: var(--metier); }
+  .col code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 4px; }
+
+  .m-foot {
+    background: #fbfcfe; padding: 14px 24px 16px; border-top: 1px solid var(--line);
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px; font-size: 13.5px;
+    border-radius: 0 0 12px 12px;
+  }
+  .m-foot .box b { display: block; color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 3px; }
+  .m-foot .box p { color: var(--ink-soft); }
+
+  .after { background: var(--card); border: 1px dashed var(--accent); border-radius: 12px; padding: 20px 24px; }
+  .after h2 { font-size: 18px; color: var(--accent); margin-bottom: 8px; }
+  .after p { color: var(--ink-soft); font-size: 14px; margin-bottom: 10px; max-width: 95ch; }
+  .after ul { padding-left: 20px; font-size: 14px; color: var(--ink-soft); list-style: none; }
+  .after li { margin-bottom: 7px; }
+  .after li b { color: var(--ink); }
+  .after .fnum { background: #fff; border: 1px solid var(--accent); }
+
+  footer.colophon { margin-top: 30px; color: var(--ink-soft); font-size: 12.5px; text-align: center; }
+
+  @media (max-width: 860px) {
+    .cols { grid-template-columns: 1fr; }
+    .m-foot { grid-template-columns: 1fr; }
+    .lexique dl { grid-template-columns: 1fr; }
+    .lexique dd { margin-bottom: 6px; }
+    .m-body { grid-template-columns: 1fr; }
+    .m-rail { border-right: none; border-bottom: 1px solid var(--line); background: transparent; }
+    .rail-sticky {
+      top: 0; z-index: 5; margin: 0; border-radius: 0;
+      display: flex; gap: 8px; align-items: baseline; justify-content: center; padding: 7px 10px;
+    }
+    .rail-sticky .rs-n { font-size: 16px; }
+    .rail-sticky .rs-t { margin-top: 0; }
+  }
+  @media print {
+    body { background: #fff; font-size: 12px; }
+    .page { padding: 0; max-width: none; }
+    .milestone { border-color: #bbb; break-inside: auto; }
+    .feature { break-inside: avoid; }
+    .m-head, .m-foot { break-inside: avoid; }
+    .m-body { grid-template-columns: 1fr; }
+    .m-rail { display: none; }
+    details.lexique { display: block; } details.lexique summary { display: none; }
+    details.lexique dl { display: grid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="masthead">
+  <h1><span>Tobby</span> — Roadmap produit</h1>
+  <p class="tagline">Outil de transfert maîtrisé de composants logiciels (images de conteneurs, charts Helm,
+  modèles, fichiers) entre zones réseau cloisonnées, jusqu'aux environnements totalement isolés (air-gap).
+  Roadmap ordonnée par dépendances : les fondations structurantes d'abord, un aperçu concret de
+  l'expérience utilisateur au plus tôt, puis les deux cas d'usage complets.</p>
+</header>
+
+<div class="howto">
+  <span class="pill p-tech">Technique</span>
+  <span class="pill p-clair">En clair</span>
+  <span class="pill p-metier">Valeur métier</span>
+  <p>Chaque fonctionnalité — numérotée <b>jalon.feature</b> (ex. 3.2) pour être citée facilement — est décrite
+  trois fois : pour l'équipe technique, en langage courant, et par ce qu'elle apporte au métier.
+  Chacun peut lire sa colonne — les trois disent la même chose.</p>
+</div>
+
+<details class="lexique">
+  <summary>Lexique express (8 termes suffisent pour tout lire)</summary>
+  <dl>
+    <dt>Artefact OCI</dt><dd>Format standard d'empaquetage des logiciels conteneurisés (images, charts, modèles…). « OCI » = Open Container Initiative, le standard de l'industrie.</dd>
+    <dt>Registry</dt><dd>Le dépôt qui stocke et distribue ces artefacts. Toutes les registries du marché parlent le même protocole OCI.</dd>
+    <dt>Digest</dt><dd>Empreinte cryptographique du contenu exact d'un artefact. Deux contenus identiques ont le même digest ; un octet modifié le change.</dd>
+    <dt>Recipe</dt><dd>Fiche déclarative décrivant une application complète : la liste exacte de ses composants, versions et digests. Signée par la chaîne de qualification.</dd>
+    <dt>Retriever</dt><dd>La « liste de courses » d'une zone : quelles recipes (et versions) cette zone doit recevoir. Un fichier par zone, géré par les administrateurs.</dd>
+    <dt>Cookbook</dt><dd>Le catalogue des recipes publiées, hébergé dans une registry ordinaire.</dd>
+    <dt>Signature cosign</dt><dd>Preuve cryptographique d'origine attachée à un artefact, vérifiable sans aucun accès réseau — indispensable en zone isolée.</dd>
+    <dt>Air-gap</dt><dd>Zone sans aucun lien réseau avec l'extérieur : le contenu y entre uniquement par support physique (média amovible) via une procédure contrôlée.</dd>
+  </dl>
+</details>
+
+<div class="principes">
+  <h2>Principes de construction</h2>
+  <ol>
+    <li><strong>Fondations avant features</strong> — tout ce qui ne peut pas être changé après coup (format des recipes, organisation du stockage, chaîne de build) est construit et validé en premier.</li>
+    <li><strong>Expérience utilisateur visible dès le jalon 2</strong> — l'interface est jugée tôt, sur un vrai parcours, pour que le retour d'usage irrigue tous les jalons suivants.</li>
+    <li><strong>Un cas d'usage complet par jalon</strong> — chaque fin de jalon se démontre de bout en bout ; pas de « big bang » final.</li>
+    <li><strong>Sécurisé par défaut</strong> — toute réduction de sécurité est un choix explicite et visible de l'administrateur, jamais un comportement par défaut.</li>
+    <li><strong>Qualité et non-régression dès le premier jour</strong> — la pyramide de tests et le banc de reproduction de l'environnement cible (« crucible ») existent avant les features, et ce sont des barrières strictes : rien ne fusionne en rouge. <strong>Chaque jalon écrit ses propres scénarios crucible</strong> (c'est une condition de sortie du jalon), étiquetés par jalon : à tout instant, la suite des jalons déjà livrés est rejouable, en totalité ou jalon par jalon.</li>
+  </ol>
+</div>
+
+<!-- ══════════════════ JALON 1 ══════════════════ -->
+<section class="milestone">
+  <div class="m-head">
+    <span class="m-num">Jalon 1</span>
+    <h2>Fondations</h2>
+    <p class="m-goal">Verrouiller tout ce qui est impossible à changer plus tard : le format des recipes,
+    l'organisation du stockage, et la chaîne de fabrication de Tobby lui-même.</p>
+  </div>
+  <div class="m-body">
+  <aside class="m-rail"><div class="rail-sticky"><span class="rs-k">Jalon</span><span class="rs-n">1</span><span class="rs-t">Fondations</span></div></aside>
+  <div class="m-features">
+
+  <div class="feature" id="f-1-1">
+    <h3><span class="fnum">1.1</span>Chaîne de build sécurisée de Tobby</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>CI/CD avec provenance SLSA Build L3, builds reproductibles (binaires bit-identiques), SBOM CycloneDX signé, images conteneur minimales sans CVE connue, releases signées cosign — dès le premier commit.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Chaque version de Tobby est fabriquée par une chaîne automatisée qui prouve d'où vient le code, liste tous ses composants, et signe le résultat. N'importe qui peut vérifier qu'un binaire est authentique.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>L'outil qui fait entrer du logiciel en zone sensible doit être exemplaire sur sa propre chaîne d'approvisionnement : conformité NIS2/SLSA démontrable aux auditeurs, dès le début.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-1-2">
+    <h3><span class="fnum">1.2</span>Socle applicatif exploitable</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Configuration en couches (drapeaux &gt; variables d'environnement &gt; fichier YAML), logs JSON structurés avec corrélation, sondes <code>/healthz</code> <code>/readyz</code>, métriques OpenMetrics, arrêt gracieux.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Dès le départ, Tobby se comporte comme un service d'entreprise : il se configure proprement, journalise tout de façon lisible par les outils de supervision, et signale lui-même son état de santé.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Supervisable et diagnosticable par les équipes d'exploitation avec leurs outils habituels — aucune brique « boîte noire » à apprivoiser plus tard.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-1-3">
+    <h3><span class="fnum">1.3</span>Registry embarquée &amp; convention de rangement</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Registry OCI embarquée (bibliothèque CNCF <code>distribution</code> v3), stockage organisé selon la convention de relocalisation (ADR-0013) : chaque artefact rangé sous le nom de sa registry d'origine (<code>docker.io/bitnami/wordpress</code> → <code>&lt;zone&gt;/docker.io/bitnami/wordpress</code>).</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Tobby contient son propre dépôt d'artefacts, utilisable par les outils standards (docker, helm…). Le rangement encode la provenance : en lisant un chemin, on sait toujours d'où vient le contenu — dans toutes les zones, de la même façon.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Décision structurante prise et testée avant tout le reste : c'est elle qui rendra possibles le déploiement sans réécriture des applications, le nettoyage automatisable des registries, et l'audit « d'où vient ce composant ? » en un coup d'œil.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-1-4">
+    <h3><span class="fnum">1.4</span>Spécification du format Recipe / Retriever (brouillon public)</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Spec <code>recipe.tobby.dev/v1alpha1</code> : kinds <code>Recipe</code>/<code>Retriever</code>, 4 types d'ingrédients, versions semver, digests obligatoires à la publication, schémas JSON stricts, SDK Go de validation. Publiée en licence Apache-2.0, dans un dépôt séparé.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Le « langage » dans lequel on décrit ce qui doit être transféré est défini noir sur blanc, avec un vérificateur automatique qui rejette tout document mal formé — une faute de frappe ne peut pas passer inaperçue.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Le contrat central du système est relisible et validable par les parties prenantes dès le premier jalon ; sa licence permissive permet à d'autres outils (pipelines, audits) de le réutiliser.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-1-5">
+    <h3><span class="fnum">1.5</span>Pyramide de tests &amp; gates de qualité strictes</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Pyramide en 5 niveaux, bloquante dès le premier commit : tests unitaires (<code>go test -race</code>, <code>-count=2</code> anti-flaky, couverture minimale par paquet — plus stricte sur les chemins de sécurité), lint strict (<code>golangci-lint</code>, zéro dérogation), intégration contre registries et IdP réels conteneurisés (aucun mock du protocole OCI), e2e cœur à chaque PR, e2e étendu en nightly. Document <b>OpenVEX</b> régénéré régulièrement sur les livrables de Tobby.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Chaque modification doit franchir une batterie de contrôles automatiques — style, tests, scénarios réels — sinon elle n'entre pas dans le produit, point. Et quand un scanner signale une faille non applicable à Tobby, la justification est publiée dans un format standard (VEX) au lieu d'être ignorée en silence.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>La qualité n'est pas une phase de fin de projet : c'est une barrière d'entrée permanente, identique au jalon 1 et à la version 1.0. Chaque jalon publie son rapport d'acceptation brut (« X contrôles sur X passés ») — la confiance se mesure, elle ne se déclare pas.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-1-6">
+    <h3><span class="fnum">1.6</span>Crucible : réplique jetable de l'environnement cible</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Banc de non-régression en deux étages (infrastructure : Incus, ADR-0014). <b>Étage CI</b> (hermétique, chaque PR) : topologie conteneurisée — registries publiques/privées ensemencées, zone air-gap sans route sortante (prouvé par test-canari), cluster k3s. <b>Étage crucible</b> (réaliste, à la demande / par jalon) : VMs et conteneurs système jetables — nœud connecté tirant de vraies recipes, média = disque détachable, nœud isolé avec registry de zone et cluster RKE2, reset de scénario par snapshot. <b>Scénarios étiquetés par jalon, invocables à la carte</b> : la suite des jalons livrés se rejoue en totalité ou par sous-ensemble, à tout moment.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Dès le premier jalon, une maquette complète du terrain existe et se recrée à la demande : une machine avec internet qui prépare, une machine coupée du monde qui reçoit, et de vraies applications qu'on installe au bout pour prouver que tout le trajet fonctionne — depuis la registry de Tobby comme depuis une registry alimentée en continu.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>La non-régression sur les scénarios réels du site est vérifiée en continu, pas découverte en recette. La recette finale devient la ré-exécution, devant le client, d'un scénario déjà passé au vert des dizaines de fois — le risque de fin de projet disparaît.</div>
+    </div>
+  </div>
+
+  </div>
+  </div>
+  <div class="m-foot">
+    <div class="box"><b>Ce jalon est validé quand</b><p>Les conventions non-rattrapables (format, nommage, stockage, chaîne de build) sont figées, testées et relues — et la pyramide de tests comme le crucible sont opérationnels et <b>bloquants</b> : une modification en rouge ne peut pas fusionner.</p></div>
+    <div class="box"><b>Démo de fin de jalon</b><p>Une image multi-architecture poussée puis tirée sur la registry embarquée avec docker et oras ; une release signée vérifiée publiquement ; un scénario crucible complet (connecté → air-gap → montée d'application) au vert.</p></div>
+  </div>
+</section>
+
+<!-- ══════════════════ JALON 2 ══════════════════ -->
+<section class="milestone">
+  <div class="m-head">
+    <span class="m-num">Jalon 2</span>
+    <h2>Aperçu de l'expérience utilisateur</h2>
+    <p class="m-goal">Mettre une interface réelle entre les mains des futurs administrateurs et exploitants,
+    sur un premier parcours complet — pour valider l'ergonomie avant de construire le reste par-dessus.</p>
+  </div>
+  <div class="m-body">
+  <aside class="m-rail"><div class="rail-sticky"><span class="rs-k">Jalon</span><span class="rs-n">2</span><span class="rs-t">Aperçu UX</span></div></aside>
+  <div class="m-features">
+
+  <div class="feature" id="f-2-1">
+    <h3><span class="fnum">2.1</span>Socle d'interface web + bilingue d'origine</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>UI rendue côté serveur (Go + htmx), zéro toolchain Node, design tokens + feuille de style configurable, libellés externalisés EN/FR commutables, assets embarqués dans le binaire.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Une interface web légère, rapide, sans dépendances front fragiles, traduite anglais/français dès l'origine, et dont l'apparence peut être adaptée à la charte du site sans recompiler.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>L'esthétique et la simplicité sont un facteur d'adoption : elles sont jugeables — et corrigeables — dès le deuxième jalon, pas à la fin du projet. Surface d'attaque front minimale.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-2-2">
+    <h3><span class="fnum">2.2</span>Navigation du contenu du dépôt local</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Écrans de parcours de la registry embarquée : dépôts, tags, plateformes, digests, tailles ; recherche ; distinction visuelle image / chart / artefact / fichiers.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Voir d'un coup d'œil ce que contient le dépôt : quelles applications, quelles versions, quelle place occupée — sans taper une seule commande.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Transparence totale pour l'exploitant de niveau 1 : « qu'est-ce qu'il y a sur ce poste / ce média ? » a une réponse visuelle immédiate.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-2-3">
+    <h3><span class="fnum">2.3</span>Import unitaire à la demande</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Import d'un artefact par référence (image ou chart) sans client conteneur : inspection préalable des plateformes disponibles, sélection, import incrémental par digest, écrit directement dans le stockage.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Depuis l'interface : « va me chercher cette image » — Tobby montre ce qui existe, l'utilisateur choisit, l'outil télécharge et range. Premier vrai parcours utilisateur, de bout en bout.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Couvre le besoin ponctuel (un outil, un correctif) sans attendre le moteur de recipes — et sert de banc d'essai UX réel pour tout ce qui suit.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-2-4">
+    <h3><span class="fnum">2.4</span>Suivi des tâches</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>File de tâches persistante : chaque opération = tâche traçée (en attente / en cours / terminée / échouée), statut par élément, journaux consultables, reprise après interruption.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Chaque action lancée est suivie comme un colis : on voit où elle en est, élément par élément, et pourquoi elle a échoué le cas échéant. Une coupure ne fait pas tout recommencer.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Fini l'opération opaque qui « tourne » : l'exploitant voit, comprend, et peut rendre compte. Réduction directe des tickets d'incompréhension.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-2-5">
+    <h3><span class="fnum">2.5</span>API REST documentée (socle)</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>API versionnée <code>/api/v1</code>, spécification OpenAPI servie par l'instance, parité stricte UI ↔ API (tout ce que fait l'un est faisable par l'autre).</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Tout ce que l'interface sait faire est aussi pilotable par script ou par un autre logiciel, avec un mode d'emploi machine intégré.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Automatisation et intégration au SI (ordonnanceurs, GitOps, supervision) garanties par construction — pas de fonctionnalité « UI seulement ».</div>
+    </div>
+  </div>
+
+  </div>
+  </div>
+  <div class="m-foot">
+    <div class="box"><b>Ce jalon est validé quand</b><p>Des utilisateurs représentatifs (admin + exploitant) ont déroulé le parcours d'import dans l'interface et leur retour est intégré au backlog des jalons suivants.</p></div>
+    <div class="box"><b>Démo de fin de jalon</b><p>Importer une image depuis l'interface (choix des plateformes), suivre la tâche, retrouver l'image dans la navigation, la tirer avec docker — en français puis en anglais.</p></div>
+  </div>
+</section>
+
+<!-- ══════════════════ JALON 3 ══════════════════ -->
+<section class="milestone">
+  <div class="m-head">
+    <span class="m-num">Jalon 3</span>
+    <h2>Moteur de recipes</h2>
+    <p class="m-goal">Le cœur du système : transformer une recipe signée en contenu vérifié dans le dépôt local —
+    automatiquement, intégralement, et de façon rejouable sans effet de bord.</p>
+  </div>
+  <div class="m-body">
+  <aside class="m-rail"><div class="rail-sticky"><span class="rs-k">Jalon</span><span class="rs-n">3</span><span class="rs-t">Moteur de recipes</span></div></aside>
+  <div class="m-features">
+
+  <div class="feature" id="f-3-1">
+    <h3><span class="fnum">3.1</span>Lecture et validation des recipes / retrievers</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Parsing/validation via le SDK de la spec, validation stricte (champ inconnu = rejet), erreurs actionnables : fichier, chemin, contrainte violée.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Tobby lit la liste de courses et les fiches d'application, et refuse net tout document douteux — en disant exactement où est le problème.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Une faute de frappe dans un champ de sécurité ne peut pas affaiblir silencieusement le dispositif ; l'erreur est comprise et corrigée en minutes.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-3-2">
+    <h3><span class="fnum">3.2</span>Téléchargement des 4 types d'ingrédients</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b><code>ContainerImage</code> (multi-arch, sélection de plateformes), <code>HelmChart</code>, <code>OCIArtifact</code> (modèles IA, bases de données…), <code>FileSet</code> (fichiers empaquetés en image OCI, montables ou extractibles). Copie bit-exacte, streaming sans charger les blobs en mémoire.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Tout ce dont une application a besoin — programmes, charts d'installation, modèles, fichiers de configuration — passe par le même tuyau, copié à l'octet près.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Un seul outil, un seul format, un seul processus de contrôle pour tous les types de composants — y compris les gros volumes (modèles de plusieurs Go).</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-3-3">
+    <h3><span class="fnum">3.3</span>Résolution de versions et différentiel par digest</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Contraintes semver (<code>12.x</code>, <code>^</code>, <code>~</code>, <code>&gt;=</code>) résolues en tag + digest ; statut par ingrédient avant tout transfert : <code>new</code> / <code>outdated</code> / <code>up-to-date</code> ; idempotence (2ᵉ exécution = zéro transfert).</div>
+      <div class="col c-clair"><b class="tag">En clair</b>On peut demander « la dernière 12.x » et Tobby trouve la bonne version. Avant de transférer, il compare l'existant et ne prend que ce qui manque. Relancer ne refait jamais le travail déjà fait.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Économie massive de bande passante et de temps (crucial sur liaisons contraintes et médias physiques) ; opérations relançables sans risque, donc sans stress.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-3-4">
+    <h3><span class="fnum">3.4</span>Vérification des signatures à l'entrée</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Vérification cosign (mode clé, 100 % hors-ligne) des recipes contre les clés de confiance configurées (inline, fichier, ou URL résolue à la configuration) ; vérification de chaque digest épinglé ; blocage par défaut, relâchement uniquement par périmètre déclaré.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Tobby n'accepte que le contenu portant la bonne signature pour l'environnement cible — il ne signe rien lui-même, il vérifie. Tout ce qui n'est pas signé ou a été modifié est refusé, avec explication.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Garantie d'origine et d'intégrité de bout en bout, y compris sans aucun réseau : seul le logiciel qualifié par la chaîne amont entre en zone. C'est l'exigence de fond du dispositif.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-3-5">
+    <h3><span class="fnum">3.5</span>Table de correspondance &amp; fonctionnement en cascade</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Mapping source→destination exposé par recipe (API/UI) ; substitution de source configurable : une zone aval récupère depuis la registry de la zone amont sans modifier les recipes, le chemin relocalisé restant invariant à chaque saut.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Pour chaque application, Tobby fournit la table « ce composant venait de là, il est maintenant ici ». Et les zones peuvent s'enchaîner (zone A alimente zone B qui alimente zone C) avec les mêmes fiches, inchangées.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Les équipes de déploiement savent toujours où pointer ; les architectures multi-paliers (typiques des sites industriels) fonctionnent sans document modifié ni cas particulier.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-3-6">
+    <h3><span class="fnum">3.6</span>Service HTTP des FileSets — dépôt de paquets OS</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Exposition en lecture seule (<code>/files/&lt;fileset&gt;/…</code>) du contenu des FileSets vérifiés du dépôt local : activation par FileSet, requêtes Range supportées, garde-fous anti-évasion de chemin, accès anonyme opt-in pour le bootstrap. Aucune surface d'upload — seuls les fichiers arrivés par le canal signé sont servis.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Les fichiers empaquetés dans une recipe (paquets apt/rpm, scripts, archives d'installation) deviennent accessibles en HTTP simple : une machine fraîchement installée peut pointer son gestionnaire de paquets directement sur Tobby, sans autre serveur.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Le bootstrap complet d'une zone depuis un OS nu devient possible sans infrastructure additionnelle : dépôt de paquets, binaires et images de conteneurs sortent du même canal contrôlé et signé — un seul circuit à auditer.</div>
+    </div>
+  </div>
+
+  </div>
+  </div>
+  <div class="m-foot">
+    <div class="box"><b>Ce jalon est validé quand</b><p>Une recipe réelle (application + chart + images multi-arch) se synchronise intégralement, signatures vérifiées, et une topologie à deux sauts produit des chemins identiques.</p></div>
+    <div class="box"><b>Démo de fin de jalon</b><p>Synchronisation d'une recipe « wordpress » complète ; falsification d'un composant → rejet expliqué ; relance → zéro transfert.</p></div>
+  </div>
+</section>
+
+<!-- ══════════════════ JALON 4 ══════════════════ -->
+<section class="milestone">
+  <div class="m-head">
+    <span class="m-num">Jalon 4</span>
+    <h2>Cas d'usage n° 1 — Passthrough entre zones connectées</h2>
+    <p class="m-goal">Premier mode complet : Tobby en service continu entre deux zones, qui maintient
+    automatiquement la registry de destination au niveau voulu par le retriever.</p>
+  </div>
+  <div class="m-body">
+  <aside class="m-rail"><div class="rail-sticky"><span class="rs-k">Jalon</span><span class="rs-n">4</span><span class="rs-t">Passthrough</span></div></aside>
+  <div class="m-features">
+
+  <div class="feature" id="f-4-1">
+    <h3><span class="fnum">4.1</span>Service de promotion continue</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Service conteneurisé longue durée : re-lecture périodique du Retriever (intervalle configurable à chaud), réconciliation, push différentiel (blobs manquants uniquement), re-vérification des signatures avant chaque push, propagation des recipes signées vers le cookbook de zone.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Une fois en place, le flux est automatique : dès qu'une nouvelle version validée paraît au catalogue et correspond à la liste de la zone, elle est contrôlée puis poussée — uniquement ce qui manque. Le catalogue de la zone reste le reflet exact de ce qu'elle détient.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Les mises à jour qualifiées arrivent en zone sans intervention humaine répétitive, avec un contrôle systématique — moins de délais, moins d'erreurs manuelles, auditabilité continue.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-4-2">
+    <h3><span class="fnum">4.2</span>Liste blanche de registries</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Allowlist configurable des registries autorisées en source et destination ; toute référence hors liste échoue avant tout transfert, avec classe d'erreur dédiée, journalisée et comptée en métrique. Évaluée sur l'hôte réellement contacté.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Tobby ne parle qu'aux dépôts explicitement autorisés par l'administrateur — impossible de tirer ou pousser ailleurs, même si un document le demandait.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Cloisonnement des flux garanti par l'outil lui-même, conforme à la politique de sécurité réseau du site ; chaque tentative hors-cadre est tracée.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-4-3">
+    <h3><span class="fnum">4.3</span>Authentification et rôles — sécurisé par défaut</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Auth basique locale active d'office, jetons statiques pour l'automatisation, RBAC minimal (lecteur / opérateur / admin) appliqué à l'UI, l'API et la registry embarquée (<code>docker login</code> standard). Désactivation possible uniquement par choix explicite, avec bannière permanente.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Dès l'installation, il faut un compte pour agir, et chacun ne peut faire que ce que son rôle permet. Réduire la sécurité est possible mais c'est un acte volontaire, affiché en permanence à l'écran.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Aucune fenêtre d'exposition entre l'installation et la configuration : le comportement par défaut est le comportement sûr. Séparation des responsabilités dès le premier jour.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-4-4">
+    <h3><span class="fnum">4.4</span>Réseau d'entreprise : proxys, PKI privée, TLS</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Proxys HTTP(S) sortants avec authentification, autorités de certification privées ajoutables sans désactiver la vérification TLS (aucun « skip TLS verify » global), TLS serveur avec certificat fourni ou auto-généré en secours.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Tobby fonctionne dans un vrai réseau d'entreprise — sortie via proxy authentifié, certificats internes — sans jamais désactiver les contrôles de sécurité pour « que ça marche ».</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Déployable dans l'infrastructure existante telle qu'elle est, sans dérogation de sécurité à faire accepter au RSSI.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-4-5">
+    <h3><span class="fnum">4.5</span>Déploiement de référence</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Chart Helm et manifests de référence livrés avec l'outil : conteneur non-root, système de fichiers racine en lecture seule, capacités retirées, sondes câblées, valeurs documentées.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Installer Tobby dans un cluster = un chart fourni, préréglé selon les bonnes pratiques de durcissement, à adapter en quelques valeurs.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Installation reproductible et durcie d'office ; l'équipe plateforme part d'une base validée au lieu d'écrire ses manifests — gain de temps et réduction du risque de mauvaise configuration.</div>
+    </div>
+  </div>
+
+  </div>
+  </div>
+  <div class="m-foot">
+    <div class="box"><b>Ce jalon est validé quand</b><p>Le scénario passthrough complet tourne dans une topologie multi-zones simulée, y compris derrière un proxy authentifié et une PKI privée, déployé via le chart de référence.</p></div>
+    <div class="box"><b>Démo de fin de jalon</b><p>Une nouvelle version publiée au cookbook apparaît dans la zone de destination au rafraîchissement suivant ; un artefact hors liste blanche est refusé et tracé ; second passage = zéro octet transféré.</p></div>
+  </div>
+</section>
+
+<!-- ══════════════════ JALON 5 ══════════════════ -->
+<section class="milestone">
+  <div class="m-head">
+    <span class="m-num">Jalon 5</span>
+    <h2>Cas d'usage n° 2 — Miroir &amp; air-gap</h2>
+    <p class="m-goal">Second mode complet : préparer un média physique, le transporter, et pousser son contenu
+    en zone isolée — avec des garde-fous à chaque étape pour un exploitant non expert.</p>
+  </div>
+  <div class="m-body">
+  <aside class="m-rail"><div class="rail-sticky"><span class="rs-k">Jalon</span><span class="rs-n">5</span><span class="rs-t">Miroir &amp; air-gap</span></div></aside>
+  <div class="m-features">
+
+  <div class="feature" id="f-5-1">
+    <h3><span class="fnum">5.1</span>Synchronisation miroir sur store transportable</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Synchro déclenchée manuellement (bouton / API, jamais automatique) vers un répertoire de stockage autonome et relogeable : artefacts + recipes + journaux d'opération. Le répertoire est l'unité de transport.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>L'exploitant clique « Synchroniser » : Tobby remplit le média avec tout ce que la zone doit recevoir, ses fiches et son journal de bord. Le média se suffit à lui-même.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Le transfert physique devient une procédure simple et auditable : ce qui part, pourquoi, et comment — tout voyage ensemble sur le support.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-5-2">
+    <h3><span class="fnum">5.2</span>Pré-vol : « est-ce que ça tient, est-ce que ça passera ? »</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Avant lancement : volume à transférer calculé par recipe (dédupliqué par digest, net de l'existant), comparé à l'espace libre du média ; refus si insuffisant (marge configurable) ; refus des systèmes de fichiers incompatibles (ex. FAT32 et sa limite de 4 Go par fichier).</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Avant de lancer 40 minutes de téléchargement, Tobby annonce le volume et vérifie que la clé USB conviendra. Si ça ne tient pas — ou si la clé est mal formatée — il le dit tout de suite.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Supprime le scénario le plus frustrant du terrain : découvrir « disque plein » à 92 % d'une synchronisation. Moins d'allers-retours physiques perdus, moins d'appels au support.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-5-3">
+    <h3><span class="fnum">5.3</span>Garde d'identité de zone &amp; inventaire du média</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Le média embarque son inventaire et l'identité de la zone de destination ; l'instance de destination refuse un média préparé pour une autre zone (dérogation admin tracée). L'authenticité, elle, repose sur les signatures des recipes vérifiées contre les clés de la zone.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Brancher le média de la zone A sur le poste de la zone B → refus immédiat et clair. Et quoi qu'il arrive, seul le contenu correctement signé pour la zone peut y entrer.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>L'erreur humaine la plus probable du processus physique (confusion de médias) est neutralisée par construction — sans reposer sur la vigilance de l'opérateur.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-5-4">
+    <h3><span class="fnum">5.4</span>Opération côté zone isolée</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>La même application, pointée sur le store transporté : re-vérification complète (signatures, digests) — le média est réputé non fiable jusqu'à preuve du contraire — puis push différentiel vers la registry de zone ; recipes signées poussées au cookbook local ; journaux de l'opération écrits sur le média (canal d'audit retour).</div>
+      <div class="col c-clair"><b class="tag">En clair</b>De l'autre côté, on branche le média, Tobby re-contrôle tout, puis pousse dans le dépôt de la zone. Le média repart avec le compte rendu de ce qui a été fait.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Même niveau de contrôle des deux côtés du sas physique ; traçabilité aller-retour complète pour le RSSI ; la zone isolée reste autonome et auditable hors ligne.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-5-5">
+    <h3><span class="fnum">5.5</span>Interopérabilité &amp; réutilisation du média</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Export/import optionnel au format standard OCI image layout (répertoire ou tar), lisible par skopeo/oras/crane ; remise à zéro du store (rôle admin, confirmation explicite, tracée) pour repartir propre.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>En cas de besoin, le contenu du média est lisible par les outils standards du marché, sans Tobby. Et un média déjà utilisé se remet à neuf en une action assumée.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Pas d'enfermement dans un format propriétaire (plan de secours garanti) ; les supports physiques se réutilisent de cycle en cycle sans procédure exotique.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-5-6">
+    <h3><span class="fnum">5.6</span>Poste Windows</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Binaire unique Windows/Linux ; parcours miroir complet validé sous Windows par tests de bout en bout en CI (synchro, store transportable, journaux sur support, opération destination).</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Le poste qui prépare ou reçoit le média peut être un poste Windows ordinaire : même outil, même interface, mêmes garanties — testé, pas juste « censé marcher ».</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>S'adapte au parc réel des postes de transfert sur site, sans imposer un poste Linux dédié.</div>
+    </div>
+  </div>
+
+  </div>
+  </div>
+  <div class="m-foot">
+    <div class="box"><b>Ce jalon est validé quand</b><p>La répétition complète de la recette air-gap passe : synchronisation → média → transport simulé → re-vérification → push → tirage par un client standard — y compris sous Windows.</p></div>
+    <div class="box"><b>Démo de fin de jalon</b><p>Cycle complet sur média réel ; synchro trop volumineuse refusée avant transfert ; média de la mauvaise zone refusé à l'arrivée. Scénario-couronne du crucible : <b>installation d'un cluster RKE2 entièrement air-gap depuis un OS nu</b> — paquets OS servis par Tobby (3.6), artefacts et images depuis le store transporté, cluster tirant via la registry de zone.</p></div>
+  </div>
+</section>
+
+<!-- ══════════════════ JALON 6 ══════════════════ -->
+<section class="milestone">
+  <div class="m-head">
+    <span class="m-num">Jalon 6</span>
+    <h2>Contrôles renforcés &amp; identité d'entreprise</h2>
+    <p class="m-goal">Compléter la chaîne de contrôle : analyse de vulnérabilités avec politique configurable,
+    et raccordement aux annuaires d'identité de l'entreprise.</p>
+  </div>
+  <div class="m-body">
+  <aside class="m-rail"><div class="rail-sticky"><span class="rs-k">Jalon</span><span class="rs-n">6</span><span class="rs-t">Contrôles &amp; identité</span></div></aside>
+  <div class="m-features">
+
+  <div class="feature" id="f-6-1">
+    <h3><span class="fnum">6.1</span>Analyse de vulnérabilités avec politique</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Scan Trivy à la récupération ; politique configurable par seuil de sévérité, en mode bloquant ou consultatif, affinable par source ; résultats rapportés par élément dans la tâche, l'API et les métriques.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Chaque composant est passé au détecteur de failles connues. Selon la politique choisie, une faille critique bloque le transfert ou est simplement signalée — au choix de l'organisation, pas de l'outil.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Le niveau d'exigence sécurité est un réglage assumé par la gouvernance ; les décisions (bloquer / tolérer) sont tracées et opposables en audit.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-6-2">
+    <h3><span class="fnum">6.2</span>Base de vulnérabilités hors-ligne — par Tobby lui-même</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>La base de données Trivy est distribuée comme artefact OCI transféré par Tobby (y compris à travers l'air-gap) : le scanner des zones isolées se met à jour par le même canal que le reste.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Le détecteur de failles des zones sans réseau reste à jour : sa base de connaissances voyage sur le même média que les applications, avec les mêmes contrôles.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Le scan reste pertinent là où il compte le plus — dans les zones les plus isolées — sans procédure parallèle à maintenir.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-6-3">
+    <h3><span class="fnum">6.3</span>Identité d'entreprise : OIDC puis SAML</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>OpenID Connect (authorization code) puis SAML 2.0 (SP-initiated) contre l'annuaire de l'organisation, correspondance groupes → rôles ; les quatre méthodes (OIDC, SAML, jetons, basique) coexistent, testées contre des IdP conteneurisés en CI.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Les utilisateurs se connectent avec leur compte d'entreprise habituel, et leurs droits dans Tobby suivent leurs groupes dans l'annuaire — plus de comptes locaux à gérer là où l'annuaire est disponible.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Intégration à la politique d'identité du groupe : arrivées/départs et habilitations gérés au même endroit que le reste du SI. Le compte local reste disponible pour les postes isolés.</div>
+    </div>
+  </div>
+
+  </div>
+  </div>
+  <div class="m-foot">
+    <div class="box"><b>Ce jalon est validé quand</b><p>Une image volontairement vulnérable est bloquée et rapportée ; la base hors-ligne se met à jour à travers l'air-gap ; les quatre méthodes d'authentification passent leurs tests.</p></div>
+    <div class="box"><b>Démo de fin de jalon</b><p>Politique « bloquer au niveau critique » en action, rapport à l'appui ; connexion via l'annuaire d'entreprise avec rôles hérités des groupes.</p></div>
+  </div>
+</section>
+
+<!-- ══════════════════ JALON 7 ══════════════════ -->
+<section class="milestone">
+  <div class="m-head">
+    <span class="m-num">Jalon 7</span>
+    <h2>Finition, documentation &amp; recette</h2>
+    <p class="m-goal">Amener le produit complet au niveau « version 1.0 » : finition de l'interface,
+    documentation bilingue, durcissement, et validation formelle des deux cas d'usage avec le client.</p>
+  </div>
+  <div class="m-body">
+  <aside class="m-rail"><div class="rail-sticky"><span class="rs-k">Jalon</span><span class="rs-n">7</span><span class="rs-t">Finition &amp; recette</span></div></aside>
+  <div class="m-features">
+
+  <div class="feature" id="f-7-1">
+    <h3><span class="fnum">7.1</span>Finition de l'interface &amp; aides au déploiement</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Passe design (tokens, cohérence visuelle, CSS surchargeable), accessibilité ciblée sur les parcours cœur ; génération des aides de consommation : table de correspondance exportable + extrait de configuration mirror pour les clusters (registries.yaml K3s/RKE2).</div>
+      <div class="col c-clair"><b class="tag">En clair</b>L'interface reçoit sa finition visuelle, et Tobby génère les fichiers de configuration qui permettent aux clusters de la zone d'utiliser les composants relocalisés sans modifier les applications.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Le dernier kilomètre du déploiement est outillé : les applications s'installent en zone sans réécriture manuelle des références — la classe d'erreurs la plus coûteuse du terrain disparaît.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-7-2">
+    <h3><span class="fnum">7.2</span>Documentation bilingue complète</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Installation, configuration, exploitation des deux modes, modèle de sécurité, dépannage — en anglais et en français ; vérification automatique de complétude des traductions de l'interface en CI.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Tout ce qu'il faut pour installer, configurer, exploiter et dépanner, dans les deux langues — et l'outil vérifie lui-même qu'aucun texte d'interface n'est resté non traduit.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Autonomie des équipes d'exploitation francophones et transmissibilité (rotation des prestataires N1) ; condition du transfert de compétences réussi.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-7-3">
+    <h3><span class="fnum">7.3</span>Durcissement &amp; preuve par les tests</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Revue de validation d'entrées, protection CSRF, fuzzing des parseurs, audit de dépendances ; suites de bout en bout des deux cas d'usage en CI ; suite de conformité OCI officielle passée contre la registry embarquée ; zéro CVE critique/haute dans l'image livrée.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Le produit est attaqué méthodiquement par ses propres tests : entrées malveillantes, protocole registry, scénarios complets — tout est rejoué automatiquement à chaque modification.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>La confiance ne repose pas sur des déclarations : chaque garantie annoncée a un test qui la prouve, rejouable par le client.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="f-7-4">
+    <h3><span class="fnum">7.4</span>Recette contradictoire &amp; version 1.0</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Technique</b>Recette formelle des deux cas d'usage sur candidate de release, selon les critères d'acceptation actés à l'enclenchement ; corrections bloquantes uniquement ; gel de la spécification du format en v1 stable (garantie de compatibilité ascendante).</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Le client déroule lui-même les deux scénarios sur la version candidate et valide point par point. Le format des recipes est alors gelé : ce qui est écrit aujourd'hui restera lisible demain.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Mise en production sur des critères objectifs partagés ; stabilité contractuelle du format = investissement pérenne dans les recipes et l'outillage qui les produit.</div>
+    </div>
+  </div>
+
+  </div>
+  </div>
+  <div class="m-foot">
+    <div class="box"><b>Ce jalon est validé quand</b><p>La checklist de version 1.0 est intégralement verte : deux cas d'usage recettés, conformité OCI, documentation bilingue relue, chaîne de build vérifiable, zéro CVE critique/haute.</p></div>
+    <div class="box"><b>Démo de fin de jalon</b><p>La recette elle-même — déroulée par le client, pas par l'équipe.</p></div>
+  </div>
+</section>
+
+<!-- ══════════════════ APRÈS 1.0 ══════════════════ -->
+<section class="after">
+  <h2>Après la 1.0 — extensions identifiées (v1.1+)</h2>
+  <p>Fonctionnalités volontairement hors du socle 1.0, avec un contournement propre en attendant.
+  Elles sont compatibles avec le format et l'architecture livrés (aucune ne casse l'existant).</p>
+  <ul>
+    <li><span class="fnum">A.1</span><b>Nettoyage fin du store local</b> (suppression par recipe + récupération d'espace) — en 1.0, la remise à zéro + re-synchronisation différentielle couvre le besoin de réutilisation des médias.</li>
+    <li><span class="fnum">A.2</span><b>Inventaire de média exhaustif</b> (empreintes fichier par fichier, signalement du contenu étranger) — en 1.0, l'authenticité est déjà intégralement portée par les signatures et digests.</li>
+    <li><span class="fnum">A.3</span><b>Dérogations ciblées par vulnérabilité</b> (accepter temporairement une CVE identifiée, avec échéance) — en 1.0, la politique s'ajuste par seuil et par source.</li>
+    <li><span class="fnum">A.4</span><b>Index de cookbook signé</b> (catalogue consultable hors-ligne, pour les registries sans listing).</li>
+    <li><span class="fnum">A.5</span><b>Alerting intégré</b> — en 1.0, toutes les métriques nécessaires sont exposées pour l'outillage de supervision existant (Prometheus/Alertmanager).</li>
+  </ul>
+</section>
+
+<!-- ══════════════════ ANNEXE ADR ══════════════════ -->
+<section class="milestone">
+  <div class="m-head">
+    <span class="m-num">Annexe</span>
+    <h2>Les décisions d'architecture (ADR)</h2>
+    <p class="m-goal">Chaque choix structurant du produit est consigné dans un ADR (Architecture Decision
+    Record) : contexte, décision, conséquences, alternatives écartées. Les documents complets sont
+    versionnés dans le dépôt public ; voici leur résumé en triple lecture.</p>
+  </div>
+  <div class="m-body">
+  <aside class="m-rail"><div class="rail-sticky"><span class="rs-k">Annexe</span><span class="rs-n">ADR</span><span class="rs-t">14 décisions</span></div></aside>
+  <div class="m-features">
+
+  <div class="feature" id="adr-1">
+    <h3><span class="fnum">ADR-0001</span>Format des recipes : manifestes YAML style Kubernetes</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Résumé</b>Documents <code>apiVersion / kind / metadata / spec</code> (groupe <code>recipe.tobby.dev</code>, cycle v1alpha1 → v1), validation stricte par schémas JSON (champ inconnu = rejet), SDK Go de référence ; credentials de registries au format Kubernetes <code>dockerconfigjson</code> réutilisé tel quel.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Les fiches sont écrites dans le même style que les fichiers Kubernetes que les équipes manipulent déjà — mêmes réflexes, mêmes éditeurs, mêmes revues.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Courbe d'apprentissage quasi nulle pour les équipes plateforme ; une faute de frappe ne peut pas affaiblir silencieusement le dispositif ; le format peut évoluer sans rien casser.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="adr-2">
+    <h3><span class="fnum">ADR-0002</span>Recipes en artefacts OCI ; cookbook = repository OCI</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Résumé</b>Une recipe publiée est un manifest OCI à artifactType dédié (une seule couche : le YAML), stockée <code>&lt;registry&gt;/&lt;cookbook&gt;/&lt;nom&gt;:&lt;version&gt;</code>, signée cosign, immuable, découvrable par les API de listing standard.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Le catalogue des applications validées vit dans le même type de dépôt que les applications elles-mêmes — pas de base de données, pas de serveur de catalogue à installer.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Zéro infrastructure supplémentaire à opérer et à qualifier ; les recipes voyagent, se signent et s'auditent avec exactement les mêmes outils que le reste.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="adr-3">
+    <h3><span class="fnum">ADR-0003</span>Deux dépôts, deux licences : spec Apache-2.0, application GPL-3.0</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Résumé</b>Le format, ses schémas et le SDK Go vivent dans <code>recipe-spec</code> sous Apache-2.0 (intégrable par des outils tiers, y compris propriétaires) ; l'application <code>tobby</code> est sous GPL-3.0.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>N'importe qui peut adopter le format et bâtir dessus sans contrainte ; l'outil lui-même est libre et le restera.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Favorise un écosystème autour du format (pipelines, outillage d'audit) tout en respectant l'exigence de licence libre du produit.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="adr-4">
+    <h3><span class="fnum">ADR-0004</span>Registry embarquée : la bibliothèque CNCF <code>distribution</code></h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Résumé</b>Le moteur de registry de référence de l'écosystème, embarqué en bibliothèque dans le binaire (backend filesystem) ; conformité vérifiée par la suite de tests officielle OCI en CI.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Le dépôt intégré de Tobby est le même moteur que celui des registries du marché — comportement standard garanti, pas une réimplémentation maison.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Compatibilité maximale avec les outils standards (docker, helm, oras…) ; le risque de déviation de protocole est structurellement quasi nul.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="adr-5">
+    <h3><span class="fnum">ADR-0005</span>Import direct dans le stockage (pas de rebouclage réseau)</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Résumé</b>Les téléchargements écrivent directement dans le backend de stockage, in-process ; le nom local canonique est calculé en un seul endroit ; aucune connexion de Tobby vers lui-même, aucune exception TLS.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Quand Tobby télécharge, il range directement sur l'étagère — il ne se ré-expédie pas le colis à lui-même par le réseau, comme le faisait le prototype.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Deux fois moins d'entrées/sorties, une classe entière de bugs éliminée, et aucun contournement de sécurité TLS dans le code.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="adr-6">
+    <h3><span class="fnum">ADR-0006</span>Transport amovible : store autonome + export au format standard</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Résumé</b>Le répertoire de stockage est l'unité de transport : artefacts, recipes, journaux et inventaire du média voyagent ensemble. Export/import optionnel au format OCI image layout (lisible par skopeo/oras) ; chiffrement du média délégué à l'OS (LUKS/BitLocker).</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Le média contient tout ce qu'il faut pour être vérifié, poussé et audité de l'autre côté — et reste lisible par les outils standards du marché en secours.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Une procédure physique auditable de bout en bout, sans format propriétaire ni enfermement : le plan de secours est garanti par construction.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="adr-7">
+    <h3><span class="fnum">ADR-0007</span>Signatures : cosign en mode clé, conçu pour l'air-gap</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Résumé</b>Signatures cosign par paires de clés (aucune dépendance aux services en ligne Fulcio/Rekor) ; clés de confiance fournies par configuration (inline, fichier ou URL résolue à la configuration — jamais depuis le média) ; signatures attachées voyageant avec le contenu ; vérification à l'import ET avant chaque push.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>La preuve d'origine se vérifie sans aucun accès réseau, des deux côtés du sas physique. Tobby vérifie — il ne signe rien lui-même.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Garantie d'authenticité applicable jusque dans les zones totalement isolées : seul le logiciel signé pour l'environnement cible y entre.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="adr-8">
+    <h3><span class="fnum">ADR-0008</span>Scan de vulnérabilités : Trivy, base hors-ligne, interface neutre</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Résumé</b>Trivy intégré avec politique configurable (seuils de sévérité, bloquant/consultatif) ; base de vulnérabilités distribuée en artefact OCI par Tobby lui-même ; moteur de politique découplé derrière une interface scanner normalisée — scanners additionnels (Grype) et consommation de VEX = extensions déclarées.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Le détecteur de failles fonctionne hors ligne et sa base de connaissances voyage par le même canal contrôlé que les applications. Et l'outil n'est pas marié à un scanner à vie.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>L'exigence de scan est tenue y compris en zone isolée — là où elle se dégrade d'habitude en théâtre — avec la réversibilité préservée.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="adr-9">
+    <h3><span class="fnum">ADR-0009</span>Authentification : OIDC, SAML, jetons, comptes locaux ; rôles minimaux</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Résumé</b>Quatre méthodes coexistantes (OIDC, SAML 2.0, jetons statiques, basic), correspondance groupes → rôles (lecteur / opérateur / admin) sur UI, API et registry embarquée ; sécurisé par défaut, désactivation possible uniquement par choix explicite et affiché.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Du compte local du poste isolé jusqu'à l'annuaire d'entreprise, chacun s'authentifie selon son contexte — et par défaut, tout est fermé.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Intégration à la politique d'identité du groupe sans exception de sécurité silencieuse ; séparation des responsabilités dès l'installation.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="adr-10">
+    <h3><span class="fnum">ADR-0010</span>Interface web : rendu serveur Go + htmx, zéro toolchain Node</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Résumé</b>HTML rendu côté serveur, htmx vendoré à version épinglée, assets embarqués dans le binaire (<code>go:embed</code>), design tokens CSS + thème surchargeable sans recompiler, dark mode, i18n EN/FR externalisée. Aucun npm, aucun bundler.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Une interface web moderne et rapide, sans traîner l'écosystème JavaScript et ses milliers de dépendances invérifiables.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Surface d'attaque minimale et maintenance réduite — un outil qui contrôle la chaîne d'approvisionnement ne peut pas embarquer ce qu'il dénonce.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="adr-11">
+    <h3><span class="fnum">ADR-0011</span>Chaîne de fabrication de Tobby : SLSA L3, melange + apko, reproductible</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Résumé</b>Provenance SLSA Build L3 par builder isolé, binaires reproductibles bit-à-bit, image assemblée déclarativement sur base Wolfi (objectif zéro CVE, rebuilds hebdomadaires), SBOM CycloneDX signés — le binaire livré et celui de l'image sont le même artefact.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Chaque livraison prouve d'où elle vient, liste ce qu'elle contient, et peut être reconstruite à l'identique par un tiers — même sans aucun accès à internet.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>L'outil qui garde la porte est lui-même exemplaire : c'est l'argument d'audit décisif face aux relecteurs sécurité des environnements cibles.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="adr-12">
+    <h3><span class="fnum">ADR-0012</span>Observabilité : journaux structurés, métriques, sondes</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Résumé</b>Logs JSON corrélés (tâche / recipe / ingrédient / digest), métriques OpenMetrics scrapables par Prometheus, sondes <code>/healthz</code> <code>/readyz</code>, arrêt gracieux avec point de reprise.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Tout ce que fait Tobby se suit en direct, se mesure, et se reconstitue après coup depuis les journaux — y compris sur le média, pour les opérations hors ligne.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Exploitable avec les outils de supervision déjà en place ; chaque transfert est auditable de bout en bout, réseau ou pas.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="adr-13">
+    <h3><span class="fnum">ADR-0013</span>Relocalisation des ingrédients et nommage à destination</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Résumé</b>Chemin de destination = hôte source nominal canonicalisé en préfixe, invariant quel que soit le nombre de zones traversées ; vérification de compatibilité de la registry cible avant push ; table de correspondance et snippet de configuration mirror générés.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>En lisant un chemin dans n'importe quelle zone, on sait toujours d'où vient le contenu — et les clusters s'y raccordent sans réécrire les applications.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Déploiement sans retouche manuelle, nettoyage des registries automatisable, audit de provenance en un coup d'œil — la décision qui débloque toute la fin de chaîne.</div>
+    </div>
+  </div>
+
+  <div class="feature" id="adr-14">
+    <h3><span class="fnum">ADR-0014</span>Infrastructure de test « crucible » : Incus</h3>
+    <div class="cols">
+      <div class="col c-tech"><b class="tag">Résumé</b>Réplique jetable de l'environnement cible sur tout Linux avec KVM : VMs pour les nœuds à fidélité kernel, conteneurs système pour la figuration, air-gap par absence de route + canari, média = volume bloc détachable, reset par snapshot. Scénarios étiquetés par jalon, invocables à la carte ; écrire ses scénarios fait partie de la définition de fini de chaque jalon.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Une maquette complète du terrain, recréable n'importe où en quelques minutes, qui rejoue en continu tout ce qui a déjà été livré — en totalité ou jalon par jalon.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>La non-régression sur les scénarios réels du site est permanente et prouvée ; la recette finale est une formalité déjà répétée des dizaines de fois.</div>
+    </div>
+  </div>
+
+  </div>
+  </div>
+</section>
+
+<footer class="colophon">
+  Roadmap produit Tobby — document de travail, ordre des jalons figé, contenus ajustables en revue de jalon.
+  Licence du produit : GPL-3.0 (application) / Apache-2.0 (spécification du format).
+</footer>
+
+</div>
+</body>
+</html>
