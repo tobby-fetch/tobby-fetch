@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted — 2026-07-11
+Accepted — 2026-07-11 · Amended 2026-08-04 (copyright holder and SPDX
+conventions)
 
 ## Context
 
@@ -36,6 +37,17 @@ different licenses:
 Contributions to both repositories are accepted under the **Developer
 Certificate of Origin (DCO)** — a `Signed-off-by` line per commit — rather
 than a Contributor License Agreement.
+
+### Copyright and SPDX conventions
+
+The initial copyright holder is **infraBuilder SASU**; under the DCO model,
+contributors retain the copyright on their own contributions. Licensing is
+expressed with SPDX identifiers — the application is `GPL-3.0-only`, the
+specification and SDK are `Apache-2.0`. Source files carry an
+`SPDX-License-Identifier` header and a
+`Copyright © <year> infraBuilder SASU and contributors` line at creation;
+third-party assets embedded in the binary are inventoried in
+`THIRD-PARTY-NOTICES` (ADR-0010).
 
 ### Rationale
 

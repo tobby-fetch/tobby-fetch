@@ -55,6 +55,7 @@ Landing page: **https://tobby-fetch.github.io/tobby-fetch/**
 
 ## License
 
-The application is licensed under the [GNU General Public License v3.0](LICENSE).
+The application is licensed under the [GNU General Public License v3.0](LICENSE)
+(SPDX: `GPL-3.0-only`). Copyright © 2026 infraBuilder SASU and contributors.
 The Recipe format specification and its Go SDK are published separately under
 the Apache-2.0 license.
