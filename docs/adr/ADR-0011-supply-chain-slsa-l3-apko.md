@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted — 2026-07-11
+Accepted — 2026-07-11 · Amended 2026-08-04 (license-compliance gate and OpenVEX
+publication made explicit)
 
 ## Context
 
@@ -99,8 +100,17 @@ cadence makes realistic rather than aspirational.
   cosign**, and attached to the release and the image (referrers/attached
   artifact).
 - **Trivy runs in CI** on every build — the scanner Tobby embeds gates Tobby
-  itself (dogfooding with ADR-0008); a release cannot ship violating the same
-  default policy Tobby applies to user artifacts.
+  itself (dogfooding with ADR-0008); a release cannot ship with critical or
+  high findings, the same class of gate Tobby applies to user artifacts.
+- **License compliance is a CI gate**: every dependency's license is checked
+  on each build (`go-licenses` or equivalent) against a GPL-3.0 compatibility
+  policy — an explicit allowlist; unknown or incompatible licenses block the
+  merge. This is the gate ADR-0003 relies on for the "all dependencies must be
+  GPL-3.0-compatible" consequence.
+- **OpenVEX statements are published for Tobby's own releases**: when a scanner
+  finding does not apply to Tobby, the justification ships as a signed OpenVEX
+  document attached to the release — never a silent ignore rule. This is the
+  counterpart of the upstream VEX consumption seam in ADR-0008 (Decision 5).
 - **Renovate** keeps Go modules, GitHub Actions, and base packages current via
   automated PRs.
 - **Weekly automated rebuilds** of the latest release image pick up Wolfi package

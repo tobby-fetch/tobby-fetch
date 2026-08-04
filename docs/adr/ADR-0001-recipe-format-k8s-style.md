@@ -38,9 +38,10 @@ Recipes and Retrievers are **Kubernetes-style YAML manifests**: typed documents
 with `apiVersion`, `kind`, `metadata`, and `spec` top-level fields, under a
 dedicated, versioned API group.
 
-- **API group:** `recipe.tobby.dev` (the `tobby.dev` domain is reserved for the
-  project; `tobby-fetch.github.io` is the documented fallback group if the
-  domain cannot be secured).
+- **API group:** `recipe.tobby.dev` (the `tobby.dev` domain is designated for
+  the project — registration is tracked for milestone 0.1;
+  `tobby-fetch.github.io` is the documented fallback group if the domain
+  cannot be secured).
 - **Version lifecycle:** `v1alpha1` → `v1beta1` → `v1`, with `v1` frozen at
   Tobby 1.0.0. Alpha and beta versions may change between minor releases; `v1`
   is stable for the life of the major version.

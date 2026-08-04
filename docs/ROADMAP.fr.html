@@ -163,6 +163,7 @@
   modèles, fichiers) entre zones réseau cloisonnées, jusqu'aux environnements totalement isolés (air-gap).
   Roadmap ordonnée par dépendances : les fondations structurantes d'abord, un aperçu concret de
   l'expérience utilisateur au plus tôt, puis les deux cas d'usage complets.</p>
+  <p lang="en" style="font-style:italic;opacity:.75;margin:10px 0 0;font-size:.9em">This roadmap is currently maintained in French. All other project documents — SRS, ADRs, format specification — are in English; an English version of the roadmap will follow with the bilingual documentation work (7.2).</p>
 </header>
 
 <div class="howto">
@@ -251,7 +252,7 @@
     <h3><span class="fnum">1.5</span>Pyramide de tests &amp; gates de qualité strictes</h3>
     <div class="cols">
       <div class="col c-tech"><b class="tag">Technique</b>Pyramide en 5 niveaux, bloquante dès le premier commit : tests unitaires (<code>go test -race</code>, <code>-count=2</code> anti-flaky, couverture minimale par paquet — plus stricte sur les chemins de sécurité), lint strict (<code>golangci-lint</code>, zéro dérogation), intégration contre registries et IdP réels conteneurisés (aucun mock du protocole OCI), e2e cœur à chaque PR, e2e étendu en nightly. Document <b>OpenVEX</b> régénéré régulièrement sur les livrables de Tobby.</div>
-      <div class="col c-clair"><b class="tag">En clair</b>Chaque modification doit franchir une batterie de contrôles automatiques — style, tests, scénarios réels — sinon elle n'entre pas dans le produit, point. Et quand un scanner signale une faille non applicable à Tobby, la justification est publiée dans un format standard (VEX) au lieu d'être ignorée en silence.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Chaque modification doit franchir une batterie de contrôles automatiques — style, tests, scénarios de bout en bout — sinon elle n'entre pas dans le produit, point. Et quand un scanner signale une faille non applicable à Tobby, la justification est publiée dans un format standard (VEX) au lieu d'être ignorée en silence.</div>
       <div class="col c-metier"><b class="tag">Valeur métier</b>La qualité n'est pas une phase de fin de projet : c'est une barrière d'entrée permanente, identique au jalon 1 et à la version 1.0. Chaque jalon publie son rapport d'acceptation brut (« X contrôles sur X passés ») — la confiance se mesure, elle ne se déclare pas.</div>
     </div>
   </div>
@@ -261,7 +262,7 @@
     <div class="cols">
       <div class="col c-tech"><b class="tag">Technique</b>Banc de non-régression en deux étages (infrastructure : Incus, ADR-0014). <b>Étage CI</b> (hermétique, chaque PR) : topologie conteneurisée — registries publiques/privées ensemencées, zone air-gap sans route sortante (prouvé par test-canari), cluster k3s. <b>Étage crucible</b> (réaliste, à la demande / par jalon) : VMs et conteneurs système jetables — nœud connecté tirant de vraies recipes, média = disque détachable, nœud isolé avec registry de zone et cluster RKE2, reset de scénario par snapshot. <b>Scénarios étiquetés par jalon, invocables à la carte</b> : la suite des jalons livrés se rejoue en totalité ou par sous-ensemble, à tout moment.</div>
       <div class="col c-clair"><b class="tag">En clair</b>Dès le premier jalon, une maquette complète du terrain existe et se recrée à la demande : une machine avec internet qui prépare, une machine coupée du monde qui reçoit, et de vraies applications qu'on installe au bout pour prouver que tout le trajet fonctionne — depuis la registry de Tobby comme depuis une registry alimentée en continu.</div>
-      <div class="col c-metier"><b class="tag">Valeur métier</b>La non-régression sur les scénarios réels du site est vérifiée en continu, pas découverte en recette. La recette finale devient la ré-exécution, devant le client, d'un scénario déjà passé au vert des dizaines de fois — le risque de fin de projet disparaît.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>La non-régression sur des scénarios réalistes de bout en bout est vérifiée en continu, pas découverte en fin de projet. La validation finale devient la ré-exécution d'un scénario déjà passé au vert des dizaines de fois — le risque de fin de projet disparaît.</div>
     </div>
   </div>
 
@@ -289,7 +290,7 @@
     <h3><span class="fnum">2.1</span>Socle d'interface web + bilingue d'origine</h3>
     <div class="cols">
       <div class="col c-tech"><b class="tag">Technique</b>UI rendue côté serveur (Go + htmx), zéro toolchain Node, design tokens + feuille de style configurable, libellés externalisés EN/FR commutables, assets embarqués dans le binaire.</div>
-      <div class="col c-clair"><b class="tag">En clair</b>Une interface web légère, rapide, sans dépendances front fragiles, traduite anglais/français dès l'origine, et dont l'apparence peut être adaptée à la charte du site sans recompiler.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Une interface web légère, rapide, sans dépendances front fragiles, traduite anglais/français dès l'origine, et dont l'apparence peut être adaptée à la charte graphique de l'organisation sans recompiler.</div>
       <div class="col c-metier"><b class="tag">Valeur métier</b>L'esthétique et la simplicité sont un facteur d'adoption : elles sont jugeables — et corrigeables — dès le deuxième jalon, pas à la fin du projet. Surface d'attaque front minimale.</div>
     </div>
   </div>
@@ -438,7 +439,7 @@
     <div class="cols">
       <div class="col c-tech"><b class="tag">Technique</b>Allowlist configurable des registries autorisées en source et destination ; toute référence hors liste échoue avant tout transfert, avec classe d'erreur dédiée, journalisée et comptée en métrique. Évaluée sur l'hôte réellement contacté.</div>
       <div class="col c-clair"><b class="tag">En clair</b>Tobby ne parle qu'aux dépôts explicitement autorisés par l'administrateur — impossible de tirer ou pousser ailleurs, même si un document le demandait.</div>
-      <div class="col c-metier"><b class="tag">Valeur métier</b>Cloisonnement des flux garanti par l'outil lui-même, conforme à la politique de sécurité réseau du site ; chaque tentative hors-cadre est tracée.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Cloisonnement des flux garanti par l'outil lui-même, conforme à la politique de sécurité réseau de l'organisation ; chaque tentative hors-cadre est tracée.</div>
     </div>
   </div>
 
@@ -528,8 +529,8 @@
   <div class="feature" id="f-5-5">
     <h3><span class="fnum">5.5</span>Interopérabilité &amp; réutilisation du média</h3>
     <div class="cols">
-      <div class="col c-tech"><b class="tag">Technique</b>Export/import optionnel au format standard OCI image layout (répertoire ou tar), lisible par skopeo/oras/crane ; remise à zéro du store (rôle admin, confirmation explicite, tracée) pour repartir propre.</div>
-      <div class="col c-clair"><b class="tag">En clair</b>En cas de besoin, le contenu du média est lisible par les outils standards du marché, sans Tobby. Et un média déjà utilisé se remet à neuf en une action assumée.</div>
+      <div class="col c-tech"><b class="tag">Technique</b>Export/import optionnel au format standard OCI image layout (répertoire ou tar), lisible par skopeo/oras/crane ; suppression par recipe avec récupération d'espace (GC) et nettoyage automatique du contenu obsolète à la synchronisation (activé par défaut) ; remise à zéro du store (rôle admin, confirmation explicite, tracée) pour repartir propre.</div>
+      <div class="col c-clair"><b class="tag">En clair</b>En cas de besoin, le contenu du média est lisible par les outils standards du marché, sans Tobby. Le store s'entretient au fil des cycles, et un média déjà utilisé se remet à neuf en une action assumée.</div>
       <div class="col c-metier"><b class="tag">Valeur métier</b>Pas d'enfermement dans un format propriétaire (plan de secours garanti) ; les supports physiques se réutilisent de cycle en cycle sans procédure exotique.</div>
     </div>
   </div>
@@ -539,14 +540,14 @@
     <div class="cols">
       <div class="col c-tech"><b class="tag">Technique</b>Binaire unique Windows/Linux ; parcours miroir complet validé sous Windows par tests de bout en bout en CI (synchro, store transportable, journaux sur support, opération destination).</div>
       <div class="col c-clair"><b class="tag">En clair</b>Le poste qui prépare ou reçoit le média peut être un poste Windows ordinaire : même outil, même interface, mêmes garanties — testé, pas juste « censé marcher ».</div>
-      <div class="col c-metier"><b class="tag">Valeur métier</b>S'adapte au parc réel des postes de transfert sur site, sans imposer un poste Linux dédié.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>S'adapte au parc réel des postes de transfert, sans imposer un poste Linux dédié.</div>
     </div>
   </div>
 
   </div>
   </div>
   <div class="m-foot">
-    <div class="box"><b>Ce jalon est validé quand</b><p>La répétition complète de la recette air-gap passe : synchronisation → média → transport simulé → re-vérification → push → tirage par un client standard — y compris sous Windows.</p></div>
+    <div class="box"><b>Ce jalon est validé quand</b><p>La répétition complète du parcours air-gap passe : synchronisation → média → transport simulé → re-vérification → push → tirage par un client standard — y compris sous Windows.</p></div>
     <div class="box"><b>Démo de fin de jalon</b><p>Cycle complet sur média réel ; synchro trop volumineuse refusée avant transfert ; média de la mauvaise zone refusé à l'arrivée. Scénario-couronne du crucible : <b>installation d'un cluster RKE2 entièrement air-gap depuis un OS nu</b> — paquets OS servis par Tobby (3.6), artefacts et images depuis le store transporté, cluster tirant via la registry de zone.</p></div>
   </div>
 </section>
@@ -602,12 +603,12 @@
 <section class="milestone">
   <div class="m-head">
     <span class="m-num">Jalon 7</span>
-    <h2>Finition, documentation &amp; recette</h2>
+    <h2>Finition, documentation &amp; validation</h2>
     <p class="m-goal">Amener le produit complet au niveau « version 1.0 » : finition de l'interface,
-    documentation bilingue, durcissement, et validation formelle des deux cas d'usage avec le client.</p>
+    documentation bilingue, durcissement, et validation formelle des deux cas d'usage avec les parties prenantes.</p>
   </div>
   <div class="m-body">
-  <aside class="m-rail"><div class="rail-sticky"><span class="rs-k">Jalon</span><span class="rs-n">7</span><span class="rs-t">Finition &amp; recette</span></div></aside>
+  <aside class="m-rail"><div class="rail-sticky"><span class="rs-k">Jalon</span><span class="rs-n">7</span><span class="rs-t">Finition &amp; validation</span></div></aside>
   <div class="m-features">
 
   <div class="feature" id="f-7-1">
@@ -624,7 +625,7 @@
     <div class="cols">
       <div class="col c-tech"><b class="tag">Technique</b>Installation, configuration, exploitation des deux modes, modèle de sécurité, dépannage — en anglais et en français ; vérification automatique de complétude des traductions de l'interface en CI.</div>
       <div class="col c-clair"><b class="tag">En clair</b>Tout ce qu'il faut pour installer, configurer, exploiter et dépanner, dans les deux langues — et l'outil vérifie lui-même qu'aucun texte d'interface n'est resté non traduit.</div>
-      <div class="col c-metier"><b class="tag">Valeur métier</b>Autonomie des équipes d'exploitation francophones et transmissibilité (rotation des prestataires N1) ; condition du transfert de compétences réussi.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Autonomie des équipes d'exploitation, y compris francophones, et prise en main rapide par de nouveaux arrivants : la connaissance de l'outil se transmet sans dépendre de personnes clés.</div>
     </div>
   </div>
 
@@ -633,24 +634,24 @@
     <div class="cols">
       <div class="col c-tech"><b class="tag">Technique</b>Revue de validation d'entrées, protection CSRF, fuzzing des parseurs, audit de dépendances ; suites de bout en bout des deux cas d'usage en CI ; suite de conformité OCI officielle passée contre la registry embarquée ; zéro CVE critique/haute dans l'image livrée.</div>
       <div class="col c-clair"><b class="tag">En clair</b>Le produit est attaqué méthodiquement par ses propres tests : entrées malveillantes, protocole registry, scénarios complets — tout est rejoué automatiquement à chaque modification.</div>
-      <div class="col c-metier"><b class="tag">Valeur métier</b>La confiance ne repose pas sur des déclarations : chaque garantie annoncée a un test qui la prouve, rejouable par le client.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>La confiance ne repose pas sur des déclarations : chaque garantie annoncée a un test qui la prouve, rejouable par n'importe quel utilisateur.</div>
     </div>
   </div>
 
   <div class="feature" id="f-7-4">
-    <h3><span class="fnum">7.4</span>Recette contradictoire &amp; version 1.0</h3>
+    <h3><span class="fnum">7.4</span>Validation d'acceptation &amp; version 1.0</h3>
     <div class="cols">
-      <div class="col c-tech"><b class="tag">Technique</b>Recette formelle des deux cas d'usage sur candidate de release, selon les critères d'acceptation actés à l'enclenchement ; corrections bloquantes uniquement ; gel de la spécification du format en v1 stable (garantie de compatibilité ascendante).</div>
-      <div class="col c-clair"><b class="tag">En clair</b>Le client déroule lui-même les deux scénarios sur la version candidate et valide point par point. Le format des recipes est alors gelé : ce qui est écrit aujourd'hui restera lisible demain.</div>
-      <div class="col c-metier"><b class="tag">Valeur métier</b>Mise en production sur des critères objectifs partagés ; stabilité contractuelle du format = investissement pérenne dans les recipes et l'outillage qui les produit.</div>
+      <div class="col c-tech"><b class="tag">Technique</b>Validation formelle des deux cas d'usage sur candidate de release, selon des critères d'acceptation publics définis à l'avance ; corrections bloquantes uniquement ; gel de la spécification du format en v1 stable (garantie de compatibilité ascendante).</div>
+      <div class="col c-clair"><b class="tag">En clair</b>Les utilisateurs déroulent eux-mêmes les deux scénarios sur la version candidate et valident point par point. Le format des recipes est alors gelé : ce qui est écrit aujourd'hui restera lisible demain.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>Mise en production sur des critères objectifs partagés ; stabilité garantie du format = investissement pérenne dans les recipes et l'outillage qui les produit.</div>
     </div>
   </div>
 
   </div>
   </div>
   <div class="m-foot">
-    <div class="box"><b>Ce jalon est validé quand</b><p>La checklist de version 1.0 est intégralement verte : deux cas d'usage recettés, conformité OCI, documentation bilingue relue, chaîne de build vérifiable, zéro CVE critique/haute.</p></div>
-    <div class="box"><b>Démo de fin de jalon</b><p>La recette elle-même — déroulée par le client, pas par l'équipe.</p></div>
+    <div class="box"><b>Ce jalon est validé quand</b><p>La checklist de version 1.0 est intégralement verte : deux cas d'usage validés de bout en bout, conformité OCI, documentation bilingue relue, chaîne de build vérifiable, zéro CVE critique/haute.</p></div>
+    <div class="box"><b>Démo de fin de jalon</b><p>La validation d'acceptation elle-même — déroulée par les utilisateurs, pas par l'équipe qui développe.</p></div>
   </div>
 </section>
 
@@ -660,11 +661,11 @@
   <p>Fonctionnalités volontairement hors du socle 1.0, avec un contournement propre en attendant.
   Elles sont compatibles avec le format et l'architecture livrés (aucune ne casse l'existant).</p>
   <ul>
-    <li><span class="fnum">A.1</span><b>Nettoyage fin du store local</b> (suppression par recipe + récupération d'espace) — en 1.0, la remise à zéro + re-synchronisation différentielle couvre le besoin de réutilisation des médias.</li>
-    <li><span class="fnum">A.2</span><b>Inventaire de média exhaustif</b> (empreintes fichier par fichier, signalement du contenu étranger) — en 1.0, l'authenticité est déjà intégralement portée par les signatures et digests.</li>
+    <li><span class="fnum">A.1</span><b>Politiques de rétention programmables</b> (quotas d'espace, expiration automatique par âge ou par nombre de versions) — en 1.0, la suppression par recipe, le nettoyage automatique à la synchronisation et la récupération d'espace couvrent déjà le cycle de vie du store (5.5).</li>
+    <li><span class="fnum">A.2</span><b>Attestations d'inventaire exportables</b> (rapport horodaté et signé du contenu d'un média, pour archivage et audit externe) — en 1.0, l'inventaire du média (empreintes fichier par fichier, contenu étranger signalé et bloqué) est intégré à la vérification à l'arrivée (5.3).</li>
     <li><span class="fnum">A.3</span><b>Dérogations ciblées par vulnérabilité</b> (accepter temporairement une CVE identifiée, avec échéance) — en 1.0, la politique s'ajuste par seuil et par source.</li>
     <li><span class="fnum">A.4</span><b>Index de cookbook signé</b> (catalogue consultable hors-ligne, pour les registries sans listing).</li>
-    <li><span class="fnum">A.5</span><b>Alerting intégré</b> — en 1.0, toutes les métriques nécessaires sont exposées pour l'outillage de supervision existant (Prometheus/Alertmanager).</li>
+    <li><span class="fnum">A.5</span><b>Alerting intégré</b> — en 1.0, toutes les métriques nécessaires sont exposées pour l'outillage de supervision standard (Prometheus/Alertmanager).</li>
   </ul>
 </section>
 
@@ -803,7 +804,7 @@
     <div class="cols">
       <div class="col c-tech"><b class="tag">Résumé</b>Réplique jetable de l'environnement cible sur tout Linux avec KVM : VMs pour les nœuds à fidélité kernel, conteneurs système pour la figuration, air-gap par absence de route + canari, média = volume bloc détachable, reset par snapshot. Scénarios étiquetés par jalon, invocables à la carte ; écrire ses scénarios fait partie de la définition de fini de chaque jalon.</div>
       <div class="col c-clair"><b class="tag">En clair</b>Une maquette complète du terrain, recréable n'importe où en quelques minutes, qui rejoue en continu tout ce qui a déjà été livré — en totalité ou jalon par jalon.</div>
-      <div class="col c-metier"><b class="tag">Valeur métier</b>La non-régression sur les scénarios réels du site est permanente et prouvée ; la recette finale est une formalité déjà répétée des dizaines de fois.</div>
+      <div class="col c-metier"><b class="tag">Valeur métier</b>La non-régression sur des scénarios réalistes de bout en bout est permanente et prouvée ; la validation finale est une formalité déjà répétée des dizaines de fois.</div>
     </div>
   </div>
 
@@ -812,7 +813,7 @@
 </section>
 
 <footer class="colophon">
-  Roadmap produit Tobby — document de travail, ordre des jalons figé, contenus ajustables en revue de jalon.
+  Roadmap produit Tobby — document de travail, ordre des jalons figé, contenus ajustables au fil des retours.
   Licence du produit : GPL-3.0 (application) / Apache-2.0 (spécification du format).
 </footer>
 

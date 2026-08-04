@@ -39,6 +39,9 @@ Rationale:
   of — which retires the interop risk almost entirely.
 - It is **battle-tested** at enormous scale (it powered Docker Hub and
   countless self-hosted registries for a decade).
+- It is **Apache-2.0 licensed**, which permits inclusion in a GPL-3.0-licensed
+  binary (the compatibility is one-way; the project's licensing split is
+  governed by ADR-0003).
 - The approach is **proven by our proof of concept**, which embedded the same
   library and successfully served standard clients, including multi-platform
   image imports and OCI chart pushes.

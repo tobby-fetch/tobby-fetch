@@ -131,7 +131,7 @@ registry          restricted zones       zone
 | Trigger | Periodic Retriever refresh (configurable interval) | Manual trigger (UI button / API call) |
 | Transport | Network push to destination zone registry | Physical transport of the storage on removable media |
 | Destination push | Differential (missing artifacts only) | Performed by the same application on the destination side |
-| Authentication | Enabled and required by default | Enabled by default, may be disabled by configuration |
+| Authentication | Enabled by default; explicit acknowledged opt-out (FR-075) | Enabled by default; explicit acknowledged opt-out (FR-075) |
 | Logs | Structured JSON on stdout | Structured JSON to a file on the transport media |
 
 A Recipe, as consumed by Tobby (illustrative):
@@ -210,10 +210,12 @@ and repopulated.
 - Destination zone registries are OCI Distribution-conformant; any conforming
   product is in scope (CNCF distribution, Harbor, Artifactory, cloud SaaS
   registries…) and no vendor is a prerequisite — the common standard is the OCI
-  registry protocol. Recipe propagation (FR-034) additionally relies on OCI 1.1
-  artifact support; for registries without it, cosign's tag-based fallback
-  applies (ADR-0002). Destination compatibility with relocated repository paths
-  is checked before pushing (FR-035).
+  registry protocol. Recipe propagation (FR-034) additionally relies on the
+  registry accepting OCI artifacts (non-image `artifactType`); signatures
+  travel via cosign's tag-based convention (ADR-0002, ADR-0007,
+  RECIPE-SPEC §12.2), which requires no OCI 1.1 referrers API support.
+  Destination compatibility with relocated repository paths is checked before
+  pushing (FR-035).
 - Implementation language is Go; target platforms are Linux and Windows.
 
 ---
@@ -586,6 +588,14 @@ the missing byte count stated; per-recipe sizes are displayed at trigger time; a
 FAT32 target with a > 4 GiB blob or export archive is refused naming the limit; a
 simulated file-too-large error mid-write leaves the store consistent.
 
+**FR-056 — Transport log durability.**
+The log file on the transport media (FR-053) SHALL use size-based rotation and
+SHALL be flushed with an explicit fsync at task boundaries, so that yanked or
+failing media lose at most the entries of the task in progress.
+*Acceptance:* killing the process (or detaching the media image) immediately
+after a task completes leaves that task's entries readable on the media; rotation
+keeps the log within the configured size budget. *(ADR-0012)*
+
 ### 3.7 API and UI
 
 **FR-060 — Versioned REST API.**
@@ -639,6 +649,16 @@ explicitly, using the mapping table. Tobby SHALL NOT rewrite chart values.
 referencing `docker.io/bitnami/wordpress` pulls from the zone registry; the table
 matches pushed content. *(ADR-0013)*
 
+**FR-066 — Command-line interface.**
+Tobby SHALL provide a CLI covering the automation-relevant operations: media
+export/import (FR-051), media verification (FR-054), triggering a mirror
+synchronization (FR-014), and configuration dump (FR-003). The CLI complements
+the UI and API; the FR-061 parity requirement applies between UI and API only —
+the CLI is not required to mirror every screen.
+*Acceptance:* the UC2 flow can be scripted end to end through the CLI, with exit
+codes distinguishing success, policy refusal, and verification failure.
+*(ADR-0006, ADR-0010)*
+
 ### 3.8 Authentication and authorization
 
 **FR-070 — OIDC authentication.**
@@ -655,9 +675,11 @@ with attribute-based role mapping. *(ADR-0009)*
 
 **FR-072 — Static token authentication.**
 Tobby SHALL support static bearer tokens for API automation, with per-token role
-assignment and revocation.
+assignment and revocation; stored token material SHALL be hashed, never kept in
+plaintext at rest.
 *Acceptance:* a valid token authorizes API calls per its role; a revoked token is
-rejected immediately. *(ADR-0009)*
+rejected immediately; token stores and configuration dumps contain only hashes.
+*(ADR-0009)*
 
 **FR-073 — Basic authentication.**
 Tobby SHALL support HTTP basic authentication with locally managed accounts.
@@ -841,9 +863,13 @@ non-root UID, and all capabilities dropped, and passes the e2e suite.
 
 **NFR-015 — Secret hygiene.**
 Secrets (registry credentials, tokens, private keys, proxy passwords) SHALL never
-appear in logs, error messages, API responses, or configuration dumps.
+appear in logs, error messages, API responses, or configuration dumps. Browser
+session cookies SHALL carry the `Secure`, `HttpOnly`, and `SameSite` attributes;
+passwords and static tokens SHALL be stored only as salted hashes (FR-072,
+FR-073).
 *Acceptance:* a log/response scan across the full e2e suite with known planted
-secrets finds zero occurrences; redaction is unit-tested.
+secrets finds zero occurrences; redaction is unit-tested; session cookie
+attributes are asserted in the e2e suite. *(ADR-0009)*
 
 ### 4.5 Maintainability
 
@@ -878,6 +904,18 @@ Windows is outside the v1.0.0 validated scope.
 push) passes on a Windows CI runner — beyond binary smoke tests; the
 documentation states the supported feature matrix per operating system.
 
+### 4.8 Network posture
+
+**NFR-019 — No unconfigured outbound connections.**
+Tobby SHALL make no network connection that was not explicitly configured by the
+operator (source and destination registries, IdP, proxy). There is no usage
+telemetry, crash reporting, update checking, or any other implicit outbound
+call; any future diagnostics bundle is a local file export the operator chooses
+to share.
+*Acceptance:* a full e2e run behind an egress-capturing proxy records
+connections to configured endpoints only; the crucible air-gap canary
+(ADR-0014) proves zero egress in mirror scenarios. *(ADR-0012)*
+
 ---
 
 ## 5. Out of scope (v1.0)
@@ -894,8 +932,8 @@ set is always available in-zone.
 
 ### 5.2 Generic static file server
 
-Serving arbitrary static files over HTTP **with an upload surface** (the
-proof-of-concept's generic file server) is excluded from v1.0: ad-hoc uploads
+Serving arbitrary static files over HTTP **with an upload surface** — a generic
+upload-and-serve file server — is excluded from v1.0: ad-hoc uploads
 would bypass the recipe model and its verification chain entirely. The need is
 split and covered on both halves without that bypass: *distributing* files is
 the `FileSet` ingredient kind — files packaged as an OCI image, signed and

@@ -79,7 +79,7 @@ service.
    definition runs inside a Lima VM with nested virtualization — arm64
    end-to-end, suitable for harness development and most scenarios (Tobby and
    its fixtures are dual-arch). Acceptance runs execute on an amd64 Linux
-   host, matching the target sites. The contractual Windows mirror e2e
+   host, matching the target environments. The Windows mirror e2e commitment
    (NFR-018) runs on native Windows CI runners and is not a crucible concern.
 
 ## Consequences

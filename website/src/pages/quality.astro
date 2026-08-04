@@ -34,7 +34,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
         <a class="brand" href={`${base}/`}>Tobby<span class="dot">.</span></a>
         <a href={`${base}/#how`}>How it works</a>
         <a href={`${base}/quality/`} aria-current="page">Quality</a>
-        <a href={`${base}/roadmap.html`}>Roadmap</a>
+        <a href={`${base}/roadmap.html`}>Roadmap (FR)</a>
         <a href={`${repo}/tree/main/docs`} rel="noopener">Docs</a>
         <a href={repo} rel="noopener">GitHub</a>
       </div>
@@ -77,7 +77,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
         </div>
         <ul class="checks" style="margin-top: 1.4rem;">
           <li>Strict lint (<code>golangci-lint</code>) with zero tolerated findings — style debates are settled by the machine</li>
-          <li>Trivy scans Tobby's own builds with the same default policy Tobby applies to user artifacts — the gate gates itself</li>
+          <li>Trivy scans Tobby's own builds and blocks releases on critical/high findings — the same class of gate Tobby applies to user artifacts: the gate gates itself</li>
           <li>Fuzzing on the manifest parsers; CSRF and input-validation review before the release candidates</li>
         </ul>
       </div>

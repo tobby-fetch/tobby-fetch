@@ -35,10 +35,12 @@ workstation (mirror). Those contexts have irreconcilable identity situations:
 | **OIDC** | Human users via modern IdPs | Authorization Code flow; groups/claims mapped to roles |
 | **SAML 2.0** | Human users via legacy IdPs | Native SP implementation using the `crewjam/saml` Go library; SP metadata endpoint for IdP onboarding |
 | **Static tokens** | API clients, automation | Long-lived bearer tokens, declared in configuration or issued by an admin; stored hashed |
-| **Basic auth** | Bootstrap, air-gapped mirror | Local username/password pairs (hashed in configuration); no IdP or network required |
+| **Basic auth** | Out-of-the-box default; bootstrap, air-gapped mirror | Local username/password pairs (hashed in configuration); no IdP or network required |
 
-Methods are enabled independently in configuration; several can coexist (e.g.,
-OIDC for the UI plus static tokens for automation).
+Locally managed **basic auth is the out-of-the-box method**: a fresh instance
+starts with authentication enabled in both modes (FR-075). The other methods
+are enabled independently in configuration and several can coexist (e.g., OIDC
+for the UI plus static tokens for automation).
 
 ### Minimal RBAC
 
@@ -53,11 +55,12 @@ Three fixed roles, sufficient for v1 and deliberately not a policy engine:
 IdP group/attribute claims map to roles via configuration; static tokens and
 basic-auth users carry an explicit role.
 
-### Mandatory by default, explicitly disengageable
+### Enabled by default, explicitly disengageable
 
-- In **passthrough** mode, authentication is **mandatory**. Tobby refuses to
-  start as an unauthenticated network service unless the operator opts out
-  explicitly and loudly:
+- Authentication is **enabled by default in both modes**, with locally managed
+  basic authentication as the out-of-the-box method (FR-075). Tobby refuses to
+  run unauthenticated — in any mode, passthrough included — unless the operator
+  opts out explicitly and loudly:
 
   ```yaml
   # tobby config excerpt — the opt-out is deliberate, named, and logged
@@ -70,8 +73,9 @@ basic-auth users carry an explicit role.
 
   Starting with `auth.disabled: true` emits a prominent startup warning in the
   logs and a persistent banner in the UI.
-- In **mirror** mode on an isolated workstation, disabling authentication is a
-  legitimate, expected configuration — the control is physical, not logical.
+- In **mirror** mode on an isolated workstation, opting out is a legitimate,
+  expected configuration — the control is physical, not logical — but it goes
+  through the same explicit, acknowledged opt-out; it is never silent.
 
 ### Embedded registry authentication
 
@@ -89,8 +93,8 @@ bearer credentials. Registry permissions derive from the same three roles
 - Every deployment context in scope — modern IdP, legacy SAML-only IdP,
   headless automation, offline workstation — has a first-class path; none
   requires infrastructure Tobby's users cannot deploy.
-- The default posture is safe (auth on in service mode); the opt-out is explicit,
-  auditable, and impossible to enable by accident.
+- The default posture is safe (authentication on by default in both modes); the
+  opt-out is explicit, auditable, and impossible to enable by accident.
 - Standard registry token auth means zero custom client tooling; anything that
   can log into Docker Hub can log into Tobby.
 - Three fixed roles keep authorization decisions legible and testable; there is
@@ -132,8 +136,9 @@ infrastructure project.
 Fits hardened environments conceptually and works offline. Rejected as a primary
 mechanism because:
 
-- the requirements explicitly state certificates may live **outside** any internal
-  PKI, so no enrollment/issuance chain can be assumed for per-user client certs;
+- the target environments include deployments where certificates live **outside**
+  any internal PKI, so no enrollment/issuance chain can be assumed for per-user
+  client certs;
 - browser UX for client certificates is poor and per-workstation, which fights
   the web UI adoption goal;
 - registry clients handle mTLS unevenly compared to the universal token flow.

@@ -60,6 +60,12 @@ and served from the binary. This directly encodes the POC lesson: the container
 image cannot ship a broken UI because there is no external asset directory to
 forget.
 
+Third-party assets embedded this way carry their own licenses: htmx is
+BSD Zero-Clause; fonts and icon sets are chosen at implementation time with
+GPL-3.0-compatible licenses only, and every embedded asset's license and
+attribution ships in a `THIRD-PARTY-NOTICES` file embedded and served
+alongside them.
+
 ```go
 //go:embed static templates
 var uiFS embed.FS // the UI travels inside the binary — nothing to mount, nothing to lose

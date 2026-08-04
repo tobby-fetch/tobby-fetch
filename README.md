@@ -37,8 +37,8 @@ issues, disagree with an ADR:
 |---|---|
 | [Software Requirements Specification](docs/SRS.md) | Every functional and non-functional requirement, numbered and testable |
 | [Architecture Decision Records](docs/adr/) | The 14 structuring decisions — context, decision, consequences, alternatives |
-| [Roadmap (French)](docs/ROADMAP.fr.html) | Milestones and features in three readings: technical, plain-language, business value |
-| [Recipe format specification](https://github.com/tobby-fetch/recipe-spec) | The `Recipe`/`Retriever` format, JSON Schemas, and Go SDK — separate repository, Apache-2.0 |
+| [Roadmap (French)](https://tobby-fetch.github.io/tobby-fetch/roadmap.html) | Milestones and features in three readings: technical, plain-language, business value — rendered on the project site ([source](docs/ROADMAP.fr.html)) |
+| [Recipe format specification](https://github.com/tobby-fetch/recipe-spec) | The `Recipe`/`Retriever` format, JSON Schemas, and examples — separate repository, Apache-2.0; Go SDK lands with its first tagged release |
 
 Quality is a day-one gate, not a final phase: a five-level test pyramid
 (unit → integration → e2e → extended e2e → **crucible**, a disposable replica

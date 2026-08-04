@@ -128,6 +128,7 @@ need without reopening per-item freedom.
 Would make charts deploy as-is without mirror configuration. Rejected: it
 requires evaluating values semantics per chart (explicitly excluded from the
 format, RECIPE-SPEC §7.2), breaks chart digests and signatures (same trade-off
-as dependency vendoring, ADR-0006/§14.6), and silently diverges from upstream.
+as dependency vendoring, FR-025 / RECIPE-SPEC §14.6), and silently diverges
+from upstream.
 The mirror snippet plus the mapping table achieve the operational goal without
 touching artifacts.

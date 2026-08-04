@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted — 2026-07-11
+Accepted — 2026-07-11 · Amended 2026-08-04 (signature transport aligned on the
+tag-based convention of ADR-0007 / RECIPE-SPEC §12.2)
 
 ## Context
 
@@ -31,8 +32,10 @@ an OCI repository** containing published recipes.
 - **Reference layout:** `<registry>/<cookbook>/<name>:<version>`, e.g.
   `registry.example.com/cookbook/wordpress:6.5.2`.
 - **Signatures:** a Sigstore/cosign signature is attached to the recipe
-  artifact (as an OCI referrer), signed at publication time by the
-  qualification pipeline.
+  artifact following cosign's tag-based convention — a signature manifest
+  tagged `sha256-<digest>.sig` in the same repository (ADR-0007,
+  RECIPE-SPEC §12.2) — signed at publication time by the qualification
+  pipeline.
 - **Publication invariant:** a recipe pushed to a cookbook ("cooked") must
   pin every ingredient by digest; floating tags and semver constraints are an
   authoring-time convenience only.
@@ -45,7 +48,7 @@ an OCI repository** containing published recipes.
 registry.example.com/cookbook/          ← the cookbook (one OCI repository)
 ├── wordpress:6.5.2                     ← recipe artifact
 │     artifactType: application/vnd.tobby.recipe.v1+yaml
-│     └── cosign signature (attached referrer)
+│     └── cosign signature (tagged sha256-<digest>.sig)
 ├── wordpress:6.5.1
 └── ai-model-serving:1.4.0
 ```
@@ -61,9 +64,11 @@ registry.example.com/cookbook/          ← the cookbook (one OCI repository)
   (see ADR-0006). A zone is never left with artifacts it cannot account for.
 - Generic tools (`oras`, `crane`, `skopeo`) can inspect, copy, and back up
   cookbooks without Tobby.
-- Registries hosting cookbooks should support the OCI 1.1 referrers API for
-  attached signatures; for older registries, cosign's tag-based fallback
-  scheme applies. This constrains registry choice mildly and is documented.
+- Signatures use cosign's tag-based convention (RECIPE-SPEC §12.2), which
+  works on any OCI registry — including Tobby's embedded one — and travels
+  with ordinary tag copies; no OCI 1.1 referrers API support is required of
+  cookbook registries. Referrers-attached signatures remain possible later as
+  a compatible extension.
 - Recipe identity is dual — a human version tag and a content digest — and
   Tobby always records and verifies the digest, matching how it treats every
   other ingredient.
@@ -78,8 +83,8 @@ second protocol, a second credential system, and a second replication story
 next to the registries that must exist anyway for the artifacts — a real cost
 in restricted and air-gapped zones where every channel is negotiated. Git
 also has no native per-document content identity (a file's meaning depends on
-a ref) and no standard signature-attachment model comparable to OCI
-referrers. Rejected as the publication channel; expected as the authoring
+a ref) and no standard signature-attachment convention comparable to OCI
+registries'. Rejected as the publication channel; expected as the authoring
 workflow in front of it.
 
 ### Database (relational or document store)

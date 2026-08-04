@@ -29,7 +29,11 @@ successor.
 
 ## Statuses
 
-- **Accepted** — decision is in force.
+- **Accepted** — decision is in force. An accepted ADR may be **amended in
+  place** for additive or corrective changes that do not reverse the decision;
+  the Status line then records the amendment date and scope (e.g.
+  "Accepted — 2026-07-11 · Amended 2026-08-04 (…)"). A reversal is never an
+  amendment: it gets a new ADR that supersedes the old one.
 - **Drafting** — decision direction is settled and referenced by other design
   documents; the full record is being written.
 - **Superseded by ADR-XXXX** — replaced; kept for history.
