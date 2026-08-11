@@ -1,0 +1,51 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Dependency freshness per ADR-0011: Go modules, GitHub Actions (pinned to commit digests), mise toolchain, and release-tooling versions pinned in workflows. Weekly cadence, grouped PRs.",
+  "extends": [
+    "config:best-practices",
+    "schedule:weekly",
+    ":maintainLockFilesWeekly"
+  ],
+  "labels": ["dependencies"],
+  "enabledManagers": ["gomod", "github-actions", "mise", "custom.regex"],
+  "postUpdateOptions": ["gomodTidy"],
+  "packageRules": [
+    {
+      "description": "Group non-major Go module updates into one weekly PR",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "go dependencies (non-major)"
+    },
+    {
+      "description": "Group GitHub Actions updates (kept pinned to full commit SHAs by config:best-practices)",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    },
+    {
+      "description": "Group toolchain updates from mise.toml",
+      "matchManagers": ["mise"],
+      "groupName": "toolchain (mise)"
+    },
+    {
+      "description": "Group release-tooling updates (cyclonedx-gomod, melange, apko, crane) pinned via *_VERSION in workflows",
+      "matchManagers": ["custom.regex"],
+      "groupName": "release tooling"
+    },
+    {
+      "description": "The SLSA trusted-builder reusable workflows MUST stay referenced by vX.Y.Z tag: slsa-verifier rejects hash-pinned builder refs (ADR-0011 documented exception)",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["slsa-framework/slsa-github-generator"],
+      "pinDigests": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track tool versions pinned as *_VERSION env vars in workflows via `# renovate:` hint comments",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\n\\s*[A-Z_]+_VERSION: \"?(?<currentValue>v?[0-9][^\"\\s]*)\"?"
+      ]
+    }
+  ]
+}

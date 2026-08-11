@@ -1,0 +1,46 @@
+# melange package definition for the tobby apk (ADR-0011).
+#
+# The version below is a placeholder: the release workflow sets the real
+# version with `melange bump melange.yaml <version>` in its workspace before
+# building — nothing is committed. The workflow also stamps .release-meta/
+# (commit, date, source-date-epoch) into the source tree so the binary is
+# built with tools/release-build.sh, the exact code path used for the
+# release binaries: the apk payload is bit-identical to tobby-linux-<arch>.
+package:
+  name: tobby
+  version: 0.0.0
+  epoch: 0
+  description: Secure artifact fetch-and-relocate tool with an embedded OCI registry
+  copyright:
+    - license: GPL-3.0-only
+      attestation: Copyright © 2026 infraBuilder SASU and contributors
+
+environment:
+  contents:
+    repositories:
+      - https://packages.wolfi.dev/os
+    keyring:
+      - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+    packages:
+      - busybox
+      - ca-certificates-bundle
+      # Wolfi's 1.25 line; tools/release-build.sh then forces the exact
+      # patch release declared in go.mod via GOTOOLCHAIN, so the toolchain
+      # is identical to the one used for the release binaries.
+      - go-1.25
+
+pipeline:
+  - name: Reproducible build (same script, flags, and toolchain as the release binaries)
+    runs: |
+      set -eu
+      COMMIT="$(cat .release-meta/commit)"
+      DATE="$(cat .release-meta/date)"
+      SOURCE_DATE_EPOCH="$(cat .release-meta/source-date-epoch)"
+      export SOURCE_DATE_EPOCH
+      sh tools/release-build.sh "v${{package.version}}" "$COMMIT" "$DATE" dist
+      case "${{build.arch}}" in
+        x86_64)  goarch=amd64 ;;
+        aarch64) goarch=arm64 ;;
+        *) echo "unsupported arch ${{build.arch}}" >&2; exit 1 ;;
+      esac
+      install -Dm755 "dist/tobby-linux-${goarch}" "${{targets.destdir}}/usr/bin/tobby"

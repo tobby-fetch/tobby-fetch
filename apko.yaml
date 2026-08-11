@@ -1,0 +1,39 @@
+# apko image definition (ADR-0011) — the image is a declaration, not a
+# script. Wolfi base, the melange-built signed tobby apk, CA bundle, and
+# nothing else: no shell, no package manager, non-root. apko generates the
+# image SBOM natively at build time.
+#
+# The release workflow appends the local melange output at build time:
+#   apko publish apko.yaml <ref> --repository-append packages \
+#     --keyring-append melange.rsa.pub
+contents:
+  repositories:
+    - https://packages.wolfi.dev/os
+  keyring:
+    - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+  packages:
+    - tobby # our melange-built, signed apk
+    - ca-certificates-bundle
+
+archs:
+  - x86_64
+  - aarch64
+
+accounts:
+  groups:
+    - groupname: nonroot
+      gid: 65532
+  users:
+    - username: nonroot
+      uid: 65532
+      gid: 65532
+  run-as: 65532 # non-root
+
+entrypoint:
+  command: /usr/bin/tobby
+
+annotations:
+  org.opencontainers.image.title: tobby
+  org.opencontainers.image.description: Secure artifact fetch-and-relocate tool with an embedded OCI registry
+  org.opencontainers.image.source: https://github.com/tobby-fetch/tobby-fetch
+  org.opencontainers.image.licenses: GPL-3.0-only
