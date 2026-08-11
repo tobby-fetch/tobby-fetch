@@ -1,0 +1,9 @@
+# Test-only image for the hermetic CI topology: the cross-compiled tobby
+# binary on a minimal base. The production image is built with melange+apko
+# (ADR-0011); this one only exists so the topology can run the binary under
+# test inside the network segments.
+FROM alpine:3.22
+RUN adduser -D -u 65532 tobby && mkdir -p /media && chown tobby /media
+COPY tobby /usr/bin/tobby
+USER 65532
+ENTRYPOINT ["/usr/bin/tobby"]

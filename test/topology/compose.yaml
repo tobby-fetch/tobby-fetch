@@ -1,0 +1,67 @@
+# Hermetic CI topology — tier 1 of the two-tier target-environment
+# replication (ADR-0014, DEVELOPMENT-PLAN §4).
+#
+# Two network segments model the deployment reality:
+#   - "connected": the connected zone — an upstream production registry and
+#     the connected-side Tobby instance, with host port mappings so the
+#     scenario driver can seed and check content.
+#   - "airgap": the air-gapped zone — `internal: true` means Docker wires NO
+#     route out. The gap is structural, and the egress canary proves it on
+#     every run (NFR-019).
+#
+# The removable medium is modeled by the shared "media" volume: filled by
+# the connected instance, then attached to the air-gapped one — transport is
+# simulated by moving Tobby's store between segments (scenario-m1.sh).
+
+name: tobby-topology-m1
+
+networks:
+  connected: {}
+  airgap:
+    internal: true
+
+volumes:
+  media: {}
+
+services:
+  # The "production registry" of the connected zone: the reference registry
+  # implementation, seeded by the scenario driver through the host mapping.
+  upstream-registry:
+    image: registry:3
+    networks: [connected]
+    ports:
+      - "127.0.0.1:5210:5000"
+
+  # Connected-side Tobby: fills the store that will cross the gap.
+  tobby-connected:
+    image: tobby-topology:local
+    command:
+      - serve
+      - --mode=passthrough
+      - --storage-root=/media/store
+      - --server-addr=:8080
+    networks: [connected]
+    ports:
+      - "127.0.0.1:5211:8080"
+    volumes:
+      - media:/media
+
+  # Air-gapped-side Tobby: serves the transported store to its zone. Note
+  # the single network: no path exists to "connected" or to the outside.
+  tobby-airgap:
+    image: tobby-topology:local
+    command:
+      - serve
+      - --mode=mirror
+      - --storage-root=/media/store
+      - --server-addr=:8080
+    networks: [airgap]
+    volumes:
+      - media:/media
+
+  # In-zone client and egress canary, driven by `docker compose run`.
+  canary:
+    image: curlimages/curl:8.17.0
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["true"]
+    networks: [airgap]

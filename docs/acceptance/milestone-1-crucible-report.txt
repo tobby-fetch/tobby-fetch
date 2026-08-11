@@ -1,0 +1,16 @@
+ok   scenario m1 started 2026-08-11T23:26:20Z
+ok   built tobby for linux/amd64
+ok   instances launched (connected + air-gapped)
+ok   block-device medium created (/dev/loop0) and attached to the connected node
+ok   medium formatted (ext4) and mounted on the connected node
+ok   connected instance ready (store on the medium)
+ok   embedded registry round-trip on the connected node (sha256:eeeb919410d8da90c5bde7c2eb22f096e418c865f42df4c44da28a6053a4fba2)
+ok   medium unmounted and detached (transport begins)
+ok   medium re-attached and mounted on the air-gapped node
+ok   egress canary failed as required (air gap proven by construction)
+ok   media round-trip: content pushed in the connected zone serves across the air gap
+ok   scenario m1 complete — report: crucible-report-m1.txt
+
+# Acceptance host: disposable Hetzner Cloud cpx32 (amd64, Ubuntu 24.04,
+# Incus 7.3/zabbly, btrfs pool), created 2026-08-11 22:46 UTC, destroyed
+# 23:28 UTC after report retrieval (ADR-0014 disposable-cloud-VM profile).
