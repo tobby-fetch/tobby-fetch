@@ -1,6 +1,8 @@
 # Tool versions for Tobby (portable across machines / CI via mise).
 # Matches the versions the project is developed and built with.
 [tools]
+go = "1.25.6"
+"aqua:golangci/golangci-lint" = "2.6.1"
 node = "24.18.0"
 pnpm = "10.33.2"
 gitleaks = "8.30.1"
@@ -25,3 +27,21 @@ run = "gitleaks git --redact --no-banner ."
 description = "Serve the website/documentation locally (Astro dev server)"
 dir = "website"
 run = "pnpm install --prefer-offline && pnpm dev"
+
+# Quality gates (public feature 1.5) — the same commands CI runs.
+
+[tasks.build]
+description = "Build the tobby binary"
+run = "go build -trimpath -o bin/tobby ./cmd/tobby"
+
+[tasks.test]
+description = "Unit and integration tests (race detector, anti-flaky double run)"
+run = "go test -race -count=2 ./..."
+
+[tasks.lint]
+description = "Strict lint (golangci-lint, zero suppressions)"
+run = "golangci-lint run"
+
+[tasks.coverage]
+description = "Per-package coverage floor (NFR-016, >= 70% per internal package)"
+run = "sh tools/check-coverage.sh"

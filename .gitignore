@@ -1,0 +1,15 @@
+# Build artifacts
+/bin/
+/dist/
+*.exe
+
+# Test and coverage output
+*.out
+coverage.*
+.coverage-floor-failed
+
+# Editor and OS noise
+.DS_Store
+*.swp
+.idea/
+.vscode/

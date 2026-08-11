@@ -1,0 +1,113 @@
+# CI — the blocking quality gates of the five-level test pyramid
+# (public feature 1.5; DEVELOPMENT-PLAN §4, NFR-016).
+#
+# Every job gates merges. Third-party actions are pinned by full commit SHA
+# (ADR-0011 supply-chain policy).
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "website/**"
+      - "docs/**"
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "website/**"
+      - "docs/**"
+      - "**.md"
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (strict, zero suppressions)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.6.1
+
+  test:
+    name: Tests (race, anti-flaky, coverage floor)
+    strategy:
+      matrix:
+        # Both release architectures are first-class in CI (milestone 1
+        # exit criterion: green on linux/amd64 and linux/arm64).
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Unit and integration tests
+        run: go test -race -count=2 ./...
+      - name: Per-package coverage floor (NFR-016)
+        run: sh tools/check-coverage.sh
+
+  cross-compile:
+    name: Cross-compile (windows, linux amd64/arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Build every release target
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          GOOS=linux   GOARCH=amd64 go build -trimpath -o /dev/null ./cmd/tobby
+          GOOS=linux   GOARCH=arm64 go build -trimpath -o /dev/null ./cmd/tobby
+          GOOS=windows GOARCH=amd64 go build -trimpath -o /dev/null ./cmd/tobby
+          GOOS=windows GOARCH=arm64 go build -trimpath -o /dev/null ./cmd/tobby
+
+  licenses:
+    name: License compliance (GPL-3.0 compatibility)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Check every dependency against the allowlist (ADR-0011)
+        run: >
+          go run github.com/google/go-licenses/v2@v2.0.1 check
+          --allowed_licenses=Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT,ISC,MPL-2.0,Unlicense,Zlib,GPL-3.0
+          ./...
+
+  e2e-topology:
+    name: Hermetic topology scenario (milestone gates)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Milestone-1 scenario — registry round-trip, egress canary, media round-trip
+        run: sh test/topology/scenario-m1.sh
+      - name: Publish the raw check report
+        if: always()
+        run: cat /tmp/tobby-topology-m1-report.txt >> "$GITHUB_STEP_SUMMARY" || true
+
+  vulnerabilities:
+    name: Vulnerability scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Scan dependencies — critical and high block the merge
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          skip-dirs: website
