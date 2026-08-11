@@ -47,9 +47,23 @@ commit, and every milestone ships its own crucible scenarios — the suite of
 completed milestones stays replayable, in whole or per milestone, at any time
 ([ADR-0014](docs/adr/ADR-0014-crucible-test-infrastructure-incus.md)).
 
-> 🐕 **Under active development.** The design documents above are the current
-> source of truth; source code lands milestone by milestone. Watch this
-> repository for the first releases.
+> 🐕 **Under active development.** Milestone 1 (foundations) is in progress:
+> the application skeleton — layered configuration, structured JSON logging
+> with run correlation, security audit log, health probes, OpenMetrics,
+> graceful shutdown — and the embedded OCI registry with the relocation
+> layout are in the tree, gated by the strict quality pipeline. The design
+> documents above remain the source of truth for what comes next.
+
+### Building and running from source
+
+```sh
+mise install          # toolchain (Go, golangci-lint, hooks)
+mise run build        # → bin/tobby
+bin/tobby serve --mode mirror --storage-root ./store
+```
+
+`mise run test`, `mise run lint`, and `mise run coverage` run the same
+gates CI enforces.
 
 Landing page: **https://tobby-fetch.github.io/tobby-fetch/**
 
