@@ -125,8 +125,12 @@ jobs:
           done
       - name: Sign each SBOM (cosign keyless via job OIDC identity)
         run: |
+          # cosign v3+ writes the new bundle format and requires an explicit
+          # --bundle path; the legacy sig+pem pair is kept alongside for
+          # older verifiers.
           for f in sboms/*.cdx.json; do
             cosign sign-blob --yes \
+              --bundle "$f.bundle" \
               --output-signature "$f.sig" \
               --output-certificate "$f.pem" \
               "$f"
@@ -156,6 +160,12 @@ jobs:
         with:
           platforms: arm64
       - name: Install melange and apko (version pinned, sumdb-verified)
+        env:
+          # setup-go pins GOTOOLCHAIN=local to the project toolchain; the
+          # tools may require a newer Go than the project does. Their build
+          # toolchain has no bearing on tobby's reproducibility — the
+          # release binaries pin their own via tools/release-build.sh.
+          GOTOOLCHAIN: auto
         run: |
           go install "chainguard.dev/melange@${MELANGE_VERSION}"
           go install "chainguard.dev/apko@${APKO_VERSION}"

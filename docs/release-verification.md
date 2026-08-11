@@ -27,7 +27,10 @@ repository workflow could not have forged it.
 ## 2. SBOMs: cosign signature
 
 Each binary has a CycloneDX SBOM (`.cdx.json`) signed keyless via Sigstore;
-the `.sig` and `.pem` files sit next to it on the release page:
+a `.bundle` (cosign's self-contained bundle format) plus the legacy `.sig`
+and `.pem` pair sit next to it on the release page. Either path verifies —
+with the bundle: `cosign verify-blob --new-bundle-format --bundle
+<file>.bundle <file>` plus the identity flags below, or with the pair:
 
 ```bash
 cosign verify-blob \
