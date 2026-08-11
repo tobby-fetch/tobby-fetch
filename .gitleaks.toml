@@ -1,0 +1,15 @@
+# Gitleaks configuration — extends the default ruleset.
+#
+# The only additions are allowlist patterns for Tobby's own identifier
+# formats, which trip generic entropy rules despite carrying no secret
+# material.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Tobby identifier formats (no secret material)"
+regexes = [
+    # Run IDs (R-09): compact UTC timestamp + 4 random bytes in hex, e.g.
+    # 20260811T140322Z-1a2b3c4d. High entropy by design, secret by nothing.
+    '''\d{8}T\d{6}Z-[0-9a-f]{8}''',
+]
