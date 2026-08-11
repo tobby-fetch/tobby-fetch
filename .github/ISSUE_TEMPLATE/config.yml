@@ -1,0 +1,7 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/tobby-fetch/tobby-fetch/security/advisories/new
+    about: >-
+      Please do not file a public issue for a security vulnerability. Use
+      GitHub Security Advisories instead — see SECURITY.md.
