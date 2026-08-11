@@ -491,13 +491,13 @@ with prune disabled, the store is unchanged.
 
 **FR-046 — Store reset.**
 Tobby SHALL provide a full store reset requiring an explicit typed confirmation,
-audit-logged. On authenticated instances it SHALL be restricted to the admin
-role; on instances running with the FR-075 authentication override, the typed
-confirmation is maintained and the audit entry records the unauthenticated
+audit-logged (FR-094). On authenticated instances it SHALL be restricted to the
+admin role; on instances running with the FR-075 authentication override, the
+typed confirmation is maintained and the audit entry records the unauthenticated
 context.
 *Acceptance:* the operator role cannot reset an authenticated instance; the reset
-event and its actor (or the unauthenticated context) appear in the audit log; the
-instance is immediately usable on an empty store.
+event and its actor (or the unauthenticated context) appear in the audit log
+(FR-094); the instance is immediately usable on an empty store.
 
 **FR-047 — FileSet HTTP serving.**
 Tobby SHALL serve, over read-only HTTP(S) GET under `/files/<fileset>/…`, the
@@ -562,7 +562,8 @@ destination-side writes (return logs) SHALL go to a dedicated path outside
 manifest coverage. Content present on the media but not reachable from a verified
 recipe SHALL NOT be pushed and SHALL be reported. Integrity or completeness
 failure SHALL block with no override; a zone-identity mismatch MAY be overridden
-by an admin, audit-logged. Trust roots present on the media SHALL be ignored.
+by an admin, audit-logged (FR-094). Trust roots present on the media SHALL be
+ignored.
 *Acceptance:* truncating or corrupting any covered file is detected and blocks
 the push, naming the file; a tampered recipe fails signature verification and is
 blocked; extraneous content not referenced by any verified recipe is reported and
@@ -697,8 +698,9 @@ Authentication SHALL be enabled by default in both modes, with locally managed
 basic authentication (FR-073) as the out-of-the-box method, replaceable by
 configuration with OIDC, SAML, or static tokens (FR-070–072). It MAY be disabled
 only through an explicit configuration override; disabling is never silent: the
-instance SHALL report the unauthenticated state prominently at startup, in logs,
-and as a persistent UI banner. Security-reducing settings SHALL always be
+instance SHALL report the unauthenticated state prominently at startup, in logs
+and the audit log (FR-094), and as a persistent UI banner. Security-reducing
+settings SHALL always be
 explicit opt-in — no configuration path relaxes security implicitly.
 *Acceptance:* a default configuration rejects anonymous access and serves a basic
 authentication login; with the override set, access is open and a warning appears
@@ -742,9 +744,14 @@ certificate replacement is possible via configuration and the admin UI (FR-062).
 **FR-090 — Structured logging.**
 Tobby SHALL emit structured JSON logs — to stdout in passthrough mode, to a
 configurable file (on the transport store by default) in mirror mode — with level,
-timestamp, and correlation fields (task ID, recipe, ingredient, digest).
+timestamp, and correlation fields (run ID, task ID, recipe, ingredient, digest).
+Every synchronization run SHALL be assigned a unique run ID at start, carried by
+every log record of the run; the run ID is recorded in the media manifest
+(FR-054) and reused by the destination-side instance when it processes the
+transported store, so one run is traceable end to end across the air gap.
 *Acceptance:* log output parses as JSON Lines; a given synchronization is fully
-reconstructable by filtering on its task ID. *(ADR-0012)*
+reconstructable by filtering on its task ID, and end to end — including
+destination-side operation — by filtering on its run ID. *(ADR-0012)*
 
 **FR-091 — OpenMetrics endpoint.**
 Tobby SHALL expose metrics in OpenMetrics format on `/metrics`, covering at minimum:
@@ -765,6 +772,23 @@ in-flight transfers within a configurable grace period, flush logs, and exit 0.
 *Acceptance:* terminating during a synchronization leaves the store consistent and
 the run resumable (FR-029); no partially written manifest is served afterwards.
 *(ADR-0012)*
+
+**FR-094 — Security audit log.**
+Tobby SHALL emit a dedicated category of security audit events with a stable
+schema: actor (authenticated identity, or the unauthenticated context under the
+FR-075 override), action, target, outcome, timestamp, and origin (client address
+or local invocation). The category SHALL cover, as the corresponding features
+ship: authentication successes and failures, account and token lifecycle
+operations, sensitive configuration changes, and audited overrides (FR-046,
+FR-054). Audit events are structured log records on the FR-090 channels (stdout
+in passthrough mode, the transport-store log file in mirror mode),
+distinguishable from operational logs by a stable marker field; the audit log is
+operational evidence, not a trust anchor — it is not signed. The event schema is
+versioned with the same compatibility discipline as the REST API.
+*Acceptance:* each implemented event class produces a record carrying all six
+schema fields; audit records are separable from operational logs by a single
+filter on the marker field; the documented schema is stable across the 1.x
+series. *(ADR-0012)*
 
 ---
 
