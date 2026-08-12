@@ -798,9 +798,17 @@ series. *(ADR-0012)*
 
 **NFR-001 — Single static binary.**
 Tobby SHALL be delivered as a single statically linked binary (CGO disabled) for
-Linux and Windows, on amd64 and arm64.
-*Acceptance:* the four release binaries run on clean hosts with no runtime
-dependencies; `file`/`ldd` confirm static linking on Linux. *(ADR-0011)*
+Linux and Windows, on amd64 and arm64. macOS binaries (amd64 and arm64) SHALL
+additionally be published as a convenience tier through the same reproducible
+release chain — SBOM, provenance, and checksums included — and distributed via
+a Homebrew tap; they carry Go's deterministic ad-hoc code signature and are
+covered by the full unit and integration test suite on macOS runners in CI,
+but macOS is outside the validated operating scope (NFR-018): production
+deployments remain Linux (server) and Windows (mirror workstation).
+*Acceptance:* the four Linux/Windows release binaries run on clean hosts with no
+runtime dependencies; `file`/`ldd` confirm static linking on Linux; the two
+macOS binaries install through the Homebrew formula and pass `tobby version`
+on both architectures. *(ADR-0011; amendment 2026-08-12)*
 
 **NFR-002 — Minimal, zero-CVE container image.**
 The container image SHALL be built from a minimal base with a zero-known-CVE
@@ -927,6 +935,9 @@ Windows is outside the v1.0.0 validated scope.
 *Acceptance:* the UC2 end-to-end scenario (synchronize → transport → destination
 push) passes on a Windows CI runner — beyond binary smoke tests; the
 documentation states the supported feature matrix per operating system.
+macOS appears in that matrix as a convenience tier (NFR-001): the full test
+suite runs on macOS in CI, but no end-to-end operating scenario is validated
+on it and no production support is implied.
 
 ### 4.8 Network posture
 

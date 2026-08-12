@@ -1,0 +1,19 @@
+== milestone-2 topology scenario 2026-08-12T11:58:22Z ==
+ok   build: binary and topology image
+ok   R-01: no-account start refused (exit 3, TBY-AUTH-001)
+ok   account created (first account admin), instance ready
+ok   anonymous refused everywhere (RFC 9457 + Basic challenge), wrong password refused
+ok   import submitted (tsk_2cdfc7e563de, 3 platforms)
+ok   task settled: done, 3/3 items
+ok   browsing sees upstream-registry_5000/library/sample, pinned digest preserved (sha256:25c510f2eba1a4f7d6824987f26798381db92042e34828379749171b3a5aec66)
+ok   standard third-party client pulls with credentials, anonymous pull refused
+ok   idempotence: second import moved 0 bytes
+== scenario m2 PASSED — raw report: /tmp/tobby-topology-m2-report.txt ==
+
+# Acceptance host: developer workstation (darwin/arm64, Docker 29.1.3),
+# hermetic CI tier (test/topology/scenario-m2.sh) — the containerized
+# topology with the plain-HTTP upstream declared through the per-host
+# registries.insecure opt-in. The crucible-tier scenario
+# (crucible/scenarios/m2/run.sh) adds the hard-kill task-resumption case
+# on real nodes and runs on a Linux/Incus host at milestone acceptance,
+# like milestone 1 (disposable-cloud-VM profile, ADR-0014).

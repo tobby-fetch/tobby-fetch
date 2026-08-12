@@ -39,8 +39,11 @@ jobs:
     strategy:
       matrix:
         # Both release architectures are first-class in CI (milestone 1
-        # exit criterion: green on linux/amd64 and linux/arm64).
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        # exit criterion: green on linux/amd64 and linux/arm64). macOS runs
+        # the same full suite: the darwin binaries are a convenience tier
+        # (NFR-001) — unit/integration-tested here, e2e-validated only on
+        # the Linux and Windows operating scope (NFR-018).
+        runner: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,7 +56,7 @@ jobs:
         run: sh tools/check-coverage.sh
 
   cross-compile:
-    name: Cross-compile (windows, linux amd64/arm64)
+    name: Cross-compile (linux, windows, darwin — amd64/arm64)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -68,6 +71,8 @@ jobs:
           GOOS=linux   GOARCH=arm64 go build -trimpath -o /dev/null ./cmd/tobby
           GOOS=windows GOARCH=amd64 go build -trimpath -o /dev/null ./cmd/tobby
           GOOS=windows GOARCH=arm64 go build -trimpath -o /dev/null ./cmd/tobby
+          GOOS=darwin  GOARCH=amd64 go build -trimpath -o /dev/null ./cmd/tobby
+          GOOS=darwin  GOARCH=arm64 go build -trimpath -o /dev/null ./cmd/tobby
 
   licenses:
     name: License compliance (GPL-3.0 compatibility)

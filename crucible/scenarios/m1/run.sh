@@ -86,8 +86,12 @@ inc exec tbc-m1-connected -- sh -c '
 check "medium formatted (ext4) and mounted on the connected node"
 
 # -- Connected side: serve and fill the store --------------------------------
+# m1 exercises the registry/store mechanics: authentication is opted out
+# EXPLICITLY (FR-075 — audited, never silent). The secure posture is the
+# m2 scenario's object.
 inc exec tbc-m1-connected -- sh -c '
     nohup env TOBBY_MODE=passthrough TOBBY_STORAGE_ROOT=/media/tobby/store \
+        TOBBY_AUTH_DISABLED=true \
         TOBBY_SERVER_ADDR=:8080 tobby serve >/var/log/tobby.log 2>&1 &
 '
 wait_ready tbc-m1-connected http://127.0.0.1:8080/readyz
@@ -128,6 +132,7 @@ check "egress canary failed as required (air gap proven by construction)"
 # -- Air-gapped side: the transported store serves ---------------------------
 inc exec tbc-m1-airgap -- sh -c '
     nohup env TOBBY_MODE=mirror TOBBY_STORAGE_ROOT=/media/tobby/store \
+        TOBBY_AUTH_DISABLED=true \
         TOBBY_SERVER_ADDR=:8080 tobby serve >/var/log/tobby.log 2>&1 &
 '
 wait_ready tbc-m1-airgap http://127.0.0.1:8080/readyz

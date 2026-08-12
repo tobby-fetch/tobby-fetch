@@ -116,7 +116,7 @@ jobs:
       - name: Generate one SBOM per release binary
         run: |
           mkdir -p sboms
-          for target in linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+          for target in linux/amd64 linux/arm64 windows/amd64 windows/arm64 darwin/amd64 darwin/arm64; do
             os="${target%/*}"; arch="${target#*/}"
             case "$os" in windows) ext=".exe" ;; *) ext="" ;; esac
             GOOS="$os" GOARCH="$arch" cyclonedx-gomod app \

@@ -22,6 +22,7 @@ networks:
 
 volumes:
   media: {}
+  m2: {}
 
 services:
   # The "production registry" of the connected zone: the reference registry
@@ -32,7 +33,11 @@ services:
     ports:
       - "127.0.0.1:5210:5000"
 
-  # Connected-side Tobby: fills the store that will cross the gap.
+  # Connected-side Tobby: fills the store that will cross the gap. The m1
+  # scenario exercises the registry/store mechanics, so it opts out of
+  # authentication EXPLICITLY (FR-075: visible, never silent — the audit
+  # trail of the run carries auth.override_active). The full secure posture
+  # is the m2 scenario's job (tobby-secure below).
   tobby-connected:
     image: tobby-topology:local
     command:
@@ -40,6 +45,8 @@ services:
       - --mode=passthrough
       - --storage-root=/media/store
       - --server-addr=:8080
+    environment:
+      TOBBY_AUTH_DISABLED: "true"
     networks: [connected]
     ports:
       - "127.0.0.1:5211:8080"
@@ -55,9 +62,32 @@ services:
       - --mode=mirror
       - --storage-root=/media/store
       - --server-addr=:8080
+    environment:
+      TOBBY_AUTH_DISABLED: "true"
     networks: [airgap]
     volumes:
       - media:/media
+
+  # Milestone-2 instance: the full secure posture — local account created
+  # by the scenario through the CLI (R-01), session/Basic auth on, unit
+  # import driven through /api/v1 (FR-061 parity surface).
+  tobby-secure:
+    image: tobby-topology:local
+    command:
+      - serve
+      - --mode=mirror
+      - --storage-root=/m2/store
+      - --state-root=/m2/state
+      - --server-addr=:8080
+    environment:
+      # The hermetic topology's upstream registry speaks plain HTTP: the
+      # per-host opt-in (registries.insecure, FR-075-conform) names it.
+      TOBBY_REGISTRIES_INSECURE: "upstream-registry:5000"
+    networks: [connected]
+    ports:
+      - "127.0.0.1:5212:8080"
+    volumes:
+      - m2:/m2
 
   # In-zone client and egress canary, driven by `docker compose run`.
   canary:

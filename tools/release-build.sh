@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright © 2026 infraBuilder SASU and contributors
 #
-# Reproducible release build (ADR-0011). Produces the four release binaries
+# Reproducible release build (ADR-0011). Produces the six release binaries
 # bit-identically for a given (version, commit, date, SOURCE_DATE_EPOCH):
 #
 #   SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) \
@@ -31,7 +31,10 @@ PKG="github.com/tobby-fetch/tobby-fetch/internal/buildinfo"
 LDFLAGS="-X ${PKG}.version=${VERSION} -X ${PKG}.commit=${COMMIT} -X ${PKG}.date=${DATE}"
 
 mkdir -p "$OUTDIR"
-for target in linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+# darwin targets are the NFR-001 convenience tier (Homebrew): same
+# reproducible chain — Go's ad-hoc arm64 code signature is derived from
+# the binary content, so the double-build gate holds for them too.
+for target in linux/amd64 linux/arm64 windows/amd64 windows/arm64 darwin/amd64 darwin/arm64; do
   os="${target%/*}"
   arch="${target#*/}"
   case "$os" in
