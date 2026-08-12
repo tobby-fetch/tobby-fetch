@@ -77,6 +77,13 @@ func (s *Server) Handle(pattern string, h http.Handler) {
 	s.mux.Handle(pattern, h)
 }
 
+// Mux exposes the shared mux so the web UI can register its route tree
+// (the UI owns the root; machine surfaces keep the reserved prefixes —
+// ADR-0015).
+func (s *Server) Mux() *http.ServeMux {
+	return s.mux
+}
+
 // SetReady flips the readiness gate (FR-092: false until storage and
 // configuration are usable).
 func (s *Server) SetReady(ready bool) {

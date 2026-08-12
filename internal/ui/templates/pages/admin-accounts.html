@@ -1,0 +1,148 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /admin/accounts — accounts & tokens (R-01, FR-072, UI-SPEC §5.9).
+     Accounts are read-only here (creation and passwords go through the
+     tobby user CLI at this milestone). Token creation re-renders this page
+     with the secret displayed exactly once; revocation confirms through
+     the native <dialog> danger-zone component — never confirm(). The
+     layout stamps hx-history="false" on <main> for this page. */}}
+{{define "title"}}{{.T "admin.title"}}{{end}}
+{{define "main"}}
+<section class="t-admin">
+  <h1 class="t-page-title">{{.T "admin.title"}}</h1>
+  <p class="t-page-sub">{{.T "admin.subtitle"}}</p>
+
+  {{if .Data.NewSecret}}
+  {{/* One-time secret display (FR-072): this block exists only in the
+       direct response to the creation POST — the store keeps a hash. */}}
+  <div class="t-secretbox" role="status" data-focus-target tabindex="-1">
+    <p class="t-secretbox-title"><span aria-hidden="true">⚠</span> {{.T "admin.secret_created" "Name" .Data.NewName}}</p>
+    <div class="t-row">
+      <span class="t-chip">
+        <span class="t-mono" translate="no">{{.Data.NewSecret}}</span>
+        <button type="button" class="t-chip-copy" data-copy="{{.Data.NewSecret}}"
+                aria-label="{{.T "admin.secret_copy"}}" title="{{.T "admin.secret_copy"}}">⧉</button>
+      </span>
+    </div>
+    <p class="t-muted t-note">{{.T "admin.secret_note"}}</p>
+  </div>
+  {{end}}
+
+  <h2 class="t-kick">{{.T "admin.accounts_title"}}</h2>
+  <p class="t-muted t-note">{{.T "admin.cli_note"}}</p>
+  <table class="t-table t-admin-table">
+    <caption class="t-visually-hidden">{{.T "admin.accounts_caption"}}</caption>
+    <thead>
+      <tr>
+        <th scope="col">{{.T "admin.th_login"}}</th>
+        <th scope="col">{{.T "admin.th_role"}}</th>
+        <th scope="col" class="t-num">{{.T "admin.th_created"}}</th>
+        <th scope="col" class="t-num">{{.T "admin.th_lastlogin"}}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Data.Accounts}}
+      <tr>
+        <td class="t-mono" translate="no">{{.Name}}</td>
+        <td><span class="t-badge" translate="no" lang="en">{{.Role}}</span></td>
+        <td class="t-num t-muted"><time datetime="{{$.TimeAttr .Created}}">{{$.FmtTime .Created}}</time></td>
+        <td class="t-num t-muted">{{if .LastLogin.IsZero}}—{{else}}<time datetime="{{$.TimeAttr .LastLogin}}">{{$.FmtTime .LastLogin}}</time>{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+
+  <h2 class="t-kick">{{.T "admin.tokens_title"}}</h2>
+  {{if .Data.Tokens}}
+  <table class="t-table t-admin-table">
+    <caption class="t-visually-hidden">{{.T "admin.tokens_caption"}}</caption>
+    <thead>
+      <tr>
+        <th scope="col">{{.T "admin.th_name"}}</th>
+        <th scope="col">{{.T "admin.th_role"}}</th>
+        <th scope="col" class="t-num">{{.T "admin.th_issued"}}</th>
+        <th scope="col">{{.T "admin.th_status"}}</th>
+        <th scope="col"><span class="t-visually-hidden">{{.T "admin.th_actions"}}</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range $i, $t := .Data.Tokens}}
+      <tr{{if $t.Revoked}} class="t-dim"{{end}}>
+        <td class="t-mono" translate="no">{{$t.Name}}</td>
+        <td><span class="t-badge" translate="no" lang="en">{{$t.Role}}</span></td>
+        <td class="t-num t-muted"><time datetime="{{$.TimeAttr $t.Created}}">{{$.FmtTime $t.Created}}</time></td>
+        <td>{{if $t.Revoked}}<span class="t-badge t-badge--failed">{{$.T "admin.token_revoked_badge"}}</span>{{else}}<span class="t-badge t-badge--done">{{$.T "admin.token_active"}}</span>{{end}}</td>
+        <td class="t-num">
+          {{if not $t.Revoked}}
+          <button type="button" class="t-btn t-btn--danger t-btn--sm" data-dialog="revoke-dlg-{{$i}}">{{$.T "admin.revoke"}}</button>
+          {{end}}
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <div class="t-empty"><p class="t-empty-title">{{.T "admin.tokens_empty"}}</p></div>
+  {{end}}
+
+  {{/* Token creation: classic POST — the response is this page with the
+       secret block above (FR-072: displayed exactly once). */}}
+  <form class="t-card t-admin-create" method="post" action="/admin/accounts/tokens">
+    <h2 class="t-kick">{{.T "admin.create_title"}}</h2>
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="t-row">
+      <div>
+        <label for="token-name">{{.T "admin.create_name_label"}}</label>
+        <input id="token-name" class="t-input t-mono" type="text" name="name" value="{{.Data.Name}}"
+               required autocomplete="off" autocapitalize="off" spellcheck="false" translate="no"
+               {{if .Data.FormError}}aria-invalid="true" aria-describedby="token-name-error"{{end}}>
+      </div>
+      <div>
+        <label for="token-role">{{.T "admin.create_role_label"}}</label>
+        <select id="token-role" name="role" class="t-select">
+          <option value="viewer">viewer</option>
+          <option value="operator">operator</option>
+          <option value="admin">admin</option>
+        </select>
+      </div>
+      <button type="submit" class="t-btn t-btn--primary">{{.T "admin.create_submit"}}</button>
+    </div>
+    {{if .Data.FormError}}
+    <p id="token-name-error" class="t-form-error" role="alert">{{.T .Data.FormError}}</p>
+    {{end}}
+  </form>
+
+  {{/* Revocation dialogs: one native <dialog> per active token (the only
+       modal of the application — UI-SPEC §7); the confirmation is a
+       classic POST carrying the CSRF token. */}}
+  {{range $i, $t := .Data.Tokens}}
+  {{if not $t.Revoked}}
+  <dialog class="t-dialog" id="revoke-dlg-{{$i}}">
+    <h2 class="t-dialog-title">{{$.T "admin.revoke_title" "Name" $t.Name}}</h2>
+    <p>{{$.T "admin.revoke_text"}}</p>
+    <div class="t-dialog-actions">
+      <form method="dialog"><button type="submit" class="t-btn t-btn--secondary">{{$.T "common.cancel"}}</button></form>
+      <form method="post" action="/admin/accounts/tokens/revoke">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="name" value="{{$t.Name}}">
+        <button type="submit" class="t-btn t-btn--danger">{{$.T "admin.revoke_submit"}}</button>
+      </form>
+    </div>
+  </dialog>
+  {{end}}
+  {{end}}
+
+  <script>
+  // Dialog opener: one delegated, guarded listener (the document survives
+  // boosted navigations; the guard prevents duplicate registration).
+  if (!window.tobbyDialogs) {
+    window.tobbyDialogs = true;
+    document.addEventListener("click", function (e) {
+      var b = e.target.closest ? e.target.closest("[data-dialog]") : null;
+      if (!b) { return; }
+      var d = document.getElementById(b.getAttribute("data-dialog"));
+      if (d && d.showModal) { d.showModal(); }
+    });
+  }
+  </script>
+</section>
+{{end}}

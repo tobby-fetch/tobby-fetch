@@ -1,0 +1,104 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /content — repositories grouped by canonical source host (ADR-0013).
+     One single form on the canonical URL: search, kind checkboxes, prefix.
+     Parameters are exactly the /api/v1/content ones (FR-061, ADR-0015 §1).
+     The htmx submit swaps only #content-results, so the form keeps focus. */}}
+{{define "title"}}{{.T "content.title"}}{{end}}
+{{define "main"}}
+<section>
+  <h1 class="t-page-title">{{.T "content.title"}}</h1>
+  {{if .Err}}
+  {{template "error-block" .}}
+  {{else}}
+  <form class="t-content-filters" method="get" action="/content" role="search"
+        hx-get="/content" hx-push-url="true" hx-sync="this:replace"
+        hx-target="#content-results" hx-swap="outerHTML"
+        hx-trigger="submit, input changed delay:300ms from:find input[type='search'], change from:find input[type='checkbox']">
+    {{if .Data.Query.Prefix}}<input type="hidden" name="prefix" value="{{.Data.Query.Prefix}}">{{end}}
+    <div class="t-search t-search--page">
+      <input type="search" name="q" value="{{.Data.Query.Q}}"
+             placeholder="{{.T "content.search_placeholder"}}"
+             aria-label="{{.T "content.search_label"}}">
+      <kbd class="t-kbd">/</kbd>
+    </div>
+    <fieldset class="t-kindfilter">
+      <legend class="t-visually-hidden">{{.T "content.kinds_label"}}</legend>
+      {{range .Data.AllKinds}}
+      <label class="t-badge t-badge--{{kindClass .}} t-kindpick">
+        <input type="checkbox" name="kind" value="{{.}}" class="t-visually-hidden"{{if $.Data.KindOn .}} checked{{end}}>
+        <span translate="no" lang="en">{{.}}</span>
+      </label>
+      {{end}}
+    </fieldset>
+    <button type="submit" class="t-btn t-btn--secondary t-btn--sm">{{.T "content.filter_submit"}}</button>
+  </form>
+  {{template "content-results" .}}
+  {{end}}
+</section>
+{{end}}
+
+{{/* Results region: the htmx swap target of the filter form. States: store
+     empty (role-gated CTA), no result for these filters (+ reset), listing
+     grouped by host with server pagination (UI-SPEC §5.3). */}}
+{{define "content-results"}}
+<div id="content-results">
+  {{if .Data.StoreEmpty}}
+  <div class="t-empty">
+    <p class="t-empty-title">{{.T "content.empty_title"}}</p>
+    {{if .CanOperate}}
+    <p>{{.T "content.empty_operator"}}</p>
+    <a class="t-btn t-btn--primary" href="/import">{{.T "dashboard.cta_import"}}</a>
+    {{else}}
+    <p>{{.T "content.empty_viewer"}}</p>
+    {{end}}
+  </div>
+  {{else if not .Data.Groups}}
+  <div class="t-empty">
+    <p class="t-empty-title">{{.T "content.no_results"}}</p>
+    <a class="t-btn t-btn--secondary" href="/content">{{.T "content.reset_filters"}}</a>
+  </div>
+  {{else}}
+  <p class="t-page-sub">{{.TN "content.total" .Data.Total "Count" .Data.Total}}</p>
+  {{range .Data.Groups}}
+  <div class="t-grouphead">
+    <h2 translate="no">{{.Host}}</h2>
+    <span class="t-muted">{{$.TN "content.group_meta" (len .Repos) "Count" (len .Repos) "Size" ($.FmtBytes .Size)}}</span>
+  </div>
+  <table class="t-table">
+    <caption class="t-visually-hidden">{{$.T "content.table_caption" "Host" .Host}}</caption>
+    <thead>
+      <tr>
+        <th scope="col" class="t-col-path">{{$.T "content.th_path"}}</th>
+        <th scope="col">{{$.T "content.th_kind"}}</th>
+        <th scope="col" class="t-num">{{$.T "content.th_tags"}}</th>
+        <th scope="col" class="t-num">{{$.T "content.th_size"}}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Repos}}
+      <tr>
+        <td class="t-primary">
+          <span class="t-chip">
+            <a class="t-mono t-truncate" href="/content/{{.Name}}" title="{{.Name}}" translate="no">{{$.Trunc .Name 56}}</a>
+            <button type="button" class="t-chip-copy" data-copy="{{.Name}}"
+                    aria-label="{{$.T "content.copy_path" "Path" .Name}}" title="{{$.T "content.copy_path" "Path" .Name}}">⧉</button>
+          </span>
+        </td>
+        <td><span class="t-badge t-badge--{{kindClass .Kind}}" translate="no" lang="en">{{.Kind}}</span></td>
+        <td class="t-num">{{.Tags}}</td>
+        <td class="t-num" title="{{.Size}}">{{$.FmtBytes .Size}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{end}}
+  {{if gt .Data.TotalPages 1}}
+  <nav class="t-pagination" aria-label="{{.T "content.pagination_label"}}">
+    {{if .Data.PrevHref}}<a href="{{.Data.PrevHref}}">← {{.T "content.prev_page"}}</a>{{end}}
+    <span>{{.T "content.page_of" "Page" .Data.Page "Total" .Data.TotalPages}}</span>
+    {{if .Data.NextHref}}<a href="{{.Data.NextHref}}">{{.T "content.next_page"}} →</a>{{end}}
+  </nav>
+  {{end}}
+  {{end}}
+</div>
+{{end}}

@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -15,7 +16,14 @@ import (
 const (
 	EnvMode                = "TOBBY_MODE"
 	EnvStorageRoot         = "TOBBY_STORAGE_ROOT"
+	EnvStateRoot           = "TOBBY_STATE_ROOT"
 	EnvServerAddr          = "TOBBY_SERVER_ADDR"
+	EnvAuthDisabled        = "TOBBY_AUTH_DISABLED"
+	EnvAuthSessionTTL      = "TOBBY_AUTH_SESSION_TTL"
+	EnvRegistriesInsecure  = "TOBBY_REGISTRIES_INSECURE"
+	EnvUIThemeOverride     = "TOBBY_UI_THEME_OVERRIDE"
+	EnvUIShowUpcoming      = "TOBBY_UI_SHOW_UPCOMING"
+	EnvImportInspectTO     = "TOBBY_IMPORT_INSPECT_TIMEOUT"
 	EnvLoggingLevel        = "TOBBY_LOGGING_LEVEL"
 	EnvShutdownGracePeriod = "TOBBY_SHUTDOWN_GRACE_PERIOD"
 )
@@ -29,8 +37,56 @@ func applyEnv(cfg *Config, lookup func(string) (string, bool)) error {
 	if v, ok := lookup(EnvStorageRoot); ok {
 		cfg.Storage.Root = v
 	}
+	if v, ok := lookup(EnvStateRoot); ok {
+		cfg.State.Root = v
+	}
 	if v, ok := lookup(EnvServerAddr); ok {
 		cfg.Server.Addr = v
+	}
+	if v, ok := lookup(EnvAuthDisabled); ok {
+		switch v {
+		case "true", "1":
+			cfg.Auth.Disabled = true
+		case "false", "0", "":
+			cfg.Auth.Disabled = false
+		default:
+			return fmt.Errorf("%s: invalid boolean %q (expected true or false)", EnvAuthDisabled, v)
+		}
+	}
+	if v, ok := lookup(EnvAuthSessionTTL); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("%s: invalid duration %q (expected e.g. \"12h\")", EnvAuthSessionTTL, v)
+		}
+		cfg.Auth.SessionTTL = Duration(d)
+	}
+	if v, ok := lookup(EnvRegistriesInsecure); ok {
+		cfg.Registries.Insecure = nil
+		for _, h := range strings.Split(v, ",") {
+			if h = strings.TrimSpace(h); h != "" {
+				cfg.Registries.Insecure = append(cfg.Registries.Insecure, h)
+			}
+		}
+	}
+	if v, ok := lookup(EnvUIThemeOverride); ok {
+		cfg.UI.ThemeOverride = v
+	}
+	if v, ok := lookup(EnvUIShowUpcoming); ok {
+		switch v {
+		case "true", "1":
+			cfg.UI.ShowUpcoming = true
+		case "false", "0", "":
+			cfg.UI.ShowUpcoming = false
+		default:
+			return fmt.Errorf("%s: invalid boolean %q (expected true or false)", EnvUIShowUpcoming, v)
+		}
+	}
+	if v, ok := lookup(EnvImportInspectTO); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("%s: invalid duration %q (expected e.g. \"20s\")", EnvImportInspectTO, v)
+		}
+		cfg.Import.InspectTimeout = Duration(d)
 	}
 	if v, ok := lookup(EnvLoggingLevel); ok {
 		cfg.Logging.Level = v

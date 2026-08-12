@@ -1,0 +1,30 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /help — troubleshooting stub auto-generated from the taxonomy catalog
+     (R-03, UI-SPEC §5.10): a summary of anchors, then one section per code
+     with the localized what/cause/action triptych. The section targeted by
+     the anchor is highlighted by CSS :target. */}}
+{{define "title"}}{{.T "help.title"}}{{end}}
+{{define "main"}}
+<section class="t-help">
+  {{template "help-subnav" .}}
+  <h1 class="t-page-title">{{.T "help.title"}}</h1>
+  <p class="t-page-sub">{{.T "help.subtitle"}}</p>
+
+  <nav class="t-row t-help-toc" aria-label="{{.T "help.toc_label"}}">
+    {{range .Data.Entries}}
+    <a class="t-chip t-chip--code" translate="no" href="#{{.Code}}">{{.Code}}</a>
+    {{end}}
+  </nav>
+
+  {{range .Data.Entries}}
+  <section class="t-helpsec" id="{{.Code}}">
+    <h2><span class="t-chip t-chip--code" translate="no">{{.Code}}<button type="button" class="t-chip-copy" data-copy="{{.Code}}" aria-label="{{$.T "help.copy_code" "Code" .Code}}" title="{{$.T "help.copy_code" "Code" .Code}}">⧉</button></span> {{.What}}</h2>
+    <dl>
+      <dt>{{$.T "error.what_label"}}</dt><dd>{{.What}}</dd>
+      <dt>{{$.T "error.cause_label"}}</dt><dd>{{.Cause}}</dd>
+      <dt>{{$.T "error.action_label"}}</dt><dd>{{.Action}}</dd>
+    </dl>
+  </section>
+  {{end}}
+</section>
+{{end}}

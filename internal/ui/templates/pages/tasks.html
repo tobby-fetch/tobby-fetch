@@ -1,0 +1,102 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /tasks — persistent task queue (UI-SPEC §5.7). One single form on the
+     canonical URL: search ?q= plus status/type filters, the exact
+     /api/v1/tasks parameters (FR-061). The row body is the polled
+     fragment: the server re-emits its hx-get only while a task is active
+     (auto-terminating load-polling, §8), morphed to keep focus. */}}
+{{define "title"}}{{.T "tasks.title"}}{{end}}
+{{define "main"}}
+<section>
+  <h1 class="t-page-title">{{.T "tasks.title"}}</h1>
+  <p class="t-page-sub">{{.T "tasks.subtitle"}}</p>
+  <form class="t-content-filters" method="get" action="/tasks" role="search"
+        hx-get="/tasks" hx-push-url="true" hx-sync="this:replace"
+        hx-target="#tasks-results" hx-swap="outerHTML"
+        hx-trigger="submit, input changed delay:300ms from:find input[type='search'], change from:find select">
+    <div class="t-search t-search--page">
+      <input type="search" name="q" value="{{.Data.Q}}"
+             placeholder="{{.T "tasks.search_placeholder"}}"
+             aria-label="{{.T "tasks.search_label"}}">
+      <kbd class="t-kbd">/</kbd>
+    </div>
+    <label class="t-visually-hidden" for="tasks-status">{{.T "tasks.status_label"}}</label>
+    <select id="tasks-status" name="status" class="t-select">
+      <option value="">{{.T "tasks.status_all"}}</option>
+      <option value="pending"{{if eq .Data.Status "pending"}} selected{{end}}>{{.T "tasks.status_pending"}}</option>
+      <option value="running"{{if eq .Data.Status "running"}} selected{{end}}>{{.T "tasks.status_running"}}</option>
+      <option value="done"{{if eq .Data.Status "done"}} selected{{end}}>{{.T "tasks.status_done"}}</option>
+      <option value="failed"{{if eq .Data.Status "failed"}} selected{{end}}>{{.T "tasks.status_failed"}}</option>
+    </select>
+    <label class="t-visually-hidden" for="tasks-type">{{.T "tasks.type_label"}}</label>
+    <select id="tasks-type" name="type" class="t-select">
+      <option value="">{{.T "tasks.type_all"}}</option>
+      <option value="unit-import"{{if eq .Data.Type "unit-import"}} selected{{end}}>{{.T "tasks.type_unit_import"}}</option>
+    </select>
+    <button type="submit" class="t-btn t-btn--secondary t-btn--sm">{{.T "tasks.filter_submit"}}</button>
+  </form>
+  {{template "tasks-results" .}}
+</section>
+{{end}}
+
+{{/* Results region: swap target of the filter form. States: no task yet
+     (CTA gated by role), no result for these filters (+ reset), listing. */}}
+{{define "tasks-results"}}
+<div id="tasks-results">
+  {{if not .Data.Rows}}
+  {{if .Data.HasFilter}}
+  <div class="t-empty">
+    <p class="t-empty-title">{{.T "tasks.no_results"}}</p>
+    <a class="t-btn t-btn--secondary" href="/tasks">{{.T "tasks.reset_filters"}}</a>
+  </div>
+  {{else}}
+  <div class="t-empty">
+    <p class="t-empty-title">{{.T "tasks.empty"}}</p>
+    {{if .CanOperate}}
+    <a class="t-btn t-btn--primary" href="/import">{{.T "dashboard.cta_import"}}</a>
+    {{else}}
+    <p class="t-muted">{{.T "tasks.empty_viewer"}}</p>
+    {{end}}
+  </div>
+  {{end}}
+  {{else}}
+  <table class="t-table">
+    <caption class="t-visually-hidden">{{.T "tasks.table_caption"}}</caption>
+    <thead>
+      <tr>
+        <th scope="col">{{.T "tasks.th_id"}}</th>
+        <th scope="col">{{.T "tasks.th_type"}}</th>
+        <th scope="col">{{.T "tasks.th_ref"}}</th>
+        <th scope="col">{{.T "tasks.th_status"}}</th>
+        <th scope="col" class="t-num">{{.T "tasks.th_duration"}}</th>
+        <th scope="col" class="t-num">{{.T "tasks.th_when"}}</th>
+      </tr>
+    </thead>
+    {{template "task-rows" .}}
+  </table>
+  {{end}}
+</div>
+{{end}}
+
+{{/* Polled row body: stable ids for idiomorph, polling attributes
+     re-emitted ONLY while a listed task is active — the stop decision is
+     server-side, in this template (UI-SPEC §8.3). */}}
+{{define "task-rows"}}
+<tbody id="task-rows"{{if .Data.AnyActive}} hx-get="{{.Data.PollURL}}" hx-trigger="every 3s" hx-swap="morph:outerHTML" hx-target="this"{{end}}>
+  {{range .Data.Rows}}
+  <tr id="task-{{.ID}}">
+    <td class="t-primary t-mono"><a href="/tasks/{{.ID}}" translate="no">{{.ID}}</a></td>
+    <td>{{if eq .Type "unit-import"}}{{$.T "tasks.type_unit_import"}}{{else}}<span translate="no">{{.Type}}</span>{{end}}</td>
+    <td>
+      <span class="t-chip">
+        <span translate="no" title="{{.Reference}}">{{$.Trunc .Reference 40}}</span>
+        <button type="button" class="t-chip-copy" data-copy="{{.Reference}}"
+                aria-label="{{$.T "tasks.copy_ref" "Ref" .Reference}}" title="{{$.T "tasks.copy_ref" "Ref" .Reference}}">⧉</button>
+      </span>
+    </td>
+    <td>{{template "task-badge" (withData $ .)}}</td>
+    <td class="t-num t-muted">{{if .HasDuration}}{{$.FmtDuration .Duration}}{{else}}—{{end}}</td>
+    <td class="t-num t-muted"><time datetime="{{$.TimeAttr .Created}}" title="{{$.FmtTime .Created}}">{{$.FmtAgo .Created}}</time></td>
+  </tr>
+  {{end}}
+</tbody>
+{{end}}

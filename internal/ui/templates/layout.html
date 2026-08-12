@@ -1,0 +1,138 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* Application shell (UI-SPEC §3, ADR-0015): header, nav gated by role,
+     banner stack outside every swap target, single live region, toasts. */}}
+{{define "layout"}}<!DOCTYPE html>
+<html lang="{{.Lang}}" data-theme="{{.Theme}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="{{if eq .Theme "light"}}light{{else}}dark{{end}}">
+<meta name="htmx-config" content='{"historyCacheSize":0,"selfRequestsOnly":true,"allowEval":false,"globalViewTransitions":true,"responseHandling":[{"code":"204","swap":false},{"code":".*","swap":true}]}'>
+<title>{{template "title" .}} · Tobby</title>
+<link rel="stylesheet" href="/static/tokens.css">
+<link rel="stylesheet" href="/static/app.css">
+{{if .HasThemeOverride}}<link rel="stylesheet" href="/static/theme-override.css">{{end}}
+<script src="/static/thirdparty/htmx.min.js" defer></script>
+<script src="/static/thirdparty/idiomorph.min.js" defer></script>
+</head>
+<body hx-boost="true">
+<a class="t-skip-link" href="#main">{{.T "shell.skip"}}</a>
+
+<header class="t-header">
+<div class="t-topbar">
+  <a class="t-brand" href="/" aria-label="Tobby">
+    {{template "logo" .}}<span>Tobby<span class="t-brand-dot">.</span></span>
+  </a>
+
+  <nav class="t-nav" aria-label="{{.T "shell.nav_label"}}">
+    <a href="/" {{if eq .Path "/"}}aria-current="page"{{end}}>{{.T "nav.dashboard"}}</a>
+    <a href="/content" {{if hasPrefix .Path "/content"}}aria-current="page"{{end}}>{{.T "nav.content"}}</a>
+    {{if .CanOperate}}<a href="/import" {{if eq .Path "/import"}}aria-current="page"{{end}}>{{.T "nav.import"}}</a>{{end}}
+    <a href="/tasks" {{if hasPrefix .Path "/tasks"}}aria-current="page"{{end}}>{{.T "nav.tasks"}}<span id="task-badge" hx-get="/tasks/badge" hx-trigger="load" hx-swap="outerHTML"></span></a>
+    <a href="/help" {{if or (hasPrefix .Path "/help") (eq .Path "/about") (eq .Path "/api-docs")}}aria-current="page"{{end}}>{{.T "nav.help"}}</a>
+    {{if .IsAdmin}}<a href="/admin/accounts" {{if hasPrefix .Path "/admin"}}aria-current="page"{{end}}>{{.T "nav.admin"}}</a>{{end}}
+    {{if .ShowUpcoming}}
+    <span class="t-nav-upcoming">{{.T "nav.recipes"}} — {{.T "nav.milestone" "N" 3}}</span>
+    <span class="t-nav-upcoming">{{.T "nav.media"}} — {{.T "nav.milestone" "N" 5}}</span>
+    {{end}}
+  </nav>
+
+  <form class="t-search" method="get" action="/content" role="search">
+    <input type="search" name="q" placeholder="{{.T "shell.search_placeholder"}}" aria-label="{{.T "shell.search_label"}}" accesskey="/">
+    <kbd class="t-kbd">/</kbd>
+  </form>
+
+  <div class="t-row">
+    <span class="t-modechip" title="{{.T "shell.mode_title"}}">mode <b lang="en">{{.Mode}}</b></span>
+    <form method="post" action="/lang" class="t-inline-form">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="back" value="{{.Path}}">
+      <input type="hidden" name="lang" value="{{.OtherLang}}">
+      <button type="submit" class="t-lang" aria-label="{{.T "shell.lang_switch"}}">{{if eq .Lang "en"}}EN · <b>FR</b>{{else}}<b>EN</b> · FR{{end}}</button>
+    </form>
+    <form method="post" action="/theme" class="t-inline-form">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="back" value="{{.Path}}">
+      <input type="hidden" name="theme" value="{{if eq .Theme "light"}}dark{{else}}light{{end}}">
+      <button type="submit" class="t-iconbtn" aria-label="{{.T "shell.theme_toggle"}}">◐</button>
+    </form>
+    {{if not .Identity.Anonymous}}
+    <details class="t-usermenu">
+      <summary>{{.Identity.Name}} <i>({{.Identity.Role}})</i></summary>
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit" class="t-btn t-btn--secondary t-btn--sm">{{.T "shell.logout"}}</button>
+      </form>
+    </details>
+    {{end}}
+  </div>
+</div>
+
+{{/* Banner stack: inside the sticky header, outside every htmx swap
+     target (ADR-0015). */}}
+{{range .Banners}}
+<div class="t-banner t-banner--{{.Kind}}" role="status">
+  <span class="t-banner-icon" aria-hidden="true">{{if eq .Kind "danger"}}⚠{{else}}◈{{end}}</span>
+  <span>{{.Text}}</span>
+  {{if .Code}}<span class="t-banner-code" translate="no">{{.Code}}</span> <a href="/help#{{.Code}}">{{$.T "error.help_link" "Code" .Code}}</a>{{end}}
+</div>
+{{end}}
+</header>
+
+<main id="main" class="t-main"{{if .NoHistory}} hx-history="false"{{end}}><div class="t-page">{{template "main" .}}</div></main>
+
+{{/* Single live region (ADR-0015 §8) + toast container. Server-rendered
+     toasts (success confirmations on a full-page response) are dismissed
+     by the pure-CSS animation. */}}
+<div class="t-visually-hidden" aria-live="polite" id="live-region"></div>
+<div id="toasts" role="status" aria-live="polite" data-copied-text="{{.T "common.copied"}}">
+{{- range .Toasts}}<div class="t-toast t-toast--success">{{.}}</div>{{end -}}
+</div>
+
+<script>
+// Focus helper (ADR-0015 §8): move focus to [data-focus-target] after swaps.
+document.addEventListener("htmx:afterSettle", function (e) {
+  var t = e.detail.elt && e.detail.elt.querySelector ? e.detail.elt.querySelector("[data-focus-target]") : null;
+  if (t) { t.focus(); }
+});
+// "/" focuses the current screen's search field.
+document.addEventListener("keydown", function (e) {
+  if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+  var a = document.activeElement;
+  if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.isContentEditable)) return;
+  var s = document.querySelector("main input[type=search]") || document.querySelector(".t-search input");
+  if (s) { e.preventDefault(); s.focus(); }
+});
+// Copy chips: one delegated listener on [data-copy] — the copied value is
+// always the complete one — with a confirmation toast (UI-SPEC §7).
+document.addEventListener("click", function (e) {
+  var b = e.target.closest ? e.target.closest("[data-copy]") : null;
+  if (!b || !navigator.clipboard) return;
+  navigator.clipboard.writeText(b.getAttribute("data-copy")).then(function () {
+    var box = document.getElementById("toasts");
+    var t = document.createElement("div");
+    t.className = "t-toast t-toast--success";
+    t.textContent = box.getAttribute("data-copied-text");
+    box.appendChild(t);
+    setTimeout(function () { t.remove(); }, 7000);
+  }, function () { /* clipboard denied: no toast, no unhandled rejection */ });
+});
+// Transport failures: one listener, one taxonomy block (TBY-SRV-003).
+["htmx:sendError", "htmx:timeout"].forEach(function (ev) {
+  document.body.addEventListener(ev, function () {
+    var zone = document.getElementById("transport-error");
+    if (zone) { zone.hidden = false; }
+  });
+});
+document.body.addEventListener("htmx:beforeRequest", function () {
+  var zone = document.getElementById("transport-error");
+  if (zone) { zone.hidden = true; }
+});
+</script>
+<div id="transport-error" hidden class="t-banner t-banner--warning" role="alert">
+  <span class="t-banner-code" translate="no">TBY-SRV-003</span> {{.T "shell.unreachable"}}
+</div>
+</body>
+</html>{{end}}
+
+{{define "logo"}}<svg class="t-logo" viewBox="0 0 48 48" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 20l10-6 10 6v12l-10 6-10-6z"/><path d="M14 20l10 6 10-6M24 26v12" stroke-linecap="round"/><path d="M6 10h6M6 10v6M42 10h-6M42 10v6M6 38h6M6 38v-6M42 38h-6M42 38v-6" stroke-linecap="round"/><path d="M10 14c8-10 20-10 28 0" stroke-dasharray="2 4" stroke-linecap="round"/></svg>{{end}}

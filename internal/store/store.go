@@ -16,8 +16,9 @@
 // are first-class.
 //
 // The import pipeline (ADR-0005) will write through the storage backend
-// directly, never through the HTTP loopback; the accessors it needs land
-// with the engine milestone.
+// directly, never through the HTTP loopback; the same rule holds for the
+// browsing accessors of browse.go (FR-062), which read the backend through
+// a second, library-level registry sharing the same root directory.
 package store
 
 import (
@@ -28,8 +29,11 @@ import (
 	"log/slog"
 	"net/http"
 
+	distribution "github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/configuration"
 	"github.com/distribution/distribution/v3/registry/handlers"
+	"github.com/distribution/distribution/v3/registry/storage"
+	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 
 	// Filesystem storage driver, selected through the driver factory by the
 	// configuration below.
@@ -42,6 +46,10 @@ import (
 type Store struct {
 	app  *handlers.App
 	root string
+	// browse is the second, read-side access to the same backend: the
+	// browsing accessors (browse.go) go through the storage library, never
+	// through the HTTP loopback (package doc).
+	browse distribution.Namespace
 }
 
 // Open initializes the embedded registry on the given storage root.
@@ -78,9 +86,22 @@ func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error)
 	}})
 
 	app := handlers.NewApp(ctx, cfg)
+
+	// Second access to the same backend for the browsing accessors
+	// (browse.go): the storage library over the same root directory as the
+	// app handlers — never the HTTP loopback (FR-062, package doc).
+	driver, err := factory.Create(ctx, "filesystem", configuration.Parameters{"rootdirectory": root})
+	if err != nil {
+		return nil, fmt.Errorf("store: creating browse driver: %w", err)
+	}
+	browse, err := storage.NewRegistry(ctx, driver)
+	if err != nil {
+		return nil, fmt.Errorf("store: creating browse registry: %w", err)
+	}
+
 	logger.LogAttrs(ctx, slog.LevelInfo, "embedded registry initialized",
 		slog.String("root", root))
-	return &Store{app: app, root: root}, nil
+	return &Store{app: app, root: root, browse: browse}, nil
 }
 
 // APIHandler returns the OCI Distribution API (/v2/) handler. Mount it on

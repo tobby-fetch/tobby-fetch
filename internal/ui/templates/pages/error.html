@@ -1,0 +1,9 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{define "title"}}{{.Err.Code}}{{end}}
+{{define "main"}}
+<section>
+  <h1 class="t-page-title"><code translate="no">{{.Err.Code}}</code></h1>
+  {{template "error-block" .}}
+  <p><a href="/">{{.T "error.back_home"}}</a> · <a href="/content">{{.T "error.back_content"}}</a></p>
+</section>
+{{end}}

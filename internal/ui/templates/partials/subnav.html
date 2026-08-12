@@ -1,0 +1,10 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* Local sub-menu of the Help & info trio (UI-SPEC §5.10-§5.12): the nav
+     entry /help fans out to /about and /api-docs from the page head. */}}
+{{define "help-subnav"}}
+<nav class="t-row t-subnav" aria-label="{{.T "subnav.label"}}">
+  <a class="t-chip" href="/help" {{if eq .Path "/help"}}aria-current="page"{{end}}>{{.T "subnav.help"}}</a>
+  <a class="t-chip" href="/about" {{if eq .Path "/about"}}aria-current="page"{{end}}>{{.T "subnav.about"}}</a>
+  <a class="t-chip" href="/api-docs" {{if eq .Path "/api-docs"}}aria-current="page"{{end}}>{{.T "subnav.apidocs"}}</a>
+</nav>
+{{end}}

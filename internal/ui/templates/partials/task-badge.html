@@ -1,0 +1,14 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* Task status badge (UI-SPEC §7): "done with errors · X/Y" is a
+     rendering of failed + aggregates, the persisted schema is untouched;
+     failed tasks always show their principal R-03 code in text; resumed
+     tasks carry the FR-029 marker. Invoked with (withData $ row). */}}
+{{define "task-badge"}}{{$r := .Data}}
+{{- if eq $r.State "pending"}}<span class="t-badge t-badge--pending">{{.T "tasks.badge_pending"}}</span>
+{{- else if eq $r.State "running"}}<span class="t-badge t-badge--running">{{.T "tasks.badge_running"}}</span>
+{{- else if eq $r.State "done"}}<span class="t-badge t-badge--done">{{.T "tasks.badge_done"}}</span>
+{{- else if eq $r.State "done-errors"}}<span class="t-badge t-badge--done-errors">{{.T "tasks.badge_done_errors" "Done" $r.Succeeded "Total" $r.Agg.Total}}</span>
+{{- else}}<span class="t-badge t-badge--failed">{{.T "tasks.badge_failed"}}</span>{{end}}
+{{- if $r.Code}} <span class="t-chip t-chip--code" translate="no">{{$r.Code}}</span>{{end}}
+{{- if $r.Resumed}} <span class="t-badge t-badge--resumed" title="{{.T "tasks.resumed_title"}}">↻ {{.T "tasks.badge_resumed"}}</span>{{end}}
+{{- end}}

@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# English messages of the error taxonomy (R-03). One entry per code and
+# section: <code>.what / .cause / .action. Corrective actions must be
+# executable with the means of the current milestone (roadmap DoD).
+
+"TBY-AUTH-001.what": "The instance refuses to start: no local account is configured."
+"TBY-AUTH-001.cause": "No administrator account has been created on this instance yet, or its state directory was reset."
+"TBY-AUTH-001.action": "On the instance host, run `tobby user add --role admin <name>` (the tool computes the password hash), then start the instance again. Tobby never starts with an open UI."
+
+"TBY-AUTH-002.what": "Authentication failed."
+"TBY-AUTH-002.cause": "The credentials are unknown or the password is wrong."
+"TBY-AUTH-002.action": "Check the account name and password, then try again. Accounts are managed on the host with `tobby user`."
+
+"TBY-AUTH-003.what": "This action is not allowed for your role."
+"TBY-AUTH-003.cause": "It requires the {{.role}} role."
+"TBY-AUTH-003.action": "Sign in with an account holding the {{.role}} role, or ask an administrator to grant it."
+
+"TBY-AUTH-004.what": "The form could not be submitted safely."
+"TBY-AUTH-004.cause": "The anti-forgery token is missing or has expired — the page was probably left open for a long time."
+"TBY-AUTH-004.action": "The form has been reloaded with a fresh token: submit it again."
+
+"TBY-AUTH-005.what": "Your session has expired."
+"TBY-AUTH-005.cause": "No activity for longer than the session lifetime, or the instance restarted."
+"TBY-AUTH-005.action": "Sign in again; you will be returned to the page you were on."
+
+"TBY-CFG-001.what": "The configuration is invalid."
+"TBY-CFG-001.cause": "{{.detail}}"
+"TBY-CFG-001.action": "Fix the reported setting (precedence: flags, then TOBBY_* environment variables, then the YAML file), check the result with `tobby config dump`, then restart."
+
+"TBY-VAL-001.what": "The recipe or retriever file is invalid."
+"TBY-VAL-001.cause": "In {{.file}}, at {{.path}}: {{.constraint}}."
+"TBY-VAL-001.action": "Fix the field at {{.path}} so it satisfies the constraint, then submit the file again."
+
+"TBY-REG-001.what": "The reference could not be parsed."
+"TBY-REG-001.cause": "{{.reference}} is not a valid image or chart reference."
+"TBY-REG-001.action": "Use the form registry/repository:tag or registry/repository@sha256:… — for example docker.io/library/redis:7.2."
+
+"TBY-REG-002.what": "The source registry could not be reached."
+"TBY-REG-002.cause": "No network route to {{.host}}, or the registry is down (DNS, proxy, or firewall on the path)."
+"TBY-REG-002.action": "Check connectivity to {{.host}} from the instance host and the proxy settings, then retry."
+
+"TBY-REG-003.what": "The source registry refused authentication."
+"TBY-REG-003.cause": "Credentials for {{.host}} are missing or expired."
+"TBY-REG-003.action": "Set registries.credentials for {{.host}} in the configuration, then retry the import."
+
+"TBY-REG-004.what": "The inspection timed out."
+"TBY-REG-004.cause": "{{.host}} did not answer within {{.timeout}}."
+"TBY-REG-004.action": "Retry; if it persists, check the network path to {{.host}} or raise import.inspectTimeout in the configuration."
+
+"TBY-REG-005.what": "The reference does not exist on the source registry."
+"TBY-REG-005.cause": "{{.reference}} was not found — wrong name or tag, or it was deleted upstream."
+"TBY-REG-005.action": "Check the repository name and the tag on the source registry, then correct the reference."
+
+"TBY-POL-001.what": "The registry is not on the allowlist."
+"TBY-POL-001.cause": "{{.host}} is not among the allowed source or destination registries; the transfer was refused before any data moved."
+"TBY-POL-001.action": "If this registry is legitimate, add {{.host}} to registries.allowlist in the configuration; the change is audit-logged."
+
+"TBY-SIG-001.what": "The recipe signature could not be verified."
+"TBY-SIG-001.cause": "No configured trust root validates the signature of {{.recipe}}."
+"TBY-SIG-001.action": "Check that the zone's trust roots include the key that signed this recipe. An unverified recipe is never admitted."
+
+"TBY-SIG-002.what": "A pinned digest does not match the fetched content."
+"TBY-SIG-002.cause": "{{.reference}} pins {{.expected}} but the registry served {{.actual}} — the content changed or was tampered with."
+"TBY-SIG-002.action": "Do not force the transfer. Verify the source registry and the recipe; if the change is legitimate, a re-signed recipe pinning the new digest is required."
+
+"TBY-DST-001.what": "The destination registry cannot store this reference."
+"TBY-DST-001.cause": "{{.reference}} exceeds a destination limit: {{.limit}}."
+"TBY-DST-001.action": "Shorten the relocated path or adjust the destination naming; the refusal happened before any push."
+
+"TBY-CHT-001.what": "The Helm chart is missing an embedded dependency."
+"TBY-CHT-001.cause": "{{.chart}} declares the dependency {{.dependency}} but does not embed it under charts/ — it cannot deploy offline."
+"TBY-CHT-001.action": "Repackage the chart with its dependencies embedded (helm dependency build, then helm package), publish it, and retry the import."
+
+"TBY-STO-001.what": "The local store could not be read."
+"TBY-STO-001.cause": "{{.detail}}"
+"TBY-STO-001.action": "Check that the storage root exists, is mounted, and is readable by the instance, then retry."
+
+"TBY-STO-002.what": "Writing to the local store failed."
+"TBY-STO-002.cause": "{{.detail}}"
+"TBY-STO-002.action": "Check free space and permissions on the storage root, then retry the operation."
+
+"TBY-TSK-001.what": "The task does not exist."
+"TBY-TSK-001.cause": "No task with identifier {{.id}} on this instance — wrong link, or the store was reset."
+"TBY-TSK-001.action": "Open the task list and follow the link of an existing task."
+
+"TBY-SRV-001.what": "An internal error occurred."
+"TBY-SRV-001.cause": "An unexpected condition interrupted the request; details are in the instance logs."
+"TBY-SRV-001.action": "Retry; if it persists, search the instance logs for the correlation identifier shown with this error."
+
+"TBY-SRV-002.what": "This resource does not exist."
+"TBY-SRV-002.cause": "The address is wrong, or the content was removed."
+"TBY-SRV-002.action": "Go back to the content browser or use the search."
+
+"TBY-SRV-003.what": "The instance is unreachable."
+"TBY-SRV-003.cause": "The network connection dropped, or the instance is restarting."
+"TBY-SRV-003.action": "Check your network link and retry; the page resumes as soon as the instance answers."

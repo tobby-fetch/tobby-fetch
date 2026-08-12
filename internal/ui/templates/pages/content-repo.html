@@ -1,0 +1,60 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /content/{repo...} — repository detail (UI-SPEC §5.4): navigable
+     breadcrumb, kind badge, pull command contextualized on the request
+     host, tag table sorted by tag descending. */}}
+{{define "title"}}{{.Data.Name}}{{end}}
+{{define "main"}}
+<section>
+  {{template "breadcrumb" .}}
+  {{if .Err}}
+  {{template "error-block" .}}
+  {{else}}
+  <div class="t-titlerow">
+    <h1 class="t-page-title t-mono" translate="no">{{.Data.Name}}</h1>
+    <span class="t-badge t-badge--{{kindClass .Data.Kind}}" translate="no" lang="en">{{.Data.Kind}}</span>
+  </div>
+  {{if .Data.PullCommand}}
+  <div class="t-row t-pullrow">
+    <span class="t-chip">
+      <span class="t-chip-label">pull</span>
+      <span class="t-truncate" translate="no">{{.Data.PullCommand}}</span>
+      <button type="button" class="t-chip-copy" data-copy="{{.Data.PullCommand}}"
+              aria-label="{{.T "repo.copy_pull"}}" title="{{.T "repo.copy_pull"}}">⧉</button>
+    </span>
+  </div>
+  {{end}}
+  {{if .Data.Tags}}
+  <p class="t-kick">{{.TN "repo.tags_count" (len .Data.Tags) "Count" (len .Data.Tags)}}</p>
+  <table class="t-table">
+    <caption class="t-visually-hidden">{{.T "repo.table_caption" "Repo" .Data.Name}}</caption>
+    <thead>
+      <tr>
+        <th scope="col">{{.T "repo.th_tag"}}</th>
+        <th scope="col">{{.T "repo.th_digest"}}</th>
+        <th scope="col" class="t-num">{{.T "repo.th_size"}}</th>
+        <th scope="col" class="t-num">{{.T "repo.th_platforms"}}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Data.Tags}}
+      <tr>
+        <td class="t-primary t-mono"><a href="/content/{{$.Data.Name}}/-/tags/{{.Tag}}" translate="no">{{.Tag}}</a></td>
+        <td>
+          <span class="t-chip">
+            <span translate="no" title="{{.Digest}}">{{$.Trunc .Digest 26}}</span>
+            <button type="button" class="t-chip-copy" data-copy="{{.Digest}}"
+                    aria-label="{{$.T "repo.copy_digest" "Digest" .Digest}}" title="{{$.T "repo.copy_digest" "Digest" .Digest}}">⧉</button>
+          </span>
+        </td>
+        <td class="t-num" title="{{.Size}}">{{$.FmtBytes .Size}}</td>
+        <td class="t-num">{{.Platforms}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <div class="t-empty"><p>{{.T "repo.no_tags"}}</p></div>
+  {{end}}
+  {{end}}
+</section>
+{{end}}

@@ -1,0 +1,846 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Copyright © 2026 infraBuilder SASU and contributors */
+
+/*
+ * Tobby UI — component stylesheet (ADR-0010).
+ *
+ * Server-rendered pages + htmx. Consumes the design tokens declared in
+ * tokens.css (loaded before this file); every color in this file goes
+ * through a --tobby-* custom property, so the light theme and the operator
+ * themeOverride apply without touching component rules.
+ *
+ * Self-contained on purpose: no @import, no remote url() — the UI must work
+ * fully air-gapped. Class prefix: .t-.
+ */
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--tobby-bg);
+  color: var(--tobby-text);
+  font-family: var(--tobby-font-sans);
+  font-size: var(--tobby-text-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: var(--tobby-accent-text); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code {
+  font-family: var(--tobby-font-mono); font-size: 0.85em;
+  background: var(--tobby-chip-bg);
+  border: 1px solid var(--tobby-border-hairline);
+  border-radius: var(--tobby-radius-xs);
+  padding: 0.05rem 0.3rem;
+}
+
+/* ==========================================================================
+   Accessibility helpers
+   ========================================================================== */
+
+/* Keyboard focus: visible ring on every focusable element. */
+:focus-visible { outline: var(--tobby-focus-ring); outline-offset: 2px; }
+
+/* Screen-reader-only content. */
+.t-visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px;
+  padding: 0; border: 0; clip-path: inset(50%);
+  overflow: hidden; white-space: nowrap;
+}
+
+/* Skip link: hidden until focused, then floats above the shell. */
+.t-skip-link {
+  position: absolute; top: var(--tobby-space-2); left: var(--tobby-space-2);
+  z-index: 100; padding: var(--tobby-space-2) var(--tobby-space-4);
+  background: var(--tobby-accent); color: var(--tobby-on-accent);
+  border-radius: var(--tobby-radius-sm); font-weight: 600;
+  transform: translateY(-300%);
+}
+.t-skip-link:focus-visible { transform: none; }
+
+/* Small text utilities used across components. */
+.t-mono { font-family: var(--tobby-font-mono); font-variant-numeric: tabular-nums; }
+.t-muted { color: var(--tobby-muted); }
+.t-truncate {
+  display: inline-block; max-width: 100%; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis; vertical-align: bottom;
+}
+
+/* ==========================================================================
+   Shell — sticky header (brand / nav / search / controls), stacked banners
+   ========================================================================== */
+
+.t-header { position: sticky; top: 0; z-index: 50; background: var(--tobby-bg); }
+
+.t-topbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--tobby-space-4);
+  padding: 0.55rem 1.2rem;
+  border-bottom: 1px solid var(--tobby-border-hairline);
+}
+
+.t-brand {
+  display: flex; align-items: center; gap: var(--tobby-space-2);
+  font-size: var(--tobby-text-lg); font-weight: 700; letter-spacing: -0.02em;
+  color: var(--tobby-text); text-decoration: none;
+}
+.t-brand svg { width: 24px; height: 24px; color: var(--tobby-accent); }
+.t-brand .t-brand-dot { color: var(--tobby-accent); }
+
+.t-nav { display: flex; gap: 0.9rem; font-size: 0.82rem; }
+.t-nav a {
+  color: var(--tobby-muted);
+  border-bottom: 1px solid transparent; padding-bottom: 1px;
+}
+.t-nav a:hover { color: var(--tobby-accent-text); text-decoration: none; }
+.t-nav a[aria-current="page"] {
+  color: var(--tobby-accent-text); border-color: var(--tobby-accent);
+}
+
+/* Live counter in a nav item (e.g. running tasks). */
+.t-nav-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.1rem; height: 1.1rem; padding: 0 var(--tobby-space-1);
+  border-radius: 999px; background: var(--tobby-accent);
+  color: var(--tobby-on-accent);
+  font-size: var(--tobby-text-2xs); font-weight: 700;
+  font-variant-numeric: tabular-nums; vertical-align: 1px;
+}
+
+/* Global content search. */
+.t-search {
+  margin-left: auto; display: flex; align-items: center; gap: 0.4rem;
+  min-width: 15rem; border: 1px solid var(--tobby-border-control);
+  border-radius: 999px; padding: 0.22rem 0.7rem;
+  color: var(--tobby-muted); font-size: 0.76rem;
+}
+.t-search input { all: unset; flex: 1; color: var(--tobby-text); font-size: 0.78rem; }
+.t-search input::placeholder { color: var(--tobby-muted); }
+
+/* Execution mode chip — informative, never a control (FR-001). */
+.t-modechip {
+  font-family: var(--tobby-font-mono); font-size: 0.7rem;
+  border: 1px solid var(--tobby-border-control); border-radius: 999px;
+  padding: 0.16rem 0.6rem; color: var(--tobby-muted); white-space: nowrap;
+}
+.t-modechip b { color: var(--tobby-accent-text); font-weight: 600; }
+
+.t-lang { font-size: var(--tobby-text-xs); color: var(--tobby-muted); white-space: nowrap; }
+.t-lang b { color: var(--tobby-text); font-weight: 600; }
+
+/* Square icon button (theme toggle, …). */
+.t-iconbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.6rem; height: 1.6rem;
+  border: 1px solid var(--tobby-border-control); border-radius: 0.45rem;
+  background: transparent; color: var(--tobby-muted);
+  font: inherit; font-size: 0.9rem; cursor: pointer;
+}
+.t-iconbtn:hover { color: var(--tobby-accent-text); border-color: var(--tobby-accent); }
+
+.t-usermenu { font-size: 0.78rem; color: var(--tobby-text); white-space: nowrap; }
+.t-usermenu i { font-style: normal; color: var(--tobby-muted); font-size: 0.7rem; }
+
+/* ==========================================================================
+   Banners — operational / security, stacked under the topbar, NOT closable
+   (they stay as long as the condition persists; no dismiss control).
+   ========================================================================== */
+
+.t-banner {
+  display: flex; align-items: center; gap: 0.7rem;
+  padding: var(--tobby-space-2) 1.2rem; font-size: 0.78rem;
+  border-bottom: 1px solid var(--tobby-border-hairline);
+  /* Tint composited over the opaque page background so stacked banners stay
+     legible inside the sticky header. */
+  background:
+    linear-gradient(var(--tobby-warning-bg), var(--tobby-warning-bg)),
+    var(--tobby-bg);
+}
+.t-banner--warning .t-banner-icon { color: var(--tobby-accent-text); }
+.t-banner--danger {
+  background:
+    linear-gradient(var(--tobby-danger-bg), var(--tobby-danger-bg)),
+    var(--tobby-bg);
+}
+.t-banner--danger .t-banner-icon { color: var(--tobby-danger-text); }
+
+/* Taxonomy code carried by the banner (R-03), always in text. */
+.t-banner-code {
+  font-family: var(--tobby-font-mono); font-size: 0.68rem;
+  border: 1px solid var(--tobby-border-control); border-radius: 999px;
+  padding: 0.08rem 0.5rem; color: var(--tobby-muted);
+}
+
+/* ==========================================================================
+   Page scaffold
+   ========================================================================== */
+
+.t-main { display: block; }
+.t-page { padding: 1.1rem 1.4rem 2rem; max-width: 72rem; }
+.t-page-title {
+  font-size: var(--tobby-text-xl); font-weight: 700;
+  letter-spacing: -0.02em; margin: 0 0 0.2rem;
+}
+.t-page-sub {
+  color: var(--tobby-muted); font-size: var(--tobby-text-sm);
+  margin: 0 0 var(--tobby-space-4);
+}
+
+/* Kicker — small uppercase section label. */
+.t-kick {
+  font-size: var(--tobby-text-2xs); text-transform: uppercase;
+  letter-spacing: 0.14em; color: var(--tobby-accent-text);
+  font-weight: 600; margin: 0 0 0.35rem;
+}
+
+.t-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--tobby-space-4); }
+
+/* ==========================================================================
+   Cards & dashboard tiles
+   ========================================================================== */
+
+.t-card {
+  background: var(--tobby-bg-raise);
+  border: 1px solid var(--tobby-border-hairline);
+  border-radius: var(--tobby-radius);
+  padding: 0.95rem 1.1rem;
+}
+
+.t-tiles {
+  display: grid; gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+.t-tile {
+  background: var(--tobby-bg-raise);
+  border: 1px solid var(--tobby-border-hairline);
+  border-radius: var(--tobby-radius);
+  padding: 0.85rem 1rem; min-height: 6.4rem;
+}
+.t-tile-label {
+  font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--tobby-muted); font-weight: 600; margin-bottom: 0.45rem;
+}
+.t-tile-value {
+  font-size: var(--tobby-text-2xl); font-weight: 700;
+  letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+}
+.t-tile-sub { font-size: var(--tobby-text-xs); color: var(--tobby-muted); margin-top: 0.2rem; }
+.t-tile-sub b { color: var(--tobby-text); font-weight: 600; }
+
+/* ==========================================================================
+   Tables — dense listing gabarit (~36px rows, sticky thead, real links)
+   ========================================================================== */
+
+.t-table {
+  width: 100%;
+  border-collapse: separate; /* keeps thead sticky AND rounded corners */
+  border-spacing: 0;
+  font-size: var(--tobby-text-sm);
+  background: var(--tobby-bg-raise);
+  border: 1px solid var(--tobby-border-hairline);
+  border-radius: var(--tobby-radius);
+}
+.t-table th, .t-table td {
+  text-align: left; padding: 0.42rem 0.8rem;
+  border-bottom: 1px solid var(--tobby-border-hairline);
+  vertical-align: middle;
+}
+.t-table td { height: 36px; }
+.t-table th {
+  font-size: var(--tobby-text-2xs); text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--tobby-muted); font-weight: 600;
+  padding-top: var(--tobby-space-2); padding-bottom: var(--tobby-space-2);
+  /* Sticks below the shell header; the shell sets --tobby-sticky-offset to
+     the rendered header height (topbar + stacked banners). */
+  position: sticky; top: var(--tobby-sticky-offset, 0); z-index: 1;
+  background: var(--tobby-bg-raise);
+}
+.t-table thead th:first-child { border-top-left-radius: calc(var(--tobby-radius) - 1px); }
+.t-table thead th:last-child { border-top-right-radius: calc(var(--tobby-radius) - 1px); }
+.t-table tbody tr:last-child td { border-bottom: none; }
+.t-table tbody tr:last-child td:first-child { border-bottom-left-radius: calc(var(--tobby-radius) - 1px); }
+.t-table tbody tr:last-child td:last-child { border-bottom-right-radius: calc(var(--tobby-radius) - 1px); }
+.t-table tbody tr:hover td { background: var(--tobby-chip-bg); }
+
+/* Numeric columns. */
+.t-table th.t-num, .t-table td.t-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Primary cell: the row's real link (never tr[onclick]) inherits the text
+   color and only reveals its affordance on hover/focus. */
+.t-table td.t-primary > a { color: inherit; font-weight: 500; }
+.t-table td.t-primary > a:hover { color: var(--tobby-accent-text); }
+
+/* De-emphasized rows (revoked token, platform not imported, …). */
+.t-table tr.t-dim td { color: var(--tobby-muted); }
+
+/* ==========================================================================
+   Badges — kind and status; sized by content, meaning in TEXT + color
+   ========================================================================== */
+
+.t-badge {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  border-radius: 999px; border: 1px solid transparent;
+  padding: 0.14rem 0.6rem;
+  font-size: 0.7rem; font-weight: 600; white-space: nowrap;
+}
+
+/* ---- Kind badges: neutral outline + accent glyph; the five kind labels
+   are never translated (frozen glossary). ---- */
+.t-badge--image, .t-badge--chart, .t-badge--artifact,
+.t-badge--fileset, .t-badge--recipe {
+  border-color: var(--tobby-border-control); color: var(--tobby-muted);
+  font-weight: 400; font-size: 0.68rem; padding: 0.1rem 0.55rem;
+}
+.t-badge--image::before, .t-badge--chart::before, .t-badge--artifact::before,
+.t-badge--fileset::before, .t-badge--recipe::before {
+  color: var(--tobby-accent-text);
+}
+.t-badge--image::before { content: "⛁"; }
+.t-badge--chart::before { content: "⎈"; }
+.t-badge--artifact::before { content: "◈"; }
+.t-badge--fileset::before { content: "▤"; }
+.t-badge--recipe::before { content: "✒"; }
+
+/* ---- Status badges ---- */
+.t-badge--pending { color: var(--tobby-muted); border-color: var(--tobby-border-control); }
+.t-badge--running {
+  color: var(--tobby-accent-text);
+  background: var(--tobby-warning-bg); border-color: var(--tobby-accent);
+}
+/* Pulsing amber dot on running badges (disabled under reduced motion). */
+.t-badge--running::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--tobby-accent);
+  animation: t-pulse 1.6s infinite;
+}
+@keyframes t-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(240, 169, 46, 0.45); }
+  70% { box-shadow: 0 0 0 7px rgba(240, 169, 46, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(240, 169, 46, 0); }
+}
+.t-badge--done { color: var(--tobby-success-text); background: var(--tobby-success-bg); }
+/* "Terminée avec erreurs · X/Y" — distinct from failed. */
+.t-badge--done-errors { color: var(--tobby-accent-text); background: var(--tobby-warning-bg); }
+/* Failed badges always carry their taxonomy code in text. */
+.t-badge--failed { color: var(--tobby-danger-text); background: var(--tobby-danger-bg); }
+/* Resumed after instance restart (FR-029). */
+.t-badge--resumed {
+  color: var(--tobby-muted);
+  border: 1px dashed var(--tobby-border-control); font-weight: 500;
+}
+/* Solid fill variant (e.g. counters): dark ink on accent, pinned by
+   contrast_test.go. */
+.t-badge--solid {
+  background: var(--tobby-accent); border-color: var(--tobby-accent);
+  color: var(--tobby-on-accent);
+}
+
+/* ==========================================================================
+   Chips — monospaced copyable values (paths, digests, commands, codes)
+   ========================================================================== */
+
+.t-chip {
+  display: inline-flex; align-items: center; gap: 0.45rem; max-width: 100%;
+  font-family: var(--tobby-font-mono); font-size: var(--tobby-text-xs);
+  border: 1px solid var(--tobby-border-hairline);
+  background: var(--tobby-chip-bg); border-radius: 999px;
+  padding: 0.22rem 0.7rem; color: var(--tobby-text);
+}
+
+/* Muted prefix label inside a chip ("pull", "index", "run"). */
+.t-chip-label { color: var(--tobby-muted); }
+
+/* Copy button: the copied value lives in data-copy, always complete even
+   when the displayed text is truncated. */
+.t-chip-copy {
+  border: 0; padding: 0; margin: 0; background: none; font: inherit;
+  cursor: pointer; color: var(--tobby-muted);
+  font-size: 0.78rem; line-height: 1;
+}
+.t-chip-copy:hover { color: var(--tobby-accent-text); }
+/* Transient confirmation after a successful copy. */
+.t-chip.is-copied .t-chip-copy { color: var(--tobby-success-text); }
+
+/* Error-code chip (R-03): the code is the first element of error blocks. */
+.t-chip--code {
+  border-color: var(--tobby-danger); color: var(--tobby-danger-text);
+  background: var(--tobby-danger-bg);
+}
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+
+.t-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+  padding: 0.42rem 0.95rem; border-radius: var(--tobby-radius-sm);
+  border: 1px solid var(--tobby-accent);
+  background: transparent; color: var(--tobby-accent-text);
+  font-family: var(--tobby-font-sans); font-size: var(--tobby-text-sm);
+  font-weight: 600; cursor: pointer; text-decoration: none;
+}
+.t-btn:hover {
+  background: var(--tobby-accent); color: var(--tobby-on-accent);
+  text-decoration: none;
+}
+
+/* Primary: solid amber, dark ink (>= 4.5:1, pinned by contrast_test.go). */
+.t-btn--primary { background: var(--tobby-accent); color: var(--tobby-on-accent); }
+.t-btn--primary:hover {
+  background: var(--tobby-accent-soft); border-color: var(--tobby-accent-soft);
+}
+
+/* Secondary: quiet outline. */
+.t-btn--secondary { border-color: var(--tobby-border-control); color: var(--tobby-muted); }
+.t-btn--secondary:hover { background: var(--tobby-chip-bg); color: var(--tobby-text); }
+
+/* Danger: outline only; hover deepens the wash instead of going solid so
+   the label keeps AA contrast in both themes. */
+.t-btn--danger { border-color: var(--tobby-danger); color: var(--tobby-danger-text); }
+.t-btn--danger:hover { background: var(--tobby-danger-bg); color: var(--tobby-danger-text); }
+
+.t-btn--sm { padding: 0.22rem 0.6rem; font-size: var(--tobby-text-xs); }
+.t-btn[disabled], .t-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ==========================================================================
+   Forms — visible labels, server-rendered errors wired through ARIA
+   ========================================================================== */
+
+.t-form label, .t-label {
+  display: block; font-size: var(--tobby-text-xs); font-weight: 600;
+  color: var(--tobby-muted); margin: 0.7rem 0 var(--tobby-space-1);
+}
+.t-input,
+.t-form input:not([type="checkbox"]):not([type="radio"]),
+.t-form select,
+.t-form textarea {
+  width: 100%; background: var(--tobby-bg);
+  border: 1px solid var(--tobby-border-control);
+  border-radius: var(--tobby-radius-sm); padding: 0.45rem 0.7rem;
+  color: var(--tobby-text);
+  font-family: var(--tobby-font-sans); font-size: 0.85rem;
+}
+.t-input::placeholder, .t-form input::placeholder { color: var(--tobby-muted); }
+.t-input.t-mono, .t-form input.t-mono { font-family: var(--tobby-font-mono); }
+
+/* Invalid fields: the template sets aria-invalid and points
+   aria-describedby at the matching .t-form-error element. */
+.t-form [aria-invalid="true"], .t-input[aria-invalid="true"] {
+  border-color: var(--tobby-danger);
+}
+.t-form-error {
+  color: var(--tobby-danger-text); font-size: var(--tobby-text-xs);
+  margin: var(--tobby-space-1) 0 0;
+}
+.t-form-hint {
+  color: var(--tobby-muted); font-size: var(--tobby-text-xs);
+  margin: var(--tobby-space-1) 0 0;
+}
+
+/* ==========================================================================
+   Error block (R-03) — frozen markup: code chip first, what/cause/action
+   as a <dl>, explicit help link
+   ========================================================================== */
+
+.t-error-block {
+  border: 1px solid var(--tobby-border-hairline);
+  border-left: 3px solid var(--tobby-danger);
+  border-radius: 0.6rem; background: var(--tobby-bg-raise);
+  padding: 0.8rem 1rem; font-size: var(--tobby-text-sm); max-width: 44rem;
+}
+.t-error-block-head {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem;
+  margin-bottom: var(--tobby-space-2);
+}
+.t-error-block-title { font-weight: 600; }
+.t-error-block dl {
+  display: grid; grid-template-columns: auto 1fr;
+  gap: var(--tobby-space-1) 0.9rem; margin: 0;
+}
+.t-error-block dt {
+  font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--tobby-muted); font-weight: 600; padding-top: 0.15rem;
+}
+.t-error-block dd { margin: 0; }
+/* Footer: "Aide sur TBY-XXX-NNN" link + correlation chip (run_id). */
+.t-error-block-foot {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.8rem;
+  margin-top: 0.6rem; font-size: 0.76rem;
+}
+
+/* ==========================================================================
+   Empty state
+   ========================================================================== */
+
+.t-empty {
+  border: 1px dashed var(--tobby-border-control);
+  border-radius: var(--tobby-radius);
+  padding: var(--tobby-space-6) var(--tobby-space-4);
+  text-align: center; color: var(--tobby-muted);
+  font-size: var(--tobby-text-sm);
+}
+.t-empty-title {
+  color: var(--tobby-text); font-weight: 600;
+  font-size: var(--tobby-text-md); margin: 0 0 var(--tobby-space-1);
+}
+
+/* ==========================================================================
+   Skeletons — fixed geometry placeholders (htmx swap targets render the
+   same box in loading / value / error states; never a full-page spinner)
+   ========================================================================== */
+
+.t-skeleton {
+  height: 0.7rem; border-radius: 0.35rem; margin: 0.35rem 0;
+  background: linear-gradient(90deg,
+    var(--tobby-skeleton-base) 25%,
+    var(--tobby-skeleton-sheen) 50%,
+    var(--tobby-skeleton-base) 75%);
+  background-size: 200% 100%;
+  animation: t-shimmer 1.4s infinite linear;
+}
+@keyframes t-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* ==========================================================================
+   Toasts — fixed #toasts container, CSS-only auto-dismiss
+   ========================================================================== */
+
+#toasts {
+  position: fixed; right: var(--tobby-space-4); bottom: var(--tobby-space-4);
+  z-index: 60; display: flex; flex-direction: column;
+  gap: var(--tobby-space-2); max-width: 24rem;
+}
+.t-toast {
+  background: var(--tobby-bg-raise);
+  border: 1px solid var(--tobby-border-hairline);
+  border-left: 3px solid var(--tobby-accent);
+  border-radius: 0.6rem; padding: 0.6rem 0.9rem;
+  font-size: var(--tobby-text-sm);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  /* Slide in, then fade out after the TTL; `forwards` keeps it hidden until
+     htmx removes the node. */
+  animation:
+    t-toast-in 0.18s ease-out,
+    t-toast-out 0.4s ease-in var(--t-toast-ttl, 6s) forwards;
+}
+.t-toast--success { border-left-color: var(--tobby-success); }
+.t-toast--danger { border-left-color: var(--tobby-danger); }
+@keyframes t-toast-in {
+  from { opacity: 0; transform: translateY(0.4rem); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes t-toast-out {
+  to { opacity: 0; visibility: hidden; }
+}
+
+/* ==========================================================================
+   Breadcrumb — every intermediate segment is a real link
+   ========================================================================== */
+
+.t-breadcrumb {
+  font-family: var(--tobby-font-mono); font-size: var(--tobby-text-sm);
+  margin-bottom: 0.6rem;
+}
+.t-breadcrumb a { color: var(--tobby-muted); }
+.t-breadcrumb a:hover { color: var(--tobby-accent-text); }
+.t-breadcrumb-sep { color: var(--tobby-muted); opacity: 0.5; margin: 0 var(--tobby-space-1); }
+/* Last segment: current page, not a link. */
+.t-breadcrumb [aria-current="page"], .t-breadcrumb-current {
+  color: var(--tobby-text); font-weight: 600;
+}
+
+/* ==========================================================================
+   Kbd — keyboard hints ("/" shortcut, …)
+   ========================================================================== */
+
+.t-kbd {
+  font-family: var(--tobby-font-mono); font-size: 0.62rem;
+  border: 1px solid var(--tobby-border-control); border-radius: 0.25rem;
+  padding: 0 0.3rem; color: var(--tobby-muted);
+}
+
+/* ==========================================================================
+   Dialog — native <dialog> (never confirm()), e.g. token revocation
+   ========================================================================== */
+
+.t-dialog {
+  background: var(--tobby-bg-raise); color: var(--tobby-text);
+  border: 1px solid var(--tobby-border-hairline);
+  border-radius: var(--tobby-radius); padding: var(--tobby-space-5);
+  max-width: 26rem;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.45);
+}
+.t-dialog::backdrop { background: rgba(4, 5, 8, 0.6); backdrop-filter: blur(2px); }
+.t-dialog-title {
+  font-size: var(--tobby-text-lg); font-weight: 700;
+  letter-spacing: -0.02em; margin: 0 0 var(--tobby-space-2);
+}
+.t-dialog p {
+  font-size: var(--tobby-text-sm); color: var(--tobby-muted);
+  margin: 0 0 var(--tobby-space-4);
+}
+.t-dialog-actions { display: flex; justify-content: flex-end; gap: var(--tobby-space-2); }
+
+/* ==========================================================================
+   Login — standalone card outside the shell
+   ========================================================================== */
+
+.t-login {
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 1.4rem;
+  padding: var(--tobby-space-6) var(--tobby-space-4);
+}
+.t-login-card {
+  background: var(--tobby-bg-raise);
+  border: 1px solid var(--tobby-border-hairline);
+  border-radius: var(--tobby-radius);
+  padding: 1.6rem 1.8rem; width: 22rem; max-width: 100%;
+}
+.t-login-brand {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 0.4rem; margin-bottom: 1.1rem;
+}
+.t-login-brand svg { width: 40px; height: 40px; color: var(--tobby-accent); }
+.t-login-brand .t-login-wordmark {
+  font-weight: 700; font-size: var(--tobby-text-2xl); letter-spacing: -0.02em;
+}
+.t-login-card .t-btn { width: 100%; margin-top: var(--tobby-space-4); }
+/* Version + license line under the card. */
+.t-login-footer {
+  font-size: 0.68rem; color: var(--tobby-muted);
+  font-family: var(--tobby-font-mono);
+}
+
+/* ==========================================================================
+   Reduced motion — every animation is opt-out (WCAG 2.3.3)
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .t-badge--running::before { animation: none; }
+  .t-skeleton { animation: none; background: var(--tobby-skeleton-base); }
+  /* Toasts still auto-dismiss, but with an instant hide instead of motion. */
+  .t-toast { animation: t-toast-out 0.01s linear var(--t-toast-ttl, 6s) forwards; }
+  html { scroll-behavior: auto; }
+}
+
+/* ==========================================================================
+   Template glue — utilities consumed by the Go templates
+   ========================================================================== */
+
+/* Language switcher rendered as a <button>: strip the UA chrome. */
+button.t-lang {
+  background: none; border: 0; padding: 0; cursor: pointer; font: inherit;
+  font-size: var(--tobby-text-xs); color: var(--tobby-muted); white-space: nowrap;
+}
+button.t-lang:hover { color: var(--tobby-accent-text); }
+
+/* Inline preference forms (lang/theme) sit in the header flow. */
+.t-inline-form { display: inline-flex; align-items: center; }
+
+/* Two-column dashboard body (tasks + shortcuts). */
+.t-dashboard-cols {
+  display: grid; gap: 0.9rem; margin-top: 0.9rem;
+  grid-template-columns: 2fr 1fr; align-items: start;
+}
+@media (max-width: 56rem) { .t-dashboard-cols { grid-template-columns: 1fr; } }
+
+/* Success-tinted text (dashboard "Ready" value). */
+.t-success-text { color: var(--tobby-success-text); }
+
+/* Upcoming-milestone nav placeholders (ui.showUpcoming): inert, never
+   focusable (UI-SPEC: no aria-disabled links). */
+.t-nav-upcoming { color: var(--tobby-muted); opacity: 0.55; font-size: 0.82rem; }
+
+/* Card headings align with the tile labels. */
+.t-card h2 {
+  font-size: var(--tobby-text-md); font-weight: 600; margin: 0 0 0.6rem;
+  letter-spacing: -0.01em;
+}
+
+/* The hidden attribute always wins (transport-error zone toggles it). */
+[hidden] { display: none !important; }
+
+/* ==========================================================================
+   Content browsing (J2.5) — filter row, host groups, breadcrumb pages
+   ========================================================================== */
+
+/* Single filter form of /content: search + kind checkboxes + submit. */
+.t-content-filters {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem;
+  margin: 0.4rem 0 1rem;
+}
+.t-content-filters .t-search--page { margin-left: 0; flex: 1 1 16rem; }
+
+/* Kind badges as real checkboxes of the same form (R-06). */
+.t-kindfilter {
+  display: flex; flex-wrap: wrap; gap: 0.4rem;
+  border: 0; padding: 0; margin: 0;
+}
+.t-kindpick { cursor: pointer; user-select: none; }
+.t-kindpick:focus-within { outline: var(--tobby-focus-ring); outline-offset: 2px; }
+.t-kindpick:has(input:checked) {
+  border-color: var(--tobby-accent); color: var(--tobby-text);
+}
+
+/* Source-host group heading of the listing (ADR-0013). */
+.t-grouphead {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.7rem;
+  margin: 1.1rem 0 0.45rem;
+}
+.t-grouphead h2 {
+  margin: 0; font-size: var(--tobby-text-md); font-weight: 600;
+  font-family: var(--tobby-font-mono); letter-spacing: -0.01em;
+}
+.t-grouphead + .t-table { margin-bottom: 0.4rem; }
+.t-grouphead .t-muted { font-size: var(--tobby-text-xs); }
+
+/* Wide primary column of the listing. */
+.t-table th.t-col-path { width: 46%; }
+
+/* Server pagination bar. */
+.t-pagination {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.8rem;
+  margin-top: 0.6rem; font-size: var(--tobby-text-sm); color: var(--tobby-muted);
+}
+
+/* Title row of detail pages: h1 + badges on one line. */
+.t-titlerow {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.7rem;
+  margin-bottom: 0.6rem;
+}
+.t-titlerow .t-page-title { margin: 0; }
+
+/* Pull-command chip rows and the sparse-index note. */
+.t-pullrow { margin-bottom: 0.8rem; }
+.t-note { font-size: var(--tobby-text-xs); margin: 0 0 1rem; }
+
+/* Discreet import deep-link next to an absent platform (UI-SPEC §5.5). */
+.t-import-link { font-size: var(--tobby-text-xs); margin-left: 0.5rem; }
+
+/* ==========================================================================
+   Import & tasks screens (J2.6) — appended additions only
+   ========================================================================== */
+
+/* FR-026 per-digest status badges: text + color, never color alone. */
+.t-badge--new { color: var(--tobby-accent-text); border-color: var(--tobby-accent); }
+.t-badge--outdated { color: var(--tobby-accent-text); background: var(--tobby-warning-bg); }
+.t-badge--up-to-date { color: var(--tobby-success-text); border-color: var(--tobby-border-control); }
+
+/* /import: reference row and step-2 confirmation row. */
+.t-import { max-width: 52rem; }
+.t-import-form label { display: block; font-size: var(--tobby-text-xs); font-weight: 600; color: var(--tobby-muted); margin-bottom: 0.25rem; }
+.t-import-refrow { flex-wrap: nowrap; margin-bottom: 1rem; }
+.t-import-refrow .t-input { flex: 1; }
+.t-import-chips { margin-bottom: 0.7rem; }
+.t-import-confirm { margin-top: 0.9rem; justify-content: space-between; }
+.t-col-pick { width: 2rem; }
+
+/* Indeterminate-activity dot (htmx indicator; text equivalent lives in
+   the busy zone). Hidden until htmx sets the request class. */
+.t-pulse-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--tobby-accent); }
+.htmx-request .t-pulse-dot, .t-pulse-dot.htmx-request { animation: t-pulse 1.6s infinite; }
+
+/* /tasks filters share the content filter row; native selects follow the
+   control tokens. */
+.t-select {
+  background: var(--tobby-bg); border: 1px solid var(--tobby-border-control);
+  border-radius: var(--tobby-radius-sm); padding: 0.4rem 0.6rem;
+  color: var(--tobby-text); font-size: var(--tobby-text-sm);
+}
+
+/* Task detail: header actions, meta chips, per-item error disclosure. */
+.t-taskactions { margin-left: auto; display: inline-flex; gap: 0.5rem; }
+.t-taskmeta { margin-bottom: 1rem; font-size: var(--tobby-text-sm); }
+.t-errrow summary { cursor: pointer; display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+.t-errrow[open] summary { margin-bottom: 0.5rem; }
+
+/* Extensible reports zone (FR-024; version resolution and scans join it). */
+.t-report-title { margin: 0 0 0.5rem; font-size: var(--tobby-text-sm); font-weight: 600; }
+
+/* Log viewer (UI-SPEC §7): scrollable, focusable, capped height. */
+.t-logbar { justify-content: space-between; margin-bottom: 0.4rem; }
+.t-logbar .t-kick { margin: 0; }
+.t-logview {
+  background: var(--tobby-bg); border: 1px solid var(--tobby-border-hairline);
+  border-radius: var(--tobby-radius-sm); padding: 0.6rem 0.8rem;
+  max-height: 22rem; overflow: auto;
+}
+.t-logview:focus-visible { outline: var(--tobby-focus-ring); }
+.t-logview pre {
+  margin: 0; font-family: var(--tobby-font-mono); font-size: 0.7rem;
+  line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+}
+
+/* ==========================================================================
+   Annex screens (J2.7): admin accounts, help, about, api-docs —
+   appended additions only
+   ========================================================================== */
+
+/* Sub-menu of the Help & info trio: chips as local navigation. */
+.t-subnav { margin-bottom: 1.2rem; }
+.t-subnav a.t-chip { text-decoration: none; color: var(--tobby-muted); }
+.t-subnav a.t-chip:hover { color: var(--tobby-accent-text); }
+.t-subnav a.t-chip[aria-current="page"] {
+  border-color: var(--tobby-accent); color: var(--tobby-accent-text);
+}
+
+/* One-time secret block (FR-072): transient, never re-renderable. */
+.t-secretbox {
+  border: 1px solid var(--tobby-accent); background: var(--tobby-warning-bg);
+  border-radius: var(--tobby-radius); padding: var(--tobby-space-4);
+  margin-bottom: 1.2rem;
+}
+.t-secretbox:focus-visible { outline: var(--tobby-focus-ring); }
+.t-secretbox-title { margin: 0 0 0.5rem; font-size: var(--tobby-text-sm); font-weight: 600; }
+.t-secretbox .t-note { margin: 0.5rem 0 0; }
+
+/* /admin/accounts: tables and the creation form. */
+.t-admin { max-width: 60rem; }
+.t-admin-table { margin-bottom: 1.2rem; }
+.t-admin-create { margin-top: 1rem; }
+.t-admin-create label {
+  display: block; font-size: var(--tobby-text-xs); font-weight: 600;
+  color: var(--tobby-muted); margin-bottom: 0.25rem;
+}
+.t-admin-create .t-row { align-items: flex-end; }
+.t-form-error { color: var(--tobby-danger-text); font-size: var(--tobby-text-sm); margin: 0.6rem 0 0; }
+
+/* /help: anchored sections, the targeted one highlighted (mockup: amber
+   edge on the :target section). */
+.t-help { max-width: 56rem; }
+.t-help-toc { margin-bottom: 1.2rem; }
+.t-help-toc a.t-chip { text-decoration: none; }
+.t-helpsec {
+  border: 1px solid var(--tobby-border-hairline); border-radius: var(--tobby-radius);
+  padding: var(--tobby-space-4); margin-bottom: 0.8rem; scroll-margin-top: 5rem;
+}
+.t-helpsec:target { border-color: var(--tobby-accent); }
+.t-helpsec h2 { font-size: var(--tobby-text-sm); margin: 0 0 0.6rem; }
+.t-helpsec dl { margin: 0; font-size: var(--tobby-text-sm); }
+.t-helpsec dt { color: var(--tobby-muted); font-size: var(--tobby-text-xs); font-weight: 600; margin-top: 0.5rem; }
+.t-helpsec dd { margin: 0.15rem 0 0; }
+
+/* /about: roadmap list. */
+.t-about { max-width: 56rem; }
+.t-about-roadmap { margin: 0 0 1.2rem; padding-left: 1.2rem; font-size: var(--tobby-text-sm); }
+.t-about-roadmap li { margin-bottom: 0.35rem; }
+
+/* /api-docs: one native <details> per endpoint. */
+.t-apidocs { max-width: 56rem; }
+.t-apidoc {
+  border: 1px solid var(--tobby-border-hairline); border-radius: var(--tobby-radius-sm);
+  padding: 0.5rem 0.8rem; margin-bottom: 0.5rem;
+}
+.t-apidoc summary {
+  cursor: pointer; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+}
+.t-apidoc[open] summary { margin-bottom: 0.6rem; }
+.t-apidoc-summary { font-size: var(--tobby-text-sm); color: var(--tobby-muted); }
+.t-apidoc .t-table { margin-bottom: 0.6rem; }

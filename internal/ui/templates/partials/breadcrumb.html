@@ -1,0 +1,14 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* Breadcrumb (UI-SPEC §7): every intermediate segment targets
+     /content?prefix=… — the parameter shared with the API (FR-061) — and
+     the last segment is the current page, never a link. Pages feed it
+     through .Data.Crumbs. */}}
+{{define "breadcrumb"}}
+<nav class="t-breadcrumb" aria-label="{{.T "content.breadcrumb_label"}}">
+  <a href="/content">{{.T "nav.content"}}</a>
+  {{- range .Data.Crumbs}}<span class="t-breadcrumb-sep">/</span>
+  {{- if .Href}}<a href="{{.Href}}" translate="no">{{.Label}}</a>
+  {{- else}}<span aria-current="page" translate="no">{{.Label}}</span>{{end}}
+  {{- end}}
+</nav>
+{{end}}

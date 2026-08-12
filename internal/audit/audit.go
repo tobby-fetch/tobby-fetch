@@ -45,12 +45,34 @@ const ActorLocal = "local"
 // OriginLocal marks events that did not come from a network client.
 const OriginLocal = "local"
 
-// Actions recorded at this milestone. The catalog grows with the features
-// that ship (authentication, token lifecycle, sensitive configuration
-// changes, audited overrides — FR-046, FR-054, FR-075).
+// Actions recorded so far. The catalog grows with the features that ship
+// (sensitive configuration changes, audited overrides — FR-046, FR-054);
+// full authentication coverage (throttling, session timeout events)
+// lands at milestone 4 with R-14.
 const (
 	ActionInstanceStart = "instance.start"
 	ActionInstanceStop  = "instance.stop"
+
+	// Account lifecycle (R-01; local CLI, actor "local").
+	ActionAccountCreate = "account.create"
+	ActionAccountPasswd = "account.password_change"
+
+	// Static token lifecycle (FR-072).
+	ActionTokenCreate = "token.create"
+	ActionTokenRevoke = "token.revoke"
+
+	// UI sessions (interactive sign-in and sign-out).
+	ActionLogin  = "session.login"
+	ActionLogout = "session.logout"
+
+	// ActionAuthOverride is emitted at startup while authentication is
+	// disabled by the explicit FR-075 opt-out — the trail's counterpart of
+	// the permanent UI banner.
+	ActionAuthOverride = "auth.override_active"
+
+	// ActionImportCreate is a unit-import task creation (FR-023): the actor
+	// is the authenticated identity, the target the requested reference.
+	ActionImportCreate = "import.create"
 )
 
 // Event is one security audit event (FR-094 schema).

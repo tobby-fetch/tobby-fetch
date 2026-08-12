@@ -1,0 +1,706 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright © 2026 infraBuilder SASU and contributors
+#
+# OpenAPI 3.1 contract of the Tobby REST API (FR-060). The API is the
+# strict mirror of the web UI (FR-061): every endpoint carries exactly the
+# parameters of its screen, and every error is an entry of the single
+# error taxonomy rendered as an RFC 9457 problem document. A test
+# cross-checks this document against the registered routes.
+openapi: 3.1.0
+info:
+  title: Tobby REST API
+  # The API major version. The binary's build version is shown on /about
+  # and in the tobby_build_info metric — this document is static.
+  version: v1
+  description: >
+    Versioned REST API of a Tobby instance, in strict parity with the web
+    UI (FR-061): same parameters, same error taxonomy. Payloads carry raw
+    bytes and RFC 3339 timestamps exclusively; localization is a UI
+    concern. Errors are RFC 9457 problem documents whose extension members
+    (code, probable_cause, action, correlation_id) come from the embedded
+    error taxonomy; the "type" member is the in-instance troubleshooting
+    anchor /help#<code>, resolvable offline.
+  license:
+    name: GPL-3.0-only
+    identifier: GPL-3.0-only
+servers:
+  - url: /
+    description: The instance itself (single listener, ADR-0015).
+security:
+  - basicAuth: []
+  - bearerAuth: []
+paths:
+  /api/v1/openapi.yaml:
+    get:
+      summary: This document, as application/yaml. Role viewer.
+      responses:
+        "200":
+          description: The embedded OpenAPI 3.1 document.
+          content:
+            application/yaml:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/content:
+    get:
+      summary: >-
+        List the repositories of the local store, grouped and paginated.
+        Mirror of the /content screen. Role viewer.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Substring filter on the full relocated path.
+          schema:
+            type: string
+        - name: kind
+          in: query
+          required: false
+          description: Keep only the listed kinds (repeatable).
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/Kind"
+        - name: prefix
+          in: query
+          required: false
+          description: Keep repositories under an exact path prefix.
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          description: 1-based page number.
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: One page of repositories.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentList"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/content/{repo}:
+    get:
+      summary: >-
+        Repository detail with its tags. Mirror of the /content/{repo}
+        screen. Role viewer.
+      parameters:
+        - $ref: "#/components/parameters/Repo"
+      responses:
+        "200":
+          description: The repository and its tags.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentRepo"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/content/{repo}/-/tags/{tag}:
+    get:
+      summary: >-
+        Manifest detail of one tag, platforms and local presence included
+        (sparse index, FR-022). The "/-/" separator is the deterministic
+        repository/sub-resource split (ADR-0015). Role viewer.
+      parameters:
+        - $ref: "#/components/parameters/Repo"
+        - name: tag
+          in: path
+          required: true
+          description: The tag name.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The manifest detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentManifest"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/import:
+    post:
+      summary: >-
+        Enqueue one unit-import task from a prior inspection. The digests
+        are re-verified at commit (FR-026). Mirror of the /import screen's
+        confirmation. Role operator.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportRequest"
+      responses:
+        "201":
+          description: The created task.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/import/inspect:
+    get:
+      summary: >-
+        Inspect a remote reference before importing — bounded by
+        import.inspectTimeout. Mirror of the /import screen's step 2.
+        Role operator.
+      parameters:
+        - name: ref
+          in: query
+          required: true
+          description: "The reference to inspect (registry/repo:tag or @digest)."
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The inspection report with per-platform status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectReport"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/tasks:
+    get:
+      summary: >-
+        List the tasks of the persistent queue, newest first. Mirror of
+        the /tasks screen (same q, status, type parameters). Role viewer.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Substring filter on the task reference.
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          description: Keep only tasks in this status.
+          schema:
+            $ref: "#/components/schemas/TaskStatus"
+        - name: type
+          in: query
+          required: false
+          description: Keep only tasks of this type ("unit-import").
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The matching tasks.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/tasks/{id}:
+    get:
+      summary: One task with its items and aggregates. Role viewer.
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+      responses:
+        "200":
+          description: The task.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/tasks/{id}/logs:
+    get:
+      summary: >-
+        Task logs: ?format=raw downloads the whole log as text/plain
+        (Content-Disposition names task and run); otherwise ?after=N
+        answers the incremental {chunk, next} cursor contract of the
+        screen's log follow. Role viewer.
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+        - name: format
+          in: query
+          required: false
+          description: '"raw" downloads the complete log as text/plain.'
+          schema:
+            type: string
+            enum: [raw]
+        - name: after
+          in: query
+          required: false
+          description: Byte cursor of the incremental read (default 0).
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: The log chunk (JSON cursor form, or raw text).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chunk:
+                    type: string
+                    description: Log bytes after the cursor.
+                  next:
+                    type: integer
+                    description: The cursor for the next read.
+            text/plain:
+              schema:
+                type: string
+                description: The complete log (?format=raw).
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/accounts:
+    get:
+      summary: >-
+        List the local accounts — never password hashes. Accounts are
+        created on the host with the tobby user CLI (R-01). Mirror of the
+        /admin/accounts screen. Role admin.
+      responses:
+        "200":
+          description: The accounts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accounts:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Account"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/tokens:
+    get:
+      summary: >-
+        List the static API tokens, revoked included — never secrets.
+        Role admin.
+      responses:
+        "200":
+          description: The tokens.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Token"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      summary: >-
+        Create a static API token (FR-072). The clear secret is returned
+        exactly once, in this response; only its SHA-256 is stored.
+        Role admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, role]
+              properties:
+                name:
+                  type: string
+                  description: Unique name among the active tokens.
+                role:
+                  $ref: "#/components/schemas/Role"
+      responses:
+        "201":
+          description: The created token with its one-time secret.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  role:
+                    $ref: "#/components/schemas/Role"
+                  secret:
+                    type: string
+                    description: >-
+                      The clear token secret ("tby_…") — shown exactly
+                      once, never re-displayable.
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/tokens/{name}/revoke:
+    post:
+      summary: >-
+        Revoke a token immediately and permanently (FR-072). Role admin.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: The token name.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The revoked token.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    $ref: "#/components/schemas/Token"
+        default:
+          $ref: "#/components/responses/Problem"
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: >-
+        Account name and password, or token name and token secret — the
+        same accounts as the web UI and the embedded registry (FR-076).
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: A static API token secret ("tby_…", FR-072).
+  parameters:
+    Repo:
+      name: repo
+      in: path
+      required: true
+      description: >-
+        The relocated repository path; may contain slashes
+        (e.g. docker.io/library/redis).
+      schema:
+        type: string
+    TaskID:
+      name: id
+      in: path
+      required: true
+      description: The task identifier.
+      schema:
+        type: string
+  responses:
+    Problem:
+      description: >-
+        Any error, as an RFC 9457 problem document carrying the taxonomy
+        entry (application/problem+json) with its entry's HTTP status.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    Problem:
+      type: object
+      description: >-
+        RFC 9457 problem document. The extension members come from the
+        single error taxonomy; "type" is the in-instance troubleshooting
+        anchor, resolvable offline.
+      properties:
+        type:
+          type: string
+          description: In-instance troubleshooting anchor, "/help#<code>".
+        title:
+          type: string
+          description: What happened, in the negotiated language.
+        status:
+          type: integer
+          description: The HTTP status of the response.
+        code:
+          type: string
+          description: The stable taxonomy code ("TBY-REG-003").
+        probable_cause:
+          type: string
+          description: The probable cause, in the negotiated language.
+        action:
+          type: string
+          description: The corrective action, in the negotiated language.
+        correlation_id:
+          type: string
+          description: Run or task identifier for log correlation (FR-090).
+      required: [type, title, status, code, probable_cause, action]
+    Kind:
+      type: string
+      description: The five frozen ingredient kinds (never translated).
+      enum: [ContainerImage, HelmChart, OCIArtifact, FileSet, Recipe]
+    Role:
+      type: string
+      description: The closed role ladder (ADR-0009).
+      enum: [viewer, operator, admin]
+    TaskStatus:
+      type: string
+      description: >-
+        Stored task and item statuses. "Done with errors" is a rendering
+        of failed plus aggregates, not a stored state.
+      enum: [pending, running, done, failed, skipped]
+    ContentList:
+      type: object
+      properties:
+        repositories:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              kind:
+                $ref: "#/components/schemas/Kind"
+              tags:
+                type: integer
+              sizeBytes:
+                type: integer
+                description: Logical size in bytes (deduplicated per repository).
+        page:
+          type: integer
+        totalPages:
+          type: integer
+        total:
+          type: integer
+    ContentRepo:
+      type: object
+      properties:
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/Kind"
+        tags:
+          type: array
+          items:
+            type: object
+            properties:
+              tag:
+                type: string
+              digest:
+                type: string
+              sizeBytes:
+                type: integer
+              platforms:
+                type: integer
+    ContentManifest:
+      type: object
+      properties:
+        repo:
+          type: string
+        tag:
+          type: string
+        digest:
+          type: string
+          description: The pinned original index digest (sparse index, FR-022).
+        mediaType:
+          type: string
+        kind:
+          $ref: "#/components/schemas/Kind"
+        sizeBytes:
+          type: integer
+        annotations:
+          type: object
+          additionalProperties:
+            type: string
+        platforms:
+          type: array
+          items:
+            type: object
+            properties:
+              os:
+                type: string
+              arch:
+                type: string
+              variant:
+                type: string
+              digest:
+                type: string
+              sizeBytes:
+                type: integer
+              present:
+                type: boolean
+                description: False for a sparse-index entry absent locally.
+    ImportRequest:
+      type: object
+      required: [reference, platforms]
+      properties:
+        reference:
+          type: string
+          description: "The reference to import (registry/repo:tag or @digest)."
+        platforms:
+          type: array
+          description: The selected platforms of a prior inspection.
+          items:
+            type: object
+            required: [name, digest]
+            properties:
+              name:
+                type: string
+                description: '"os/arch[/variant]", or the reference name.'
+              digest:
+                type: string
+                description: The digest pinned by the inspection.
+    InspectReport:
+      type: object
+      properties:
+        reference:
+          type: string
+        repository:
+          type: string
+          description: The relocated destination repository.
+        tag:
+          type: string
+        index_digest:
+          type: string
+        media_type:
+          type: string
+        kind:
+          $ref: "#/components/schemas/Kind"
+        multi_arch:
+          type: boolean
+        platforms:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              os:
+                type: string
+              arch:
+                type: string
+              variant:
+                type: string
+              digest:
+                type: string
+              size_bytes:
+                type: integer
+              status:
+                type: string
+                description: Per-digest status against the local store (FR-026).
+                enum: [new, outdated, up-to-date]
+    Task:
+      type: object
+      description: >-
+        One task of the persistent queue: the stored schema plus read-time
+        aggregates and the principal taxonomy code of a failed task.
+      properties:
+        id:
+          type: string
+        run_id:
+          type: string
+          description: The FR-090 correlation identifier of the run.
+        type:
+          type: string
+          description: The task type ("unit-import" at this milestone).
+        reference:
+          type: string
+        actor:
+          type: string
+          description: The authenticated identity that created the task.
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        created:
+          type: string
+          format: date-time
+        started:
+          type: string
+          format: date-time
+        finished:
+          type: string
+          format: date-time
+        resumed:
+          type: boolean
+          description: True after an instance-restart re-queue (FR-029).
+        error:
+          $ref: "#/components/schemas/ItemError"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskItem"
+        chart_dependencies:
+          type: array
+          description: Helm chart dependency report (FR-024).
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              version:
+                type: string
+              repository:
+                type: string
+              embedded:
+                type: boolean
+        items_total:
+          type: integer
+        items_done:
+          type: integer
+        items_failed:
+          type: integer
+        items_skipped:
+          type: integer
+        principal_code:
+          type: string
+          description: >-
+            The principal taxonomy code of a failed task, computed by the
+            single aggregation rule (taxonomy.Principal).
+    TaskItem:
+      type: object
+      properties:
+        name:
+          type: string
+        digest:
+          type: string
+        size_bytes:
+          type: integer
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        error:
+          $ref: "#/components/schemas/ItemError"
+    ItemError:
+      type: object
+      description: >-
+        A persisted failure: taxonomy code plus typed parameters — never a
+        localized sentence (ADR-0015), so history re-renders in any
+        language.
+      properties:
+        code:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+    Account:
+      type: object
+      properties:
+        name:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        created:
+          type: string
+          format: date-time
+        last_login:
+          type: string
+          format: date-time
+    Token:
+      type: object
+      properties:
+        name:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        created:
+          type: string
+          format: date-time
+        revoked:
+          type: boolean

@@ -1,0 +1,95 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /content/{repo...}/-/tags/{tag} — manifest detail (UI-SPEC §5.5):
+     pinned index digest, platform table with local presence (sparse index
+     FR-022), OCI annotations, pull-by-digest command. */}}
+{{define "title"}}{{.Data.ShortName}}:{{.Data.Tag}}{{end}}
+{{define "main"}}
+<section>
+  {{template "breadcrumb" .}}
+  {{if .Err}}
+  {{template "error-block" .}}
+  {{else}}
+  <div class="t-titlerow">
+    <h1 class="t-page-title t-mono" translate="no">{{.Data.ShortName}}:{{.Data.Tag}}</h1>
+    <span class="t-badge t-badge--{{kindClass .Data.Kind}}" translate="no" lang="en">{{.Data.Kind}}</span>
+    {{if .Data.IsIndex}}<span class="t-badge t-badge--done">{{.T "manifest.index_badge"}}</span>{{end}}
+  </div>
+  <div class="t-row t-pullrow">
+    <span class="t-chip">
+      <span class="t-chip-label" lang="en">{{if .Data.IsIndex}}index{{else}}digest{{end}}</span>
+      <span translate="no" title="{{.Data.Digest}}">{{.Trunc .Data.Digest 34}}</span>
+      <button type="button" class="t-chip-copy" data-copy="{{.Data.Digest}}"
+              aria-label="{{.T "manifest.copy_digest" "Digest" .Data.Digest}}" title="{{.T "manifest.copy_digest" "Digest" .Data.Digest}}">⧉</button>
+    </span>
+    <span class="t-chip"><span class="t-chip-label" lang="en">mediaType</span> <span translate="no" lang="en">{{.Data.MediaType}}</span></span>
+  </div>
+  {{if .Data.IsIndex}}<p class="t-muted t-note">{{.T "manifest.sparse_note"}}</p>{{end}}
+
+  <p class="t-kick">{{.T "manifest.platforms"}}</p>
+  <table class="t-table">
+    <caption class="t-visually-hidden">{{.T "manifest.table_caption" "Repo" .Data.Repo "Tag" .Data.Tag}}</caption>
+    <thead>
+      <tr>
+        <th scope="col">{{.T "manifest.th_platform"}}</th>
+        <th scope="col">{{.T "manifest.th_digest"}}</th>
+        <th scope="col" class="t-num">{{.T "manifest.th_size"}}</th>
+        <th scope="col">{{.T "manifest.th_presence"}}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Data.Platforms}}
+      <tr{{if not .Present}} class="t-dim"{{end}}>
+        <td class="t-mono" translate="no">{{with .Label}}{{.}}{{else}}—{{end}}</td>
+        <td>
+          <span class="t-chip">
+            <span translate="no" title="{{.Digest}}">{{$.Trunc .Digest 26}}</span>
+            <button type="button" class="t-chip-copy" data-copy="{{.Digest}}"
+                    aria-label="{{$.T "repo.copy_digest" "Digest" .Digest}}" title="{{$.T "repo.copy_digest" "Digest" .Digest}}">⧉</button>
+          </span>
+        </td>
+        <td class="t-num" title="{{.Size}}">{{$.FmtBytes .Size}}</td>
+        <td>
+          {{if .Present}}
+          <span class="t-badge t-badge--done">{{$.T "manifest.present"}}</span>
+          {{else}}
+          <span class="t-badge t-badge--pending">{{$.T "manifest.absent"}}</span>
+          <a class="t-muted t-import-link" data-deep-link href="{{.ImportHref}}">{{$.T "manifest.import_platform"}}</a>
+          {{end}}
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+
+  {{if .Data.Annotations}}
+  <p class="t-kick">{{.T "manifest.annotations"}}</p>
+  <table class="t-table">
+    <caption class="t-visually-hidden">{{.T "manifest.annotations"}}</caption>
+    <thead>
+      <tr>
+        <th scope="col">{{.T "manifest.th_key"}}</th>
+        <th scope="col">{{.T "manifest.th_value"}}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range $k, $v := .Data.Annotations}}
+      <tr>
+        <td class="t-mono" translate="no">{{$k}}</td>
+        <td translate="no">{{$v}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{end}}
+
+  <div class="t-row t-pullrow">
+    <span class="t-chip">
+      <span class="t-chip-label">{{.T "manifest.pull_label"}}</span>
+      <span class="t-truncate" translate="no">{{.Data.PullCommand}}</span>
+      <button type="button" class="t-chip-copy" data-copy="{{.Data.PullCommand}}"
+              aria-label="{{.T "repo.copy_pull"}}" title="{{.T "repo.copy_pull"}}">⧉</button>
+    </span>
+  </div>
+  {{end}}
+</section>
+{{end}}

@@ -1,0 +1,58 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /api-docs — in-house OpenAPI viewer (FR-060, UI-SPEC §5.12): one
+     native <details> per endpoint, accessible without JavaScript. The
+     chrome is bilingual; the contract content is English, lang="en". */}}
+{{define "title"}}{{.T "apidocs.title"}}{{end}}
+{{define "main"}}
+<section class="t-apidocs">
+  {{template "help-subnav" .}}
+  <h1 class="t-page-title">{{.T "apidocs.title"}}</h1>
+  <p class="t-page-sub">{{.T "apidocs.subtitle"}}</p>
+  <p class="t-row">
+    <a class="t-btn t-btn--secondary t-btn--sm" href="/api/v1/openapi.yaml">{{.T "apidocs.download"}}</a>
+    <span class="t-muted t-note">{{.T "apidocs.auth_note"}}</span>
+  </p>
+
+  <div lang="en">
+    {{range .Data.Endpoints}}
+    <details class="t-apidoc">
+      <summary>
+        <span class="t-chip t-chip--code" translate="no">{{.Method}} {{.Path}}</span>
+        <span class="t-apidoc-summary">{{.Summary}}</span>
+      </summary>
+      {{if .Params}}
+      <table class="t-table">
+        <caption class="t-visually-hidden">{{$.T "apidocs.params_caption" "Method" .Method "Path" .Path}}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{{$.T "apidocs.th_param"}}</th>
+            <th scope="col">{{$.T "apidocs.th_in"}}</th>
+            <th scope="col">{{$.T "apidocs.th_required"}}</th>
+            <th scope="col">{{$.T "apidocs.th_desc"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Params}}
+          <tr>
+            <td class="t-mono" translate="no">{{.Name}}</td>
+            <td><span class="t-badge" translate="no">{{.In}}</span></td>
+            <td>{{if .Required}}{{$.T "apidocs.required_yes"}}{{else}}{{$.T "apidocs.required_no"}}{{end}}</td>
+            <td>{{.Description}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{end}}
+      <div class="t-row t-pullrow">
+        <span class="t-chip">
+          <span class="t-chip-label" lang="en">curl</span>
+          <span class="t-truncate" translate="no">{{.Curl}}</span>
+          <button type="button" class="t-chip-copy" data-copy="{{.Curl}}"
+                  aria-label="{{$.T "apidocs.copy_curl"}}" title="{{$.T "apidocs.copy_curl"}}">⧉</button>
+        </span>
+      </div>
+    </details>
+    {{end}}
+  </div>
+</section>
+{{end}}

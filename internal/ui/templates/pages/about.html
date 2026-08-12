@@ -1,0 +1,68 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /about — instance identity (UI-SPEC §5.11): build, read-only mode,
+     exposed endpoints with the ReservedPrefixes contract (ADR-0015 §2),
+     the milestone roadmap (shown here, never as greyed-out navigation),
+     and the GPL-3.0-only license with the embedded third-party notices. */}}
+{{define "title"}}{{.T "about.title"}}{{end}}
+{{define "main"}}
+<section class="t-about">
+  {{template "help-subnav" .}}
+  <h1 class="t-page-title">{{.T "about.title"}}</h1>
+  <p class="t-page-sub">{{.T "about.subtitle"}}</p>
+
+  <div class="t-tiles">
+    <div class="t-tile t-card">
+      <p class="t-tile-label">{{.T "about.build_title"}}</p>
+      <p class="t-tile-value"><code lang="en" translate="no">{{.Data.Version}}</code></p>
+      <p class="t-tile-sub">
+        <span class="t-chip"><span class="t-chip-label" lang="en">commit</span> <span class="t-truncate" translate="no" title="{{.Data.Commit}}">{{.Trunc .Data.Commit 16}}</span></span>
+        <span class="t-muted" translate="no">{{.Data.Date}}</span>
+      </p>
+    </div>
+    <div class="t-tile t-card">
+      <p class="t-tile-label">{{.T "dashboard.mode"}}</p>
+      <p class="t-tile-value"><code lang="en">{{.Mode}}</code></p>
+      <p class="t-tile-sub">{{.T "dashboard.mode_note"}}</p>
+    </div>
+  </div>
+
+  <h2 class="t-kick">{{.T "about.endpoints_title"}}</h2>
+  <table class="t-table">
+    <caption class="t-visually-hidden">{{.T "about.endpoints_caption"}}</caption>
+    <thead>
+      <tr>
+        <th scope="col">{{.T "about.th_endpoint"}}</th>
+        <th scope="col">{{.T "about.th_desc"}}</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td><span class="t-chip t-chip--code" translate="no">/v2/</span></td><td>{{.T "about.ep_v2"}}</td></tr>
+      <tr><td><span class="t-chip t-chip--code" translate="no">/api/v1</span></td><td>{{.T "about.ep_api"}} <a href="/api-docs">{{.T "subnav.apidocs"}} →</a></td></tr>
+      <tr><td><span class="t-chip t-chip--code" translate="no">/metrics</span></td><td>{{.T "about.ep_metrics"}}</td></tr>
+      <tr><td><span class="t-chip t-chip--code" translate="no">/healthz</span></td><td>{{.T "about.ep_healthz"}}</td></tr>
+      <tr><td><span class="t-chip t-chip--code" translate="no">/readyz</span></td><td>{{.T "about.ep_readyz"}}</td></tr>
+    </tbody>
+  </table>
+
+  <h3 class="t-kick">{{.T "about.prefixes_title"}}</h3>
+  <p class="t-muted t-note">{{.T "about.prefixes_note"}}</p>
+  <p class="t-row">
+    {{range .Data.Prefixes}}<span class="t-chip t-chip--code" translate="no">{{.}}</span>{{end}}
+  </p>
+
+  <h2 class="t-kick">{{.T "about.roadmap_title"}}</h2>
+  <p class="t-muted t-note">{{.T "about.roadmap_note"}}</p>
+  <ul class="t-about-roadmap">
+    <li>{{.T "about.milestone_2"}}</li>
+    <li>{{.T "about.milestone_3"}}</li>
+    <li>{{.T "about.milestone_4"}}</li>
+    <li>{{.T "about.milestone_5"}}</li>
+    <li>{{.T "about.milestone_6"}}</li>
+    <li>{{.T "about.milestone_7"}}</li>
+  </ul>
+
+  <h2 class="t-kick">{{.T "about.license_title"}}</h2>
+  <p>{{.T "about.license_text"}} <span class="t-chip t-chip--code" translate="no">GPL-3.0-only</span></p>
+  <p><a href="/about/third-party">{{.T "about.thirdparty_link"}} →</a></p>
+</section>
+{{end}}

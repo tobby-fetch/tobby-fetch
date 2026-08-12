@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Messages français de la taxonomie d'erreurs (R-03). Fidélité au sens,
+# français technique correct, franglais assumé pour les termes sans
+# équivalent (digest, tag, store) — directive i18n du jalon 2.
+
+"TBY-AUTH-001.what": "L'instance refuse de démarrer : aucun compte local n'est configuré."
+"TBY-AUTH-001.cause": "Aucun compte administrateur n'a encore été créé sur cette instance, ou son répertoire d'état a été réinitialisé."
+"TBY-AUTH-001.action": "Sur l'hôte de l'instance, exécutez `tobby user add --role admin <nom>` (l'outil calcule le hachage du mot de passe), puis redémarrez l'instance. Tobby ne démarre jamais avec une interface ouverte."
+
+"TBY-AUTH-002.what": "L'authentification a échoué."
+"TBY-AUTH-002.cause": "Les identifiants sont inconnus ou le mot de passe est erroné."
+"TBY-AUTH-002.action": "Vérifiez le nom du compte et le mot de passe, puis réessayez. Les comptes se gèrent sur l'hôte avec `tobby user`."
+
+"TBY-AUTH-003.what": "Cette action n'est pas autorisée pour votre rôle."
+"TBY-AUTH-003.cause": "Elle requiert le rôle {{.role}}."
+"TBY-AUTH-003.action": "Connectez-vous avec un compte disposant du rôle {{.role}}, ou demandez à un administrateur de vous l'accorder."
+
+"TBY-AUTH-004.what": "Le formulaire n'a pas pu être soumis en toute sécurité."
+"TBY-AUTH-004.cause": "Le jeton anti-falsification est absent ou a expiré — la page est probablement restée ouverte longtemps."
+"TBY-AUTH-004.action": "Le formulaire a été rechargé avec un jeton neuf : soumettez-le à nouveau."
+
+"TBY-AUTH-005.what": "Votre session a expiré."
+"TBY-AUTH-005.cause": "Aucune activité pendant une durée supérieure à la vie de la session, ou l'instance a redémarré."
+"TBY-AUTH-005.action": "Reconnectez-vous ; vous reviendrez à la page où vous étiez."
+
+"TBY-CFG-001.what": "La configuration est invalide."
+"TBY-CFG-001.cause": "{{.detail}}"
+"TBY-CFG-001.action": "Corrigez le réglage indiqué (précédence : drapeaux, puis variables d'environnement TOBBY_*, puis fichier YAML), vérifiez le résultat avec `tobby config dump`, puis redémarrez."
+
+"TBY-VAL-001.what": "Le fichier recipe ou retriever est invalide."
+"TBY-VAL-001.cause": "Dans {{.file}}, à {{.path}} : {{.constraint}}."
+"TBY-VAL-001.action": "Corrigez le champ {{.path}} pour satisfaire la contrainte, puis soumettez le fichier à nouveau."
+
+"TBY-REG-001.what": "La référence n'a pas pu être interprétée."
+"TBY-REG-001.cause": "{{.reference}} n'est pas une référence valide d'image ou de chart."
+"TBY-REG-001.action": "Utilisez la forme registry/repository:tag ou registry/repository@sha256:… — par exemple docker.io/library/redis:7.2."
+
+"TBY-REG-002.what": "Le registre source est injoignable."
+"TBY-REG-002.cause": "Aucune route réseau vers {{.host}}, ou le registre est arrêté (DNS, proxy ou pare-feu sur le chemin)."
+"TBY-REG-002.action": "Vérifiez la connectivité vers {{.host}} depuis l'hôte de l'instance et les réglages de proxy, puis réessayez."
+
+"TBY-REG-003.what": "Le registre source a refusé l'authentification."
+"TBY-REG-003.cause": "Identifiants absents ou expirés pour {{.host}}."
+"TBY-REG-003.action": "Renseignez registries.credentials pour {{.host}} dans la configuration, puis relancez l'import."
+
+"TBY-REG-004.what": "L'inspection a dépassé le délai."
+"TBY-REG-004.cause": "{{.host}} n'a pas répondu en {{.timeout}}."
+"TBY-REG-004.action": "Réessayez ; si cela persiste, vérifiez le chemin réseau vers {{.host}} ou augmentez import.inspectTimeout dans la configuration."
+
+"TBY-REG-005.what": "La référence n'existe pas sur le registre source."
+"TBY-REG-005.cause": "{{.reference}} est introuvable — nom ou tag erroné, ou supprimée en amont."
+"TBY-REG-005.action": "Vérifiez le nom du dépôt et le tag sur le registre source, puis corrigez la référence."
+
+"TBY-POL-001.what": "Le registre n'est pas dans la liste blanche."
+"TBY-POL-001.cause": "{{.host}} ne fait pas partie des registres autorisés en source ou en destination ; le transfert a été refusé avant tout échange."
+"TBY-POL-001.action": "Si ce registre est légitime, ajoutez {{.host}} à registries.allowlist dans la configuration ; la modification est journalisée en audit."
+
+"TBY-SIG-001.what": "La signature de la recipe n'a pas pu être vérifiée."
+"TBY-SIG-001.cause": "Aucune clé de confiance configurée ne valide la signature de {{.recipe}}."
+"TBY-SIG-001.action": "Vérifiez que les clés de confiance de la zone incluent la clé qui a signé cette recipe. Une recipe non vérifiée n'est jamais admise."
+
+"TBY-SIG-002.what": "Un digest épinglé ne correspond pas au contenu récupéré."
+"TBY-SIG-002.cause": "{{.reference}} épingle {{.expected}} mais le registre a servi {{.actual}} — le contenu a changé ou a été altéré."
+"TBY-SIG-002.action": "Ne forcez pas le transfert. Vérifiez le registre source et la recipe ; si le changement est légitime, une recipe re-signée épinglant le nouveau digest est nécessaire."
+
+"TBY-DST-001.what": "Le registre de destination ne peut pas stocker cette référence."
+"TBY-DST-001.cause": "{{.reference}} dépasse une limite de la destination : {{.limit}}."
+"TBY-DST-001.action": "Raccourcissez le chemin relocalisé ou ajustez le nommage de destination ; le refus a eu lieu avant tout push."
+
+"TBY-CHT-001.what": "Le chart Helm n'embarque pas une de ses dépendances."
+"TBY-CHT-001.cause": "{{.chart}} déclare la dépendance {{.dependency}} mais ne l'embarque pas sous charts/ — il ne peut pas se déployer hors-ligne."
+"TBY-CHT-001.action": "Ré-empaquetez le chart avec ses dépendances embarquées (helm dependency build puis helm package), publiez-le, puis relancez l'import."
+
+"TBY-STO-001.what": "Le store local n'a pas pu être lu."
+"TBY-STO-001.cause": "{{.detail}}"
+"TBY-STO-001.action": "Vérifiez que le répertoire de stockage existe, est monté et lisible par l'instance, puis réessayez."
+
+"TBY-STO-002.what": "L'écriture dans le store local a échoué."
+"TBY-STO-002.cause": "{{.detail}}"
+"TBY-STO-002.action": "Vérifiez l'espace libre et les permissions du répertoire de stockage, puis relancez l'opération."
+
+"TBY-TSK-001.what": "La tâche n'existe pas."
+"TBY-TSK-001.cause": "Aucune tâche d'identifiant {{.id}} sur cette instance — lien erroné, ou store réinitialisé."
+"TBY-TSK-001.action": "Ouvrez la liste des tâches et suivez le lien d'une tâche existante."
+
+"TBY-SRV-001.what": "Une erreur interne s'est produite."
+"TBY-SRV-001.cause": "Une condition inattendue a interrompu la requête ; le détail est dans les journaux de l'instance."
+"TBY-SRV-001.action": "Réessayez ; si cela persiste, cherchez dans les journaux de l'instance l'identifiant de corrélation affiché avec cette erreur."
+
+"TBY-SRV-002.what": "Cette ressource n'existe pas."
+"TBY-SRV-002.cause": "L'adresse est erronée, ou le contenu a été supprimé."
+"TBY-SRV-002.action": "Revenez au navigateur de contenu ou utilisez la recherche."
+
+"TBY-SRV-003.what": "L'instance est injoignable."
+"TBY-SRV-003.cause": "La connexion réseau est tombée, ou l'instance redémarre."
+"TBY-SRV-003.action": "Vérifiez votre liaison réseau et réessayez ; la page reprend dès que l'instance répond."

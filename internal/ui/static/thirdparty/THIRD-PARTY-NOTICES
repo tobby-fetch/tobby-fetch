@@ -1,0 +1,50 @@
+Third-party notices — Tobby web UI vendored assets (ADR-0010)
+=============================================================
+
+Tobby (GPL-3.0-only) embeds and serves the following third-party
+JavaScript libraries. Each one is vendored as a single pinned file under
+internal/ui/static/thirdparty/ and served by the Tobby instance itself,
+never from a CDN. Exact versions, download URLs and sha256 fingerprints
+are recorded in VENDORED.yaml alongside this file.
+
+-------------------------------------------------------------
+htmx 2.0.9
+-------------------------------------------------------------
+Project:   https://github.com/bigskysoftware/htmx
+Copyright: Big Sky Software and htmx contributors
+License:   Zero-Clause BSD (SPDX: 0BSD)
+
+Zero-Clause BSD
+=============
+
+Permission to use, copy, modify, and/or distribute this software for
+any purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED “AS IS” AND THE AUTHOR DISCLAIMS ALL
+WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE
+FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
+AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
+OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+-------------------------------------------------------------
+idiomorph 0.7.4
+-------------------------------------------------------------
+Project:   https://github.com/bigskysoftware/idiomorph
+Copyright: Big Sky Software and idiomorph contributors
+License:   Zero-Clause BSD (SPDX: 0BSD)
+
+Zero-Clause BSD
+=============
+
+Permission to use, copy, modify, and/or distribute this software for
+any purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED “AS IS” AND THE AUTHOR DISCLAIMS ALL
+WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE
+FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
+AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
+OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.

@@ -1,0 +1,52 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* Standalone document: the login page lives outside the shell (UI-SPEC
+     §5.1) — sole entrance, language switchable pre-login, SSO zone
+     reserved for milestone 6. Redefines "layout" for this page set. */}}
+{{define "title"}}{{.T "login.title"}}{{end}}
+{{define "layout"}}<!DOCTYPE html>
+<html lang="{{.Lang}}" data-theme="{{.Theme}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="{{if eq .Theme "light"}}light{{else}}dark{{end}}">
+<title>{{.T "login.title"}} · Tobby</title>
+<link rel="stylesheet" href="/static/tokens.css">
+<link rel="stylesheet" href="/static/app.css">
+{{if .HasThemeOverride}}<link rel="stylesheet" href="/static/theme-override.css">{{end}}
+</head>
+<body class="t-login-body">
+<main class="t-login">
+  <div class="t-login-card t-card">
+    <div class="t-login-brand">{{template "logo" .}}<span class="t-login-wordmark">Tobby<span class="t-brand-dot">.</span></span></div>
+    <h1 class="t-page-title">{{.T "login.heading"}}</h1>
+
+    {{with .Data.Failed}}
+    <div class="t-error-block" role="alert">
+      <div class="t-error-block-head"><span class="t-chip t-chip--code" translate="no">{{.Code}}</span> <span class="t-error-block-title">{{.What}}</span></div>
+      <p>{{.Action}}</p>
+    </div>
+    {{end}}
+
+    <form method="post" action="/login" class="t-form">
+      <input type="hidden" name="next" value="{{.Data.Next}}">
+      <label for="username">{{.T "login.username"}}</label>
+      <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+      <label for="password">{{.T "login.password"}}</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit" class="t-btn t-btn--primary">{{.T "login.submit"}}</button>
+    </form>
+
+    {{/* Reserved zone: OIDC/SAML buttons join here at milestone 6 without a
+         page redesign (ADR-0009). */}}
+
+  </div>
+  <form method="post" action="/lang" class="t-inline-form">
+    <input type="hidden" name="back" value="/login">
+    <input type="hidden" name="lang" value="{{.OtherLang}}">
+    <button type="submit" class="t-lang">{{if eq .Lang "en"}}Français{{else}}English{{end}}</button>
+  </form>
+  <p class="t-login-footer">Tobby {{.Version}}</p>
+</main>
+</body>
+</html>{{end}}
+{{define "main"}}{{end}}

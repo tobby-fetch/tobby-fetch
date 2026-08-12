@@ -15,6 +15,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -38,10 +40,44 @@ type Config struct {
 	// instance must state what it is (FR-001).
 	Mode Mode `yaml:"mode"`
 
-	Storage  Storage  `yaml:"storage"`
-	Server   Server   `yaml:"server"`
-	Logging  Logging  `yaml:"logging"`
-	Shutdown Shutdown `yaml:"shutdown"`
+	Storage    Storage    `yaml:"storage"`
+	State      State      `yaml:"state"`
+	Server     Server     `yaml:"server"`
+	Auth       Auth       `yaml:"auth"`
+	Registries Registries `yaml:"registries"`
+	UI         UI         `yaml:"ui"`
+	Import     Import     `yaml:"import"`
+	Logging    Logging    `yaml:"logging"`
+	Shutdown   Shutdown   `yaml:"shutdown"`
+}
+
+// Import configures the unit-import screens and endpoints (FR-023).
+type Import struct {
+	// InspectTimeout bounds one remote inspection (UI-SPEC §5.6): a
+	// deadline hit maps to the dedicated TBY-REG-004 code, distinct from
+	// "unreachable". Default 20s.
+	InspectTimeout Duration `yaml:"inspectTimeout"`
+}
+
+// Registries configures how source registries are reached.
+type Registries struct {
+	// Insecure lists source hosts reachable over plain HTTP or
+	// unverifiable TLS ("host" or "host:port"). Per-host and explicit —
+	// never a global switch (FR-075). The enterprise TLS/PKI support of
+	// milestone 4 (roadmap 4.4) supersedes this for verified private CAs.
+	Insecure []string `yaml:"insecure,omitempty"`
+}
+
+// UI configures the web interface (ADR-0010, ADR-0015).
+type UI struct {
+	// ThemeOverride is an optional operator stylesheet served after the
+	// embedded design tokens: rebranding without rebuild (FR-064). The
+	// default tokens pass WCAG AA; overrides carry that responsibility.
+	ThemeOverride string `yaml:"themeOverride"`
+	// ShowUpcoming renders the navigation entries of future milestones as
+	// inert, labeled placeholders (demo mode). Off by default: production
+	// navigation only shows what works.
+	ShowUpcoming bool `yaml:"showUpcoming"`
 }
 
 // Storage locates the self-contained store (FR-050).
@@ -49,6 +85,29 @@ type Storage struct {
 	// Root is the store directory. Required for serving: everything Tobby
 	// holds — artifacts, recipes, operation logs — lives under it.
 	Root string `yaml:"root"`
+}
+
+// State locates the instance state directory: accounts and tokens today,
+// trust roots, certificates and configuration tables as they land. It is
+// the instance's identity and must stay strictly outside the transportable
+// store: secrets never travel on the media (R-16), and the directory is the
+// single backup target (R-27).
+type State struct {
+	// Root is the state directory. Required to serve unless authentication
+	// is explicitly disabled.
+	Root string `yaml:"root"`
+}
+
+// Auth configures authentication (ADR-0009; FR-072 to FR-075).
+type Auth struct {
+	// Disabled switches authentication off for every surface. Secure by
+	// default: false. Disabling is a deliberate opt-in — settable only in
+	// the configuration file or TOBBY_AUTH_DISABLED, never by flag — and
+	// the UI shows a permanent banner while it is set (FR-075).
+	Disabled bool `yaml:"disabled"`
+	// SessionTTL bounds a UI session's lifetime. Sessions live in memory:
+	// an instance restart signs everyone out. Default 12h.
+	SessionTTL Duration `yaml:"sessionTTL"`
 }
 
 // Server configures the HTTP listener (UI, API, registry, probes, metrics).
@@ -74,6 +133,8 @@ type Shutdown struct {
 func Default() Config {
 	return Config{
 		Server:   Server{Addr: ":8080"},
+		Auth:     Auth{SessionTTL: Duration(12 * time.Hour)},
+		Import:   Import{InspectTimeout: Duration(20 * time.Second)},
 		Logging:  Logging{Level: "info"},
 		Shutdown: Shutdown{GracePeriod: Duration(30 * time.Second)},
 	}
@@ -121,7 +182,7 @@ func Load(path string, pathExplicit bool, overrides ...Override) (Config, error)
 type Override func(*Config)
 
 // Validate checks the merged configuration. Error messages state what to fix.
-func (c Config) Validate() error {
+func (c *Config) Validate() error {
 	var errs []error
 	switch c.Mode {
 	case ModePassthrough, ModeMirror:
@@ -139,12 +200,47 @@ func (c Config) Validate() error {
 	if time.Duration(c.Shutdown.GracePeriod) <= 0 {
 		errs = append(errs, errors.New("shutdown.gracePeriod must be positive"))
 	}
+	if time.Duration(c.Auth.SessionTTL) <= 0 {
+		errs = append(errs, errors.New("auth.sessionTTL must be positive"))
+	}
+	if time.Duration(c.Import.InspectTimeout) <= 0 {
+		errs = append(errs, errors.New("import.inspectTimeout must be positive"))
+	}
+	if err := disjointRoots(c.State.Root, c.Storage.Root); err != nil {
+		errs = append(errs, err)
+	}
 	return errors.Join(errs...)
+}
+
+// disjointRoots refuses a state directory inside the transportable store or
+// the reverse: secrets and instance identity never travel on the media
+// (R-16), and the store must stay relocatable without dragging state along.
+func disjointRoots(state, storage string) error {
+	if state == "" || storage == "" {
+		return nil
+	}
+	s, err1 := filepath.Abs(state)
+	g, err2 := filepath.Abs(storage)
+	if err1 != nil || err2 != nil {
+		return nil // path resolution problems surface later, on use
+	}
+	rel, err := filepath.Rel(g, s)
+	if err == nil && rel == "." {
+		return fmt.Errorf("state.root and storage.root must differ (%s)", s)
+	}
+	if err == nil && !strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("state.root must not live inside storage.root: secrets never travel on the transportable store (state.root=%s, storage.root=%s)", s, g)
+	}
+	rel, err = filepath.Rel(s, g)
+	if err == nil && !strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("storage.root must not live inside state.root (state.root=%s, storage.root=%s)", s, g)
+	}
+	return nil
 }
 
 // Dump renders the effective configuration as YAML. Secret values are
 // redacted by construction: the Secret type cannot serialize its content.
-func (c Config) Dump() (string, error) {
+func (c *Config) Dump() (string, error) {
 	out, err := yaml.Marshal(c)
 	if err != nil {
 		return "", fmt.Errorf("rendering configuration: %w", err)

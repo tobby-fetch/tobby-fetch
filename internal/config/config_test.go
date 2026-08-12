@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +38,9 @@ func TestDefaultsAlone(t *testing.T) {
 	}
 	if cfg.Mode != "" {
 		t.Errorf("default mode = %q, want empty (no default mode: FR-001)", cfg.Mode)
+	}
+	if time.Duration(cfg.Import.InspectTimeout) != 20*time.Second {
+		t.Errorf("default import.inspectTimeout = %v, want 20s", cfg.Import.InspectTimeout)
 	}
 }
 
@@ -86,6 +90,7 @@ func TestLoadEveryEnvVariable(t *testing.T) {
 	t.Setenv(EnvServerAddr, ":9090")
 	t.Setenv(EnvLoggingLevel, "debug")
 	t.Setenv(EnvShutdownGracePeriod, "45s")
+	t.Setenv(EnvImportInspectTO, "7s")
 
 	cfg, err := Load(path, true)
 	if err != nil {
@@ -105,6 +110,9 @@ func TestLoadEveryEnvVariable(t *testing.T) {
 	}
 	if time.Duration(cfg.Shutdown.GracePeriod) != 45*time.Second {
 		t.Errorf("gracePeriod = %v, want 45s", cfg.Shutdown.GracePeriod)
+	}
+	if time.Duration(cfg.Import.InspectTimeout) != 7*time.Second {
+		t.Errorf("import.inspectTimeout = %v, want 7s", cfg.Import.InspectTimeout)
 	}
 }
 
@@ -170,6 +178,15 @@ func TestValidateGracePeriodPositive(t *testing.T) {
 	}
 }
 
+func TestValidateInspectTimeoutPositive(t *testing.T) {
+	cfg := Default()
+	cfg.Mode = ModeMirror
+	cfg.Import.InspectTimeout = 0
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "import.inspectTimeout") {
+		t.Errorf("Validate() = %v, want import.inspectTimeout error", err)
+	}
+}
+
 func TestDumpRoundTrips(t *testing.T) {
 	cfg := Default()
 	cfg.Mode = ModeMirror
@@ -185,7 +202,7 @@ func TestDumpRoundTrips(t *testing.T) {
 	if err := dec.Decode(&back); err != nil {
 		t.Fatalf("dump does not parse back strictly: %v\n%s", err, out)
 	}
-	if back != cfg {
+	if !reflect.DeepEqual(back, cfg) {
 		t.Errorf("round trip mismatch:\n got %+v\nwant %+v", back, cfg)
 	}
 }
@@ -248,5 +265,55 @@ func TestSecretNeverSerializes(t *testing.T) {
 	}
 	if NewSecret("").String() != "" {
 		t.Error("empty secret renders empty, not REDACTED")
+	}
+}
+
+// TestDisjointRoots is the R-16 guard: the state directory never lives
+// inside the transportable store, nor the reverse.
+func TestDisjointRoots(t *testing.T) {
+	base := t.TempDir()
+	for _, tc := range []struct {
+		name, state, storage, wantErr string
+	}{
+		{"disjoint", filepath.Join(base, "state"), filepath.Join(base, "store"), ""},
+		{"equal", base, base, "must differ"},
+		{"state inside storage", filepath.Join(base, "sub"), base, "must not live inside storage.root"},
+		{"storage inside state", base, filepath.Join(base, "sub"), "must not live inside state.root"},
+		{"empty state", "", base, ""},
+	} {
+		err := disjointRoots(tc.state, tc.storage)
+		if tc.wantErr == "" {
+			if err != nil {
+				t.Errorf("%s: unexpected error %v", tc.name, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+			t.Errorf("%s: error = %v, want containing %q", tc.name, err, tc.wantErr)
+		}
+	}
+}
+
+// TestDurationHelpers covers the scalar Duration round trip.
+func TestDurationHelpers(t *testing.T) {
+	d, err := ParseDuration("1m30s")
+	if err != nil || time.Duration(d) != 90*time.Second {
+		t.Errorf("ParseDuration = %v, %v", d, err)
+	}
+	if _, err := ParseDuration("bogus"); err == nil {
+		t.Error("invalid duration must fail")
+	}
+	if s := Duration(20 * time.Second).String(); s != "20s" {
+		t.Errorf("String() = %q, want 20s", s)
+	}
+}
+
+// TestInvalidImportEnvDuration rejects a malformed inspect timeout.
+func TestInvalidImportEnvDuration(t *testing.T) {
+	path := writeFile(t, "mode: mirror\n")
+	t.Setenv(EnvImportInspectTO, "soon")
+	_, err := Load(path, true)
+	if err == nil || !strings.Contains(err.Error(), EnvImportInspectTO) {
+		t.Errorf("error = %v, want mention of %s", err, EnvImportInspectTO)
 	}
 }

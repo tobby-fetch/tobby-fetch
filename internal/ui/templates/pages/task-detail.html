@@ -1,0 +1,146 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /tasks/{id} — task detail (UI-SPEC §5.8): header with run chip and
+     actions, per-item table with progressive-disclosure error blocks
+     (ADR-0015 §4: re-rendered from code + parameters), the extensible
+     reports zone (FR-024), and the cursor-based log follow — the sentinel
+     re-emits itself only while the task is active (§8). */}}
+{{define "title"}}{{.T "task.title" "ID" .Data.Row.ID}}{{end}}
+{{define "main"}}
+<section>
+  <div class="t-titlerow">
+    <h1 class="t-page-title">{{.T "task.title" "ID" .Data.Row.ID}}</h1>
+    {{template "task-badge" (withData . .Data.Row)}}
+    <span class="t-taskactions">
+      {{if and .CanOperate .Data.RelaunchHref}}<a class="t-btn t-btn--secondary t-btn--sm" href="{{.Data.RelaunchHref}}">{{.T "task.relaunch"}}</a>{{end}}
+      {{if .CanOperate}}<a class="t-btn t-btn--primary t-btn--sm" href="/import">{{.T "task.new_import"}}</a>{{end}}
+    </span>
+  </div>
+  <div class="t-row t-taskmeta">
+    <span class="t-chip">
+      <span class="t-chip-label" lang="en">run</span>
+      <span translate="no">{{.Data.Row.RunID}}</span>
+      <button type="button" class="t-chip-copy" data-copy="{{.Data.Row.RunID}}"
+              aria-label="{{.T "task.copy_run"}}" title="{{.T "task.copy_run"}}">⧉</button>
+    </span>
+    <span class="t-muted">{{if eq .Data.Row.Type "unit-import"}}{{.T "tasks.type_unit_import"}}{{else}}<span translate="no">{{.Data.Row.Type}}</span>{{end}}</span>
+    <span class="t-chip">
+      <span translate="no" title="{{.Data.Row.Reference}}">{{.Trunc .Data.Row.Reference 48}}</span>
+      <button type="button" class="t-chip-copy" data-copy="{{.Data.Row.Reference}}"
+              aria-label="{{.T "tasks.copy_ref" "Ref" .Data.Row.Reference}}" title="{{.T "tasks.copy_ref" "Ref" .Data.Row.Reference}}">⧉</button>
+    </span>
+    <span class="t-muted">{{.T "task.actor"}} <b>{{.Data.Row.Actor}}</b></span>
+    {{if .Data.Row.HasDuration}}<span class="t-muted">{{.T "task.duration"}} <b>{{.FmtDuration .Data.Row.Duration}}</b></span>{{end}}
+    <span class="t-muted"><time datetime="{{.TimeAttr .Data.Row.Created}}">{{.FmtTime .Data.Row.Created}}</time></span>
+  </div>
+
+  {{if .Data.TaskErr}}
+  {{template "error-block" (withErr . .Data.TaskErr)}}
+  {{end}}
+
+  {{if .Data.ArtifactHref}}
+  <div class="t-row t-pullrow">
+    <a href="{{.Data.ArtifactHref}}">{{.T "task.view_artifact"}} →</a>
+    {{if .Data.PullCommand}}
+    <span class="t-chip">
+      <span class="t-chip-label" lang="en">pull</span>
+      <span class="t-truncate" translate="no">{{.Data.PullCommand}}</span>
+      <button type="button" class="t-chip-copy" data-copy="{{.Data.PullCommand}}"
+              aria-label="{{.T "repo.copy_pull"}}" title="{{.T "repo.copy_pull"}}">⧉</button>
+    </span>
+    {{end}}
+  </div>
+  {{end}}
+
+  {{if .Data.Items}}
+  <p class="t-kick">{{.TN "task.items_count" (len .Data.Items) "Count" (len .Data.Items)}}</p>
+  <table class="t-table">
+    <caption class="t-visually-hidden">{{.T "task.items_caption" "ID" .Data.Row.ID}}</caption>
+    <thead>
+      <tr>
+        <th scope="col">{{.T "task.th_item"}}</th>
+        <th scope="col">{{.T "task.th_digest"}}</th>
+        <th scope="col" class="t-num">{{.T "task.th_size"}}</th>
+        <th scope="col">{{.T "task.th_status"}}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Data.Items}}
+      <tr{{if eq .State "skipped"}} class="t-dim"{{end}}>
+        <td class="t-mono" translate="no">{{.Name}}</td>
+        <td>
+          {{if .Digest}}
+          <span class="t-chip">
+            <span translate="no" title="{{.Digest}}">{{$.Trunc .Digest 26}}</span>
+            <button type="button" class="t-chip-copy" data-copy="{{.Digest}}"
+                    aria-label="{{$.T "repo.copy_digest" "Digest" .Digest}}" title="{{$.T "repo.copy_digest" "Digest" .Digest}}">⧉</button>
+          </span>
+          {{else}}—{{end}}
+        </td>
+        <td class="t-num" title="{{.SizeBytes}}">{{if .SizeBytes}}{{$.FmtBytes .SizeBytes}}{{else}}—{{end}}</td>
+        <td>
+          {{if .Err}}
+          <details class="t-errrow">
+            <summary><span class="t-badge t-badge--failed">{{$.T "task.item_failed"}}</span> <span class="t-chip t-chip--code" translate="no">{{.Err.Code}}</span> {{.Err.What}}</summary>
+            {{template "error-block" (withErr $ .Err)}}
+          </details>
+          {{else if eq .State "done"}}<span class="t-badge t-badge--done">{{$.T "task.item_done"}}</span>
+          {{else if eq .State "running"}}<span class="t-badge t-badge--running">{{$.T "task.item_running"}}</span>
+          {{else if eq .State "skipped"}}<span class="t-badge t-badge--up-to-date">{{$.T "task.item_skipped"}}</span>
+          {{else}}<span class="t-badge t-badge--pending">{{$.T "task.item_pending"}}</span>{{end}}
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{end}}
+
+  {{if .Data.Row.ChartDependencies}}
+  <p class="t-kick">{{.T "task.reports_title"}}</p>
+  <div class="t-card t-report">
+    <p class="t-report-title">{{.T "task.deps_title"}}</p>
+    <table class="t-table">
+      <caption class="t-visually-hidden">{{.T "task.deps_title"}}</caption>
+      <thead>
+        <tr>
+          <th scope="col">{{.T "task.th_dep"}}</th>
+          <th scope="col">{{.T "task.th_version"}}</th>
+          <th scope="col">{{.T "task.th_repository"}}</th>
+          <th scope="col">{{.T "task.th_embedded"}}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Data.Row.ChartDependencies}}
+        <tr>
+          <td class="t-mono" translate="no">{{.Name}}</td>
+          <td class="t-mono" translate="no">{{.Version}}</td>
+          <td class="t-mono t-muted" translate="no">{{with .Repository}}{{.}}{{else}}—{{end}}</td>
+          <td>{{if .Embedded}}<span class="t-badge t-badge--done">✓ {{$.T "task.embedded_yes"}}</span>{{else}}<span class="t-badge t-badge--failed">✗ {{$.T "task.embedded_no"}}</span>{{end}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{end}}
+
+  <div class="t-row t-logbar">
+    <p class="t-kick">{{.T "task.logs_title"}}</p>
+    <a class="t-btn t-btn--secondary t-btn--sm" href="{{.Data.DownloadHref}}">↓ {{.T "task.logs_download"}}</a>
+  </div>
+  {{if .Data.LogErr}}
+  <p class="t-muted">{{.T "task.logs_unavailable"}}</p>
+  {{else}}
+  <div class="t-logview" role="log" tabindex="0" aria-label="{{.T "task.logs_label" "ID" .Data.Row.ID}}">
+    <pre id="log-pre">{{.Data.LogChunk}}</pre>
+    <div id="log-cursor"{{if .Data.Row.Active}} hx-get="/tasks/{{.Data.Row.ID}}?logs=1&after={{.Data.LogNext}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}></div>
+  </div>
+  {{end}}
+</section>
+{{end}}
+
+{{/* Incremental log follow (UI-SPEC §8.6): the new chunk lands appended
+     out-of-band, and the sentinel re-emits itself with the new cursor —
+     only while the task is active. The same renderer will feed SSE. */}}
+{{define "task-log-follow"}}
+{{- if .Data.Chunk}}<pre hx-swap-oob="beforeend:#log-pre">{{.Data.Chunk}}</pre>{{end}}
+<div id="log-cursor"{{if .Data.Active}} hx-get="/tasks/{{.Data.ID}}?logs=1&after={{.Data.Next}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}></div>
+{{end}}

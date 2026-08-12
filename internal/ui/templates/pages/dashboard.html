@@ -1,0 +1,87 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{define "title"}}{{.T "dashboard.title"}}{{end}}
+{{define "main"}}
+<section>
+  <h1 class="t-page-title">{{.T "dashboard.title"}}</h1>
+
+  <div class="t-tiles">
+    <div class="t-tile t-card">
+      <p class="t-tile-label">{{.T "dashboard.status"}}</p>
+      <p class="t-tile-value t-success-text">{{.T "dashboard.status_ready"}}</p>
+      <p class="t-tile-sub">{{.Version}}</p>
+    </div>
+    <div class="t-tile t-card">
+      <p class="t-tile-label">{{.T "dashboard.mode"}}</p>
+      <p class="t-tile-value"><code lang="en">{{.Mode}}</code></p>
+      <p class="t-tile-sub">{{.T "dashboard.mode_note"}}</p>
+    </div>
+    {{/* Store counters land with the browsing accessors (J2.5): each tile
+         is its own swap target with a server-rendered skeleton. */}}
+    <div class="t-tile t-card" id="tile-store" hx-get="/?tile=store" hx-trigger="load" hx-swap="outerHTML">
+      <p class="t-tile-label">{{.T "dashboard.store"}}</p>
+      <div class="t-skeleton" aria-hidden="true" style="width:55%"></div>
+      <div class="t-skeleton" aria-hidden="true" style="width:80%"></div>
+      <p class="t-visually-hidden">{{.T "common.loading"}}</p>
+    </div>
+  </div>
+
+  <div class="t-dashboard-cols">
+    <section class="t-card">
+      <h2>{{.T "dashboard.recent_tasks"}}</h2>
+      {{if .Data.Recent}}
+      {{/* The four latest real tasks of the queue (UI-SPEC §5.2). */}}
+      <table class="t-table">
+        <caption class="t-visually-hidden">{{.T "dashboard.recent_tasks"}}</caption>
+        <tbody>
+          {{range .Data.Recent}}
+          <tr>
+            <td class="t-primary t-mono"><a href="/tasks/{{.ID}}" translate="no">{{.ID}}</a></td>
+            <td><span class="t-mono t-muted" translate="no" title="{{.Reference}}">{{$.Trunc .Reference 32}}</span></td>
+            <td>{{template "task-badge" (withData $ .)}}</td>
+            <td class="t-num t-muted"><time datetime="{{$.TimeAttr .Created}}" title="{{$.FmtTime .Created}}">{{$.FmtAgo .Created}}</time></td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <div class="t-empty">
+        <p>{{.T "tasks.empty"}}</p>
+        {{if .CanOperate}}<a class="t-btn t-btn--secondary" href="/import">{{.T "dashboard.cta_import"}}</a>
+        {{else}}<p class="t-muted">{{.T "tasks.empty_viewer"}}</p>{{end}}
+      </div>
+      {{end}}
+      <p><a href="/tasks">{{.T "dashboard.all_tasks"}} →</a></p>
+    </section>
+
+    <aside class="t-card">
+      <h2>{{.T "dashboard.shortcuts"}}</h2>
+      {{if .CanOperate}}
+      <a class="t-btn t-btn--primary" href="/import">{{.T "dashboard.cta_import"}}</a>
+      {{end}}
+      <a class="t-btn t-btn--secondary" href="/content">{{.T "dashboard.cta_browse"}}</a>
+      {{if not .CanOperate}}<p class="t-muted">{{.T "dashboard.import_role_note"}}</p>{{end}}
+    </aside>
+  </div>
+</section>
+{{end}}
+
+{{/* Async store tile: own swap target, three server-rendered states —
+     skeleton in the page above, value below, compact inline error with a
+     retry action (UI-SPEC §5.2). Counters come from the store accessors
+     (FR-062): repositories, tags, physical deduplicated bytes. */}}
+{{define "tile-store"}}
+<div class="t-tile t-card" id="tile-store">
+  <p class="t-tile-label">{{.T "dashboard.store"}}</p>
+  <p class="t-tile-value">{{.TN "dashboard.store_repos" .Data.Repos "Count" .Data.Repos}}</p>
+  <p class="t-tile-sub" title="{{.Data.Bytes}}">{{.TN "dashboard.store_meta" .Data.Tags "Count" .Data.Tags "Size" (.FmtBytes .Data.Bytes)}}</p>
+</div>
+{{end}}
+
+{{define "tile-store-error"}}
+<div class="t-tile t-card" id="tile-store">
+  <p class="t-tile-label">{{.T "dashboard.store"}}</p>
+  <p class="t-tile-sub"><span class="t-chip t-chip--code" translate="no">TBY-STO-001</span> {{.T "dashboard.store_error"}}</p>
+  <button type="button" class="t-btn t-btn--secondary t-btn--sm"
+          hx-get="/?tile=store" hx-target="#tile-store" hx-swap="outerHTML">{{.T "common.retry"}}</button>
+</div>
+{{end}}

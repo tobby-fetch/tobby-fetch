@@ -1,0 +1,124 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright © 2026 infraBuilder SASU and contributors
+
+package taxonomy
+
+import "net/http"
+
+// Stable codes. Grouped by domain: AUTH (authentication and authorization),
+// CFG (configuration), VAL (recipe/retriever validation, FR-011), REG
+// (source registry access), POL (policy refusals, FR-030), SIG (signature
+// and digest verification, FR-033), DST (destination limits, FR-035), STO
+// (local store), TSK (tasks), SRV (instance itself).
+//
+// Codes marked "reserved" have no emitter yet: the class is fixed at
+// milestone 2 (roadmap directive) so later milestones plug engines into an
+// already-published contract. A code is never renumbered or reused.
+const (
+	// CodeNoAccount is the secure-by-default startup refusal of R-01: the
+	// instance never starts with an open UI.
+	CodeNoAccount Code = "TBY-AUTH-001"
+	// CodeAuthFailed is a failed interactive sign-in. Deliberately
+	// parameter-free: the message must not reveal whether the account
+	// exists (NFR-015).
+	CodeAuthFailed Code = "TBY-AUTH-002"
+	// CodeRoleDenied is an action refused to the session's role.
+	CodeRoleDenied Code = "TBY-AUTH-003"
+	// CodeCSRF is a missing or expired anti-forgery token.
+	CodeCSRF Code = "TBY-AUTH-004"
+	// CodeSessionExpired is an expired or unknown UI session.
+	CodeSessionExpired Code = "TBY-AUTH-005"
+
+	// CodeConfigInvalid is a rejected configuration (FR-003 validation).
+	CodeConfigInvalid Code = "TBY-CFG-001"
+
+	// CodeValidation is a rejected recipe/retriever file: file, path,
+	// violated constraint (FR-011). Reserved: emitter lands at milestone 3.
+	CodeValidation Code = "TBY-VAL-001"
+
+	// CodeBadReference is an unparseable image/chart reference.
+	CodeBadReference Code = "TBY-REG-001"
+	// CodeRegistryUnreachable is a source registry that cannot be reached.
+	CodeRegistryUnreachable Code = "TBY-REG-002"
+	// CodeRegistryAuth is a source registry refusing authentication.
+	CodeRegistryAuth Code = "TBY-REG-003"
+	// CodeInspectTimeout is a remote inspection exceeding its deadline —
+	// deliberately distinct from CodeRegistryUnreachable.
+	CodeInspectTimeout Code = "TBY-REG-004"
+	// CodeRefNotFound is a reference missing on the source registry.
+	CodeRefNotFound Code = "TBY-REG-005"
+
+	// CodeNotAllowlisted is the pre-transfer allowlist refusal (FR-030).
+	// Reserved: emitter lands at milestone 4.
+	CodeNotAllowlisted Code = "TBY-POL-001"
+
+	// CodeSignature is a recipe signature that no configured trust root
+	// validates (FR-033). Reserved: emitter lands at milestone 3.
+	CodeSignature Code = "TBY-SIG-001"
+	// CodeDigestMismatch is fetched content not matching its pinned digest
+	// (FR-033). Reserved: emitter lands at milestone 3.
+	CodeDigestMismatch Code = "TBY-SIG-002"
+
+	// CodeDestinationLimit is a pre-push refusal naming the destination's
+	// limit (FR-035). Reserved: emitter lands at milestone 3.
+	CodeDestinationLimit Code = "TBY-DST-001"
+
+	// CodeChartDependency is a Helm chart whose declared dependency is not
+	// embedded in the package (FR-024): unusable offline, the import fails
+	// naming the missing dependency.
+	CodeChartDependency Code = "TBY-CHT-001"
+
+	// CodeStoreRead is a failed read of the local store.
+	CodeStoreRead Code = "TBY-STO-001"
+	// CodeStoreWrite is a failed write to the local store.
+	CodeStoreWrite Code = "TBY-STO-002"
+
+	// CodeTaskNotFound is a task identifier unknown to this instance.
+	CodeTaskNotFound Code = "TBY-TSK-001"
+
+	// CodeInternal is the unexpected internal error; the correlation
+	// identifier is the pointer into the logs (FR-090).
+	CodeInternal Code = "TBY-SRV-001"
+	// CodeNotFound is a UI page or API resource that does not exist.
+	CodeNotFound Code = "TBY-SRV-002"
+	// CodeUnreachable is the client-side "instance unreachable" condition
+	// rendered by the UI shell on transport failure; catalogued so the
+	// troubleshooting guide documents it. Never served by the instance.
+	CodeUnreachable Code = "TBY-SRV-003"
+)
+
+var catalog = map[Code]Entry{
+	CodeNoAccount:      {Code: CodeNoAccount, Class: ClassPolicy},
+	CodeAuthFailed:     {Code: CodeAuthFailed, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized},
+	CodeRoleDenied:     {Code: CodeRoleDenied, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"role"}},
+	CodeCSRF:           {Code: CodeCSRF, Class: ClassOperational, HTTPStatus: http.StatusForbidden},
+	CodeSessionExpired: {Code: CodeSessionExpired, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized},
+
+	CodeConfigInvalid: {Code: CodeConfigInvalid, Class: ClassOperational, Params: []string{"detail"}},
+
+	CodeValidation: {Code: CodeValidation, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"file", "path", "constraint"}},
+
+	CodeBadReference:        {Code: CodeBadReference, Class: ClassOperational, HTTPStatus: http.StatusBadRequest, Params: []string{"reference"}},
+	CodeRegistryUnreachable: {Code: CodeRegistryUnreachable, Class: ClassOperational, HTTPStatus: http.StatusBadGateway, Params: []string{"host"}},
+	CodeRegistryAuth:        {Code: CodeRegistryAuth, Class: ClassOperational, HTTPStatus: http.StatusBadGateway, Params: []string{"host"}},
+	CodeInspectTimeout:      {Code: CodeInspectTimeout, Class: ClassOperational, HTTPStatus: http.StatusGatewayTimeout, Params: []string{"host", "timeout"}},
+	CodeRefNotFound:         {Code: CodeRefNotFound, Class: ClassOperational, HTTPStatus: http.StatusBadGateway, Params: []string{"reference"}},
+
+	CodeNotAllowlisted: {Code: CodeNotAllowlisted, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"host"}},
+
+	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe"}},
+	CodeDigestMismatch: {Code: CodeDigestMismatch, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "expected", "actual"}},
+
+	CodeDestinationLimit: {Code: CodeDestinationLimit, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "limit"}},
+
+	CodeChartDependency: {Code: CodeChartDependency, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"chart", "dependency"}},
+
+	CodeStoreRead:  {Code: CodeStoreRead, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
+	CodeStoreWrite: {Code: CodeStoreWrite, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
+
+	CodeTaskNotFound: {Code: CodeTaskNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound, Params: []string{"id"}},
+
+	CodeInternal:    {Code: CodeInternal, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError},
+	CodeNotFound:    {Code: CodeNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound},
+	CodeUnreachable: {Code: CodeUnreachable, Class: ClassOperational},
+}

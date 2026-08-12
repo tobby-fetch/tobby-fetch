@@ -1,0 +1,175 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /import — unit import (FR-023, UI-SPEC §5.6): reference → inspection →
+     confirmation on one page. GET /import?ref=… pre-fills and inspects on
+     load (single addressable contract: manifest deep link, failed-task
+     retry, mid-step-2 refresh). The htmx submit swaps only #inspect-zone
+     on the same canonical URL (ADR-0015 §1). */}}
+{{define "title"}}{{.T "import.title"}}{{end}}
+{{define "main"}}
+<section class="t-import">
+  <h1 class="t-page-title">{{.T "import.title"}}</h1>
+  <p class="t-page-sub">{{.T "import.subtitle"}}</p>
+
+  <form class="t-import-form" method="get" action="/import"
+        hx-get="/import" hx-push-url="true" hx-target="#inspect-zone" hx-swap="outerHTML"
+        hx-disabled-elt="find button" hx-indicator="find .htmx-indicator">
+    <label for="import-ref">{{.T "import.ref_label"}}</label>
+    <div class="t-row t-import-refrow">
+      <input id="import-ref" class="t-input t-mono" type="text" name="ref" value="{{.Data.Ref}}"
+             placeholder="docker.io/library/redis:7.2" required
+             autocomplete="off" autocapitalize="off" spellcheck="false" translate="no">
+      <button type="submit" class="t-btn t-btn--primary">{{.T "import.inspect_submit"}}</button>
+      <span class="htmx-indicator t-pulse-dot" aria-hidden="true"></span>
+    </div>
+  </form>
+
+  {{if .Err}}
+  {{template "import-error" .}}
+  {{else if .Data.InspectHref}}
+  {{/* Deep link: the inspection fires on load; the zone is busy with a
+       skeleton of the final geometry plus a text equivalent (a11y §5.6). */}}
+  <div id="inspect-zone" hx-get="{{.Data.InspectHref}}" hx-trigger="load" hx-target="this"
+       hx-swap="outerHTML" aria-busy="true">
+    <div class="t-skeleton" aria-hidden="true" style="width:40%"></div>
+    <div class="t-skeleton" aria-hidden="true" style="width:85%"></div>
+    <div class="t-skeleton" aria-hidden="true" style="width:85%"></div>
+    <p class="t-visually-hidden">{{.T "import.inspecting"}}</p>
+  </div>
+  {{else}}
+  <div id="inspect-zone"></div>
+  {{end}}
+
+  <script>
+  // Selection updater: the submit button always states what it will do —
+  // "Import (N platforms, ~X)" — recomputed from the checked set. Labels
+  // come pre-localized from the catalogs via data attributes (one/other
+  // forms); sizes are formatted with the localized binary units.
+  (function () {
+    function fmt(bytes, units, dec) {
+      var v = bytes, i = 0;
+      while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+      var s = i === 0 ? String(v) : v.toFixed(1).replace(/\.0$/, "");
+      return s.replace(".", dec) + " " + units[i];
+    }
+    function fill(el, n, size) {
+      var tpl = el.getAttribute(n === 1 ? "data-label-one" : "data-label-other");
+      if (tpl) { el.textContent = tpl.replace("{n}", n).replace("{size}", size); }
+    }
+    document.addEventListener("change", function (e) {
+      if (!e.target.matches || !e.target.matches("#inspect-zone input[name='platform']")) { return; }
+      var zone = document.getElementById("inspect-zone");
+      var btn = document.getElementById("import-submit");
+      if (!zone || !btn) { return; }
+      var n = 0, bytes = 0;
+      zone.querySelectorAll("input[name='platform']:checked").forEach(function (b) {
+        n++; bytes += parseInt(b.getAttribute("data-size") || "0", 10);
+      });
+      var size = fmt(bytes, (btn.getAttribute("data-units") || "B|KiB|MiB|GiB|TiB|PiB").split("|"),
+        btn.getAttribute("data-dec") || ".");
+      fill(btn, n, size);
+      btn.disabled = n === 0;
+      var sum = document.getElementById("import-selection");
+      if (sum) { fill(sum, n, size); }
+    });
+  })();
+  </script>
+</section>
+{{end}}
+
+{{/* Step 2 — the inspection result: resolved tag, pinned index digest,
+     selectable platform table with the FR-026 per-digest status
+     (up-to-date unchecked by default), selection summary, and the
+     confirmation POST. The heading takes focus after settle. */}}
+{{define "import-inspect"}}
+<div id="inspect-zone">
+  <h2 class="t-kick" tabindex="-1" data-focus-target>{{.T "import.step2_title"}}</h2>
+  {{if .Data.AllUpToDate}}
+  <div class="t-card">
+    <div class="t-row">
+      <span class="t-badge t-badge--up-to-date" translate="no" lang="en">up-to-date</span>
+      <span>{{.T "import.uptodate_all" "Ref" .Data.Report.Reference}}</span>
+    </div>
+    <div class="t-row t-pullrow">
+      <a href="{{.Data.ArtifactHref}}">{{.T "import.see_artifact"}} →</a>
+      <span class="t-chip">
+        <span class="t-chip-label" lang="en">pull</span>
+        <span class="t-truncate" translate="no">{{.Data.PullCommand}}</span>
+        <button type="button" class="t-chip-copy" data-copy="{{.Data.PullCommand}}"
+                aria-label="{{.T "repo.copy_pull"}}" title="{{.T "repo.copy_pull"}}">⧉</button>
+      </span>
+    </div>
+  </div>
+  {{else}}
+  <form class="t-card t-import-step2" method="post" action="/import"
+        hx-disabled-elt="find button[type='submit']" hx-indicator="find .htmx-indicator">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="ref" value="{{.Data.Ref}}">
+    <div class="t-row t-import-chips">
+      <span class="t-chip"><span class="t-chip-label">{{.T "import.chip_tag"}}</span> <span translate="no">{{.Data.Report.Tag}}</span></span>
+      <span class="t-chip">
+        <span class="t-chip-label" lang="en">index</span>
+        <span translate="no" title="{{.Data.Report.IndexDigest}}">{{.Trunc .Data.Report.IndexDigest 30}}</span>
+        <button type="button" class="t-chip-copy" data-copy="{{.Data.Report.IndexDigest}}"
+                aria-label="{{.T "import.copy_index" "Digest" .Data.Report.IndexDigest}}" title="{{.T "import.copy_index" "Digest" .Data.Report.IndexDigest}}">⧉</button>
+      </span>
+      <span class="t-badge t-badge--{{kindClass .Data.Report.Kind}}" translate="no" lang="en">{{.Data.Report.Kind}}</span>
+    </div>
+    <table class="t-table">
+      <caption class="t-visually-hidden">{{.T "import.step2_title"}}</caption>
+      <thead>
+        <tr>
+          <th scope="col" class="t-col-pick"><span class="t-visually-hidden">{{.T "import.th_pick"}}</span></th>
+          <th scope="col">{{.T "import.th_platform"}}</th>
+          <th scope="col">{{.T "import.th_digest"}}</th>
+          <th scope="col" class="t-num">{{.T "import.th_size"}}</th>
+          <th scope="col">{{.T "import.th_status"}}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range $i, $p := .Data.Platforms}}
+        <tr{{if eq $p.Status "up-to-date"}} class="t-dim"{{end}}>
+          <td><input type="checkbox" name="platform" value="{{$p.Name}}" id="pf-{{$i}}"
+                     data-size="{{$p.Size}}"{{if $p.Checked}} checked{{end}}></td>
+          <td><label class="t-mono" for="pf-{{$i}}" translate="no">{{$p.Name}}</label></td>
+          <td>
+            <span class="t-chip">
+              <span translate="no" title="{{$p.Digest}}">{{$.Trunc $p.Digest 26}}</span>
+              <button type="button" class="t-chip-copy" data-copy="{{$p.Digest}}"
+                      aria-label="{{$.T "repo.copy_digest" "Digest" $p.Digest}}" title="{{$.T "repo.copy_digest" "Digest" $p.Digest}}">⧉</button>
+            </span>
+          </td>
+          <td class="t-num" title="{{$p.Size}}">{{$.FmtBytes $p.Size}}</td>
+          <td><span class="t-badge t-badge--{{$p.Status}}" translate="no" lang="en">{{$p.Status}}</span></td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    <div class="t-row t-import-confirm">
+      <span id="import-selection" class="t-muted"
+            data-label-one="{{.T "import.selection_one" "Count" "{n}" "Size" "{size}"}}"
+            data-label-other="{{.T "import.selection_other" "Count" "{n}" "Size" "{size}"}}"
+        >{{if eq .Data.SelectedCount 1}}{{.T "import.selection_one" "Count" .Data.SelectedCount "Size" (.FmtBytes .Data.SelectedBytes)}}{{else}}{{.T "import.selection_other" "Count" .Data.SelectedCount "Size" (.FmtBytes .Data.SelectedBytes)}}{{end}}</span>
+      <span class="t-muted t-note">{{.T "import.uptodate_note"}}</span>
+      <button id="import-submit" type="submit" class="t-btn t-btn--primary"
+              {{if eq .Data.SelectedCount 0}}disabled{{end}}
+              data-units="{{if eq .Lang "fr"}}o|Kio|Mio|Gio|Tio|Pio{{else}}B|KiB|MiB|GiB|TiB|PiB{{end}}"
+              data-dec="{{if eq .Lang "fr"}},{{else}}.{{end}}"
+              data-label-one="{{.T "import.submit_one" "Count" "{n}" "Size" "{size}"}}"
+              data-label-other="{{.T "import.submit_other" "Count" "{n}" "Size" "{size}"}}"
+        >{{if eq .Data.SelectedCount 1}}{{.T "import.submit_one" "Count" .Data.SelectedCount "Size" (.FmtBytes .Data.SelectedBytes)}}{{else}}{{.T "import.submit_other" "Count" .Data.SelectedCount "Size" (.FmtBytes .Data.SelectedBytes)}}{{end}}</button>
+      <span class="htmx-indicator t-pulse-dot" aria-hidden="true"></span>
+    </div>
+  </form>
+  {{end}}
+</div>
+{{end}}
+
+{{/* Inspection failure: the R-03 block (role="alert" via the frozen
+     partial) wrapped in the swap zone so a retry keeps its target; served
+     with the entry's real HTTP status (ADR-0015 §6). */}}
+{{define "import-error"}}
+<div id="inspect-zone">
+  <h2 class="t-kick" tabindex="-1" data-focus-target>{{.T "import.step2_title"}}</h2>
+  {{template "error-block" .}}
+</div>
+{{end}}
