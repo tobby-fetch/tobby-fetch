@@ -1,0 +1,39 @@
+ok   scenario m3 started 2026-08-12T20:33:08Z
+ok   cosign available (  ______   ______        _______. __    _______ .__   __.)
+ok   built tobby for linux/amd64
+ok   instances launched (source + node + downstream)
+ok   upstream registry serving (10.180.10.97:8080)
+ok   fixtures seeded (image sha256:8f7d2b5c9dbec0ac8c942421fb8a5b1abb22ee76c7086fafee3f42150b52938c, fileset sha256:d31fbf61ced08e0e149de8c70431f719d20dffa8f1481e6c7eaa157c1ed3053e), key pairs generated
+ok   cooked recipe signed (trusted 2.0.0, foreign-signed 2.0.1)
+ok   secure node configured (trust root, retriever, fileset) and serving
+ok   signed recipe synchronized: pinned digests intact, sparse index (2/3), signature copied
+ok   foreign-signed recipe refused (TBY-SIG-001), nothing landed
+ok   idempotence: second synchronization transferred zero bytes
+ok   FileSet served anonymously (opt-in), 206 on ranges, traversal refused
+ok   cascade: unmodified recipe consumed through substitution, identical relocated path, digest intact
+ok   scenario m3 complete — report: crucible-report-m3.txt
+
+# Acceptance host: disposable Scaleway Elastic Metal (cheapest hourly offer
+# in stock, fr-par-2, Intel Xeon E3-1230 v3, 8 cores, 31 GiB, Ubuntu 24.04.3,
+# kernel 6.8.0-88, Incus 6.0/apt, dir pool, cosign 3.x installed on the host),
+# created 2026-08-12 20:06 UTC, destroyed 20:34 UTC after report retrieval
+# (ADR-0014 disposable-host profile; system containers only, no KVM needed).
+#
+# The m1 and m2 scenarios were replayed green on the same host beforehand
+# (non-regression of the milestone-1 and milestone-2 surfaces under the
+# recipe engine): registry round-trip, block-device medium transport, egress
+# canary, air-gapped serving; then the secure journey and SIGKILL resumption.
+# Their reports are milestone-1- and milestone-2-crucible-report.txt.
+#
+# The recipes are signed by the REAL cosign on the node, with the key-based,
+# tag-attached convention of RECIPE-SPEC 12.2 — the compatibility proof unit
+# tests can only approximate. Note for the record: cosign 3.x defaults to the
+# new bundle format instead, which attaches signatures under a referrers tag
+# the current verifier does not look for; the scenario signs in the
+# documented format explicitly, and the divergence is recorded as an item to
+# arbitrate before third parties sign recipes outside our tooling.
+#
+# The cascade step failed on the first run — the scenario read the third
+# container's address before DHCP had assigned it. The scenario was fixed,
+# redeployed, and m3 replayed in full on the same host; the report above is
+# that complete run, unedited.
