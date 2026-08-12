@@ -101,7 +101,7 @@ func New() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(newServeCmd(), newVersionCmd(), newConfigCmd(), newUserCmd())
+	root.AddCommand(newServeCmd(), newVersionCmd(), newConfigCmd(), newUserCmd(), newQuickstartCmd())
 	return root
 }
 

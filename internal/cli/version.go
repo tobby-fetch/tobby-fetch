@@ -4,6 +4,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/buildinfo"
@@ -15,7 +17,9 @@ func newVersionCmd() *cobra.Command {
 		Short: "Print the Tobby version and build metadata",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
-			cmd.Println(buildinfo.String())
+			// Machine output goes to stdout so it can be piped or captured
+			// (cobra's Print* helpers default to stderr).
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), buildinfo.String())
 		},
 	}
 }
