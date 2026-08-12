@@ -158,6 +158,9 @@ func TestTasksPollingStopsWhenSettled(t *testing.T) {
 	if strings.Contains(body, "logs=1") {
 		t.Error("settled detail still re-emits the log sentinel")
 	}
+	if !strings.Contains(body, `id="task-body"`) || strings.Contains(body, `hx-trigger="every 2s"`) {
+		t.Error("settled detail still arms the body poll (B-002)")
+	}
 	// The finished task links back to the imported artifact (loop closed).
 	if !strings.Contains(body, "/-/tags/7.2") {
 		t.Error("finished detail misses the /content artifact link")
@@ -167,6 +170,47 @@ func TestTasksPollingStopsWhenSettled(t *testing.T) {
 	}
 	if !strings.Contains(body, "/api/v1/tasks/"+id+"/logs?format=raw") {
 		t.Error("finished detail misses the raw log download link")
+	}
+}
+
+// TestTaskDetailBodyPolling (B-002): the detail of an active task — the
+// page an HX-Redirect lands on after an import — arms an auto-terminating
+// poll on its body zone (badge, items, reports), served as a fragment on
+// the same canonical URL, told apart by HX-Target (ADR-0015 §1).
+func TestTaskDetailBodyPolling(t *testing.T) {
+	u, q, _ := newTestUIWithQueue(t)
+	mux := mount(u)
+	c := login(t, mux, "alexis", "pw-admin")
+
+	// Queue not started: the task stays pending (active).
+	task, err := q.Create(tasks.TypeUnitImport, "docker.io/library/redis:7.2", "alexis",
+		[]tasks.Item{{Name: "linux/amd64", Digest: "sha256:0123"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := get(t, mux, c, "/tasks/"+task.ID, nil)
+	body := w.Body.String()
+	for _, want := range []string{
+		`id="task-body"`,
+		`hx-get="/tasks/` + task.ID + `"`,
+		`hx-trigger="every 2s"`,
+		`hx-swap="morph:outerHTML"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("active detail misses %q", want)
+		}
+	}
+
+	// The poll targets the body zone and gets only that fragment.
+	w = get(t, mux, c, "/tasks/"+task.ID, map[string]string{
+		"HX-Request": "true", "HX-Target": "task-body"})
+	frag := strings.TrimSpace(w.Body.String())
+	if !strings.HasPrefix(frag, `<div id="task-body"`) {
+		t.Errorf("poll fragment is not the body zone: %.80s", frag)
+	}
+	if strings.Contains(frag, "<!DOCTYPE html>") || strings.Contains(frag, `id="log-pre"`) {
+		t.Error("body fragment carries the document or the log view")
 	}
 }
 

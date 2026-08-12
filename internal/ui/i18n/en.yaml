@@ -186,6 +186,7 @@
 "repo.th_digest": "Digest"
 "repo.th_size": "Size"
 "repo.th_platforms": "Platforms"
+"repo.platforms_title": "{{.Present}} of {{.Total}} platforms present locally"
 "repo.copy_pull": "Copy the pull command"
 "repo.copy_digest": "Copy the digest {{.Digest}}"
 "repo.no_tags": "This repository has no tag."

@@ -47,7 +47,8 @@
           </span>
         </td>
         <td class="t-num" title="{{.Size}}">{{$.FmtBytes .Size}}</td>
-        <td class="t-num">{{.Platforms}}</td>
+        {{/* present/total — never the raw index total alone (B-007) */}}
+        <td class="t-num" title="{{$.T "repo.platforms_title" "Present" .Present "Total" .Platforms}}">{{.Present}}/{{.Platforms}}</td>
       </tr>
       {{end}}
     </tbody>

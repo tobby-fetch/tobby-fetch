@@ -71,12 +71,16 @@ const (
 )
 
 // TagInfo is one tag of a repository as the tag table shows it (UI-SPEC
-// §5.4): pinned digest, logical size, platform count, manifest media type.
+// §5.4): pinned digest, logical size, platform counts, manifest media type.
 type TagInfo struct {
-	Tag       string
-	Digest    string
-	Size      int64
+	Tag    string
+	Digest string
+	Size   int64
+	// Platforms counts the index entries; Present counts those whose
+	// manifest is locally held — a sparse index (FR-022) keeps them apart,
+	// and the UI shows "present/total", never the total alone (B-007).
 	Platforms int
+	Present   int
 	MediaType string
 }
 
@@ -204,6 +208,7 @@ func (s *Store) RepoInfo(ctx context.Context, name string) (*RepoInfo, error) {
 			Digest:    desc.Digest.String(),
 			Size:      sum.size,
 			Platforms: sum.platforms,
+			Present:   sum.present,
 			MediaType: sum.mediaType,
 		})
 	}
@@ -492,6 +497,7 @@ type manifestSummary struct {
 	mediaType string
 	size      int64
 	platforms int
+	present   int
 	kind      Kind
 }
 
@@ -518,6 +524,7 @@ func (s *Store) summarize(ctx context.Context, ms distribution.ManifestService, 
 		sum.kind = probe.kind()
 		sum.size = manifestTotal(payload, m)
 		sum.platforms = 1
+		sum.present = 1
 		return sum, nil
 	}
 
@@ -531,6 +538,7 @@ func (s *Store) summarize(ctx context.Context, ms distribution.ManifestService, 
 		if !present {
 			continue
 		}
+		sum.present++
 		cm, err := ms.Get(ctx, c.Digest)
 		if err != nil {
 			return nil, err

@@ -7,6 +7,31 @@
 {{define "title"}}{{.T "task.title" "ID" .Data.Row.ID}}{{end}}
 {{define "main"}}
 <section>
+  {{template "task-body" .}}
+
+  <div class="t-row t-logbar">
+    <p class="t-kick">{{.T "task.logs_title"}}</p>
+    <a class="t-btn t-btn--secondary t-btn--sm" href="{{.Data.DownloadHref}}">↓ {{.T "task.logs_download"}}</a>
+  </div>
+  {{if .Data.LogErr}}
+  <p class="t-muted">{{.T "task.logs_unavailable"}}</p>
+  {{else}}
+  <div class="t-logview" role="log" tabindex="0" aria-label="{{.T "task.logs_label" "ID" .Data.Row.ID}}">
+    <pre id="log-pre">{{.Data.LogChunk}}</pre>
+    <div id="log-cursor"{{if .Data.Row.Active}} hx-get="/tasks/{{.Data.Row.ID}}?logs=1&after={{.Data.LogNext}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}></div>
+  </div>
+  {{end}}
+</section>
+{{end}}
+
+{{/* Polled body: header badge, per-item statuses, and reports — everything
+     that moves while the task runs, except the log follow (its own cursor).
+     Same auto-terminating contract as the /tasks rows (UI-SPEC §8.3): the
+     polling attributes are re-emitted ONLY while the task is active, morphed
+     to keep focus and open <details> (B-002: a page reached through
+     HX-Redirect after an import now updates itself). */}}
+{{define "task-body"}}
+<div id="task-body"{{if .Data.Row.Active}} hx-get="/tasks/{{.Data.Row.ID}}" hx-trigger="every 2s" hx-swap="morph:outerHTML" hx-target="this"{{end}}>
   <div class="t-titlerow">
     <h1 class="t-page-title">{{.T "task.title" "ID" .Data.Row.ID}}</h1>
     {{template "task-badge" (withData . .Data.Row)}}
@@ -121,20 +146,7 @@
     </table>
   </div>
   {{end}}
-
-  <div class="t-row t-logbar">
-    <p class="t-kick">{{.T "task.logs_title"}}</p>
-    <a class="t-btn t-btn--secondary t-btn--sm" href="{{.Data.DownloadHref}}">↓ {{.T "task.logs_download"}}</a>
-  </div>
-  {{if .Data.LogErr}}
-  <p class="t-muted">{{.T "task.logs_unavailable"}}</p>
-  {{else}}
-  <div class="t-logview" role="log" tabindex="0" aria-label="{{.T "task.logs_label" "ID" .Data.Row.ID}}">
-    <pre id="log-pre">{{.Data.LogChunk}}</pre>
-    <div id="log-cursor"{{if .Data.Row.Active}} hx-get="/tasks/{{.Data.Row.ID}}?logs=1&after={{.Data.LogNext}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}></div>
-  </div>
-  {{end}}
-</section>
+</div>
 {{end}}
 
 {{/* Incremental log follow (UI-SPEC §8.6): the new chunk lands appended

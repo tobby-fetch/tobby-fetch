@@ -143,8 +143,19 @@ code {
 }
 .t-iconbtn:hover { color: var(--tobby-accent-text); border-color: var(--tobby-accent); }
 
-.t-usermenu { font-size: 0.78rem; color: var(--tobby-text); white-space: nowrap; }
+/* User menu: the open <details> content is a pop-under anchored to the
+   summary — never in the flow, so opening it cannot grow the header (B-005). */
+.t-usermenu { position: relative; font-size: 0.78rem; color: var(--tobby-text); white-space: nowrap; }
+.t-usermenu summary { cursor: pointer; }
 .t-usermenu i { font-style: normal; color: var(--tobby-muted); font-size: 0.7rem; }
+.t-usermenu > form {
+  position: absolute; right: 0; top: calc(100% + 0.45rem); z-index: 30;
+  padding: var(--tobby-space-2);
+  background: var(--tobby-bg-raise);
+  border: 1px solid var(--tobby-border-control);
+  border-radius: var(--tobby-radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
 
 /* ==========================================================================
    Banners — operational / security, stacked under the topbar, NOT closable

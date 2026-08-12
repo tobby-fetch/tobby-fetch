@@ -491,6 +491,10 @@ components:
                 type: integer
               platforms:
                 type: integer
+                description: Index entries, locally present or not.
+              presentPlatforms:
+                type: integer
+                description: Entries whose manifest is locally held (sparse index, FR-022).
     ContentManifest:
       type: object
       properties:

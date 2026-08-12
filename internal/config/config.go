@@ -140,10 +140,31 @@ func Default() Config {
 	}
 }
 
+// Scope names the configuration slice a command actually uses: validation
+// is per-command (R-34) — a command must never demand a setting it ignores
+// (B-006: `tobby user` only needs the state directory, not a mode).
+type Scope int
+
+const (
+	// ScopeInstance validates the full instance configuration — what
+	// serving requires, mode included (FR-001).
+	ScopeInstance Scope = iota
+	// ScopeState validates only what state-directory commands need:
+	// everything set must be coherent, but no mode is required.
+	ScopeState
+)
+
 // Load builds the effective configuration: defaults, overlaid with the YAML
 // file at path (skipped when path is empty and optional), then environment
-// variables, then flag overrides. Validation runs on the merged result.
+// variables, then flag overrides. Validation runs on the merged result, for
+// the full instance scope.
 func Load(path string, pathExplicit bool, overrides ...Override) (Config, error) {
+	return LoadFor(ScopeInstance, path, pathExplicit, overrides...)
+}
+
+// LoadFor is Load with per-command validation (R-34): the merged result is
+// validated only against what the command's scope actually uses.
+func LoadFor(scope Scope, path string, pathExplicit bool, overrides ...Override) (Config, error) {
 	cfg := Default()
 
 	if path != "" {
@@ -171,7 +192,7 @@ func Load(path string, pathExplicit bool, overrides ...Override) (Config, error)
 		o(&cfg)
 	}
 
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.validate(scope); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
@@ -181,13 +202,21 @@ func Load(path string, pathExplicit bool, overrides ...Override) (Config, error)
 // The CLI translates every set flag into one Override.
 type Override func(*Config)
 
-// Validate checks the merged configuration. Error messages state what to fix.
-func (c *Config) Validate() error {
+// Validate checks the merged configuration for the full instance scope.
+// Error messages state what to fix.
+func (c *Config) Validate() error { return c.validate(ScopeInstance) }
+
+// validate checks the merged configuration against one command scope: what
+// is set must always be coherent; what is absent is only an error when the
+// scope requires it (R-34).
+func (c *Config) validate(scope Scope) error {
 	var errs []error
 	switch c.Mode {
 	case ModePassthrough, ModeMirror:
 	case "":
-		errs = append(errs, errors.New(`mode is required: set "passthrough" or "mirror" (flag --mode, env TOBBY_MODE, or "mode:" in the configuration file)`))
+		if scope == ScopeInstance {
+			errs = append(errs, errors.New(`mode is required: set "passthrough" or "mirror" (flag --mode, env TOBBY_MODE, or "mode:" in the configuration file)`))
+		}
 	default:
 		errs = append(errs, fmt.Errorf(`unknown mode %q: valid modes are "passthrough" and "mirror"`, c.Mode))
 	}

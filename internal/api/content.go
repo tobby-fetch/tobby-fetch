@@ -71,12 +71,15 @@ func (c *contentAPI) list(w http.ResponseWriter, r *http.Request) {
 	c.api.JSON(w, http.StatusOK, resp)
 }
 
-// contentTag is one tag of the repository detail.
+// contentTag is one tag of the repository detail. Platforms counts the
+// index entries, PresentPlatforms the locally held ones — a sparse index
+// (FR-022) reports both, never the total alone (B-007).
 type contentTag struct {
-	Tag       string `json:"tag"`
-	Digest    string `json:"digest"`
-	SizeBytes int64  `json:"sizeBytes"`
-	Platforms int    `json:"platforms"`
+	Tag              string `json:"tag"`
+	Digest           string `json:"digest"`
+	SizeBytes        int64  `json:"sizeBytes"`
+	Platforms        int    `json:"platforms"`
+	PresentPlatforms int    `json:"presentPlatforms"`
 }
 
 // contentRepoResponse mirrors the repository detail page.
@@ -140,7 +143,8 @@ func (c *contentAPI) repoDetail(w http.ResponseWriter, r *http.Request, name str
 	}
 	for _, tag := range info.Tags {
 		resp.Tags = append(resp.Tags, contentTag{
-			Tag: tag.Tag, Digest: tag.Digest, SizeBytes: tag.Size, Platforms: tag.Platforms,
+			Tag: tag.Tag, Digest: tag.Digest, SizeBytes: tag.Size,
+			Platforms: tag.Platforms, PresentPlatforms: tag.Present,
 		})
 	}
 	c.api.JSON(w, http.StatusOK, resp)

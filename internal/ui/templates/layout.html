@@ -44,13 +44,17 @@
 
   <div class="t-row">
     <span class="t-modechip" title="{{.T "shell.mode_title"}}">mode <b lang="en">{{.Mode}}</b></span>
-    <form method="post" action="/lang" class="t-inline-form">
+    {{/* lang and theme live on <html>, which a boosted swap never touches:
+         both forms force a full page load (hx-boost="false", ADR-0015 §7;
+         B-004). Bold marks the CURRENT language; the click switches to the
+         other one (B-003). */}}
+    <form method="post" action="/lang" class="t-inline-form" hx-boost="false">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <input type="hidden" name="back" value="{{.Path}}">
       <input type="hidden" name="lang" value="{{.OtherLang}}">
-      <button type="submit" class="t-lang" aria-label="{{.T "shell.lang_switch"}}">{{if eq .Lang "en"}}EN · <b>FR</b>{{else}}<b>EN</b> · FR{{end}}</button>
+      <button type="submit" class="t-lang" aria-label="{{.T "shell.lang_switch"}}">{{if eq .Lang "en"}}<b>EN</b> · FR{{else}}EN · <b>FR</b>{{end}}</button>
     </form>
-    <form method="post" action="/theme" class="t-inline-form">
+    <form method="post" action="/theme" class="t-inline-form" hx-boost="false">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <input type="hidden" name="back" value="{{.Path}}">
       <input type="hidden" name="theme" value="{{if eq .Theme "light"}}dark{{else}}light{{end}}">
@@ -90,6 +94,10 @@
 </div>
 
 <script>
+// hx-boost replaces the body on every navigation and re-runs this script:
+// every listener below targets document or document.body, which survive
+// the swap, so wiring must happen exactly once per browser page (B-001).
+if (!window.__tobbyWired) { window.__tobbyWired = true;
 // Focus helper (ADR-0015 §8): move focus to [data-focus-target] after swaps.
 document.addEventListener("htmx:afterSettle", function (e) {
   var t = e.detail.elt && e.detail.elt.querySelector ? e.detail.elt.querySelector("[data-focus-target]") : null;
@@ -128,6 +136,7 @@ document.body.addEventListener("htmx:beforeRequest", function () {
   var zone = document.getElementById("transport-error");
   if (zone) { zone.hidden = true; }
 });
+}
 </script>
 <div id="transport-error" hidden class="t-banner t-banner--warning" role="alert">
   <span class="t-banner-code" translate="no">TBY-SRV-003</span> {{.T "shell.unreachable"}}

@@ -51,8 +51,10 @@ func (f *userFlags) register(cmd *cobra.Command) {
 }
 
 // stateStore opens the account store from the resolved configuration.
+// Validation is scoped to what `tobby user` actually uses: the state
+// directory — never a mode (R-34, B-006).
 func (f *userFlags) stateStore(cmd *cobra.Command) (*auth.Store, error) {
-	cfg, err := f.load(cmd)
+	cfg, err := f.loadFor(cmd, config.ScopeState)
 	if err != nil {
 		return nil, err
 	}

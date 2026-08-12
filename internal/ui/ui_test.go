@@ -327,6 +327,36 @@ func TestErrorPages(t *testing.T) {
 
 // TestThemeAndLangCookies: the switchers set cookies and reload; the theme
 // is stamped server-side on <html> (zero FOUC).
+// TestLayoutShellRegressions pins the v0.2.0 shell fixes: the inline
+// script wires its document-level listeners once per browser page (B-001),
+// bold marks the CURRENT language (B-003), and the /lang and /theme forms
+// force a full page load — their state lives on <html>, which a boosted
+// swap never touches (B-004).
+func TestLayoutShellRegressions(t *testing.T) {
+	u := newTestUI(t, false)
+	mux := mount(u)
+	c := login(t, mux, "alexis", "pw-admin")
+
+	w := get(t, mux, c, "/", nil)
+	body := w.Body.String()
+
+	if !strings.Contains(body, "window.__tobbyWired") {
+		t.Error("layout script misses the idempotence guard (B-001)")
+	}
+	if strings.Count(body, `hx-boost="false"`) < 2 {
+		t.Error("/lang and /theme forms must opt out of hx-boost (B-004)")
+	}
+	if !strings.Contains(body, "<b>EN</b> · FR") {
+		t.Error("bold must mark the current language, EN by default (B-003)")
+	}
+
+	// French negotiated: bold moves to FR.
+	w = get(t, mux, c, "/", map[string]string{"Accept-Language": "fr"})
+	if !strings.Contains(w.Body.String(), "EN · <b>FR</b>") {
+		t.Error("bold must mark the current language, FR when negotiated (B-003)")
+	}
+}
+
 func TestThemeAndLangCookies(t *testing.T) {
 	u := newTestUI(t, false)
 	mux := mount(u)

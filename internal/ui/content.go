@@ -234,6 +234,19 @@ type contentManifestData struct {
 	PullCommand string
 }
 
+// PresentCount counts the locally held platforms of the detail — shown
+// next to the total, never the total alone (B-007). The page renders the
+// data by pointer so the template sees this method.
+func (d *contentManifestData) PresentCount() int {
+	n := 0
+	for i := range d.Platforms {
+		if d.Platforms[i].Present {
+			n++
+		}
+	}
+	return n
+}
+
 // contentManifest serves the manifest detail: pinned index digest,
 // platform table with local presence (sparse index, FR-022), OCI
 // annotations, pull-by-digest command (UI-SPEC §5.5).
@@ -276,7 +289,7 @@ func (u *UI) contentManifest(w http.ResponseWriter, r *http.Request, name, tag s
 		}
 		data.Platforms = append(data.Platforms, cp)
 	}
-	u.render.Page(w, r, "content-manifest", data)
+	u.render.Page(w, r, "content-manifest", &data)
 }
 
 // pullByTag builds the copyable pull command of a repository page,

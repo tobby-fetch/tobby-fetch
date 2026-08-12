@@ -134,6 +134,22 @@ func TestModeValidation(t *testing.T) {
 	}
 }
 
+func TestScopedValidation(t *testing.T) {
+	// R-34/B-006: per-command validation. ScopeState tolerates a missing
+	// mode — a state-directory command never uses one — but everything set
+	// must stay coherent: an unknown mode or an invalid level still fails.
+	if _, err := LoadFor(ScopeState, writeFile(t, ""), true); err != nil {
+		t.Errorf("ScopeState without mode: %v, want success", err)
+	}
+	if _, err := LoadFor(ScopeState, writeFile(t, "mode: sideways\n"), true); err == nil ||
+		!strings.Contains(err.Error(), `unknown mode "sideways"`) {
+		t.Errorf("ScopeState with unknown mode: error = %v, want refusal", err)
+	}
+	if _, err := LoadFor(ScopeState, writeFile(t, "logging:\n  level: chatty\n"), true); err == nil {
+		t.Error("ScopeState with invalid logging.level must still fail")
+	}
+}
+
 func TestUnknownFileFieldRejected(t *testing.T) {
 	path := writeFile(t, "mode: mirror\ntypo_field: 1\n")
 	_, err := Load(path, true)

@@ -8,6 +8,27 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Copy chips fired one toast per page visited: the layout script re-ran on
+  every boosted navigation and stacked its document-level listeners; it now
+  wires them exactly once per browser page.
+- The task detail reached right after starting an import never refreshed its
+  item statuses or badge: the body zone now polls while the task is active,
+  with the same auto-terminating, server-decided contract as the task list.
+- The language switcher highlighted the language you would switch to instead
+  of the current one.
+- The theme toggle and language switch had no visible effect under boosted
+  navigation: both live on `<html>`, so their forms now force a full page
+  load.
+- Opening the user menu grew the header bar; the menu is now a pop-under.
+- `tobby user` demanded `--mode` although it only uses the state directory:
+  configuration validation is now scoped per command.
+- Tag tables and the manifest heading showed the total platform count of an
+  index even when only a few platforms are local; they now show
+  present/total (e.g. `2/16`), in the UI and as `presentPlatforms` in the
+  API.
+
 ## [0.2.0] - 2026-08-12
 
 Milestone 2 — user-experience preview: the first complete journey (sign in,

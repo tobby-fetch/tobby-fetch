@@ -181,6 +181,7 @@ func TestContentRepoAndManifestPages(t *testing.T) {
 		"6.4.2", "sha256:",
 		"docker pull example.com/docker.io/bitnami/wordpress:6.4.2", // httptest host
 		"/content?prefix=docker.io",                                 // navigable breadcrumb
+		">2/2</td>",                                                 // platforms shown present/total, never total alone (B-007)
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("repo page misses %q", want)

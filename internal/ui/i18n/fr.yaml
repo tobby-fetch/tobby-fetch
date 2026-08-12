@@ -186,6 +186,7 @@
 "repo.th_digest": "Digest"
 "repo.th_size": "Taille"
 "repo.th_platforms": "Plateformes"
+"repo.platforms_title": "{{.Present}} plateforme(s) présente(s) localement sur {{.Total}}"
 "repo.copy_pull": "Copier la commande pull"
 "repo.copy_digest": "Copier le digest {{.Digest}}"
 "repo.no_tags": "Ce dépôt n'a aucun tag."

@@ -136,20 +136,22 @@ func TestUserAddFirstAccountIsAdmin(t *testing.T) {
 	// A non-admin first account is refused: the instance must stay
 	// administrable.
 	if _, err := run("pw\n", "user", "add", "eve", "--role", "viewer",
-		"--state-root", state, "--mode", "mirror", "--password-stdin"); err == nil {
+		"--state-root", state, "--password-stdin"); err == nil {
 		t.Fatal("first account with --role viewer must be refused")
 	}
 
 	if _, err := run("pw-admin\n", "user", "add", "alexis",
-		"--state-root", state, "--mode", "mirror", "--password-stdin"); err != nil {
+		"--state-root", state, "--password-stdin"); err != nil {
 		t.Fatalf("first user add: %v", err)
 	}
 	if _, err := run("pw-view\n", "user", "add", "lecteur", "--role", "viewer",
-		"--state-root", state, "--mode", "mirror", "--password-stdin"); err != nil {
+		"--state-root", state, "--password-stdin"); err != nil {
 		t.Fatalf("second user add: %v", err)
 	}
 
-	out, err := run("", "user", "list", "--state-root", state, "--mode", "mirror")
+	// No --mode anywhere above: `tobby user` only uses the state directory,
+	// and per-command validation must not demand more (R-34, B-006).
+	out, err := run("", "user", "list", "--state-root", state)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,16 +187,16 @@ func TestUserPasswdStdin(t *testing.T) {
 	}
 
 	if err := run("pw-one\n", "user", "add", "alexis",
-		"--state-root", state, "--mode", "mirror", "--password-stdin"); err != nil {
+		"--state-root", state, "--password-stdin"); err != nil {
 		t.Fatal(err)
 	}
 	if err := run("pw-two\n", "user", "passwd", "alexis",
-		"--state-root", state, "--mode", "mirror", "--password-stdin"); err != nil {
+		"--state-root", state, "--password-stdin"); err != nil {
 		t.Fatalf("user passwd: %v", err)
 	}
 	// An empty stdin password is refused.
 	if err := run("\n", "user", "passwd", "alexis",
-		"--state-root", state, "--mode", "mirror", "--password-stdin"); err == nil {
+		"--state-root", state, "--password-stdin"); err == nil {
 		t.Error("empty password must be refused")
 	}
 
@@ -207,6 +209,30 @@ func TestUserPasswdStdin(t *testing.T) {
 	}
 	if _, ok := s.VerifyPassword("alexis", "pw-one", time.Now()); ok {
 		t.Error("old password still accepted after passwd")
+	}
+}
+
+// TestUserScopedValidation (B-006): `tobby user` runs without any mode —
+// but what IS set must still be coherent (an unknown mode stays refused,
+// and state.root remains required with an actionable message).
+func TestUserScopedValidation(t *testing.T) {
+	run := func(args ...string) error {
+		root := New()
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&out)
+		root.SetArgs(args)
+		return root.Execute()
+	}
+	if err := run("user", "list", "--state-root", t.TempDir()); err != nil {
+		t.Errorf("user list without --mode: %v", err)
+	}
+	if err := run("user", "list", "--state-root", t.TempDir(), "--mode", "bogus"); err == nil {
+		t.Error("unknown mode must stay refused even out of scope")
+	}
+	err := run("user", "list")
+	if err == nil || !strings.Contains(err.Error(), "state.root") {
+		t.Errorf("missing state.root error = %v, want an actionable state.root message", err)
 	}
 }
 

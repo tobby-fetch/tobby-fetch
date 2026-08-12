@@ -204,6 +204,13 @@ func (u *UI) taskDetail(w http.ResponseWriter, r *http.Request) {
 		data.ArtifactHref, data.PullCommand = u.taskArtifact(r, t)
 	}
 
+	// The polled body zone swaps on the same canonical URL (ADR-0015 §1),
+	// told apart by the HX-Target header — like the /tasks rows (B-002).
+	if isFragment(r) && r.Header.Get("HX-Target") == "task-body" {
+		u.render.Fragment(w, r, "task-detail", "task-body", data)
+		return
+	}
+
 	chunk, next, err := u.queue.ReadLog(t.ID, 0)
 	if err != nil {
 		data.LogErr = true
