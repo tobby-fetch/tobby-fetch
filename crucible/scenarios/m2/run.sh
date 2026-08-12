@@ -45,19 +45,23 @@ inc launch "$IMAGE" tbc-m2-source --profile tbc-connected-node
 inc launch "$IMAGE" tbc-m2-node --profile tbc-connected-node
 check "instances launched (source registry + secure node)"
 
-inc file push /tmp/tobby-crucible tbc-m2-node/usr/bin/tobby
-inc exec tbc-m2-node -- chmod +x /usr/bin/tobby
+for inst in tbc-m2-source tbc-m2-node; do
+    inc file push /tmp/tobby-crucible "$inst/usr/bin/tobby"
+    inc exec "$inst" -- chmod +x /usr/bin/tobby
+done
 
-# The in-zone source: the reference registry implementation.
+# The in-zone source registry is another Tobby with the explicit FR-075
+# opt-out: a standards-compliant OCI registry with zero distro packaging
+# dependencies — the m1 scenario already proves its wire behavior.
 inc exec tbc-m2-source -- sh -c '
-    apk add --no-cache docker-registry >/dev/null 2>&1 ||
-        apk add --no-cache registry >/dev/null 2>&1
-    nohup registry serve /etc/docker-registry/config.yml >/var/log/registry.log 2>&1 &
-' || fail "starting the source registry"
+    nohup env TOBBY_MODE=passthrough TOBBY_STORAGE_ROOT=/srv/source \
+        TOBBY_AUTH_DISABLED=true \
+        TOBBY_SERVER_ADDR=:8080 tobby serve >/var/log/tobby.log 2>&1 &
+'
 SOURCE_IP=$(inc list tbc-m2-source -c 4 -f csv | awk '{print $1}' | head -1)
 NODE_IP=$(inc list tbc-m2-node -c 4 -f csv | awk '{print $1}' | head -1)
-wait_ready tbc-m2-source "http://127.0.0.1:5000/v2/_catalog" || true
-check "source registry serving ($SOURCE_IP:5000)"
+wait_ready tbc-m2-source http://127.0.0.1:8080/readyz
+check "source registry serving ($SOURCE_IP:8080)"
 
 # -- 1. R-01: refusal without an account, then account through the CLI -------
 set +e
@@ -77,7 +81,7 @@ start_node() {
     inc exec tbc-m2-node -- sh -c '
         nohup env TOBBY_MODE=mirror TOBBY_STORAGE_ROOT=/srv/store \
             TOBBY_STATE_ROOT=/srv/state \
-            TOBBY_REGISTRIES_INSECURE='"$SOURCE_IP:5000"' \
+            TOBBY_REGISTRIES_INSECURE='"$SOURCE_IP:8080"' \
             TOBBY_SERVER_ADDR=:8080 tobby serve >>/var/log/tobby.log 2>&1 &
     '
     wait_ready tbc-m2-node http://127.0.0.1:8080/readyz
@@ -95,9 +99,9 @@ curl -s -o /dev/null -D - "http://$NODE_IP:8080/v2/" | grep -qi "WWW-Authenticat
 check "anonymous refused on API (RFC 9457) and registry (Basic challenge)"
 
 # -- 3. Import through the API, browse, bit-exact digest ----------------------
-DIGEST=$( cd "$DIR/../../.." && go run ./test/topology/seed push "$SOURCE_IP:5000/library/sample:2.0.0" ) ||
+DIGEST=$( cd "$DIR/../../.." && go run ./test/topology/seed push "$SOURCE_IP:8080/library/sample:2.0.0" ) ||
     fail "seeding the source registry"
-REF="$SOURCE_IP:5000/library/sample:2.0.0"
+REF="$SOURCE_IP:8080/library/sample:2.0.0"
 CRED="$CRED_USER:$CRED_PASS"
 
 INSPECT=$(curl -fsS -u "$CRED" "$API/import/inspect?ref=$REF") || fail "inspection"
@@ -113,7 +117,7 @@ while :; do
     i=$((i + 1)); [ "$i" -gt 200 ] && fail "import never settled"
     sleep 0.3
 done
-RELOCATED="${SOURCE_IP}_5000/library/sample"
+RELOCATED="${SOURCE_IP}_8080/library/sample"
 STORED=$(curl -fsS -u "$CRED" "$API/content/$RELOCATED/-/tags/2.0.0" | jq -r '.digest')
 [ "$STORED" = "$DIGEST" ] || fail "stored digest $STORED differs from source $DIGEST"
 check "import through the API done (3/3), pinned digest preserved ($DIGEST)"

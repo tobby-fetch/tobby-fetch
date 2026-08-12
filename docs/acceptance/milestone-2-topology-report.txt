@@ -15,5 +15,5 @@ ok   idempotence: second import moved 0 bytes
 # topology with the plain-HTTP upstream declared through the per-host
 # registries.insecure opt-in. The crucible-tier scenario
 # (crucible/scenarios/m2/run.sh) adds the hard-kill task-resumption case
-# on real nodes and runs on a Linux/Incus host at milestone acceptance,
-# like milestone 1 (disposable-cloud-VM profile, ADR-0014).
+# on real nodes — executed 2026-08-12 on a disposable Scaleway Elastic
+# Metal host: see milestone-2-crucible-report.txt.
