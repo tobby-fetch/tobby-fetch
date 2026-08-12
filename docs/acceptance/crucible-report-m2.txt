@@ -1,0 +1,11 @@
+ok   scenario m2 started 2026-08-12T20:27:12Z
+ok   built tobby for linux/amd64
+ok   instances launched (source registry + secure node)
+ok   source registry serving (10.180.10.152:8080)
+ok   R-01: no-account start refused (exit 3, TBY-AUTH-001)
+ok   account created (first account admin), secure node ready
+ok   anonymous refused on API (RFC 9457) and registry (Basic challenge)
+ok   import through the API done (3/3), pinned digest preserved (sha256:2cc491081ef8e05eb48c729b8091cbfde30a45a45dbdf181b4c9bf1f82094267)
+ok   standard third-party client pulls the import with Basic credentials
+ok   FR-029: task survived a SIGKILL restart, settled done, zero re-transfer
+ok   scenario m2 complete — report: crucible-report-m2.txt

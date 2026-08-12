@@ -71,9 +71,25 @@ inc exec tbc-m3-source -- sh -c '
         TOBBY_AUTH_DISABLED=true \
         TOBBY_SERVER_ADDR=:8080 tobby serve >/var/log/tobby.log 2>&1 &
 '
-SOURCE_IP=$(inc list tbc-m3-source -c 4 -f csv | awk '{print $1}' | head -1)
-NODE_IP=$(inc list tbc-m3-node -c 4 -f csv | awk '{print $1}' | head -1)
-DOWN_IP=$(inc list tbc-m3-downstream -c 4 -f csv | awk '{print $1}' | head -1)
+# A freshly launched instance has no address until DHCP completes, and
+# this scenario reads all three at once: wait for each rather than
+# capturing an empty string that only fails minutes later.
+instance_ip() {
+    i=0
+    while :; do
+        ip=$(inc list "$1" -c 4 -f csv | awk '{print $1}' | head -1)
+        if [ -n "$ip" ]; then
+            printf '%s' "$ip"
+            return 0
+        fi
+        i=$((i + 1))
+        [ "$i" -gt 60 ] && fail "instance $1 never received an address"
+        sleep 1
+    done
+}
+SOURCE_IP=$(instance_ip tbc-m3-source)
+NODE_IP=$(instance_ip tbc-m3-node)
+DOWN_IP=$(instance_ip tbc-m3-downstream)
 wait_ready tbc-m3-source http://127.0.0.1:8080/readyz
 check "upstream registry serving ($SOURCE_IP:8080)"
 

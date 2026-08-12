@@ -1,10 +1,10 @@
-ok   scenario m1 started 2026-08-12T14:33:35Z
+ok   scenario m1 started 2026-08-12T20:26:10Z
 ok   built tobby for linux/amd64
 ok   instances launched (connected + air-gapped)
 ok   block-device medium created (/dev/loop0) and attached to the connected node
 ok   medium formatted (ext4) and mounted on the connected node
 ok   connected instance ready (store on the medium)
-ok   embedded registry round-trip on the connected node (sha256:c44290ec81f363ae735d0d9cb9f59f3a892166fe1ffe40c28d7892a32edafddf)
+ok   embedded registry round-trip on the connected node (sha256:d7f8adcffb3451da2f15b6440b5e00b1f2b36e7731057a68d9304e30d4a7ef4c)
 ok   medium unmounted and detached (transport begins)
 ok   medium re-attached and mounted on the air-gapped node
 ok   egress canary failed as required (air gap proven by construction)
