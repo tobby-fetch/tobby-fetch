@@ -32,6 +32,10 @@ func RegisterAccounts(a *API, store *auth.Store) {
 	a.Handle("GET /api/v1/tokens", a.RequireRole(auth.RoleAdmin, acc.listTokens))
 	a.Handle("POST /api/v1/tokens", a.RequireRole(auth.RoleAdmin, acc.createToken))
 	a.Handle("POST /api/v1/tokens/{name}/revoke", a.RequireRole(auth.RoleAdmin, acc.revokeToken))
+	// Self-service password change (R-34, FR-061 mirror of the /account
+	// screen): any authenticated role — no RequireRole floor beyond the
+	// surface's own authentication.
+	a.Handle("POST /api/v1/account/password", acc.changePassword)
 }
 
 type accountsAPI struct {
@@ -155,6 +159,64 @@ func (c *accountsAPI) createToken(w http.ResponseWriter, r *http.Request) {
 	c.api.JSON(w, http.StatusCreated, map[string]any{
 		"name": tok.Name, "role": tok.Role, "secret": secret,
 	})
+}
+
+// passwordRequest is the POST /api/v1/account/password body.
+type passwordRequest struct {
+	Current string `json:"current"`
+	New     string `json:"new"`
+}
+
+// changePassword serves POST /api/v1/account/password: the authenticated
+// account changes its OWN password — same rules and taxonomy codes as the
+// /account screen (FR-061); admins change other accounts through the admin
+// surface. API tokens carry no password, so a token caller fails the
+// current-password check like any wrong credential. Every attempt emits an
+// FR-094 audit event; on success every UI session of the account is closed
+// (the API caller holds none to preserve).
+func (c *accountsAPI) changePassword(w http.ResponseWriter, r *http.Request) {
+	if !c.ready(w, r) {
+		return
+	}
+	id, _ := auth.IdentityFrom(r.Context())
+	fail := func(e *taxonomy.Error) {
+		audit.Log(r.Context(), c.api.logger, &audit.Event{
+			Actor: id.Name, Action: audit.ActionAccountPasswd, Target: id.Name,
+			Outcome: audit.OutcomeFailure, Origin: auth.ClientOrigin(r),
+		})
+		c.api.Problem(w, r, e)
+	}
+	var req passwordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// Undecodable body: the taxonomized internal error, per the surface's
+		// convention (see createToken); the wrapped cause lands in the logs.
+		c.api.Problem(w, r, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))
+		return
+	}
+	// Same check order as the UI handler, so the same request yields the
+	// same code on both surfaces (FR-061). The JSON contract carries no
+	// confirmation field — repeating the value is a browser-form concern.
+	if req.New == "" || req.New == req.Current {
+		fail(taxonomy.New(taxonomy.CodePasswordInvalid, nil))
+		return
+	}
+	if _, ok := c.store.VerifyPassword(id.Name, req.Current, c.now()); !ok {
+		fail(taxonomy.New(taxonomy.CodePasswordCurrent, nil))
+		return
+	}
+	if err := c.store.SetPassword(id.Name, req.New, c.now()); err != nil {
+		fail(taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))
+		return
+	}
+	// Sessions opened with the old credential must not survive (R-34).
+	if s := c.api.authn.Sessions; s != nil {
+		s.DeleteOthers(id.Name, "")
+	}
+	audit.Log(r.Context(), c.api.logger, &audit.Event{
+		Actor: id.Name, Action: audit.ActionAccountPasswd, Target: id.Name,
+		Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r),
+	})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // revokeToken serves POST /api/v1/tokens/{name}/revoke: immediate and

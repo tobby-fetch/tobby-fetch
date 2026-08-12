@@ -183,6 +183,33 @@ func TestSessions(t *testing.T) {
 	}
 }
 
+// TestSessionsDeleteOthers covers the R-34 password-change invalidation:
+// every session of the account dies except the kept one; other accounts
+// are untouched.
+func TestSessionsDeleteOthers(t *testing.T) {
+	ss := NewSessions(time.Hour)
+	kept := ss.Create("alexis", RoleAdmin, t0)
+	other := ss.Create("alexis", RoleAdmin, t0)
+	foreign := ss.Create("op", RoleOperator, t0)
+
+	ss.DeleteOthers("alexis", kept.ID)
+	if _, ok := ss.Get(kept.ID, t0); !ok {
+		t.Error("kept session died with the others")
+	}
+	if _, ok := ss.Get(other.ID, t0); ok {
+		t.Error("other session of the account survived DeleteOthers")
+	}
+	if _, ok := ss.Get(foreign.ID, t0); !ok {
+		t.Error("session of another account was collateral damage")
+	}
+
+	// keep "" (API path): every session of the account dies.
+	ss.DeleteOthers("alexis", "")
+	if _, ok := ss.Get(kept.ID, t0); ok {
+		t.Error("session survived DeleteOthers with no kept id")
+	}
+}
+
 // TestRegistryMiddleware locks the /v2/ contract: 401 + Basic challenge
 // without credentials, viewer can pull, viewer cannot push, operator can
 // push, token-as-Basic-password works (FR-076), and the FR-075 override

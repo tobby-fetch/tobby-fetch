@@ -37,7 +37,9 @@ var templatesFS embed.FS
 // document.
 var pageFiles = []string{
 	"about",
+	"account",
 	"admin-accounts",
+	"admin-retriever",
 	"api-docs",
 	"content-list",
 	"content-manifest",
@@ -47,6 +49,8 @@ var pageFiles = []string{
 	"help",
 	"import",
 	"login",
+	"recipe-mapping",
+	"recipes",
 	"task-detail",
 	"tasks",
 }
@@ -55,7 +59,7 @@ var pageFiles = []string{
 // (hx-history="false" stamped on <main>): screens that may carry a secret
 // (ADR-0015 §5). Belt over the global historyCacheSize:0 — the attribute
 // survives a configuration regression.
-var noHistoryPages = map[string]bool{"admin-accounts": true}
+var noHistoryPages = map[string]bool{"admin-accounts": true, "account": true}
 
 // parseTemplates builds one template set per page: layout + partials +
 // the page file. Called once at startup; a parse error is a build defect.
@@ -210,6 +214,13 @@ type Renderer struct {
 	AuthDisabled     bool
 	ShowUpcoming     bool
 	HasThemeOverride bool
+	// RelaxedScopes names the declared allowUnsigned trust scopes (FR-033):
+	// a permanent danger banner surfaces the relaxed posture on every page,
+	// like the FR-075 override.
+	RelaxedScopes []string
+	// AnonymousFileSets names the FileSets served without authentication
+	// (FR-047 opt-in): a permanent warning banner, never silent.
+	AnonymousFileSets []string
 }
 
 // NewRenderer parses the embedded templates.
@@ -250,10 +261,24 @@ func (rd *Renderer) view(r *http.Request, data any) *View {
 	if sess, ok := sessionFrom(r.Context()); ok {
 		v.CSRF = sess.CSRF
 	}
+	// Banner stack, security first (UI-SPEC §7): the FR-075 override, the
+	// FR-033 relaxed trust scopes, then the FR-047 anonymous FileSets.
 	if rd.AuthDisabled {
 		v.Banners = append(v.Banners, Banner{
 			Kind: "danger",
 			Text: v.T("banner.auth_disabled"),
+		})
+	}
+	if len(rd.RelaxedScopes) > 0 {
+		v.Banners = append(v.Banners, Banner{
+			Kind: "danger",
+			Text: v.T("banner.trust_relaxed", "Scopes", strings.Join(rd.RelaxedScopes, ", ")),
+		})
+	}
+	if len(rd.AnonymousFileSets) > 0 {
+		v.Banners = append(v.Banners, Banner{
+			Kind: "warning",
+			Text: v.T("banner.anonymous_filesets", "Names", strings.Join(rd.AnonymousFileSets, ", ")),
 		})
 	}
 	return v

@@ -27,12 +27,12 @@
   <nav class="t-nav" aria-label="{{.T "shell.nav_label"}}">
     <a href="/" {{if eq .Path "/"}}aria-current="page"{{end}}>{{.T "nav.dashboard"}}</a>
     <a href="/content" {{if hasPrefix .Path "/content"}}aria-current="page"{{end}}>{{.T "nav.content"}}</a>
+    <a href="/recipes" {{if hasPrefix .Path "/recipes"}}aria-current="page"{{end}}>{{.T "nav.recipes"}}</a>
     {{if .CanOperate}}<a href="/import" {{if eq .Path "/import"}}aria-current="page"{{end}}>{{.T "nav.import"}}</a>{{end}}
     <a href="/tasks" {{if hasPrefix .Path "/tasks"}}aria-current="page"{{end}}>{{.T "nav.tasks"}}<span id="task-badge" hx-get="/tasks/badge" hx-trigger="load" hx-swap="outerHTML"></span></a>
     <a href="/help" {{if or (hasPrefix .Path "/help") (eq .Path "/about") (eq .Path "/api-docs")}}aria-current="page"{{end}}>{{.T "nav.help"}}</a>
     {{if .IsAdmin}}<a href="/admin/accounts" {{if hasPrefix .Path "/admin"}}aria-current="page"{{end}}>{{.T "nav.admin"}}</a>{{end}}
     {{if .ShowUpcoming}}
-    <span class="t-nav-upcoming">{{.T "nav.recipes"}} — {{.T "nav.milestone" "N" 3}}</span>
     <span class="t-nav-upcoming">{{.T "nav.media"}} — {{.T "nav.milestone" "N" 5}}</span>
     {{end}}
   </nav>
@@ -65,7 +65,10 @@
       <summary>{{.Identity.Name}} <i>({{.Identity.Role}})</i></summary>
       <form method="post" action="/logout">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
-        <button type="submit" class="t-btn t-btn--secondary t-btn--sm">{{.T "shell.logout"}}</button>
+        {{/* Stacked pop-under entries: the account link above the sign-out
+             button (R-34), same quiet button styling. */}}
+        <div><a class="t-btn t-btn--secondary t-btn--sm" href="/account">{{.T "shell.account"}}</a></div>
+        <div style="margin-top:0.45rem"><button type="submit" class="t-btn t-btn--secondary t-btn--sm">{{.T "shell.logout"}}</button></div>
       </form>
     </details>
     {{end}}

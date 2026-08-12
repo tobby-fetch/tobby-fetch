@@ -1,0 +1,69 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /admin/retriever — read-only configuration screen (UI-SPEC §6): the
+     configured Retriever source (FR-010), the declared relaxed trust
+     scopes (FR-033), the anonymously served FileSets (FR-047), and the
+     latest synchronization. Nothing is editable here: the configuration
+     comes from the file, the environment, and the flags only (FR-003). */}}
+{{define "title"}}{{.T "retriever.title"}}{{end}}
+{{define "main"}}
+<section>
+  <h1 class="t-page-title">{{.T "retriever.title"}}</h1>
+  <p class="t-page-sub">{{.T "retriever.subtitle"}}</p>
+  <p class="t-muted t-note">{{.T "retriever.readonly_note"}}</p>
+
+  <h2 class="t-kick">{{.T "retriever.source_title"}}</h2>
+  {{if .Data.Source}}
+  <span class="t-chip">
+    <span class="t-mono" translate="no">{{.Data.Source}}</span>
+    <button type="button" class="t-chip-copy" data-copy="{{.Data.Source}}"
+            aria-label="{{.T "retriever.copy_source"}}" title="{{.T "retriever.copy_source"}}">⧉</button>
+  </span>
+  {{else}}
+  <p class="t-muted">{{.T "recipes.source_none"}}</p>
+  {{end}}
+
+  <h2 class="t-kick">{{.T "retriever.scopes_title"}}</h2>
+  {{if .Data.RelaxedScopes}}
+  {{/* A relaxed posture is loud (FR-033): the list carries its warning
+       here, and the permanent banner repeats it on every page. */}}
+  <p class="t-form-error" role="alert">{{.T "retriever.scopes_warning"}}</p>
+  <ul>
+    {{range .Data.RelaxedScopes}}<li class="t-mono" translate="no">{{.}}</li>{{end}}
+  </ul>
+  {{else}}
+  <p class="t-muted">{{.T "retriever.scopes_none"}}</p>
+  {{end}}
+
+  <h2 class="t-kick">{{.T "retriever.filesets_title"}}</h2>
+  {{if .Data.AnonymousFileSets}}
+  <p class="t-muted t-note">{{.T "retriever.filesets_warning"}}</p>
+  <ul>
+    {{range .Data.AnonymousFileSets}}<li class="t-mono" translate="no">{{.}}</li>{{end}}
+  </ul>
+  {{else}}
+  <p class="t-muted">{{.T "retriever.filesets_none"}}</p>
+  {{end}}
+
+  <h2 class="t-kick">{{.T "retriever.last_sync_title"}}</h2>
+  {{if .Data.HasLastSync}}
+  <p>
+    <a class="t-mono" href="/tasks/{{.Data.LastSync.ID}}" translate="no">{{.Data.LastSync.ID}}</a>
+    {{template "task-badge" (withData $ .Data.LastSync)}}
+    <span class="t-muted"><time datetime="{{.TimeAttr .Data.LastSync.Created}}" title="{{.FmtTime .Data.LastSync.Created}}">{{.FmtAgo .Data.LastSync.Created}}</time></span>
+  </p>
+  {{else}}
+  <p class="t-muted">{{.T "retriever.last_sync_none"}}</p>
+  {{end}}
+
+  {{/* Same trigger as /recipes (FR-014): one POST, one task type. */}}
+  {{if .Data.Source}}
+  <form method="post" action="/recipes/sync">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="t-btn t-btn--primary">{{.T "recipes.sync"}}</button>
+  </form>
+  {{else}}
+  <button type="button" class="t-btn t-btn--primary" disabled aria-describedby="retriever-sync-note">{{.T "recipes.sync"}}</button>
+  <p id="retriever-sync-note" class="t-muted t-note">{{.T "recipes.sync_no_source"}}</p>
+  {{end}}
+</section>
+{{end}}

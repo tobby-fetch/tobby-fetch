@@ -231,6 +231,55 @@ func TestImportCreateEndpoint(t *testing.T) {
 	}
 }
 
+// TestImportCreateVendorFlag covers the FR-025 opt-in on POST
+// /api/v1/import: vendorDependencies lands on the created task — and the
+// default stays off.
+func TestImportCreateVendorFlag(t *testing.T) {
+	mux, q, ref := newTasksAPI(t)
+
+	w := call(t, mux, http.MethodPost, "/api/v1/import", "op", "pw-op",
+		`{"reference":"`+ref+`","vendorDependencies":true,"platforms":[{"name":"artifact","digest":"sha256:0011"}]}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create = %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Task struct {
+			ID                 string `json:"id"`
+			VendorDependencies bool   `json:"vendor_dependencies"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Task.VendorDependencies {
+		t.Errorf("task JSON misses the vendoring opt-in: %s", w.Body.String())
+	}
+	task, ok := q.Get(resp.Task.ID)
+	if !ok || !task.VendorDependencies {
+		t.Errorf("queued task = %+v, want VendorDependencies", task)
+	}
+
+	// Without the field: default off (TBY-CHT-001 keeps refusing).
+	w = call(t, mux, http.MethodPost, "/api/v1/import", "op", "pw-op",
+		`{"reference":"`+ref+`","platforms":[{"name":"artifact","digest":"sha256:2233"}]}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("default create = %d: %s", w.Code, w.Body.String())
+	}
+	var dflt struct {
+		Task struct {
+			ID                 string `json:"id"`
+			VendorDependencies bool   `json:"vendor_dependencies"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &dflt); err != nil {
+		t.Fatal(err)
+	}
+	dtask, ok := q.Get(dflt.Task.ID)
+	if dflt.Task.VendorDependencies || !ok || dtask.VendorDependencies {
+		t.Error("vendoring must stay an explicit opt-in")
+	}
+}
+
 // TestTasksEndpoints covers the list with the screen's exact parameters
 // (?q=&status=&type=), the detail, and the taxonomized 404.
 func TestTasksEndpoints(t *testing.T) {

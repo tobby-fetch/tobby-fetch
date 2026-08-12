@@ -17,8 +17,9 @@ import (
 )
 
 // newAccountsAPI mounts the account endpoints behind real Basic
-// authentication: an admin and a viewer account exist.
-func newAccountsAPI(t *testing.T) (*http.ServeMux, *auth.Store) {
+// authentication: an admin and a viewer account exist. The authenticator
+// is returned so tests can seed and inspect UI sessions (R-34).
+func newAccountsAPI(t *testing.T) (*http.ServeMux, *auth.Store, *auth.Authenticator) {
 	t.Helper()
 	accounts, err := auth.Open(t.TempDir())
 	if err != nil {
@@ -39,7 +40,7 @@ func newAccountsAPI(t *testing.T) (*http.ServeMux, *auth.Store) {
 	api.RegisterAccounts(a, accounts)
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/", a.Handler())
-	return mux, accounts
+	return mux, accounts, authn
 }
 
 func adminDo(t *testing.T, mux *http.ServeMux, method, target, body string) *httptest.ResponseRecorder {
@@ -60,7 +61,7 @@ func adminDo(t *testing.T, mux *http.ServeMux, method, target, body string) *htt
 // TestAccountsEndpointAdminOnly: the mirror of /admin/accounts is
 // admin-gated (ADR-0009) — a viewer gets the taxonomized 403 (FR-061).
 func TestAccountsEndpointAdminOnly(t *testing.T) {
-	mux, _ := newAccountsAPI(t)
+	mux, _, _ := newAccountsAPI(t)
 
 	for _, target := range []string{"/api/v1/accounts", "/api/v1/tokens"} {
 		r := httptest.NewRequest(http.MethodGet, target, http.NoBody)
@@ -98,7 +99,7 @@ func TestAccountsEndpointAdminOnly(t *testing.T) {
 // TestTokenLifecycle covers the FR-072 loop: create (201, secret exactly
 // once), authenticate with the secret, revoke, secret dead.
 func TestTokenLifecycle(t *testing.T) {
-	mux, store := newAccountsAPI(t)
+	mux, store, _ := newAccountsAPI(t)
 
 	w := adminDo(t, mux, http.MethodPost, "/api/v1/tokens", `{"name":"ci-import","role":"operator"}`)
 	if w.Code != http.StatusCreated {
@@ -157,5 +158,92 @@ func TestTokenLifecycle(t *testing.T) {
 	w = adminDo(t, mux, http.MethodPost, "/api/v1/tokens/nope/revoke", "")
 	if w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), "TBY-SRV-002") {
 		t.Errorf("unknown revoke = %d, want taxonomized 404; body=%s", w.Code, w.Body.String())
+	}
+}
+
+// viewerChange posts a password-change body as the viewer account.
+func viewerChange(t *testing.T, mux *http.ServeMux, pass, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/account/password", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	r.SetBasicAuth("lecteur", pass)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	return w
+}
+
+// TestPasswordChangeEndpoint covers the R-34/FR-061 mirror: any
+// authenticated role changes its own password with the same rules and
+// taxonomy codes as the /account screen; UI sessions of the account die
+// with the old credential.
+func TestPasswordChangeEndpoint(t *testing.T) {
+	mux, store, authn := newAccountsAPI(t)
+
+	// Anonymous: refused by the surface with a problem document.
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/account/password",
+		strings.NewReader(`{"current":"x","new":"y"}`))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "TBY-AUTH-002") {
+		t.Errorf("anonymous change = %d, want taxonomized 401", w.Code)
+	}
+
+	// Wrong current password: 422 with the dedicated code, no change.
+	w = viewerChange(t, mux, "pw-view", `{"current":"nope","new":"pw-2"}`)
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "TBY-AUTH-006") {
+		t.Errorf("wrong current = %d, want taxonomized 422; body=%s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/problem+json" {
+		t.Errorf("refusal is not a problem document: %s", ct)
+	}
+
+	// Invalid new password: empty or identical to the current one.
+	for name, body := range map[string]string{
+		"empty":     `{"current":"pw-view","new":""}`,
+		"identical": `{"current":"pw-view","new":"pw-view"}`,
+	} {
+		w = viewerChange(t, mux, "pw-view", body)
+		if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "TBY-AUTH-007") {
+			t.Errorf("%s new = %d, want taxonomized 422 TBY-AUTH-007", name, w.Code)
+		}
+	}
+	if _, ok := store.VerifyPassword("lecteur", "pw-view", time.Now()); !ok {
+		t.Fatal("password changed despite the refusals")
+	}
+
+	// Success: 204, the new password verifies, the old one dies, and every
+	// UI session of the account is closed (the API caller holds none).
+	sess := authn.Sessions.Create("lecteur", auth.RoleViewer, time.Now())
+	foreign := authn.Sessions.Create("alexis", auth.RoleAdmin, time.Now())
+	w = viewerChange(t, mux, "pw-view", `{"current":"pw-view","new":"pw-2"}`)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("change = %d: %s", w.Code, w.Body.String())
+	}
+	if _, ok := store.VerifyPassword("lecteur", "pw-2", time.Now()); !ok {
+		t.Error("new password does not verify")
+	}
+	if _, ok := store.VerifyPassword("lecteur", "pw-view", time.Now()); ok {
+		t.Error("old password still verifies")
+	}
+	if _, ok := authn.Sessions.Get(sess.ID, time.Now()); ok {
+		t.Error("UI session of the account survived the API password change")
+	}
+	if _, ok := authn.Sessions.Get(foreign.ID, time.Now()); !ok {
+		t.Error("session of another account was collateral damage")
+	}
+
+	// A token authenticates but carries no password: the current-password
+	// check fails like any wrong credential (documented behavior).
+	secret, _, err := store.CreateToken("ci", auth.RoleOperator, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = httptest.NewRequest(http.MethodPost, "/api/v1/account/password",
+		strings.NewReader(`{"current":"whatever","new":"pw-3"}`))
+	r.Header.Set("Authorization", "Bearer "+secret)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "TBY-AUTH-006") {
+		t.Errorf("token caller = %d, want taxonomized 422 TBY-AUTH-006", w.Code)
 	}
 }

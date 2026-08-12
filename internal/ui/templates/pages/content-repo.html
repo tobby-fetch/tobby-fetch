@@ -23,6 +23,22 @@
     </span>
   </div>
   {{end}}
+  {{/* Provenance zone (FR-044 amendment, UI-SPEC §5.4): how this
+       repository entered the store — recipe-managed (naming the recipes),
+       unit import, or seeded through /v2/. */}}
+  <p class="t-kick">{{.T "repo.provenance_title"}}</p>
+  <p>
+    {{if eq .Data.ProvClass "recipe"}}
+    <span class="t-badge t-badge--recipe" translate="no" lang="en">recipe</span>
+    {{.T "repo.provenance_recipe"}}{{range $i, $n := .Data.ManagedBy}}{{if $i}},{{end}} <a class="t-mono" href="/recipes" translate="no">{{$n}}</a>{{end}}
+    {{else if eq .Data.ProvClass "unit-import"}}
+    <span class="t-badge" translate="no" lang="en">unit-import</span>
+    {{.T "repo.provenance_unit"}}
+    {{else}}
+    <span class="t-badge" translate="no" lang="en">seed</span>
+    {{.T "repo.provenance_seed"}}
+    {{end}}
+  </p>
   {{if .Data.Tags}}
   <p class="t-kick">{{.TN "repo.tags_count" (len .Data.Tags) "Count" (len .Data.Tags)}}</p>
   <table class="t-table">
@@ -55,6 +71,56 @@
   </table>
   {{else}}
   <div class="t-empty"><p>{{.T "repo.no_tags"}}</p></div>
+  {{end}}
+
+  {{/* Danger zone (FR-044 amendment, UI-SPEC §5.4): admin-only removal,
+       live on unit-import provenance exclusively; on recipe-managed or
+       seeded content the action is disabled with its explanation — never
+       hidden. Confirmation goes through the native <dialog> danger-zone
+       component (UI-SPEC §7), a classic POST carrying the CSRF token. */}}
+  {{if .IsAdmin}}
+  <div class="t-card">
+    <h2 class="t-kick">{{.T "repo.delete_title"}}</h2>
+    {{if .Data.CanDelete}}
+    <p class="t-muted t-note">{{.T "repo.delete_note"}}</p>
+    <button type="button" class="t-btn t-btn--danger" data-dialog="delete-repo-dlg">{{.T "repo.delete_action"}}</button>
+    {{else if eq .Data.ProvClass "recipe"}}
+    <button type="button" class="t-btn t-btn--danger" disabled aria-describedby="delete-repo-note">{{.T "repo.delete_action"}}</button>
+    <p id="delete-repo-note" class="t-muted t-note">{{.T "repo.delete_recipe_managed" "Names" .Data.ManagedByList}}</p>
+    {{else}}
+    <button type="button" class="t-btn t-btn--danger" disabled aria-describedby="delete-repo-note">{{.T "repo.delete_action"}}</button>
+    <p id="delete-repo-note" class="t-muted t-note">{{.T "repo.delete_seed"}}</p>
+    {{end}}
+  </div>
+
+  {{if .Data.CanDelete}}
+  <dialog class="t-dialog" id="delete-repo-dlg">
+    <h2 class="t-dialog-title">{{.T "repo.delete_confirm_title" "Repo" .Data.Name}}</h2>
+    <p>{{.T "repo.delete_confirm_text"}}</p>
+    <div class="t-dialog-actions">
+      <form method="dialog"><button type="submit" class="t-btn t-btn--secondary">{{.T "common.cancel"}}</button></form>
+      <form method="post" action="/content/{{.Data.Name}}/-/delete">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit" class="t-btn t-btn--danger">{{.T "repo.delete_submit"}}</button>
+      </form>
+    </div>
+  </dialog>
+  {{end}}
+
+  <script>
+  // Dialog opener: one delegated, guarded listener — same component and
+  // same guard as the admin screen (the document survives boosted
+  // navigations; the guard prevents duplicate registration).
+  if (!window.tobbyDialogs) {
+    window.tobbyDialogs = true;
+    document.addEventListener("click", function (e) {
+      var b = e.target.closest ? e.target.closest("[data-dialog]") : null;
+      if (!b) { return; }
+      var d = document.getElementById(b.getAttribute("data-dialog"));
+      if (d && d.showModal) { d.showModal(); }
+    });
+  }
+  </script>
   {{end}}
   {{end}}
 </section>

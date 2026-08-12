@@ -20,6 +20,12 @@ import (
 // subsystem records into.
 type Registry struct {
 	*prometheus.Registry
+
+	// SyncInflight observes the recipe engine's concurrent ingredient
+	// transfers — the NFR-008 bound made visible.
+	SyncInflight prometheus.Gauge
+	// SyncBytes counts the bytes the recipe engine transferred.
+	SyncBytes prometheus.Counter
 }
 
 // New builds the registry with the standard process and Go collectors and
@@ -38,5 +44,15 @@ func New() *Registry {
 	buildInfo.WithLabelValues(buildinfo.Version(), buildinfo.Commit()).Set(1)
 	reg.MustRegister(buildInfo)
 
-	return &Registry{Registry: reg}
+	syncInflight := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "tobby_sync_transfers_inflight",
+		Help: "Ingredient transfers currently in flight, bounded by sync.parallelism (NFR-008).",
+	})
+	syncBytes := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "tobby_sync_transferred_bytes_total",
+		Help: "Bytes transferred by recipe synchronizations (skipped up-to-date content moves nothing).",
+	})
+	reg.MustRegister(syncInflight, syncBytes)
+
+	return &Registry{Registry: reg, SyncInflight: syncInflight, SyncBytes: syncBytes}
 }

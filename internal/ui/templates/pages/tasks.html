@@ -31,6 +31,7 @@
     <select id="tasks-type" name="type" class="t-select">
       <option value="">{{.T "tasks.type_all"}}</option>
       <option value="unit-import"{{if eq .Data.Type "unit-import"}} selected{{end}}>{{.T "tasks.type_unit_import"}}</option>
+      <option value="sync"{{if eq .Data.Type "sync"}} selected{{end}}>{{.T "tasks.type_sync"}}</option>
     </select>
     <button type="submit" class="t-btn t-btn--secondary t-btn--sm">{{.T "tasks.filter_submit"}}</button>
   </form>
@@ -85,7 +86,7 @@
   {{range .Data.Rows}}
   <tr id="task-{{.ID}}">
     <td class="t-primary t-mono"><a href="/tasks/{{.ID}}" translate="no">{{.ID}}</a></td>
-    <td>{{if eq .Type "unit-import"}}{{$.T "tasks.type_unit_import"}}{{else}}<span translate="no">{{.Type}}</span>{{end}}</td>
+    <td>{{if eq .Type "unit-import"}}{{$.T "tasks.type_unit_import"}}{{else if eq .Type "sync"}}{{$.T "tasks.type_sync"}}{{else}}<span translate="no">{{.Type}}</span>{{end}}</td>
     <td>
       <span class="t-chip">
         <span translate="no" title="{{.Reference}}">{{$.Trunc .Reference 40}}</span>

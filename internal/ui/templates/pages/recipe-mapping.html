@@ -1,0 +1,76 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /recipes/{recipe}/mapping — the per-recipe source→destination table
+     (FR-035, FR-065): one section per recorded version, most recently
+     resolved first; each ingredient row shows the kind, the local
+     relocated path (copiable, linked to /content/{repo}), the tag, and
+     the pinned digest (copiable chip). The recorded IngredientRecord
+     carries the relocated destination — the nominal source reference
+     lives in the recipe document itself. */}}
+{{define "title"}}{{.T "mapping.title" "Name" .Data.Name}}{{end}}
+{{define "main"}}
+<section>
+  <nav class="t-breadcrumb" aria-label="{{.T "content.breadcrumb_label"}}">
+    <a href="/recipes">{{.T "recipes.title"}}</a>
+    <span class="t-breadcrumb-sep">/</span>
+    <span aria-current="page" translate="no">{{.Data.Name}}</span>
+  </nav>
+  {{if .Err}}
+  {{template "error-block" .}}
+  {{else}}
+  <div class="t-titlerow">
+    <h1 class="t-page-title t-mono" translate="no">{{.Data.Name}}</h1>
+    <span class="t-badge t-badge--recipe" translate="no" lang="en">Recipe</span>
+  </div>
+  <p class="t-page-sub">{{.T "mapping.subtitle"}}</p>
+
+  {{range .Data.Versions}}
+  <div class="t-titlerow">
+    <h2 class="t-kick" style="margin-bottom:0">{{$.T "mapping.version_heading" "Version" .Version}}</h2>
+    {{if .Zone}}<span class="t-mono t-muted" translate="no">{{.Zone}}</span>{{end}}
+    {{if .Verified}}<span class="t-badge t-badge--done">{{$.T "recipes.verified_ok"}}</span>
+    {{else}}<span class="t-badge t-badge--done-errors" title="{{$.T "recipes.verified_scope_title" "Scope" .TrustScope}}">{{$.T "recipes.verified_scope" "Scope" .TrustScope}}</span>{{end}}
+    <span class="t-muted">{{$.T "mapping.resolved_at"}} <time datetime="{{$.TimeAttr .ResolvedAt}}">{{$.FmtTime .ResolvedAt}}</time></span>
+  </div>
+  {{if not .Ingredients}}
+  <div class="t-empty"><p>{{$.T "mapping.no_ingredients"}}</p></div>
+  {{else}}
+  <table class="t-table">
+    <caption class="t-visually-hidden">{{$.T "mapping.table_caption" "Name" .Name "Version" .Version}}</caption>
+    <thead>
+      <tr>
+        <th scope="col">{{$.T "mapping.th_ingredient"}}</th>
+        <th scope="col">{{$.T "mapping.th_kind"}}</th>
+        <th scope="col" class="t-col-path">{{$.T "mapping.th_repo"}}</th>
+        <th scope="col">{{$.T "mapping.th_tag"}}</th>
+        <th scope="col">{{$.T "mapping.th_digest"}}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Ingredients}}
+      <tr>
+        <td class="t-primary t-mono" translate="no">{{.Name}}</td>
+        <td><span class="t-badge t-badge--{{kindClass .Kind}}" translate="no" lang="en">{{.Kind}}</span></td>
+        <td>
+          <span class="t-chip">
+            <a class="t-mono t-truncate" href="/content/{{.Repo}}" title="{{.Repo}}" translate="no">{{$.Trunc .Repo 48}}</a>
+            <button type="button" class="t-chip-copy" data-copy="{{.Repo}}"
+                    aria-label="{{$.T "content.copy_path" "Path" .Repo}}" title="{{$.T "content.copy_path" "Path" .Repo}}">⧉</button>
+          </span>
+        </td>
+        <td class="t-mono" translate="no">{{if .Tag}}{{.Tag}}{{else}}—{{end}}</td>
+        <td>
+          <span class="t-chip">
+            <span translate="no" title="{{.Digest}}">{{$.Trunc .Digest 26}}</span>
+            <button type="button" class="t-chip-copy" data-copy="{{.Digest}}"
+                    aria-label="{{$.T "repo.copy_digest" "Digest" .Digest}}" title="{{$.T "repo.copy_digest" "Digest" .Digest}}">⧉</button>
+          </span>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{end}}
+  {{end}}
+  {{end}}
+</section>
+{{end}}

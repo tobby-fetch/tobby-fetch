@@ -132,7 +132,7 @@ func TestTasksPollingStopsWhenSettled(t *testing.T) {
 	startQueue(t, q)
 
 	form := map[string][]string{"ref": {ref}, "platform": {"linux/amd64"}}
-	w := postForm(t, u, mux, c, form, map[string]string{"HX-Request": "true"})
+	w := postImportForm(t, u, mux, c, form, map[string]string{"HX-Request": "true"})
 	id := strings.TrimPrefix(w.Header().Get("HX-Redirect"), "/tasks/")
 	task := waitSettled(t, q, id)
 	if task.Status != tasks.StatusDone {
@@ -211,6 +211,34 @@ func TestTaskDetailBodyPolling(t *testing.T) {
 	}
 	if strings.Contains(frag, "<!DOCTYPE html>") || strings.Contains(frag, `id="log-pre"`) {
 		t.Error("body fragment carries the document or the log view")
+	}
+}
+
+// TestSyncTaskDetailRetryTarget: a failed SYNC task retries where a sync
+// is actually triggered — the recipes screen (FR-014) — not the
+// unit-import screen, whose reference form does not apply; and a sync
+// never advertises a single imported artifact.
+func TestSyncTaskDetailRetryTarget(t *testing.T) {
+	u, q, _ := newTestUIWithQueue(t)
+	mux := mount(u)
+	c := login(t, mux, "alexis", "pw-admin")
+
+	source := "oci://cookbook.example.com/retriever:v1"
+	created, err := q.Create(tasks.TypeSync, source, "alexis", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The queue is not started: settle the task by hand, as failed.
+	task, _ := q.Get(created.ID)
+	task.Status = tasks.StatusFailed
+
+	w := get(t, mux, c, "/tasks/"+created.ID, nil)
+	body := w.Body.String()
+	if !strings.Contains(body, `href="/recipes"`) {
+		t.Error("failed sync detail does not point its retry at the recipes screen")
+	}
+	if strings.Contains(body, "/import?ref=") {
+		t.Error("failed sync detail offers the unit-import retry deep link")
 	}
 }
 

@@ -13,6 +13,7 @@ import "strings"
 // The list is part of the product contract: it is documented on /about and
 // a collision test keeps UI routes out of it. Entries without a trailing
 // slash reserve the exact path; entries with one reserve the whole subtree.
+// "/files/" is the FileSet HTTP serving surface (FR-047, milestone 3).
 var ReservedPrefixes = []string{
 	"/v2/",
 	"/api/",
@@ -21,6 +22,7 @@ var ReservedPrefixes = []string{
 	"/readyz",
 	"/auth/",
 	"/static/",
+	"/files/",
 }
 
 // Reserved reports whether path collides with a reserved prefix.

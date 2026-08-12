@@ -144,6 +144,17 @@
         {{end}}
       </tbody>
     </table>
+    {{if eq .Data.Report.Kind "HelmChart"}}
+    {{/* FR-025 — vendoring opt-in, charts only. Unchecked by default; the
+         note states the consequence up front: the stored digest diverges
+         from upstream and any upstream signature no longer applies —
+         never silent (FR-075). */}}
+    <div class="t-row t-import-vendor">
+      <input type="checkbox" id="import-vendor" name="vendor" value="1">
+      <label for="import-vendor">{{.T "import.vendor_label"}}</label>
+    </div>
+    <p class="t-muted t-note">{{.T "import.vendor_note"}}</p>
+    {{end}}
     <div class="t-row t-import-confirm">
       <span id="import-selection" class="t-muted"
             data-label-one="{{.T "import.selection_one" "Count" "{n}" "Size" "{size}"}}"

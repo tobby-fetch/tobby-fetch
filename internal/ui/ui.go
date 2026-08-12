@@ -27,9 +27,12 @@ type UI struct {
 	queue  *tasks.Queue
 	logger *slog.Logger
 
-	themeOverride  string
-	inspectTimeout time.Duration
-	insecureHosts  []string
+	themeOverride     string
+	inspectTimeout    time.Duration
+	insecureHosts     []string
+	retrieverSource   string
+	relaxedScopes     []string
+	anonymousFileSets []string
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -52,6 +55,16 @@ type Options struct {
 	// InspectTimeout bounds one remote inspection (import.inspectTimeout);
 	// zero falls back to a safe default.
 	InspectTimeout time.Duration
+	// RetrieverSource is the configured desired-state source (FR-010),
+	// reported on the recipes screens.
+	RetrieverSource string
+	// RelaxedTrustScopes names the declared allowUnsigned trust scopes
+	// (FR-033): a permanent banner surfaces the relaxed posture, like the
+	// FR-075 override.
+	RelaxedTrustScopes []string
+	// AnonymousFileSets names the FileSets served without authentication
+	// (FR-047 opt-in), surfaced like the FR-075 override.
+	AnonymousFileSets []string
 }
 
 // New assembles the UI.
@@ -60,15 +73,23 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 	if timeout <= 0 {
 		timeout = 20 * time.Second
 	}
+	render := NewRenderer(logger, opts.Version, opts.Mode, authn.Disabled, opts.ShowUpcoming, opts.ThemeOverride != "")
+	// The permanent security banners read the relaxed posture from the
+	// renderer (FR-033, FR-047 — same channel as the FR-075 override).
+	render.RelaxedScopes = opts.RelaxedTrustScopes
+	render.AnonymousFileSets = opts.AnonymousFileSets
 	return &UI{
-		render:         NewRenderer(logger, opts.Version, opts.Mode, authn.Disabled, opts.ShowUpcoming, opts.ThemeOverride != ""),
-		authn:          authn,
-		store:          opts.Store,
-		queue:          opts.Queue,
-		logger:         logger,
-		themeOverride:  opts.ThemeOverride,
-		inspectTimeout: timeout,
-		insecureHosts:  opts.InsecureRegistries,
+		render:            render,
+		authn:             authn,
+		store:             opts.Store,
+		queue:             opts.Queue,
+		logger:            logger,
+		themeOverride:     opts.ThemeOverride,
+		inspectTimeout:    timeout,
+		insecureHosts:     opts.InsecureRegistries,
+		retrieverSource:   opts.RetrieverSource,
+		relaxedScopes:     opts.RelaxedTrustScopes,
+		anonymousFileSets: opts.AnonymousFileSets,
 	}
 }
 
@@ -107,12 +128,28 @@ func (u *UI) Mount(mux *http.ServeMux) {
 	mux.Handle("POST /import", operator(u.importSubmit))
 	mux.Handle("GET /content", app(u.contentList))
 	mux.Handle("GET /content/{repo...}", app(u.contentDetail))
+	// The only mutation under /content: the FR-044 amendment removal of one
+	// unit-imported repository, on the "/-/delete" sub-resource (ADR-0015
+	// §3). Admin-gated; the handler enforces the provenance policy.
+	mux.Handle("POST /content/{repo...}", admin(u.contentDelete))
+
+	// Recipe screens (FR-014, FR-035/FR-065, UI-SPEC §6): the recorded
+	// recipe graph, the per-recipe mapping table, and the sync trigger.
+	mux.Handle("GET /recipes", app(u.recipesList))
+	mux.Handle("POST /recipes/sync", operator(u.recipesSync))
+	mux.Handle("GET /recipes/{recipe}/mapping", app(u.recipeMapping))
+
+	// Account self-service (R-34, FR-061): every authenticated role,
+	// viewer included — the admin gate stays on /admin/accounts.
+	mux.Handle("GET /account", app(u.accountScreen))
+	mux.Handle("POST /account/password", app(u.accountPassword))
 
 	// Annex surfaces (UI-SPEC §5.9-§5.12): accounts & tokens behind the
 	// admin gate; help, about, and the API viewer readable by every role.
 	mux.Handle("GET /admin/accounts", admin(u.adminAccounts))
 	mux.Handle("POST /admin/accounts/tokens", admin(u.adminTokenCreate))
 	mux.Handle("POST /admin/accounts/tokens/revoke", admin(u.adminTokenRevoke))
+	mux.Handle("GET /admin/retriever", admin(u.adminRetriever))
 	mux.Handle("GET /help", app(u.helpScreen))
 	mux.Handle("GET /about", app(u.aboutScreen))
 	mux.Handle("GET /about/third-party", app(u.thirdPartyNotices))

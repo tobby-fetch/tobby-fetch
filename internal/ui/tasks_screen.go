@@ -158,7 +158,10 @@ type taskDetailData struct {
 	// finished task (UI-SPEC §5.8).
 	ArtifactHref string
 	PullCommand  string
-	// RelaunchHref pre-fills /import on a failed task (incremental FR-026).
+	// RelaunchHref points a failed task at where it is retried: /import
+	// pre-filled for a unit import (incremental FR-026), the recipes
+	// screen and its Synchronize action for a synchronization (FR-014 —
+	// a sync is triggered, never replayed from a URL).
 	RelaunchHref string
 	DownloadHref string
 }
@@ -198,9 +201,13 @@ func (u *UI) taskDetail(w http.ResponseWriter, r *http.Request) {
 		data.Items = append(data.Items, iv)
 	}
 	if t.Status == tasks.StatusFailed {
-		data.RelaunchHref = "/import?ref=" + url.QueryEscape(t.Reference)
+		if t.Type == tasks.TypeSync {
+			data.RelaunchHref = "/recipes"
+		} else {
+			data.RelaunchHref = "/import?ref=" + url.QueryEscape(t.Reference)
+		}
 	}
-	if t.Status == tasks.StatusDone {
+	if t.Status == tasks.StatusDone && t.Type != tasks.TypeSync {
 		data.ArtifactHref, data.PullCommand = u.taskArtifact(r, t)
 	}
 
