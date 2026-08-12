@@ -8,6 +8,80 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+Milestone 3 — the recipe engine: a signed Recipe becomes verified content
+in the local store — automatically, completely, and replayable with no
+side effect.
+
+### Added
+
+- Recipe engine (roadmap 3.1–3.5): the configured Retriever (HTTP(S) URL,
+  OCI reference, or local file) is parsed and validated through the
+  recipe-spec Go SDK (strict: unknown field = rejection, actionable
+  file/path/constraint errors); every entry resolves from its cookbook —
+  exact tags or semver constraints (`12.x`, `^`, `~`, `>=`), highest
+  match, never a silent fallback — and lands bit-exactly under its
+  relocated path with an optional instance-wide base prefix. All four
+  ingredient kinds transfer (ContainerImage with sparse platform
+  selection preserving the pinned index digest, HelmChart with offline
+  dependency verification, OCIArtifact with artifactType enforcement,
+  FileSet), streamed, with bounded parallelism, bounded retries, and
+  per-digest new/outdated/up-to-date statuses: a second identical run
+  transfers zero bytes.
+- Signature verification at entry (roadmap 3.4): cosign key-based, fully
+  offline — trust roots configured inline, as files, or as HTTPS URLs
+  fetched at configuration time; multiple keys for rotation by overlap.
+  Verification is on by default for every recipe; relaxation exists only
+  as explicitly declared trust scopes (repository patterns), visible in
+  the configuration report, a permanent banner, the logs, and the task
+  report — never a silent switch. Recipe and ingredient signature
+  artifacts travel with the content.
+- Source substitution and cascade (roadmap 3.5): a downstream zone
+  fetches nominal references from its upstream zone registry without
+  modifying the recipes; the relocated path is invariant across hops;
+  logs and the resolution report show nominal and effective endpoints.
+  Registry credentials load from a standard dockerconfigjson file.
+- FileSet HTTP serving (roadmap 3.6): explicitly enabled, verified
+  FileSets are extracted (OCI whiteout semantics, strict path-safety
+  rules, decompression-bomb bounds) and served read-only under
+  `/files/<name>/` with byte-range support; anonymous read is a
+  per-FileSet opt-in, reported like every security reduction.
+- Recipes screens and API: `/recipes` with the per-recipe
+  source→destination mapping table, the configured Retriever source, and
+  the Synchronize action; `/admin/retriever` for the admin view; strict
+  API parity (`/api/v1/recipes`, `/api/v1/sync`, `/api/v1/retriever`).
+  Synchronizations are tracked tasks with per-ingredient items and a
+  resolution report (requested → resolved → digest → status).
+- Admin removal of unit-imported content (FR-044 amendment): from the
+  repository page or `DELETE /api/v1/content/{repo}`, audit-logged, with
+  mark-and-sweep garbage collection preserving shared blobs and attached
+  signatures; recipe-managed content shows the action disabled, naming
+  the managing recipe. The store now records provenance (recipe-managed,
+  unit import, seeded) and the recipe→content graph, and stamps its
+  format version with an explicit compatibility policy.
+- Guided first start: `tobby quickstart` fills the missing configuration
+  step by step (directories, mode, first admin account, config file) and
+  offers to serve — never mandatory, flags and environment keep full
+  control; configuration validation is now scoped per command.
+- Self-service password change: any account changes its own password on
+  `/account` (current password required) or through the API mirror,
+  audit-logged; other sessions of the account are signed out.
+- Helm charts import directly from HTTPS chart repositories
+  (`https://…/charts/<name>`), converted to standard OCI chart artifacts
+  that `helm pull` reads back unchanged, with the FR-024 dependency
+  verification; optional per-operation dependency vendoring produces a
+  traced, self-contained chart (original and new digests recorded).
+- Releases now also ship `.deb`, `.rpm`, and `.apk` packages (nfpm,
+  linux amd64/arm64) inside the same reproducible chain — same
+  SHA256SUMS, same SLSA provenance, same double-build gate — installable
+  fully offline.
+- Crucible scenario m3: real cosign-signed recipes on real nodes —
+  verified synchronization, foreign-signature refusal, idempotence,
+  FileSet serving with ranges, and a two-hop cascade with unmodified
+  recipes and identical relocated paths.
+- Trivy integration spike (ADR-0008 exit criterion): measured
+  library-vs-binary footprint; recommendation recorded in
+  `docs/spikes/trivy-library-vs-binary.md`.
+
 ### Fixed
 
 - Copy chips fired one toast per page visited: the layout script re-ran on
@@ -28,6 +102,13 @@ starting with `v0.1.0`.
   index even when only a few platforms are local; they now show
   present/total (e.g. `2/16`), in the UI and as `presentPlatforms` in the
   API.
+- `tobby config dump` and `tobby version` wrote their output to standard
+  error, so redirecting the dump to a file produced an empty file — the
+  very command the configuration error message recommends.
+- Unit import refused the helm-style `oci://` reference form.
+- Unit import of a reference without a tag failed as "not found" on chart
+  repositories, which publish versions and no `latest` tag: the highest
+  stable semver tag is now resolved and reported.
 
 ## [0.2.0] - 2026-08-12
 
