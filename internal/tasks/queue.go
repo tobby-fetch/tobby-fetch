@@ -214,11 +214,13 @@ func (q *Queue) execute(ctx context.Context, id string) {
 
 // clone deep-copies the task for the runner's exclusive use (items and
 // reports are the runner-mutated parts; persisted errors are never
-// mutated in place).
+// mutated in place). Every runner-mutated slice belongs here: a report
+// the runner fills but clone and publish ignore is silently lost.
 func (t *Task) clone() *Task {
 	cp := *t
 	cp.Items = append([]Item(nil), t.Items...)
 	cp.ChartDependencies = append([]ChartDependency(nil), t.ChartDependencies...)
+	cp.Resolutions = append([]Resolution(nil), t.Resolutions...)
 	return &cp
 }
 
@@ -230,6 +232,7 @@ func (q *Queue) publish(dst, src *Task) {
 	dst.Finished = src.Finished
 	dst.Items = append([]Item(nil), src.Items...)
 	dst.ChartDependencies = append([]ChartDependency(nil), src.ChartDependencies...)
+	dst.Resolutions = append([]Resolution(nil), src.Resolutions...)
 	q.persist(dst)
 }
 

@@ -113,8 +113,16 @@ EOF
 RECIPE_DIGEST=$( cd "$DIR/../../.." && go run ./test/topology/seed push-recipe \
     "$SOURCE_IP:8080/cookbook/sample-app:2.0.0" "$WORK/sample-app.yaml" ) ||
     fail "publishing the cooked recipe"
-COSIGN_PASSWORD= "$COSIGN" sign --key "$WORK/cosign.key" --tlog-upload=false --yes \
-    --allow-insecure-registry "$SOURCE_IP:8080/cookbook/sample-app@$RECIPE_DIGEST" >/dev/null 2>&1 ||
+# cosign 3.x defaults to the new bundle format, which attaches signatures
+# through the Referrers API under a "sha256-<hex>" tag. RECIPE-SPEC §12.2
+# and ADR-0007 pin the classic attached-signature convention
+# ("sha256-<hex>.sig"), so the fixtures are signed in that format —
+# --use-signing-config=false is what lets --tlog-upload=false through.
+sign_recipe() {
+    COSIGN_PASSWORD= "$COSIGN" sign --key "$1" --yes --allow-insecure-registry \
+        --use-signing-config=false --new-bundle-format=false --tlog-upload=false "$2"
+}
+sign_recipe "$WORK/cosign.key" "$SOURCE_IP:8080/cookbook/sample-app@$RECIPE_DIGEST" >/dev/null 2>&1 ||
     fail "cosign signing the recipe"
 
 # A second version signed by a FOREIGN key: the tamper case.
@@ -122,13 +130,14 @@ sed 's/version: 2.0.0/version: 2.0.1/' "$WORK/sample-app.yaml" > "$WORK/sample-a
 BAD_DIGEST=$( cd "$DIR/../../.." && go run ./test/topology/seed push-recipe \
     "$SOURCE_IP:8080/cookbook/sample-app:2.0.1" "$WORK/sample-app-2.0.1.yaml" ) ||
     fail "publishing the foreign-signed recipe"
-COSIGN_PASSWORD= "$COSIGN" sign --key "$WORK/foreign.key" --tlog-upload=false --yes \
-    --allow-insecure-registry "$SOURCE_IP:8080/cookbook/sample-app@$BAD_DIGEST" >/dev/null 2>&1 ||
+sign_recipe "$WORK/foreign.key" "$SOURCE_IP:8080/cookbook/sample-app@$BAD_DIGEST" >/dev/null 2>&1 ||
     fail "cosign signing with the foreign key"
 check "cooked recipe signed (trusted 2.0.0, foreign-signed 2.0.1)"
 
 # -- 2. Secure node: configuration, account, synchronization ------------------
-PUB_KEY_INDENTED=$(sed 's/^/      /' "$WORK/cosign.pub")
+# The inline trust root is a YAML block scalar: its content must be
+# indented MORE than the "key:" that introduces it (6 spaces), hence 8.
+PUB_KEY_INDENTED=$(sed 's/^/        /' "$WORK/cosign.pub")
 cat > "$WORK/node.yaml" <<EOF
 mode: mirror
 storage:
