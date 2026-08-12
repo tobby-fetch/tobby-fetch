@@ -125,15 +125,10 @@ jobs:
           done
       - name: Sign each SBOM (cosign keyless via job OIDC identity)
         run: |
-          # cosign v3+ writes the new bundle format and requires an explicit
-          # --bundle path; the legacy sig+pem pair is kept alongside for
-          # older verifiers.
+          # cosign v3+ emits the self-contained bundle format; the legacy
+          # detached sig+pem pair is no longer produced.
           for f in sboms/*.cdx.json; do
-            cosign sign-blob --yes \
-              --bundle "$f.bundle" \
-              --output-signature "$f.sig" \
-              --output-certificate "$f.pem" \
-              "$f"
+            cosign sign-blob --yes --bundle "$f.bundle" "$f"
           done
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -314,8 +309,8 @@ jobs:
 
           ```bash
           cosign verify-blob \
-            --certificate tobby-linux-amd64.cdx.json.pem \
-            --signature tobby-linux-amd64.cdx.json.sig \
+            --new-bundle-format \
+            --bundle tobby-linux-amd64.cdx.json.bundle \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/' \
             tobby-linux-amd64.cdx.json

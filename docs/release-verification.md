@@ -27,15 +27,13 @@ repository workflow could not have forged it.
 ## 2. SBOMs: cosign signature
 
 Each binary has a CycloneDX SBOM (`.cdx.json`) signed keyless via Sigstore;
-a `.bundle` (cosign's self-contained bundle format) plus the legacy `.sig`
-and `.pem` pair sit next to it on the release page. Either path verifies —
-with the bundle: `cosign verify-blob --new-bundle-format --bundle
-<file>.bundle <file>` plus the identity flags below, or with the pair:
+the signature ships as a `.bundle` file (cosign's self-contained bundle
+format) next to it on the release page:
 
 ```bash
 cosign verify-blob \
-  --certificate tobby-linux-amd64.cdx.json.pem \
-  --signature tobby-linux-amd64.cdx.json.sig \
+  --new-bundle-format \
+  --bundle tobby-linux-amd64.cdx.json.bundle \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/' \
   tobby-linux-amd64.cdx.json
