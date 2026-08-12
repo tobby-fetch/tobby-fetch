@@ -239,9 +239,11 @@ func TestUserScopedValidation(t *testing.T) {
 }
 
 // runProcess drives Execute() exactly as main does — through os.Args and
-// the process's own standard streams — and returns what reached stderr
-// together with the exit code.
-func runProcess(t *testing.T, args ...string) (stderr string, code int) {
+// the process's own standard streams — and returns what reached each
+// stream together with the exit code. The two streams are kept apart on
+// purpose: which one carries a payload is part of the CLI contract, and
+// a helper that merges them cannot see the difference.
+func runProcess(t *testing.T, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
 	drain := func(r *os.File) <-chan string {
 		ch := make(chan string, 1)
@@ -275,8 +277,7 @@ func runProcess(t *testing.T, args ...string) (stderr string, code int) {
 
 	_ = outW.Close()
 	_ = errW.Close()
-	<-outCh
-	return <-errCh, code
+	return <-outCh, <-errCh, code
 }
 
 // TestExecuteRendersErrorsAndExitCodes is the FR-066 acceptance on the real
@@ -298,7 +299,7 @@ func TestExecuteRendersErrorsAndExitCodes(t *testing.T) {
 
 	// R-01: a fresh instance with no account refuses to serve. The operator
 	// must get the code, the cause and the action, not a bare message.
-	stderr, code := runProcess(t, append([]string{"serve"}, common...)...)
+	_, stderr, code := runProcess(t, append([]string{"serve"}, common...)...)
 	if code != taxonomy.ExitPolicy {
 		t.Errorf("exit = %d, want %d (policy refusal)", code, taxonomy.ExitPolicy)
 	}
@@ -310,7 +311,7 @@ func TestExecuteRendersErrorsAndExitCodes(t *testing.T) {
 
 	// A non-taxonomized failure keeps the plain "tobby: …" form and the
 	// operational exit class.
-	stderr, code = runProcess(t, append([]string{"serve", "--mode", "sideways"}, common...)...)
+	_, stderr, code = runProcess(t, append([]string{"serve", "--mode", "sideways"}, common...)...)
 	if code != taxonomy.ExitFailure {
 		t.Errorf("exit = %d, want %d (operational failure)", code, taxonomy.ExitFailure)
 	}
@@ -320,7 +321,7 @@ func TestExecuteRendersErrorsAndExitCodes(t *testing.T) {
 
 	// A successful command exits 0 and renders no error at all — neither
 	// the taxonomy form nor the plain one.
-	stderr, code = runProcess(t, "version")
+	_, stderr, code = runProcess(t, "version")
 	if code != taxonomy.ExitOK {
 		t.Errorf("version exit = %d, want 0", code)
 	}
@@ -344,5 +345,51 @@ func TestCLILang(t *testing.T) {
 	t.Setenv("LC_ALL", "fr_FR.UTF-8")
 	if got := cliLang(); got != "fr" {
 		t.Errorf("LC_ALL=fr lang = %q, want fr", got)
+	}
+}
+
+// TestMachineOutputGoesToStdout (B-010) pins which stream carries a
+// payload: `tobby config dump > config.yaml` must write the file the
+// TBY-CFG-001 corrective action tells operators to check, and
+// `tobby version` must be pipeable. Both wrote to stderr through cobra's
+// Print helpers, which fall back to os.Stderr when no writer is set — so
+// the redirection produced an empty file. The streams are asserted
+// separately here; the merged-buffer helper above cannot see the
+// difference.
+func TestMachineOutputGoesToStdout(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("mode: mirror\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runProcess(t, "config", "dump", "--config", cfgPath)
+	if code != taxonomy.ExitOK {
+		t.Fatalf("config dump exit = %d, want 0 (stderr: %s)", code, stderr)
+	}
+	if stdout == "" {
+		t.Fatal("config dump wrote nothing to stdout: redirecting it to a file yields an empty file")
+	}
+	// The payload is the effective configuration, and it is complete
+	// enough to be read back — that is what makes the dump usable.
+	var cfg config.Config
+	if err := yaml.Unmarshal([]byte(stdout), &cfg); err != nil {
+		t.Fatalf("stdout is not the YAML dump: %v\n%s", err, stdout)
+	}
+	if cfg.Mode != config.ModeMirror {
+		t.Errorf("dumped mode = %q, want mirror", cfg.Mode)
+	}
+	if strings.Contains(stderr, "mode:") {
+		t.Errorf("the dump leaked onto stderr: %q", stderr)
+	}
+
+	stdout, stderr, code = runProcess(t, "version")
+	if code != taxonomy.ExitOK {
+		t.Fatalf("version exit = %d, want 0", code)
+	}
+	if !strings.HasPrefix(stdout, "tobby ") {
+		t.Errorf("version stdout = %q, want the build line", stdout)
+	}
+	if strings.Contains(stderr, "tobby ") {
+		t.Errorf("the version line leaked onto stderr: %q", stderr)
 	}
 }
