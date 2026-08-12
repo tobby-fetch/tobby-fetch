@@ -5,12 +5,11 @@ package importer
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
-	"context"
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"path"
 	"strings"
 
@@ -32,74 +31,135 @@ type chartMeta struct {
 	} `yaml:"dependencies"`
 }
 
-// verifyChart produces the FR-024 dependency report of a Helm chart and
-// enforces its offline deployability: every dependency declared in
-// Chart.yaml must be embedded under charts/ inside the package. A missing
-// one fails the import, naming the dependency (TBY-CHT-001) — an air-gap
-// destination cannot fetch it later. The report persists on the task,
-// visible in the detail screen and the API.
-func verifyChart(img v1.Image, t *tasks.Task, logger *slog.Logger) error {
-	layers, err := img.Layers()
-	if err != nil {
-		return err
-	}
-	if len(layers) == 0 {
-		return errors.New("chart has no content layer")
-	}
-	// The chart archive is the first (and normally only) content layer.
-	// Compressed() returns the layer bytes exactly as stored — the .tgz
-	// Helm packaged (the media type is not an OCI-gzip layer, so no
-	// transparent decompression applies to chart content).
-	rc, err := layers[0].Compressed()
-	if err != nil {
-		return fmt.Errorf("opening chart archive: %w", err)
-	}
-	defer rc.Close() //nolint:errcheck // read-only stream
+// chartLock is the subset of Chart.lock the vendoring needs (FR-025):
+// exact pinned versions win over Chart.yaml ranges.
+type chartLock struct {
+	Dependencies []lockedDependency `yaml:"dependencies"`
+}
 
-	meta, embedded, err := scanChartArchive(rc)
-	if err != nil {
-		return fmt.Errorf("reading chart archive: %w", err)
-	}
+// lockedDependency is one Chart.lock pin.
+type lockedDependency struct {
+	Name       string `yaml:"name"`
+	Version    string `yaml:"version"`
+	Repository string `yaml:"repository"`
+}
 
-	t.ChartDependencies = nil
-	for _, dep := range meta.Dependencies {
-		has := embedded[dep.Name]
-		t.ChartDependencies = append(t.ChartDependencies, tasks.ChartDependency{
-			Name: dep.Name, Version: dep.Version, Repository: dep.Repository,
-			Embedded: has,
-		})
-		if !has {
-			return taxonomy.New(taxonomy.CodeChartDependency,
-				taxonomy.Params{"chart": meta.Name, "dependency": dep.Name})
+// chartArchive is one scanned chart package: everything the dependency
+// verification (FR-024), the OCI conversion (FR-024) and the vendoring
+// (FR-025) need, gathered in a single pass over the tgz.
+type chartArchive struct {
+	// root is the archive's top-level directory ("wordpress").
+	root string
+	meta *chartMeta
+	// rawMeta is Chart.yaml exactly as packaged — the source of the OCI
+	// config document when converting (FR-024).
+	rawMeta []byte
+	// lock is Chart.lock when the package carries one; nil otherwise.
+	lock *chartLock
+	// embedded is the set of sub-chart names present under charts/.
+	embedded map[string]bool
+}
+
+// lockFor returns the Chart.lock pin of one dependency, or nil.
+func (a *chartArchive) lockFor(name string) *lockedDependency {
+	if a.lock == nil {
+		return nil
+	}
+	for i := range a.lock.Dependencies {
+		if a.lock.Dependencies[i].Name == name {
+			return &a.lock.Dependencies[i]
 		}
 	}
-	logger.LogAttrs(context.Background(), slog.LevelInfo, "chart dependencies verified",
-		slog.String("chart", meta.Name),
-		slog.Int("dependencies", len(meta.Dependencies)))
 	return nil
 }
 
-// scanChartArchive walks the chart tgz once: Chart.yaml metadata and the
-// set of embedded sub-chart names under charts/.
-func scanChartArchive(r io.Reader) (*chartMeta, map[string]bool, error) {
-	// Helm packages are gzip'd tars; Uncompressed already removed the OCI
-	// layer gzip, but the chart layer content itself is a .tgz.
+// dependencyRows builds the FR-024 report rows and returns the taxonomy
+// refusal naming the first missing dependency, if any.
+func (a *chartArchive) dependencyRows() ([]tasks.ChartDependency, *taxonomy.Error) {
+	var rows []tasks.ChartDependency
+	var terr *taxonomy.Error
+	for _, dep := range a.meta.Dependencies {
+		has := a.embedded[dep.Name]
+		rows = append(rows, tasks.ChartDependency{
+			Chart: a.meta.Name, Name: dep.Name, Version: dep.Version,
+			Repository: dep.Repository, Embedded: has,
+		})
+		if !has && terr == nil {
+			terr = taxonomy.New(taxonomy.CodeChartDependency,
+				taxonomy.Params{"chart": a.meta.Name, "dependency": dep.Name})
+		}
+	}
+	return rows, terr
+}
+
+// VerifyChart runs the FR-024 dependency verification of one chart image
+// and returns the report rows — shared by the unit import and the recipe
+// engine (milestone 3): every dependency declared in Chart.yaml must be
+// embedded under charts/ inside the package. A missing one fails with
+// TBY-CHT-001 naming the dependency — an air-gap destination cannot fetch
+// it later. The full report is returned even on failure, so it shows what
+// was checked.
+func VerifyChart(img v1.Image) ([]tasks.ChartDependency, error) {
+	data, err := chartLayerBytes(img)
+	if err != nil {
+		return nil, err
+	}
+	arch, err := scanChartArchive(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("reading chart archive: %w", err)
+	}
+	rows, terr := arch.dependencyRows()
+	if terr != nil {
+		return rows, terr
+	}
+	return rows, nil
+}
+
+// chartLayerBytes reads the chart's content layer — the .tgz Helm packaged,
+// stored bit-exactly (the media type is not an OCI-gzip layer, so no
+// transparent decompression applies) — bounded by maxChartBytes.
+func chartLayerBytes(img v1.Image) ([]byte, error) {
+	layers, err := img.Layers()
+	if err != nil {
+		return nil, err
+	}
+	if len(layers) == 0 {
+		return nil, errors.New("chart has no content layer")
+	}
+	rc, err := layers[0].Compressed()
+	if err != nil {
+		return nil, fmt.Errorf("opening chart archive: %w", err)
+	}
+	defer rc.Close() //nolint:errcheck // read-only stream
+	data, err := io.ReadAll(io.LimitReader(rc, maxChartBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxChartBytes {
+		return nil, fmt.Errorf("chart archive exceeds the %d-byte bound", int64(maxChartBytes))
+	}
+	return data, nil
+}
+
+// scanChartArchive walks the chart tgz once: Chart.yaml (raw and parsed),
+// Chart.lock when present, the top-level directory, and the set of
+// embedded sub-chart names under charts/.
+func scanChartArchive(r io.Reader) (*chartArchive, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
-		return nil, nil, fmt.Errorf("chart layer is not a gzip archive: %w", err)
+		return nil, fmt.Errorf("chart layer is not a gzip archive: %w", err)
 	}
 	defer gz.Close() //nolint:errcheck // read-only stream
 
 	tr := tar.NewReader(gz)
-	var meta *chartMeta
-	embedded := map[string]bool{}
+	arch := &chartArchive{embedded: map[string]bool{}}
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		// Entries look like <chart>/Chart.yaml, <chart>/charts/<dep>-1.2.3.tgz
 		// or <chart>/charts/<dep>/Chart.yaml (unpacked dependency).
@@ -108,11 +168,22 @@ func scanChartArchive(r io.Reader) (*chartMeta, map[string]bool, error) {
 		case len(parts) == 2 && parts[1] == "Chart.yaml":
 			raw, err := io.ReadAll(io.LimitReader(tr, 1<<20))
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
-			meta = &chartMeta{}
-			if err := yaml.Unmarshal(raw, meta); err != nil {
-				return nil, nil, fmt.Errorf("parsing Chart.yaml: %w", err)
+			arch.root = parts[0]
+			arch.rawMeta = raw
+			arch.meta = &chartMeta{}
+			if err := yaml.Unmarshal(raw, arch.meta); err != nil {
+				return nil, fmt.Errorf("parsing Chart.yaml: %w", err)
+			}
+		case len(parts) == 2 && parts[1] == "Chart.lock":
+			raw, err := io.ReadAll(io.LimitReader(tr, 1<<20))
+			if err != nil {
+				return nil, err
+			}
+			arch.lock = &chartLock{}
+			if err := yaml.Unmarshal(raw, arch.lock); err != nil {
+				return nil, fmt.Errorf("parsing Chart.lock: %w", err)
 			}
 		case len(parts) >= 3 && parts[1] == "charts":
 			name := parts[2]
@@ -123,14 +194,14 @@ func scanChartArchive(r io.Reader) (*chartMeta, map[string]bool, error) {
 				if i := strings.LastIndex(base, "-"); i > 0 {
 					base = base[:i]
 				}
-				embedded[base] = true
+				arch.embedded[base] = true
 			} else {
-				embedded[name] = true
+				arch.embedded[name] = true
 			}
 		}
 	}
-	if meta == nil {
-		return nil, nil, errors.New("no Chart.yaml at the archive root")
+	if arch.meta == nil {
+		return nil, errors.New("no Chart.yaml at the archive root")
 	}
-	return meta, embedded, nil
+	return arch, nil
 }

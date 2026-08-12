@@ -11,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/opencontainers/go-digest"
@@ -42,21 +41,25 @@ func NewRunner(dst Destination, opts ...Option) tasks.Runner {
 }
 
 func runImport(ctx context.Context, t *tasks.Task, dst Destination, logger *slog.Logger, save func(), opts []Option) error {
-	ref, err := buildOptions(opts).parseRef(t.Reference)
-	if err != nil {
-		return taxonomy.New(taxonomy.CodeBadReference,
-			taxonomy.Params{"reference": t.Reference}).WithCause(err)
-	}
-	host := ref.Context().RegistryStr()
-	tag := "latest"
-	if tg, ok := ref.(name.Tag); ok {
-		tag = tg.TagStr()
+	o := buildOptions(opts)
+	if isChartRepoURL(t.Reference) {
+		return runChartRepoImport(ctx, t, dst, logger, save, o)
 	}
 
 	rep, err := Inspect(ctx, t.Reference, dst, opts...)
 	if err != nil {
 		return err
 	}
+	// The inspection canonicalized the reference — including the B-009
+	// resolution of an untagged reference onto its highest stable semver
+	// tag — so the transfer fetches exactly what was inspected.
+	ref, err := o.parseRef(rep.Reference)
+	if err != nil {
+		return taxonomy.New(taxonomy.CodeBadReference,
+			taxonomy.Params{"reference": t.Reference}).WithCause(err)
+	}
+	host := ref.Context().RegistryStr()
+	tag := rep.Tag
 	repo := rep.Repository
 
 	// The transfer re-fetches the root by reference: the raw payload the
@@ -91,7 +94,7 @@ func runImport(ctx context.Context, t *tasks.Task, dst Destination, logger *slog
 			if err != nil {
 				return err
 			}
-			return importImage(ctx, dst, repo, itemTag, img, item, t, logger)
+			return importImage(ctx, dst, repo, itemTag, img, item, t, logger, o)
 		}()
 		if err != nil {
 			var te *taxonomy.Error
@@ -141,17 +144,30 @@ func imageForItem(idx v1.ImageIndex, desc *remote.Descriptor, item *tasks.Item) 
 // importImage streams one manifest's blobs (only the missing ones —
 // FR-026), then the manifest itself. Chart manifests first pass the FR-024
 // dependency verification: a chart that cannot deploy offline is refused
-// whole, before anything lands.
-func importImage(ctx context.Context, dst Destination, repo, tag string, img v1.Image, item *tasks.Item, t *tasks.Task, logger *slog.Logger) error {
+// whole, before anything lands — unless the operation opted into the
+// FR-025 vendoring, which replaces the bit-exact copy with the traced,
+// dependency-complete rebuild. Vendoring only applies to the tagged
+// single-manifest form: an index child cannot change digest without
+// breaking its index.
+func importImage(ctx context.Context, dst Destination, repo, tag string, img v1.Image, item *tasks.Item, t *tasks.Task, logger *slog.Logger, o *options) error {
 	man, err := img.Manifest()
 	if err != nil {
 		return err
 	}
 
 	if string(man.Config.MediaType) == helmConfigMediaType {
-		if err := verifyChart(img, t, logger); err != nil {
+		deps, err := VerifyChart(img)
+		t.ChartDependencies = deps
+		if err != nil {
+			var te *taxonomy.Error
+			if t.VendorDependencies && tag != "" &&
+				errors.As(err, &te) && te.Code() == taxonomy.CodeChartDependency {
+				return vendorOCIChart(ctx, dst, repo, tag, img, item, t, logger, o)
+			}
 			return err
 		}
+		logger.LogAttrs(ctx, slog.LevelInfo, "chart dependencies verified",
+			slog.Int("dependencies", len(deps)))
 	}
 
 	var transferred int64

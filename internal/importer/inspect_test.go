@@ -188,6 +188,84 @@ func TestInspectSingleImageAndChartKind(t *testing.T) {
 	}
 }
 
+// pushImage seeds one random single-manifest image at ref.
+func pushImage(t *testing.T, ref string) v1.Image {
+	t.Helper()
+	img, err := random.Image(128, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := name.ParseReference(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.Write(r, img); err != nil {
+		t.Fatal(err)
+	}
+	return img
+}
+
+// TestInspectOCIScheme locks B-008: the helm "oci://" notation is accepted
+// and normalized away — never round-tripped into the canonical reference.
+func TestInspectOCIScheme(t *testing.T) {
+	host := upstream(t)
+	pushImage(t, host+"/bitnamicharts/wordpress:19.2.6")
+
+	rep, err := Inspect(context.Background(), "oci://"+host+"/bitnamicharts/wordpress:19.2.6", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Tag != "19.2.6" || !strings.HasSuffix(rep.Repository, "/bitnamicharts/wordpress") {
+		t.Errorf("report = %+v", rep)
+	}
+	if strings.Contains(rep.Reference, "oci://") {
+		t.Errorf("canonical reference %q keeps the scheme", rep.Reference)
+	}
+}
+
+// TestInspectUntaggedResolvesHighestStable locks B-009: without an
+// explicit tag or digest, a missing "latest" resolves to the highest
+// stable semver tag; pre-releases and non-semver tags never win; an
+// existing "latest" keeps winning; and a repository with no semver tag at
+// all still answers the TBY-REG-005 refusal.
+func TestInspectUntaggedResolvesHighestStable(t *testing.T) {
+	host := upstream(t)
+	ctx := context.Background()
+
+	repo := host + "/bitnamicharts/victoriametrics"
+	for _, tag := range []string{"0.9.0", "0.10.1", "1.0.0-rc.1", "not-semver"} {
+		pushImage(t, repo+":"+tag)
+	}
+	rep, err := Inspect(ctx, repo, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Tag != "0.10.1" || !strings.HasSuffix(rep.Reference, ":0.10.1") {
+		t.Errorf("resolved tag = %q (reference %q), want 0.10.1", rep.Tag, rep.Reference)
+	}
+
+	// An existing "latest" keeps the historical behavior: no fallback.
+	repo2 := host + "/library/app"
+	pushImage(t, repo2+":latest")
+	pushImage(t, repo2+":9.9.9")
+	rep2, err := Inspect(ctx, repo2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep2.Tag != "latest" {
+		t.Errorf("tag = %q, want latest untouched", rep2.Tag)
+	}
+
+	// No semver tag at all: TBY-REG-005 stands — never a silent fallback.
+	repo3 := host + "/library/words"
+	pushImage(t, repo3+":stable")
+	_, err = Inspect(ctx, repo3, nil)
+	var te *taxonomy.Error
+	if !errors.As(err, &te) || te.Code() != taxonomy.CodeRefNotFound {
+		t.Errorf("no-semver err = %v, want %s", err, taxonomy.CodeRefNotFound)
+	}
+}
+
 // TestInspectErrorTaxonomy locks the R-03 mapping: bad reference, unknown
 // reference, unreachable registry, and timeout each carry their own code.
 func TestInspectErrorTaxonomy(t *testing.T) {
