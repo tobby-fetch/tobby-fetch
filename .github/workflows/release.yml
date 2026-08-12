@@ -1,6 +1,6 @@
-# Release — SLSA Build L3 provenance, reproducible binaries, signed
-# CycloneDX SBOMs, melange+apko container image (ADR-0011; DEVELOPMENT-PLAN
-# §2.1 exit criteria).
+# Release — SLSA Build L3 provenance, reproducible binaries and Linux
+# packages (.deb/.rpm/.apk via nfpm), signed CycloneDX SBOMs, melange+apko
+# container image (ADR-0011; DEVELOPMENT-PLAN §2.1 exit criteria).
 #
 # Third-party actions are pinned by full commit SHA. The one documented
 # exception is slsa-framework/slsa-github-generator: the SLSA verifier
@@ -25,6 +25,8 @@ env:
   MELANGE_VERSION: v0.58.0
   # renovate: datasource=github-releases depName=chainguard-dev/apko
   APKO_VERSION: v1.2.36
+  # renovate: datasource=github-releases depName=goreleaser/nfpm
+  NFPM_VERSION: v2.47.0
 
 jobs:
   build:
@@ -60,11 +62,29 @@ jobs:
           "${{ steps.meta.outputs.commit }}"
           "${{ steps.meta.outputs.date }}"
           dist
-      - name: Compute SLSA subjects (sha256 of every binary)
+      - name: Install nfpm (version pinned, sumdb-verified)
+        env:
+          # setup-go pins GOTOOLCHAIN=local to the project toolchain; nfpm
+          # may require a newer Go than the project does. Its build
+          # toolchain has no bearing on the packages' reproducibility —
+          # the payload is the release binary from tools/release-build.sh
+          # and nfpm itself is pinned by NFPM_VERSION.
+          GOTOOLCHAIN: auto
+        run: |
+          go install "github.com/goreleaser/nfpm/v2/cmd/nfpm@${NFPM_VERSION}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Package the Linux targets (.deb, .rpm, .apk — nfpm)
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.meta.outputs.source_date_epoch }}
+        run: >
+          sh tools/package-build.sh
+          "${{ steps.meta.outputs.version }}"
+          dist dist
+      - name: Compute SLSA subjects (sha256 of every binary and package)
         id: hash
         run: |
           cd dist
-          sha256sum tobby-* > SHA256SUMS
+          sha256sum tobby-* tobby_* > SHA256SUMS
           echo "hashes=$(base64 -w0 < SHA256SUMS)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -90,6 +110,20 @@ jobs:
           "${{ needs.build.outputs.commit }}"
           "${{ needs.build.outputs.date }}"
           dist-rebuild
+      - name: Install nfpm (version pinned, sumdb-verified)
+        env:
+          # GOTOOLCHAIN rationale: see the identical step in the build job.
+          GOTOOLCHAIN: auto
+        run: |
+          go install "github.com/goreleaser/nfpm/v2/cmd/nfpm@${NFPM_VERSION}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Repackage the Linux targets from the rebuilt binaries
+        env:
+          SOURCE_DATE_EPOCH: ${{ needs.build.outputs.source_date_epoch }}
+        run: >
+          sh tools/package-build.sh
+          "${{ needs.build.outputs.version }}"
+          dist-rebuild dist-rebuild
       - name: Compare digests — any mismatch blocks the release
         run: |
           echo "${{ needs.build.outputs.hashes }}" | base64 -d > expected.sha256
@@ -305,6 +339,24 @@ jobs:
             --source-tag @VERSION@
           ```
 
+          ### Linux packages (offline install)
+
+          `tobby_@PKGVER@_linux_<arch>.deb|rpm|apk` wrap the same
+          reproducible binary (installed to `/usr/bin/tobby`, no install
+          scripts) and are covered by the same SLSA provenance and
+          `SHA256SUMS`. Verify with slsa-verifier as above, then install
+          with no repository or network access:
+
+          ```bash
+          dpkg -i tobby_@PKGVER@_linux_amd64.deb                    # Debian/Ubuntu
+          rpm -i tobby_@PKGVER@_linux_amd64.rpm                     # RHEL/SUSE/Fedora
+          apk add --allow-untrusted tobby_@PKGVER@_linux_amd64.apk  # Alpine
+          ```
+
+          The packages carry no package-manager signature — trust comes
+          from the SLSA provenance and checksum verification performed
+          before installation (hence `--allow-untrusted` on apk).
+
           ### Verify a signed SBOM
 
           ```bash
@@ -333,8 +385,9 @@ jobs:
 
           ### Independent rebuild (air-gapped verification)
 
-          The binaries are bit-reproducible. Rebuild them from the tag and
-          compare against `SHA256SUMS` — no online infrastructure required:
+          The binaries and Linux packages are bit-reproducible. Rebuild
+          them from the tag and compare against `SHA256SUMS` — no online
+          infrastructure required:
 
           ```bash
           git clone https://github.com/tobby-fetch/tobby-fetch && cd tobby-fetch
@@ -342,10 +395,15 @@ jobs:
           SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) sh tools/release-build.sh \
             "@VERSION@" "$(git rev-parse HEAD)" \
             "$(date -u -d "@$(git log -1 --format=%ct)" +%Y-%m-%dT%H:%M:%SZ)" dist
-          (cd dist && sha256sum -c /path/to/downloaded/SHA256SUMS)
+          # optional — reproduces the .deb/.rpm/.apk too; needs nfpm at the
+          # NFPM_VERSION pinned in .github/workflows/release.yml
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) sh tools/package-build.sh \
+            "@VERSION@" dist dist
+          (cd dist && sha256sum --ignore-missing -c /path/to/downloaded/SHA256SUMS)
           ```
           EOF
           sed -e "s|@VERSION@|${VERSION}|g" \
+              -e "s|@PKGVER@|${VERSION#v}|g" \
               -e "s|@IMAGE@|${IMAGE}|g" \
               -e "s|@DIGEST@|${DIGEST}|g" \
               notes-template.md > notes.md

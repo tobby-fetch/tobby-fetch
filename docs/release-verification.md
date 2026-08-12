@@ -1,7 +1,8 @@
 # Verifying a tobby release
 
 Every release ships with SLSA Build L3 provenance, cosign-signed CycloneDX
-SBOMs, a signed multi-arch container image, and bit-reproducible binaries
+SBOMs, a signed multi-arch container image, bit-reproducible binaries, and
+bit-reproducible Linux packages (.deb/.rpm/.apk) built from those binaries
 (ADR-0011). This page shows how a consumer verifies each claim. Replace
 `v1.0.0` with the release you are checking.
 
@@ -24,7 +25,38 @@ This proves the binary was built by the isolated slsa-github-generator
 trusted builder, from this repository, at that exact tag — a compromised
 repository workflow could not have forged it.
 
-## 2. SBOMs: cosign signature
+## 2. Linux packages: provenance, then offline install
+
+The `.deb`, `.rpm`, and `.apk` packages wrap the exact `tobby-linux-<arch>`
+release binary (installed to `/usr/bin/tobby`, no install scripts) and are
+produced in the same reproducible code path as the binaries, so they are
+listed in `SHA256SUMS` and are subjects of the same provenance. Verify a
+package exactly like a binary:
+
+```bash
+slsa-verifier verify-artifact tobby_1.0.0_linux_amd64.deb \
+  --provenance-path tobby.intoto.jsonl \
+  --source-uri github.com/tobby-fetch/tobby-fetch \
+  --source-tag v1.0.0
+```
+
+The packages are made for repository-less, air-gapped installation — copy
+the file across and install with no network access:
+
+```bash
+dpkg -i tobby_1.0.0_linux_amd64.deb                    # Debian/Ubuntu
+rpm -i tobby_1.0.0_linux_amd64.rpm                     # RHEL/SUSE/Fedora
+apk add --allow-untrusted tobby_1.0.0_linux_amd64.apk  # Alpine
+```
+
+The packages deliberately carry no package-manager signature: there is no
+distribution repository or maintainer keyring to anchor one, and a key
+published next to the artifacts it signs would add no security. Trust comes
+from the SLSA provenance (or checksum) verification above, performed before
+installation — `--allow-untrusted` on apk states exactly that, and the rpm
+is unsigned for the same reason.
+
+## 3. SBOMs: cosign signature
 
 Each binary has a CycloneDX SBOM (`.cdx.json`) signed keyless via Sigstore;
 the signature ships as a `.bundle` file (cosign's self-contained bundle
@@ -42,7 +74,7 @@ cosign verify-blob \
 The certificate identity is the release workflow of this repository; the
 transparency log entry is created at release time.
 
-## 3. Container image: signature and provenance
+## 4. Container image: signature and provenance
 
 The release notes state the image digest. Always verify (and deploy) by
 digest, not by tag:
@@ -60,20 +92,22 @@ slsa-verifier verify-image ghcr.io/tobby-fetch/tobby-fetch@sha256:... \
 ```
 
 The image's SBOMs are generated natively by apko at build time (SPDX) and
-attached to the release; the Go-level CycloneDX SBOMs of section 2 cover the
+attached to the release; the Go-level CycloneDX SBOMs of section 3 cover the
 binary inside the image.
 
 Note: the rolling `latest` tag is refreshed by a weekly rebuild against
 current Wolfi packages. That digest is cosign-signed with the same identity
 but carries no SLSA provenance — only immutable `vX.Y.Z` digests do.
 
-## 4. Independent rebuild (air-gapped verification)
+## 5. Independent rebuild (air-gapped verification)
 
-Binaries are bit-reproducible: the same tag rebuilds to the same SHA-256,
-so a consumer with no access to Sigstore or GitHub infrastructure can verify
-a release by rebuilding it. `tools/release-build.sh` is the exact code path
-the release pipeline uses (CGO disabled, `-trimpath`, `-buildvcs=false`,
-`SOURCE_DATE_EPOCH` from the commit, toolchain forced to the go.mod version):
+Binaries and Linux packages are bit-reproducible: the same tag rebuilds to
+the same SHA-256, so a consumer with no access to Sigstore or GitHub
+infrastructure can verify a release by rebuilding it. `tools/release-build.sh`
+is the exact code path the release pipeline uses (CGO disabled, `-trimpath`,
+`-buildvcs=false`, `SOURCE_DATE_EPOCH` from the commit, toolchain forced to
+the go.mod version), and `tools/package-build.sh` likewise for the packages
+(nfpm at the `NFPM_VERSION` pinned in `.github/workflows/release.yml`):
 
 ```bash
 git clone https://github.com/tobby-fetch/tobby-fetch && cd tobby-fetch
@@ -84,8 +118,13 @@ SOURCE_DATE_EPOCH=$epoch sh tools/release-build.sh \
   "v1.0.0" "$(git rev-parse HEAD)" \
   "$(date -u -d "@$epoch" +%Y-%m-%dT%H:%M:%SZ)" dist
 
+# optional — also reproduces the .deb/.rpm/.apk packages
+go install github.com/goreleaser/nfpm/v2/cmd/nfpm@<NFPM_VERSION>
+SOURCE_DATE_EPOCH=$epoch sh tools/package-build.sh "v1.0.0" dist dist
+
 # compare against the SHA256SUMS file attached to the release
-(cd dist && sha256sum -c /path/to/SHA256SUMS)
+# (--ignore-missing: skip the package lines if you skipped nfpm)
+(cd dist && sha256sum --ignore-missing -c /path/to/SHA256SUMS)
 ```
 
 Any digest mismatch means the published binary was not produced from the
