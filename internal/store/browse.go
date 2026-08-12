@@ -655,7 +655,8 @@ func mapBrowseErr(op string, err error) error {
 	switch {
 	case errors.As(err, &repoUnknown), errors.As(err, &repoInvalid),
 		errors.As(err, &tagUnknown), errors.As(err, &manifestUnknown),
-		errors.As(err, &revisionUnknown):
+		errors.As(err, &revisionUnknown),
+		errors.Is(err, distribution.ErrBlobUnknown):
 		return fmt.Errorf("%w: %s: %w", ErrNotFound, op, err)
 	default:
 		return fmt.Errorf("store: %s: %w", op, err)

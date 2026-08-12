@@ -23,6 +23,14 @@
 "TBY-AUTH-005.cause": "Aucune activité pendant une durée supérieure à la vie de la session, ou l'instance a redémarré."
 "TBY-AUTH-005.action": "Reconnectez-vous ; vous reviendrez à la page où vous étiez."
 
+"TBY-AUTH-006.what": "Le mot de passe actuel est erroné."
+"TBY-AUTH-006.cause": "Le mot de passe actuel envoyé avec la demande de changement ne correspond pas à celui du compte."
+"TBY-AUTH-006.action": "Saisissez à nouveau votre mot de passe actuel, puis réessayez. S'il est perdu, un administrateur peut en définir un nouveau sur l'hôte de l'instance avec `tobby user passwd <nom>`."
+
+"TBY-AUTH-007.what": "Le nouveau mot de passe a été refusé."
+"TBY-AUTH-007.cause": "Il est vide, identique au mot de passe actuel, ou sa confirmation ne correspond pas."
+"TBY-AUTH-007.action": "Choisissez un mot de passe non vide et différent de l'actuel, saisissez la même valeur dans les deux champs du nouveau mot de passe, puis soumettez à nouveau."
+
 "TBY-CFG-001.what": "La configuration est invalide."
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Corrigez le réglage indiqué (précédence : drapeaux, puis variables d'environnement TOBBY_*, puis fichier YAML), vérifiez le résultat avec `tobby config dump`, puis redémarrez."
@@ -47,6 +55,10 @@
 "TBY-REG-004.cause": "{{.host}} n'a pas répondu en {{.timeout}}."
 "TBY-REG-004.action": "Réessayez ; si cela persiste, vérifiez le chemin réseau vers {{.host}} ou augmentez import.inspectTimeout dans la configuration."
 
+"TBY-REG-006.what": "Aucune version disponible ne satisfait l'expression demandée."
+"TBY-REG-006.cause": "Pour {{.reference}}, l'expression {{.constraint}} ne correspond à aucun des tags disponibles : {{.detail}}."
+"TBY-REG-006.action": "Confrontez l'expression de version aux tags réellement publiés (les contraintes semver ne considèrent que les tags interprétables en semver). Tobby ne se replie jamais silencieusement sur une autre version."
+
 "TBY-REG-005.what": "La référence n'existe pas sur le registre source."
 "TBY-REG-005.cause": "{{.reference}} est introuvable — nom ou tag erroné, ou supprimée en amont."
 "TBY-REG-005.action": "Vérifiez le nom du dépôt et le tag sur le registre source, puis corrigez la référence."
@@ -55,13 +67,25 @@
 "TBY-POL-001.cause": "{{.host}} ne fait pas partie des registres autorisés en source ou en destination ; le transfert a été refusé avant tout échange."
 "TBY-POL-001.action": "Si ce registre est légitime, ajoutez {{.host}} à registries.allowlist dans la configuration ; la modification est journalisée en audit."
 
+"TBY-POL-002.what": "Ce contenu ne peut pas être supprimé individuellement."
+"TBY-POL-002.cause": "{{.repository}} est géré par {{.recipes}} : le supprimer ici serait défait par la prochaine synchronisation."
+"TBY-POL-002.action": "Supprimez plutôt la recipe qui le gère — son contenu exclusif est nettoyé avec elle. Seul le contenu importé unitairement est supprimable individuellement."
+
+"TBY-POL-003.what": "Ce contenu ne peut pas être supprimé d'ici."
+"TBY-POL-003.cause": "{{.repository}} a été poussé via l'API registre standard (/v2/) par un client externe : sa provenance n'est ni une recipe ni un import unitaire."
+"TBY-POL-003.action": "La suppression individuelle ne couvre que le contenu importé unitairement (FR-044). Gérez le contenu poussé directement avec l'outillage registre standard qui l'a poussé."
+
 "TBY-SIG-001.what": "La signature de la recipe n'a pas pu être vérifiée."
-"TBY-SIG-001.cause": "Aucune clé de confiance configurée ne valide la signature de {{.recipe}}."
+"TBY-SIG-001.cause": "Aucune clé de confiance configurée ne valide la signature de {{.recipe}} (clés essayées : {{.fingerprints}})."
 "TBY-SIG-001.action": "Vérifiez que les clés de confiance de la zone incluent la clé qui a signé cette recipe. Une recipe non vérifiée n'est jamais admise."
 
 "TBY-SIG-002.what": "Un digest épinglé ne correspond pas au contenu récupéré."
 "TBY-SIG-002.cause": "{{.reference}} épingle {{.expected}} mais le registre a servi {{.actual}} — le contenu a changé ou a été altéré."
 "TBY-SIG-002.action": "Ne forcez pas le transfert. Vérifiez le registre source et la recipe ; si le changement est légitime, une recipe re-signée épinglant le nouveau digest est nécessaire."
+
+"TBY-SIG-003.what": "Le type de l'artefact ne correspond pas à la déclaration de la recipe."
+"TBY-SIG-003.cause": "{{.reference}} déclare l'artifactType {{.expected}} mais le registre a servi {{.actual}} — le tag a pu être réutilisé pour un autre contenu."
+"TBY-SIG-003.action": "Vérifiez le repository source. Si le changement de type est légitime, mettez à jour et re-signez la recipe ; sinon considérez la source comme compromise."
 
 "TBY-DST-001.what": "Le registre de destination ne peut pas stocker cette référence."
 "TBY-DST-001.cause": "{{.reference}} dépasse une limite de la destination : {{.limit}}."

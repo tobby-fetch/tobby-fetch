@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -24,6 +25,10 @@ const (
 	EnvUIThemeOverride     = "TOBBY_UI_THEME_OVERRIDE"
 	EnvUIShowUpcoming      = "TOBBY_UI_SHOW_UPCOMING"
 	EnvImportInspectTO     = "TOBBY_IMPORT_INSPECT_TIMEOUT"
+	EnvRetrieverSource     = "TOBBY_RETRIEVER_SOURCE"
+	EnvStorageBasePrefix   = "TOBBY_STORAGE_BASE_PREFIX"
+	EnvSyncParallelism     = "TOBBY_SYNC_PARALLELISM"
+	EnvSyncRetries         = "TOBBY_SYNC_RETRIES"
 	EnvLoggingLevel        = "TOBBY_LOGGING_LEVEL"
 	EnvShutdownGracePeriod = "TOBBY_SHUTDOWN_GRACE_PERIOD"
 )
@@ -87,6 +92,26 @@ func applyEnv(cfg *Config, lookup func(string) (string, bool)) error {
 			return fmt.Errorf("%s: invalid duration %q (expected e.g. \"20s\")", EnvImportInspectTO, v)
 		}
 		cfg.Import.InspectTimeout = Duration(d)
+	}
+	if v, ok := lookup(EnvRetrieverSource); ok {
+		cfg.Retriever.Source = v
+	}
+	if v, ok := lookup(EnvStorageBasePrefix); ok {
+		cfg.Storage.BasePrefix = v
+	}
+	if v, ok := lookup(EnvSyncParallelism); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("%s: invalid integer %q", EnvSyncParallelism, v)
+		}
+		cfg.Sync.Parallelism = n
+	}
+	if v, ok := lookup(EnvSyncRetries); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("%s: invalid integer %q", EnvSyncRetries, v)
+		}
+		cfg.Sync.Retries = n
 	}
 	if v, ok := lookup(EnvLoggingLevel); ok {
 		cfg.Logging.Level = v

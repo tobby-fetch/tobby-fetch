@@ -111,8 +111,17 @@ func (q *Queue) Register(taskType string, r Runner) {
 	q.runners[taskType] = r
 }
 
+// TaskOption adjusts a task at creation time (Queue.Create).
+type TaskOption func(*Task)
+
+// WithVendorDependencies enables the FR-025 dependency vendoring for this
+// operation. Explicit and per-operation — never a default.
+func WithVendorDependencies() TaskOption {
+	return func(t *Task) { t.VendorDependencies = true }
+}
+
 // Create persists and enqueues a new task, returning it.
-func (q *Queue) Create(taskType, reference, actor string, items []Item) (*Task, error) {
+func (q *Queue) Create(taskType, reference, actor string, items []Item, opts ...TaskOption) (*Task, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	t := &Task{
@@ -124,6 +133,9 @@ func (q *Queue) Create(taskType, reference, actor string, items []Item) (*Task, 
 		Status:    StatusPending,
 		Created:   q.Now().UTC(),
 		Items:     items,
+	}
+	for _, opt := range opts {
+		opt(t)
 	}
 	q.tasks[t.ID] = t
 	q.persist(t)

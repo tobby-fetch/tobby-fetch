@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	distribution "github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/configuration"
@@ -50,6 +51,11 @@ type Store struct {
 	// browsing accessors (browse.go) go through the storage library, never
 	// through the HTTP loopback (package doc).
 	browse distribution.Namespace
+	// metaMu serializes the meta/ ledgers (meta.go).
+	metaMu sync.Mutex
+	// gcMu is the FR-044 exclusive lock: content writes hold it shared,
+	// garbage collection holds it exclusively (gc.go).
+	gcMu sync.RWMutex
 }
 
 // Open initializes the embedded registry on the given storage root.
@@ -60,6 +66,12 @@ type Store struct {
 func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error) {
 	if root == "" {
 		return nil, fmt.Errorf("store: root directory is required")
+	}
+	// R-26: the store names its own format version; an unsupported one
+	// refuses to open with both versions named and the standard-tooling
+	// escape route.
+	if err := checkFormat(root); err != nil {
+		return nil, err
 	}
 
 	cfg := &configuration.Configuration{}
@@ -94,7 +106,9 @@ func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error)
 	if err != nil {
 		return nil, fmt.Errorf("store: creating browse driver: %w", err)
 	}
-	browse, err := storage.NewRegistry(ctx, driver)
+	// EnableDelete: the removal paths of FR-044 (untag, manifest delete)
+	// go through this registry handle.
+	browse, err := storage.NewRegistry(ctx, driver, storage.EnableDelete)
 	if err != nil {
 		return nil, fmt.Errorf("store: creating browse registry: %w", err)
 	}

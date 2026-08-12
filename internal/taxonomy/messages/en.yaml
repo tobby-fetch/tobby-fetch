@@ -23,6 +23,14 @@
 "TBY-AUTH-005.cause": "No activity for longer than the session lifetime, or the instance restarted."
 "TBY-AUTH-005.action": "Sign in again; you will be returned to the page you were on."
 
+"TBY-AUTH-006.what": "The current password is wrong."
+"TBY-AUTH-006.cause": "The current password sent with the change request does not match the account's password."
+"TBY-AUTH-006.action": "Type your current password again, then retry. If it is lost, an administrator can set a new one on the instance host with `tobby user passwd <name>`."
+
+"TBY-AUTH-007.what": "The new password was rejected."
+"TBY-AUTH-007.cause": "It is empty, identical to the current password, or its confirmation does not match."
+"TBY-AUTH-007.action": "Choose a non-empty password different from the current one, type the same value in both new-password fields, then submit again."
+
 "TBY-CFG-001.what": "The configuration is invalid."
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Fix the reported setting (precedence: flags, then TOBBY_* environment variables, then the YAML file), check the result with `tobby config dump`, then restart."
@@ -47,6 +55,10 @@
 "TBY-REG-004.cause": "{{.host}} did not answer within {{.timeout}}."
 "TBY-REG-004.action": "Retry; if it persists, check the network path to {{.host}} or raise import.inspectTimeout in the configuration."
 
+"TBY-REG-006.what": "No available version satisfies the requested expression."
+"TBY-REG-006.cause": "For {{.reference}}, the expression {{.constraint}} matches none of the available tags: {{.detail}}."
+"TBY-REG-006.action": "Check the version expression against the tags actually published (semver constraints only consider semver-parseable tags). Tobby never falls back silently to another version."
+
 "TBY-REG-005.what": "The reference does not exist on the source registry."
 "TBY-REG-005.cause": "{{.reference}} was not found — wrong name or tag, or it was deleted upstream."
 "TBY-REG-005.action": "Check the repository name and the tag on the source registry, then correct the reference."
@@ -55,13 +67,25 @@
 "TBY-POL-001.cause": "{{.host}} is not among the allowed source or destination registries; the transfer was refused before any data moved."
 "TBY-POL-001.action": "If this registry is legitimate, add {{.host}} to registries.allowlist in the configuration; the change is audit-logged."
 
+"TBY-POL-002.what": "This content cannot be removed individually."
+"TBY-POL-002.cause": "{{.repository}} is managed by {{.recipes}}: removing it here would be undone by the next synchronization."
+"TBY-POL-002.action": "Remove the managing recipe instead — its exclusive content is garbage-collected with it. Only unit-imported content is individually removable."
+
+"TBY-POL-003.what": "This content cannot be removed from here."
+"TBY-POL-003.cause": "{{.repository}} was pushed through the standard registry API (/v2/) by an external client: its provenance is neither a recipe nor a unit import."
+"TBY-POL-003.action": "Individual removal covers unit-imported content only (FR-044). Manage seeded content with the standard registry tooling that pushed it."
+
 "TBY-SIG-001.what": "The recipe signature could not be verified."
-"TBY-SIG-001.cause": "No configured trust root validates the signature of {{.recipe}}."
+"TBY-SIG-001.cause": "No configured trust root validates the signature of {{.recipe}} (keys tried: {{.fingerprints}})."
 "TBY-SIG-001.action": "Check that the zone's trust roots include the key that signed this recipe. An unverified recipe is never admitted."
 
 "TBY-SIG-002.what": "A pinned digest does not match the fetched content."
 "TBY-SIG-002.cause": "{{.reference}} pins {{.expected}} but the registry served {{.actual}} — the content changed or was tampered with."
 "TBY-SIG-002.action": "Do not force the transfer. Verify the source registry and the recipe; if the change is legitimate, a re-signed recipe pinning the new digest is required."
+
+"TBY-SIG-003.what": "The artifact's type does not match the recipe's declaration."
+"TBY-SIG-003.cause": "{{.reference}} declares artifactType {{.expected}} but the registry served {{.actual}} — the tag may have been reused for different content."
+"TBY-SIG-003.action": "Verify the source repository. If the type change is legitimate, update and re-sign the recipe; otherwise treat the source as compromised."
 
 "TBY-DST-001.what": "The destination registry cannot store this reference."
 "TBY-DST-001.cause": "{{.reference}} exceeds a destination limit: {{.limit}}."

@@ -4,8 +4,10 @@
 package config
 
 import (
+	"encoding"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -87,10 +89,21 @@ func TestLoadEveryEnvVariable(t *testing.T) {
 	path := writeFile(t, "mode: passthrough\n")
 	t.Setenv(EnvMode, "mirror")
 	t.Setenv(EnvStorageRoot, "/srv/store")
+	t.Setenv(EnvStateRoot, "/var/lib/tobby")
 	t.Setenv(EnvServerAddr, ":9090")
+	t.Setenv(EnvAuthDisabled, "true")
+	t.Setenv(EnvAuthSessionTTL, "2h")
+	// Trimmed and empty-skipped: an operator-written list is rarely tidy.
+	t.Setenv(EnvRegistriesInsecure, " lab.example.com:5000 ,, other.lab ")
+	t.Setenv(EnvUIThemeOverride, "/etc/tobby/theme.css")
+	t.Setenv(EnvUIShowUpcoming, "1")
 	t.Setenv(EnvLoggingLevel, "debug")
 	t.Setenv(EnvShutdownGracePeriod, "45s")
 	t.Setenv(EnvImportInspectTO, "7s")
+	t.Setenv(EnvRetrieverSource, "https://cookbook.example.com/desired-state.yaml")
+	t.Setenv(EnvStorageBasePrefix, "zone-b")
+	t.Setenv(EnvSyncParallelism, "8")
+	t.Setenv(EnvSyncRetries, "0")
 
 	cfg, err := Load(path, true)
 	if err != nil {
@@ -102,8 +115,26 @@ func TestLoadEveryEnvVariable(t *testing.T) {
 	if cfg.Storage.Root != "/srv/store" {
 		t.Errorf("storage.root = %q, want /srv/store", cfg.Storage.Root)
 	}
+	if cfg.State.Root != "/var/lib/tobby" {
+		t.Errorf("state.root = %q, want /var/lib/tobby", cfg.State.Root)
+	}
 	if cfg.Server.Addr != ":9090" {
 		t.Errorf("server.addr = %q, want :9090", cfg.Server.Addr)
+	}
+	if !cfg.Auth.Disabled {
+		t.Error("auth.disabled = false, want true (FR-075 opt-out is settable by environment, never by flag)")
+	}
+	if time.Duration(cfg.Auth.SessionTTL) != 2*time.Hour {
+		t.Errorf("auth.sessionTTL = %v, want 2h", cfg.Auth.SessionTTL)
+	}
+	if want := []string{"lab.example.com:5000", "other.lab"}; !reflect.DeepEqual(cfg.Registries.Insecure, want) {
+		t.Errorf("registries.insecure = %q, want %q (trimmed, empties dropped)", cfg.Registries.Insecure, want)
+	}
+	if cfg.UI.ThemeOverride != "/etc/tobby/theme.css" {
+		t.Errorf("ui.themeOverride = %q", cfg.UI.ThemeOverride)
+	}
+	if !cfg.UI.ShowUpcoming {
+		t.Error(`ui.showUpcoming = false, want true ("1" is an accepted boolean)`)
 	}
 	if cfg.Logging.Level != "debug" {
 		t.Errorf("logging.level = %q, want debug", cfg.Logging.Level)
@@ -113,6 +144,45 @@ func TestLoadEveryEnvVariable(t *testing.T) {
 	}
 	if time.Duration(cfg.Import.InspectTimeout) != 7*time.Second {
 		t.Errorf("import.inspectTimeout = %v, want 7s", cfg.Import.InspectTimeout)
+	}
+	if cfg.Retriever.Source != "https://cookbook.example.com/desired-state.yaml" {
+		t.Errorf("retriever.source = %q", cfg.Retriever.Source)
+	}
+	if cfg.Storage.BasePrefix != "zone-b" {
+		t.Errorf("storage.basePrefix = %q, want zone-b (FR-035)", cfg.Storage.BasePrefix)
+	}
+	if cfg.Sync.Parallelism != 8 {
+		t.Errorf("sync.parallelism = %d, want 8", cfg.Sync.Parallelism)
+	}
+	if cfg.Sync.Retries != 0 {
+		t.Errorf("sync.retries = %d, want 0 (zero retries is a legitimate setting)", cfg.Sync.Retries)
+	}
+}
+
+// TestInvalidEnvValues: a malformed environment value fails the load with a
+// message naming the variable — never a silent fallback to the default,
+// which would hide an operator typo behind a working instance.
+func TestInvalidEnvValues(t *testing.T) {
+	for _, tc := range []struct {
+		name, env, value, wantErr string
+	}{
+		{"sync parallelism not an integer", EnvSyncParallelism, "three", `invalid integer "three"`},
+		{"sync retries not an integer", EnvSyncRetries, "3.5", `invalid integer "3.5"`},
+		{"auth disabled not a boolean", EnvAuthDisabled, "yes", `invalid boolean "yes"`},
+		{"show upcoming not a boolean", EnvUIShowUpcoming, "maybe", `invalid boolean "maybe"`},
+		{"session TTL not a duration", EnvAuthSessionTTL, "forever", `invalid duration "forever"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeFile(t, "mode: mirror\n")
+			t.Setenv(tc.env, tc.value)
+			_, err := Load(path, true)
+			if err == nil {
+				t.Fatalf("%s=%q was accepted, want a refusal", tc.env, tc.value)
+			}
+			if !strings.Contains(err.Error(), tc.env) || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("error = %v, want mention of %s and %q", err, tc.env, tc.wantErr)
+			}
+		})
 	}
 }
 
@@ -331,5 +401,239 @@ func TestInvalidImportEnvDuration(t *testing.T) {
 	_, err := Load(path, true)
 	if err == nil || !strings.Contains(err.Error(), EnvImportInspectTO) {
 		t.Errorf("error = %v, want mention of %s", err, EnvImportInspectTO)
+	}
+}
+
+// validating runs Validate over a Default() instance patched by tweak, and
+// reports the error. It isolates one validation concern per case: the base
+// configuration is always otherwise valid, so every reported error belongs
+// to the setting under test.
+func validating(tweak func(*Config)) error {
+	cfg := Default()
+	cfg.Mode = ModeMirror
+	tweak(&cfg)
+	return cfg.Validate()
+}
+
+// checkErr asserts that err carries every fragment of want (or is nil when
+// want is empty). Substance, not mere non-nullity: the operator must read
+// what to fix out of the message.
+func checkErr(t *testing.T, err error, want []string) {
+	t.Helper()
+	if len(want) == 0 {
+		if err != nil {
+			t.Errorf("unexpected refusal: %v", err)
+		}
+		return
+	}
+	if err == nil {
+		t.Fatalf("accepted, want a refusal mentioning %q", want)
+	}
+	for _, frag := range want {
+		if !strings.Contains(err.Error(), frag) {
+			t.Errorf("error = %v\n  misses %q", err, frag)
+		}
+	}
+}
+
+// TestValidateTrustRefusesMalformedDeclarations is the FR-033 startup guard:
+// a malformed trust configuration must fail loudly with an actionable
+// message. Verification is never allowed to relax by accident — a typo in a
+// scope or a root is a refusal, not a silent downgrade.
+func TestValidateTrustRefusesMalformedDeclarations(t *testing.T) {
+	inlineRoot := TrustRoot{Name: "release", Key: "-----BEGIN PUBLIC KEY-----\nMCowBQ==\n-----END PUBLIC KEY-----"}
+	scoped := func(s TrustScope) Trust { return Trust{Roots: []TrustRoot{inlineRoot}, Scopes: []TrustScope{s}} }
+
+	for _, tc := range []struct {
+		name  string
+		trust Trust
+		want  []string // every fragment must appear in the refusal
+	}{
+		{
+			name: "complete declaration",
+			trust: Trust{
+				Roots: []TrustRoot{inlineRoot, {Name: "lab", KeyFile: "/etc/tobby/lab.pub"}, {Name: "vendor", KeyURL: "https://keys.example.com/vendor.pub"}},
+				Scopes: []TrustScope{
+					{Name: "lab-unsigned", Repositories: []string{"lab.example.com/cookbook/**"}, AllowUnsigned: true},
+					{Name: "vendor-only", Repositories: []string{"vendor.example.com/*"}, Roots: []string{"vendor"}},
+				},
+			},
+		},
+		{
+			name:  "root without a name",
+			trust: Trust{Roots: []TrustRoot{{Key: "k"}}},
+			want:  []string{"trust.roots[0]", "name is required"},
+		},
+		{
+			name:  "duplicate root name",
+			trust: Trust{Roots: []TrustRoot{inlineRoot, {Name: "release", KeyFile: "/etc/tobby/other.pub"}}},
+			want:  []string{"trust.roots[1]", `duplicate name "release"`},
+		},
+		{
+			name:  "root declaring no key at all",
+			trust: Trust{Roots: []TrustRoot{{Name: "release"}}},
+			want:  []string{"trust.roots[0] (release)", "exactly one of key, keyFile, keyURL"},
+		},
+		{
+			name:  "root declaring two key sources",
+			trust: Trust{Roots: []TrustRoot{{Name: "release", Key: "k", KeyFile: "/etc/tobby/release.pub"}}},
+			want:  []string{"trust.roots[0] (release)", "exactly one of key, keyFile, keyURL"},
+		},
+		{
+			name:  "keyURL over plain http",
+			trust: Trust{Roots: []TrustRoot{{Name: "release", KeyURL: "http://keys.example.com/release.pub"}}},
+			want:  []string{"trust.roots[0] (release)", "keyURL must be https://"},
+		},
+		{
+			name:  "scope without a name",
+			trust: scoped(TrustScope{Repositories: []string{"lab.example.com/*"}, AllowUnsigned: true}),
+			want:  []string{"trust.scopes[0]", "name is required"},
+		},
+		{
+			name: "duplicate scope name",
+			trust: Trust{Roots: []TrustRoot{inlineRoot}, Scopes: []TrustScope{
+				{Name: "lab", Repositories: []string{"lab.example.com/*"}, AllowUnsigned: true},
+				{Name: "lab", Repositories: []string{"other.example.com/*"}, AllowUnsigned: true},
+			}},
+			want: []string{"trust.scopes[1]", `duplicate name "lab"`},
+		},
+		{
+			name:  "scope without repositories",
+			trust: scoped(TrustScope{Name: "everywhere", AllowUnsigned: true}),
+			want:  []string{"trust.scopes[0] (everywhere)", "repositories patterns are required", "explicitly declared perimeter"},
+		},
+		{
+			name:  "scope relaxing and restricting nothing",
+			trust: scoped(TrustScope{Name: "inert", Repositories: []string{"lab.example.com/*"}}),
+			want:  []string{"trust.scopes[0] (inert)", "must declare what it changes", "allowUnsigned"},
+		},
+		{
+			name:  "scope pointing at an unknown root",
+			trust: scoped(TrustScope{Name: "vendor-only", Repositories: []string{"lab.example.com/*"}, Roots: []string{"ghost"}}),
+			want:  []string{"trust.scopes[0] (vendor-only)", `unknown trust root "ghost"`},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			checkErr(t, validating(func(c *Config) { c.Trust = tc.trust }), tc.want)
+		})
+	}
+}
+
+// TestValidateFilesRefusesHostileNames guards the FR-047 URL surface: the
+// FileSet name becomes a /files/<name>/ path segment, so anything that is
+// not a plain lowercase segment — traversal, separator, uppercase, exotic
+// runes — is refused at configuration time, before it can reach a URL.
+func TestValidateFilesRefusesHostileNames(t *testing.T) {
+	const segment = "must be a lowercase URL segment"
+	for _, tc := range []struct {
+		name string
+		want []string
+	}{
+		{"debs", nil},
+		{"site-config", nil},
+		{"repo.d", nil},
+		{"x_1", nil},
+		{"", []string{`files.filesets[0]`, segment}},
+		{".", []string{`name "."`, segment}},
+		{"..", []string{`name ".."`, segment}},
+		{"../../etc", []string{segment}},
+		{"Debs", []string{`name "Debs"`, segment}},
+		{"deb/s", []string{`name "deb/s"`, segment}},
+		{"deb s", []string{segment}},
+		{"débs", []string{segment}},
+		{"debs%2f", []string{segment}},
+	} {
+		t.Run("name "+tc.name, func(t *testing.T) {
+			err := validating(func(c *Config) {
+				c.Files.FileSets = []FileSetServe{{Name: tc.name, Ref: "registry.example.com/filesets/site-config"}}
+			})
+			checkErr(t, err, tc.want)
+		})
+	}
+
+	// A duplicate name would make two FileSets fight over one URL prefix.
+	err := validating(func(c *Config) {
+		c.Files.FileSets = []FileSetServe{
+			{Name: "debs", Ref: "registry.example.com/filesets/a"},
+			{Name: "debs", Ref: "registry.example.com/filesets/b"},
+		}
+	})
+	checkErr(t, err, []string{"files.filesets[1]", `duplicate name "debs"`})
+
+	// Without a ref there is nothing to serve.
+	err = validating(func(c *Config) {
+		c.Files.FileSets = []FileSetServe{{Name: "debs"}}
+	})
+	checkErr(t, err, []string{"files.filesets[0] (debs)", "ref is required"})
+}
+
+// TestValidateSyncBounds: the transfer bounds of NFR-008/FR-029 must stay
+// meaningful — a non-positive parallelism would stall every sync, and a
+// negative retry budget is nonsense. Zero retries, however, is a legitimate
+// operator choice and must be accepted.
+func TestValidateSyncBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		parallelism int
+		retries     int
+		want        []string
+	}{
+		{"defaults", 3, 3, nil},
+		{"no retry budget is legitimate", 1, 0, nil},
+		{"zero parallelism", 0, 3, []string{"sync.parallelism must be positive"}},
+		{"negative parallelism", -1, 3, []string{"sync.parallelism must be positive"}},
+		{"negative retries", 3, -1, []string{"sync.retries must not be negative"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validating(func(c *Config) {
+				c.Sync = Sync{Parallelism: tc.parallelism, Retries: tc.retries}
+			})
+			checkErr(t, err, tc.want)
+		})
+	}
+}
+
+// TestSecretTextMarshalingAndZero completes the NFR-015 surface: the
+// encoding.TextMarshaler path — the one slog's text handler and every
+// TextMarshaler-aware encoder take — must redact like the others, and
+// IsZero must answer without revealing anything.
+func TestSecretTextMarshalingAndZero(t *testing.T) {
+	const sensitive = "hunter2-swordfish"
+
+	// The interface assertion is the contract: encoders reach the value
+	// through it, so it must exist.
+	var marshaler encoding.TextMarshaler = NewSecret(sensitive)
+	text, err := marshaler.MarshalText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(text) != Redacted {
+		t.Errorf("MarshalText = %q, want %q", text, Redacted)
+	}
+	empty, err := NewSecret("").MarshalText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(empty) != 0 {
+		t.Errorf("empty secret MarshalText = %q, want empty (not %q)", empty, Redacted)
+	}
+
+	if !NewSecret("").IsZero() {
+		t.Error("IsZero() = false for an unset secret")
+	}
+	if NewSecret(sensitive).IsZero() {
+		t.Error("IsZero() = true for a set secret")
+	}
+
+	// End to end on the path that matters: a secret carried into a log
+	// record must reach the output redacted.
+	var logged strings.Builder
+	slog.New(slog.NewTextHandler(&logged, nil)).
+		Info("registry login", "credential", NewSecret(sensitive))
+	if strings.Contains(logged.String(), sensitive) {
+		t.Errorf("slog text output leaks the secret: %s", logged.String())
+	}
+	if !strings.Contains(logged.String(), Redacted) {
+		t.Errorf("slog text output misses the redaction marker: %s", logged.String())
 	}
 }
