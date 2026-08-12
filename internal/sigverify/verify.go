@@ -129,17 +129,26 @@ type simpleSigning struct {
 	Optional map[string]any `json:"optional"`
 }
 
-// Verify checks the cosign attached signature of repo@manifestDigest
-// against keys. It resolves the signature artifact at the cosign
-// convention tag ("sha256-<hex>.sig" in the same repository, RECIPE-SPEC
-// §12.2) and accepts the subject if at least one (payload layer, trusted
-// key) pair verifies AND that payload pins manifestDigest. It returns the
-// fingerprint of the key that verified.
+// Verify checks the cosign signature of repo@manifestDigest against keys,
+// in either published layout, and returns the fingerprint of the key that
+// verified:
 //
-// Failure modes: ErrNoSignature when the tag does not resolve,
+//   - the classic attached signature at "sha256-<hex>.sig" in the same
+//     repository (RECIPE-SPEC §12.2), a SimpleSigning payload pinning the
+//     subject digest;
+//   - the Sigstore bundle layout (cosign 3.x default), an artifact
+//     REFERRING to the subject, whose DSSE envelope carries an in-toto
+//     statement naming it (bundle.go).
+//
+// Both are tried: publishers pick a format, and consumers should not have
+// to. The subject is admitted as soon as one signature verifies against
+// one trusted key; nothing else changes — an unverifiable signature still
+// fails closed, per item.
+//
+// Failure modes: ErrNoSignature when NEITHER layout publishes anything,
 // *NoTrustedKeyError when a well-formed signature exists but no configured
-// key verifies it, *BadSignatureError when the artifact is malformed or
-// pins a different digest. Transport errors pass through unchanged.
+// key verifies it, *BadSignatureError when an artifact is malformed or
+// names a different digest. Transport errors pass through unchanged.
 func Verify(ctx context.Context, src Manifests, repo, manifestDigest string, keys *Keys) (fingerprint string, err error) {
 	if keys == nil || len(keys.keys) == 0 {
 		return "", errors.New("sigverify: no trust roots configured")
@@ -150,12 +159,32 @@ func Verify(ctx context.Context, src Manifests, repo, manifestDigest string, key
 	}
 	sigTag := "sha256-" + subjectHex + ".sig"
 
-	raw, _, _, err := src.Manifest(ctx, repo, sigTag)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return "", fmt.Errorf("%w: %s@%s (tag %q does not resolve)", ErrNoSignature, repo, manifestDigest, sigTag)
+	// Classic layout first: it is what RECIPE-SPEC §12.2 pins, so it is
+	// the common case for content produced by the documented toolchain.
+	raw, _, _, legacyErr := src.Manifest(ctx, repo, sigTag)
+	if legacyErr != nil && !errors.Is(legacyErr, ErrNotFound) {
+		return "", fmt.Errorf("sigverify: reading signature manifest %s:%s: %w", repo, sigTag, legacyErr)
+	}
+	if legacyErr != nil {
+		// No classic signature: the bundle layout is the remaining
+		// possibility, and its absence is what makes the subject unsigned.
+		fp, found, verifiable, reasons, err := verifyBundles(ctx, src, repo, manifestDigest, subjectHex, keys)
+		switch {
+		case err != nil:
+			return "", err
+		case fp != "":
+			return fp, nil
+		case !found:
+			return "", fmt.Errorf("%w: %s@%s (neither %q nor a referring bundle resolves)",
+				ErrNoSignature, repo, manifestDigest, sigTag)
+		case verifiable:
+			// A well-formed signature exists and no configured key matches:
+			// that verdict, with the fingerprints, outranks whatever other
+			// candidates were malformed (FR-033 acceptance).
+			return "", &NoTrustedKeyError{Tried: keys.Fingerprints()}
+		default:
+			return "", &BadSignatureError{Reason: strings.Join(reasons, "; ")}
 		}
-		return "", fmt.Errorf("sigverify: reading signature manifest %s:%s: %w", repo, sigTag, err)
 	}
 
 	var manifest sigManifest
@@ -212,7 +241,22 @@ func Verify(ctx context.Context, src Manifests, repo, manifestDigest string, key
 		}
 	}
 
-	if sawVerifiable {
+	// The classic artifact exists but did not verify. A publisher may have
+	// re-signed in the bundle layout since — try it before failing, so a
+	// stale .sig alongside a fresh bundle does not mask a valid signature.
+	fp, _, bundleVerifiable, bundleReasons, err := verifyBundles(ctx, src, repo, manifestDigest, subjectHex, keys)
+	if err != nil {
+		return "", err
+	}
+	if fp != "" {
+		return fp, nil
+	}
+	reasons = append(reasons, bundleReasons...)
+
+	// Either layout having published a well-formed signature makes this a
+	// trust-root verdict, not a malformed-artifact one: the operator needs
+	// the fingerprints tried, whichever layout carried the signature.
+	if sawVerifiable || bundleVerifiable {
 		return "", &NoTrustedKeyError{Tried: keys.Fingerprints()}
 	}
 	if candidates == 0 {

@@ -28,8 +28,12 @@ side effect.
   per-digest new/outdated/up-to-date statuses: a second identical run
   transfers zero bytes.
 - Signature verification at entry (roadmap 3.4): cosign key-based, fully
-  offline — trust roots configured inline, as files, or as HTTPS URLs
-  fetched at configuration time; multiple keys for rotation by overlap.
+  offline, in **both published layouts** — the classic attached signature
+  and the Sigstore bundle that cosign 3.x produces by default, discovered
+  through the OCI 1.1 Referrers API or its fallback tag. Publishers pick a
+  format; consumers no longer have to. Trust roots are configured inline,
+  as files, or as HTTPS URLs fetched at configuration time; multiple keys
+  for rotation by overlap.
   Verification is on by default for every recipe; relaxation exists only
   as explicitly declared trust scopes (repository patterns), visible in
   the configuration report, a permanent banner, the logs, and the task

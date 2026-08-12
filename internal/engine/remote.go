@@ -226,6 +226,36 @@ func (m *remoteManifests) Manifest(ctx context.Context, _, reference string) (pa
 	return desc.Manifest, string(desc.MediaType), desc.Digest.String(), nil
 }
 
+// Referrers implements sigverify.ReferrersLister: cosign 3.x publishes
+// signatures as artifacts REFERRING to their subject, and a registry that
+// serves the OCI 1.1 Referrers API (GHCR, Harbor, ECR…) has no reason to
+// also create the fallback tag the verifier would otherwise look for.
+// Without this, a signature published in that layout is invisible.
+// go-containerregistry queries the API and falls back to the tag on its
+// own, so both registry generations answer here.
+func (m *remoteManifests) Referrers(ctx context.Context, _, subjectDigest string) ([]string, error) {
+	repo, _, err := m.r.Repository(m.nominal)
+	if err != nil {
+		return nil, err
+	}
+	idx, err := remote.Referrers(repo.Digest(subjectDigest), m.r.options(ctx)...)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil // no referrers surface, no referrers: not an error
+		}
+		return nil, err
+	}
+	man, err := idx.IndexManifest()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(man.Manifests))
+	for i := range man.Manifests {
+		out = append(out, man.Manifests[i].Digest.String())
+	}
+	return out, nil
+}
+
 func (m *remoteManifests) Blob(ctx context.Context, _, dgst string) ([]byte, error) {
 	rrepo, _, err := m.r.Repository(m.nominal)
 	if err != nil {

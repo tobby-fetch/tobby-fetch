@@ -254,6 +254,31 @@ MOVED=$(curl -fsS -u "$CRED" "$API/tasks/$TASK2" |
 [ "$MOVED" = "0" ] || fail "second run moved $MOVED bytes, want 0 (NFR-009)"
 check "idempotence: second synchronization transferred zero bytes"
 
+# -- 4b. The other published signature layout is accepted too -----------------
+# cosign 3.x publishes a Sigstore bundle REFERRING to the subject instead of
+# the classic attached tag. RECIPE-SPEC §12.2 requires consumers to accept
+# both, because the choice belongs to whoever signs — this step signs with
+# cosign's own defaults (minus the transparency log, unreachable here) and
+# expects the same verdict as the classic layout.
+sed 's/version: 2.0.0/version: 2.0.2/' "$WORK/sample-app.yaml" > "$WORK/sample-app-2.0.2.yaml"
+BUNDLE_DIGEST=$( cd "$DIR/../../.." && go run ./test/topology/seed push-recipe \
+    "$SOURCE_IP:8080/cookbook/sample-app:2.0.2" "$WORK/sample-app-2.0.2.yaml" ) ||
+    fail "publishing the bundle-signed recipe"
+COSIGN_PASSWORD= "$COSIGN" sign --key "$WORK/cosign.key" --yes --allow-insecure-registry \
+    --use-signing-config=false --tlog-upload=false \
+    "$SOURCE_IP:8080/cookbook/sample-app@$BUNDLE_DIGEST" >/dev/null 2>&1 ||
+    fail "cosign signing in the bundle layout"
+
+sed 's/version: "2.0.0"/version: "2.0.2"/' "$WORK/retriever.yaml" > "$WORK/retriever-bundle.yaml"
+inc file push "$WORK/retriever-bundle.yaml" tbc-m3-node/etc/tobby/retriever.yaml
+BUNDLE_TASK=$(sync_and_wait "$API" "$CRED") || fail "bundle-layout synchronization never settled"
+BSTATUS=$(curl -fsS -u "$CRED" "$API/tasks/$BUNDLE_TASK" | jq -r '.task.status')
+[ "$BSTATUS" = "done" ] || fail "bundle-layout synchronization ended $BSTATUS, want done"
+curl -fsS -u "$CRED" "$API/content/$COOKBOOK_REPO/-/tags/2.0.2" >/dev/null ||
+    fail "bundle-signed recipe did not land"
+inc file push "$WORK/retriever.yaml" tbc-m3-node/etc/tobby/retriever.yaml
+check "the Sigstore bundle layout (cosign 3.x default) verifies like the classic one"
+
 # -- 5. FileSet served over /files/ with ranges (FR-047) ----------------------
 BODY=$(curl -fsS "http://$NODE_IP:8080/files/site/hello.txt") ||
     fail "anonymous fileset read failed"
