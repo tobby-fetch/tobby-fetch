@@ -1,0 +1,78 @@
+# Keycloak — identity provider, with the database the chart does NOT ship.
+#
+# PROFILE: cooked.
+#
+# Verified against chart keycloakx 7.2.2 / appVersion 26.6.4 on 2026-08-15.
+apiVersion: recipe.tobby.dev/v1alpha1
+kind: Recipe
+
+metadata:
+  name: keycloak
+  version: 26.6.4
+  description: >-
+    Keycloak (Quarkus distribution) with a PostgreSQL database, for a zone
+    that has to authenticate its own users without reaching an external
+    identity provider.
+  annotations:
+    recipe.tobby.dev/cooked-at: "2026-08-15T09:00:00Z"
+    org.opencontainers.image.source: https://github.com/codecentric/helm-charts
+
+spec:
+  ingredients:
+    - name: keycloakx-chart
+      kind: HelmChart
+      ref: ghcr.io/codecentric/helm-charts/keycloakx
+      version: 7.2.2
+      digest: sha256:ada9f1083b0fc00486658d71e08d8e511ee345ef25e6411f9656fddcbeedcb3a
+      vendorDependencies: false
+
+    - name: keycloak
+      kind: ContainerImage
+      ref: quay.io/keycloak/keycloak
+      version: 26.6.4
+      digest: sha256:0aae0de7fca85525f727d3354df17896092de8bb26ae4c12d89c77e5df8cbce4
+      platforms: [linux/amd64, linux/arm64]
+
+    # ------------------------------------------------------------------
+    # `helm template` on this chart renders exactly ONE image: Keycloak.
+    # The chart assumes an external database and never mentions it. In a
+    # connected cluster that assumption is invisible — someone already has
+    # a PostgreSQL. In a zone being built from nothing, it is a hard stop
+    # discovered at deployment time, once the media is sealed.
+    #
+    # The lesson: a rendered-image inventory tells you what the chart
+    # DEPLOYS, never what it DEPENDS ON. Read the chart's values and its
+    # README for external dependencies, and put them in the recipe.
+    #
+    # Watch the platform label: this index declares linux/arm64/v8, not
+    # linux/arm64. Tobby matches the label exactly and fails the ingredient
+    # when it finds no match — better a loud failure than a silent
+    # architecture swap. Read the real labels off the index:
+    #
+    #   oras manifest fetch docker.io/library/postgres:17.6-alpine \
+    #     | jq -r '.manifests[].platform | .os+"/"+.architecture+(.variant//"" | if .=="" then "" else "/"+. end)'
+    # ------------------------------------------------------------------
+    - name: postgres
+      kind: ContainerImage
+      ref: docker.io/library/postgres
+      version: 17.6-alpine
+      digest: sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
+      platforms: [linux/amd64, linux/arm64/v8]
+
+    # ------------------------------------------------------------------
+    # Custom themes and provider JARs travel as a FileSet: files packaged
+    # as an OCI image, carried through the same signed channel, served
+    # read-only by Tobby under /files/keycloak-theme/ or mounted into the
+    # pod. No side channel, no scp, no "someone will bring it on a stick".
+    #
+    #   - name: keycloak-theme
+    #     kind: FileSet
+    #     ref: registry.example.com/filesets/keycloak-theme
+    #     version: 2.1.0
+    #     digest: sha256:…
+    #     extract:
+    #       paths: ["themes/**", "providers/*.jar"]
+    #
+    # See the "packaging a FileSet" guide in the recipe-spec repository for
+    # how to build one with a reproducible digest.
+    # ------------------------------------------------------------------

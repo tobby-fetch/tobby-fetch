@@ -1,0 +1,79 @@
+# MetalLB — bare-metal load balancer for Kubernetes.
+#
+# PROFILE: draft. The chart ingredient carries no digest because MetalLB is
+# only published to a legacy index.yaml repository; see the note below.
+#
+# Verified against chart 0.16.1 / appVersion v0.16.1 on 2026-08-15.
+# Image list obtained with:
+#   helm repo add metallb https://metallb.github.io/metallb
+#   helm template t metallb/metallb | grep -E '^\s*image:'
+apiVersion: recipe.tobby.dev/v1alpha1
+kind: Recipe
+
+metadata:
+  name: metallb
+  version: 0.16.1
+  description: >-
+    MetalLB load balancer with its FRR speaker, for clusters that have no
+    cloud load-balancer to lean on — which is every air-gapped cluster.
+  annotations:
+    org.opencontainers.image.source: https://github.com/metallb/metallb
+
+spec:
+  ingredients:
+    # ------------------------------------------------------------------
+    # MetalLB publishes its chart ONLY to https://metallb.github.io/metallb,
+    # a legacy index.yaml repository. RECIPE-SPEC §7.2 puts those out of
+    # scope for the format: a chart must live in an OCI registry to be an
+    # ingredient. Push it once, into the registry you control:
+    #
+    #   helm repo add metallb https://metallb.github.io/metallb
+    #   helm pull metallb/metallb --version 0.16.1
+    #   helm push metallb-0.16.1.tgz oci://registry.example.com/charts
+    #
+    # Then point `ref` at your own path and cook the recipe: the digest is
+    # the one your registry returns. Nothing is rewritten in flight — the
+    # chart archive is the upstream one, byte for byte.
+    # ------------------------------------------------------------------
+    - name: metallb-chart
+      kind: HelmChart
+      ref: registry.example.com/charts/metallb
+      version: 0.16.1
+      vendorDependencies: false
+
+    # The two MetalLB components. Both are published as multi-platform
+    # indexes covering amd64, arm/v7, arm64, ppc64le and s390x; only the
+    # platforms listed here cross into the zone.
+    - name: controller
+      kind: ContainerImage
+      ref: quay.io/metallb/controller
+      version: v0.16.1
+      digest: sha256:f51ab515de9ccd20dc3dccb093e48df8adddac019326c456f449e55ba91b6420
+      platforms: [linux/amd64, linux/arm64]
+
+    - name: speaker
+      kind: ContainerImage
+      ref: quay.io/metallb/speaker
+      version: v0.16.1
+      digest: sha256:16561e96531e1852d5c229ad7fae6e994dcfa983ff7f4de6b6208b34a4e2ddbc
+      platforms: [linux/amd64, linux/arm64]
+
+    # The speaker runs FRR in a sidecar by default (BGP mode). Both images
+    # are needed as soon as `speaker.frr.enabled` stays true — dropping
+    # them to "save space" leaves the speaker pod stuck in ImagePullBackOff
+    # after the cluster is already sealed.
+    - name: frr-k8s
+      kind: ContainerImage
+      ref: quay.io/metallb/frr-k8s
+      version: v0.0.25
+      digest: sha256:1cb06fb2d5538c9f9b20d3adf00da8d1e6cb0166bc15df8add0d9efe578641a4
+      platforms: [linux/amd64, linux/arm64]
+
+    # FRR is versioned on its own cadence, NOT with MetalLB. Re-read it from
+    # the rendered chart at every upgrade instead of assuming it followed.
+    - name: frr
+      kind: ContainerImage
+      ref: quay.io/frrouting/frr
+      version: 10.4.3
+      digest: sha256:8745af1f9bbbc26ab11d99ccdf35e07aa3427a199749bef0cd6bb5132bb130df
+      platforms: [linux/amd64, linux/arm64]

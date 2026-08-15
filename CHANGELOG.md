@@ -85,6 +85,17 @@ side effect.
 - Trivy integration spike (ADR-0008 exit criterion): measured
   library-vs-binary footprint; recommendation recorded in
   `docs/spikes/trivy-library-vs-binary.md`.
+- `examples/`: five recipes for software that really crosses into
+  restricted zones — Harbor, Keycloak, MetalLB, the OpenTelemetry
+  Collector and the VictoriaMetrics operator — plus the Retriever that
+  ties them into one zone. Each carries the reasoning behind its
+  ingredient list, because `helm template | grep image:` misses four
+  distinct classes of image; the VictoriaMetrics operator is the worked
+  example of the worst one, where the components live in the operator's
+  own compiled defaults. Every digest and platform label was checked
+  against the live registries, and a test parses the whole directory with
+  the specification SDK so an example cannot drift from what the engine
+  accepts.
 
 ### Fixed
 

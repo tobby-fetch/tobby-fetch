@@ -1,0 +1,57 @@
+# OpenTelemetry Collector — the simplest shape a recipe takes.
+#
+# PROFILE: cooked. Chart and image both live in an OCI registry, both are
+# pinned by digest. This one can be published to a cookbook as it stands.
+#
+# Verified against chart 0.170.0 / appVersion 0.158.0 on 2026-08-15.
+apiVersion: recipe.tobby.dev/v1alpha1
+kind: Recipe
+
+metadata:
+  name: otel-collector
+  version: 0.158.0
+  description: >-
+    OpenTelemetry Collector (contrib distribution) and its Helm chart —
+    the telemetry hop that lets a restricted zone keep its metrics, logs
+    and traces inside its own perimeter.
+  annotations:
+    recipe.tobby.dev/cooked-at: "2026-08-15T09:00:00Z"
+    org.opencontainers.image.source: https://github.com/open-telemetry/opentelemetry-helm-charts
+
+spec:
+  ingredients:
+    # OpenTelemetry publishes its charts natively as OCI artifacts, so the
+    # ingredient points straight at the upstream repository: no
+    # republication step, and the upstream chart signature stays verifiable
+    # at the destination.
+    - name: otel-collector-chart
+      kind: HelmChart
+      ref: ghcr.io/open-telemetry/opentelemetry-helm-charts/opentelemetry-collector
+      version: 0.170.0
+      digest: sha256:9c48896efcaa2eeb46700f10150a1bb3ba91f4c927126927390799d1d0b329bd
+      vendorDependencies: false
+
+    # ------------------------------------------------------------------
+    # `helm template` on this chart renders NO image by default: the chart
+    # ships `image.repository: ""` and refuses to choose between the core
+    # and the contrib distribution for you. A naive "render and grep"
+    # inventory therefore returns an empty list, and the zone gets a chart
+    # with nothing to run.
+    #
+    # Render it the way you will actually deploy it, then read the images:
+    #
+    #   helm template t oci://ghcr.io/open-telemetry/opentelemetry-helm-charts/opentelemetry-collector \
+    #     --version 0.170.0 -f your-values.yaml | grep -E '^\s*image:'
+    #
+    # The rule generalises: inventory the RENDERED manifests of the values
+    # you deploy, never the chart's defaults.
+    # ------------------------------------------------------------------
+    - name: otel-collector-contrib
+      kind: ContainerImage
+      ref: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib
+      version: 0.158.0
+      digest: sha256:c5918f78992ee73b0d6f0e599423ac5ec52dd5d9726733114d6eca53d5a32ed5
+      # The index also carries 386, arm/v7, ppc64le, riscv64 and s390x.
+      # Naming only what the zone runs keeps the transfer — and the media —
+      # to what is actually needed.
+      platforms: [linux/amd64, linux/arm64]
