@@ -75,6 +75,10 @@
 "TBY-POL-003.cause": "{{.repository}} a été poussé via l'API registre standard (/v2/) par un client externe : sa provenance n'est ni une recipe ni un import unitaire."
 "TBY-POL-003.action": "La suppression individuelle ne couvre que le contenu importé unitairement (FR-044). Gérez le contenu poussé directement avec l'outillage registre standard qui l'a poussé."
 
+"TBY-POL-004.what": "Cette version de recipe est déjà publiée, avec un contenu différent."
+"TBY-POL-004.cause": "{{.reference}} pointe déjà sur {{.published}} ; le document proposé publierait {{.candidate}}. Une recipe cuite est immuable (RECIPE-SPEC §8)."
+"TBY-POL-004.action": "Publiez le changement sous un nouveau metadata.version et un nouveau tag. Republier une version sur un contenu différent changerait en silence ce que des zones ont déjà résolu."
+
 "TBY-SIG-001.what": "La signature de la recipe n'a pas pu être vérifiée."
 "TBY-SIG-001.cause": "Aucune clé de confiance configurée ne valide la signature de {{.recipe}} (clés essayées : {{.fingerprints}})."
 "TBY-SIG-001.action": "Vérifiez que les clés de confiance de la zone incluent la clé qui a signé cette recipe. Une recipe non vérifiée n'est jamais admise."

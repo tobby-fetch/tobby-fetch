@@ -227,6 +227,10 @@
 "manifest.annotations": "Annotations OCI"
 "manifest.th_key": "Clé"
 "manifest.th_value": "Valeur"
+"manifest.document": "Document de la recipe"
+"manifest.document_note": "Le YAML que cette instance détient et a vérifié à l'entrée, pas une relecture du cookbook amont. Une version de recipe publiée est immuable : pour la changer, publiez un nouveau metadata.version."
+"manifest.copy_document": "Copier le document"
+"manifest.download_document": "Télécharger"
 "manifest.pull_label": "pull par digest"
 
 # Écrans annexes (J2.7) : comptes admin, aide, à propos, api-docs.

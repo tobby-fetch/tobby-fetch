@@ -47,19 +47,32 @@ func NewRemotes(substitutions map[string]string, insecureHosts []string, credent
 	for _, h := range insecureHosts {
 		r.insecure[h] = true
 	}
-	r.keychain = authn.DefaultKeychain
-	if credentialsFile != "" {
-		raw, err := os.ReadFile(credentialsFile) //nolint:gosec // G304: operator-configured credentials path (FR-004)
-		if err != nil {
-			return nil, fmt.Errorf("registries.credentialsFile: %w", err)
-		}
-		kc, err := newDockerConfigKeychain(raw)
-		if err != nil {
-			return nil, fmt.Errorf("registries.credentialsFile: %w", err)
-		}
-		r.keychain = authn.NewMultiKeychain(kc, authn.DefaultKeychain)
+	kc, err := keychainFor(credentialsFile)
+	if err != nil {
+		return nil, err
 	}
+	r.keychain = kc
 	return r, nil
+}
+
+// keychainFor builds the credential keychain of a configured
+// credentialsFile (FR-004), falling back to the default keychain
+// (~/.docker/config.json) when none is configured. Shared by the reading
+// side (Remotes) and the publishing side (Publisher): one credential
+// source, whichever direction the bytes travel.
+func keychainFor(credentialsFile string) (authn.Keychain, error) {
+	if credentialsFile == "" {
+		return authn.DefaultKeychain, nil
+	}
+	raw, err := os.ReadFile(credentialsFile) //nolint:gosec // G304: operator-configured credentials path (FR-004)
+	if err != nil {
+		return nil, fmt.Errorf("registries.credentialsFile: %w", err)
+	}
+	kc, err := newDockerConfigKeychain(raw)
+	if err != nil {
+		return nil, fmt.Errorf("registries.credentialsFile: %w", err)
+	}
+	return authn.NewMultiKeychain(kc, authn.DefaultKeychain), nil
 }
 
 // dockerConfigKeychain resolves credentials from a

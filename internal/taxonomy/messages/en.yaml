@@ -75,6 +75,10 @@
 "TBY-POL-003.cause": "{{.repository}} was pushed through the standard registry API (/v2/) by an external client: its provenance is neither a recipe nor a unit import."
 "TBY-POL-003.action": "Individual removal covers unit-imported content only (FR-044). Manage seeded content with the standard registry tooling that pushed it."
 
+"TBY-POL-004.what": "This recipe version is already published, with different content."
+"TBY-POL-004.cause": "{{.reference}} already points at {{.published}}; the document offered would publish {{.candidate}}. A cooked recipe is immutable (RECIPE-SPEC §8)."
+"TBY-POL-004.action": "Publish the change under a new metadata.version and tag. Republishing a version onto different content would silently change what zones already resolved."
+
 "TBY-SIG-001.what": "The recipe signature could not be verified."
 "TBY-SIG-001.cause": "No configured trust root validates the signature of {{.recipe}} (keys tried: {{.fingerprints}})."
 "TBY-SIG-001.action": "Check that the zone's trust roots include the key that signed this recipe. An unverified recipe is never admitted."

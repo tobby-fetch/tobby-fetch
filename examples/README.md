@@ -143,20 +143,37 @@ its own recipe, on its own cadence.
 
 ## Publishing one
 
-A recipe is an ordinary OCI artifact. Push it, sign it, and the zone will
-verify the signature before it reads the document. The layer must be named
-`recipe.yaml` — that is what the artifact layout expects, whatever the file
-is called on your disk:
+A recipe is an ordinary OCI artifact, so any OCI tool can push one. Tobby
+ships a subcommand for it anyway, because the interesting part is not the
+transport — it is refusing to publish something a zone will reject later:
+
+```bash
+tobby recipe push metallb.yaml registry.example.com/cookbook/metallb:0.16.1
+```
+
+It declines a document that is not a valid recipe, one that is not fully
+pinned (a cookbook holds cooked recipes only), one whose name or version
+contradicts the reference, and any republication of an existing version onto
+different content. Publishing the same document twice is a no-op. The
+published digest goes to stdout, ready for the signing step:
+
+```bash
+cosign sign --key cosign.key \
+  --use-signing-config=false --tlog-upload=false \
+  registry.example.com/cookbook/metallb@$(tobby recipe push metallb.yaml registry.example.com/cookbook/metallb:0.16.1)
+```
+
+Signing stays outside Tobby, which never holds a private key.
+
+The generic path remains supported — a machine that authors recipes does not
+have to install Tobby. Name the file `recipe.yaml` so the layer carries the
+title a published recipe is expected to have:
 
 ```bash
 cp metallb.yaml recipe.yaml
 oras push registry.example.com/cookbook/metallb:0.16.1 \
   --artifact-type application/vnd.tobby.recipe.v1+yaml \
   recipe.yaml:application/vnd.tobby.recipe.v1+yaml
-
-cosign sign --key cosign.key \
-  --use-signing-config=false --tlog-upload=false \
-  registry.example.com/cookbook/metallb@sha256:…
 ```
 
 Those last two flags keep the signature verifiable offline: without them,

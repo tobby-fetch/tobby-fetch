@@ -227,6 +227,10 @@
 "manifest.annotations": "OCI annotations"
 "manifest.th_key": "Key"
 "manifest.th_value": "Value"
+"manifest.document": "Recipe document"
+"manifest.document_note": "The YAML this instance holds and verified on entry, not a fresh read of the upstream cookbook. A published recipe version is immutable: to change it, publish a new metadata.version."
+"manifest.copy_document": "Copy the document"
+"manifest.download_document": "Download"
 "manifest.pull_label": "pull by digest"
 
 # Annex screens (J2.7): admin accounts, help, about, api-docs.

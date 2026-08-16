@@ -70,6 +70,10 @@ const (
 	// through /v2/ by a standard client: the FR-044 amendment scopes
 	// individual removal to unit-import provenance only.
 	CodeSeedContent Code = "TBY-POL-003"
+	// CodeTagImmutable refuses to republish a cooked recipe tag onto
+	// different content (RECIPE-SPEC §8: a cooked recipe is immutable —
+	// any change, even a single digest, requires a new metadata.version).
+	CodeTagImmutable Code = "TBY-POL-004"
 
 	// CodeSignature is a recipe signature that no configured trust root
 	// validates (FR-033).
@@ -132,6 +136,7 @@ var catalog = map[Code]Entry{
 	CodeNotAllowlisted: {Code: CodeNotAllowlisted, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"host"}},
 	CodeRecipeManaged:  {Code: CodeRecipeManaged, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"repository", "recipes"}},
 	CodeSeedContent:    {Code: CodeSeedContent, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"repository"}},
+	CodeTagImmutable:   {Code: CodeTagImmutable, Class: ClassPolicy, HTTPStatus: http.StatusConflict, Params: []string{"reference", "published", "candidate"}},
 
 	CodeVersionResolve: {Code: CodeVersionResolve, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "constraint", "detail"}},
 

@@ -259,6 +259,11 @@ const (
 	// ScopeState validates only what state-directory commands need:
 	// everything set must be coherent, but no mode is required.
 	ScopeState
+	// ScopeRegistries validates what registry-facing commands need
+	// (`tobby recipe push`, R-36): credentials and per-host insecure
+	// opt-ins. Like ScopeState it requires no mode — publishing a recipe
+	// is an authoring act, it says nothing about how this host serves.
+	ScopeRegistries
 )
 
 // Load builds the effective configuration: defaults, overlaid with the YAML

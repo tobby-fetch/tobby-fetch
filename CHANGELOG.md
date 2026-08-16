@@ -85,6 +85,26 @@ side effect.
 - Trivy integration spike (ADR-0008 exit criterion): measured
   library-vs-binary footprint; recommendation recorded in
   `docs/spikes/trivy-library-vs-binary.md`.
+- `tobby recipe push <file> <ref>` (R-36): publishes a recipe to any OCI
+  registry, checking it first — which is the difference with a generic
+  push tool. It refuses a document that is not a valid recipe, one that
+  is not fully pinned (a cookbook holds cooked recipes only), one whose
+  name or version contradicts the reference it is published under, and
+  any republication of an existing version onto different content — a
+  published recipe version is immutable. Republishing identical bytes is
+  a no-op, not a conflict. The published digest goes to stdout, ready for
+  `cosign sign`; signing stays outside Tobby, which never holds a private
+  key. New refusal `TBY-POL-004`. Source substitution deliberately does
+  not apply to a publication: it answers where content is read from, and
+  letting it redirect a write would publish to an endpoint the author
+  never named.
+- The recipe document is now readable in the interface (R-37): the
+  manifest page of a recipe shows the YAML this instance holds and
+  verified on entry — with its digest, a copy button and a download — so
+  deriving the next version no longer means leaving the tool for an
+  `oras pull`. Deliberately a download and not an editor: a cooked recipe
+  is immutable, so the next version is a new document under a new
+  `metadata.version`.
 - `examples/`: five recipes for software that really crosses into
   restricted zones — Harbor, Keycloak, MetalLB, the OpenTelemetry
   Collector and the VictoriaMetrics operator — plus the Retriever that

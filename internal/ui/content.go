@@ -137,7 +137,21 @@ func (u *UI) contentDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tag, ok := strings.CutPrefix(sub, "tags/")
-	if !ok || tag == "" || strings.Contains(tag, "/") || repo == "" {
+	if !ok || tag == "" || repo == "" {
+		u.render.Error(w, r, taxonomy.New(taxonomy.CodeNotFound, nil))
+		return
+	}
+	// One trailing segment is legal after the tag: the recipe document
+	// download (R-37). A tag itself never contains a slash.
+	if base, isDoc := strings.CutSuffix(tag, "/"+recipeFileName); isDoc {
+		if base == "" || strings.Contains(base, "/") {
+			u.render.Error(w, r, taxonomy.New(taxonomy.CodeNotFound, nil))
+			return
+		}
+		u.contentRecipeDocument(w, r, repo, base)
+		return
+	}
+	if strings.Contains(tag, "/") {
 		u.render.Error(w, r, taxonomy.New(taxonomy.CodeNotFound, nil))
 		return
 	}
@@ -280,6 +294,9 @@ type contentManifestData struct {
 	Platforms   []contentPlatform
 	Crumbs      []crumb
 	PullCommand string
+	// Document is the recipe YAML this instance holds, when the artifact
+	// is a recipe — nil for every other kind (R-37).
+	Document *recipeDocument
 }
 
 // PresentCount counts the locally held platforms of the detail — shown
@@ -336,6 +353,9 @@ func (u *UI) contentManifest(w http.ResponseWriter, r *http.Request, name, tag s
 			cp.ImportHref = "/import?" + v.Encode()
 		}
 		data.Platforms = append(data.Platforms, cp)
+	}
+	if info.Kind == store.KindRecipe {
+		data.Document = u.recipeDocumentOf(r, name, tag)
 	}
 	u.render.Page(w, r, "content-manifest", &data)
 }

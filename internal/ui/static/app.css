@@ -855,3 +855,10 @@ button.t-lang:hover { color: var(--tobby-accent-text); }
 .t-apidoc[open] summary { margin-bottom: 0.6rem; }
 .t-apidoc-summary { font-size: var(--tobby-text-sm); color: var(--tobby-muted); }
 .t-apidoc .t-table { margin-bottom: 0.6rem; }
+
+/* Recipe document view (R-37): the YAML this instance holds, shown so an
+   operator can start from it. Reuses the log viewer's frame — same
+   scrollable, focusable, monospaced block — with a taller ceiling, since a
+   recipe is read in one go rather than tailed. */
+.t-docview { max-height: 32rem; }
+.t-docview pre { font-size: 0.74rem; }
