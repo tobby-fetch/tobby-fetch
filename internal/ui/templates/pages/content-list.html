@@ -13,7 +13,11 @@
   <form class="t-content-filters" method="get" action="/content" role="search"
         hx-get="/content" hx-push-url="true" hx-sync="this:replace"
         hx-target="#content-results" hx-swap="outerHTML"
-        hx-trigger="submit, input changed delay:300ms from:find input[type='search'], change from:find input[type='checkbox']">
+        {{/* B-011: `from:find <sel>` binds the listener to the FIRST match
+             only, so every kind badge but the first was inert. `change`
+             without a source listens on the form itself, where the event
+             of any descendant bubbles — no "first match" to get wrong. */}}
+        hx-trigger="submit, input changed delay:300ms from:find input[type='search'], change">
     {{if .Data.Query.Prefix}}<input type="hidden" name="prefix" value="{{.Data.Query.Prefix}}">{{end}}
     <div class="t-search t-search--page">
       <input type="search" name="q" value="{{.Data.Query.Q}}"

@@ -12,7 +12,10 @@
   <form class="t-content-filters" method="get" action="/tasks" role="search"
         hx-get="/tasks" hx-push-url="true" hx-sync="this:replace"
         hx-target="#tasks-results" hx-swap="outerHTML"
-        hx-trigger="submit, input changed delay:300ms from:find input[type='search'], change from:find select">
+        {{/* B-011: `from:find select` bound only the FIRST select, leaving
+             the type filter inert. `change` listens on the form, where the
+             event of any descendant bubbles. */}}
+        hx-trigger="submit, input changed delay:300ms from:find input[type='search'], change">
     <div class="t-search t-search--page">
       <input type="search" name="q" value="{{.Data.Q}}"
              placeholder="{{.T "tasks.search_placeholder"}}"

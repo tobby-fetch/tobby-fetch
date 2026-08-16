@@ -119,6 +119,15 @@ side effect.
 
 ### Fixed
 
+- The Content and Tasks filters only reacted to their first control
+  (B-011): ticking any kind badge but `ContainerImage`, or changing the
+  task type, toggled the widget and requested nothing. `from:find <sel>`
+  binds the htmx listener to the FIRST matching descendant — the
+  attribute reads "listen to the checkboxes" and means "listen to the
+  first checkbox". Both forms now listen on the form itself, where a
+  descendant's event bubbles. A template guard rejects the pattern:
+  `from:find` is allowed only for a selector unique in its file, and a
+  filter form must carry an unscoped `change`.
 - Copy chips fired one toast per page visited: the layout script re-ran on
   every boosted navigation and stacked its document-level listeners; it now
   wires them exactly once per browser page.
