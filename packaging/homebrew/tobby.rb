@@ -3,10 +3,14 @@
 #
 # Homebrew formula for the macOS convenience tier (NFR-001 amendment
 # 2026-08-12). Lives in this repository as the template; the published copy
-# is seeded into the `tobby-fetch/homebrew-tap` repository as
-# `Formula/tobby.rb`, and the release workflow bumps `version`, `url`, and
-# the two `sha256` values on every tag (checksums come straight from the
-# release's signed SHA256SUMS).
+# is `Formula/tobby.rb` in the `tobby-fetch/homebrew-tap` repository.
+#
+# The tap keeps ITSELF up to date: its `sync-formula` workflow reads the
+# latest release here, takes the two darwin checksums from the release's
+# SHA256SUMS (which the SLSA provenance covers), and commits the bump. The
+# direction matters — a push from this repository into the tap would need a
+# cross-repository token, and this release chain deliberately requires no
+# secret beyond its own GITHUB_TOKEN.
 #
 # Install:  brew install tobby-fetch/tap/tobby
 #
