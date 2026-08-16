@@ -1,0 +1,49 @@
+# The Retriever that ties these recipes into one zone.
+#
+# Point a Tobby instance at this document — as a file, an https:// URL, or
+# an OCI artifact — and a synchronization resolves every entry, verifies
+# each recipe's signature, and transfers only what the zone is missing:
+#
+#   retriever:
+#     source: oci://registry.example.com/config/retriever:v1
+#
+# Constraints are resolved against the cookbook at each synchronization, so
+# a patch release lands by publishing it — no file to edit here.
+apiVersion: recipe.tobby.dev/v1alpha1
+kind: Retriever
+
+metadata:
+  name: restricted-zone
+  description: >-
+    Platform baseline of a restricted zone: its registry, its load
+    balancer, its identity provider, and its observability stack.
+  labels:
+    recipe.tobby.dev/zone: restricted
+
+spec:
+  cookbook: registry.example.com/cookbook
+
+  recipes:
+    # The registry the zone's clusters pull from — pinned exactly. A
+    # registry is the one component you upgrade on purpose, at a chosen
+    # moment, never because a constraint resolved higher overnight.
+    - name: harbor
+      version: "2.15.2"
+
+    # Networking and identity: patch releases welcome, minor ones reviewed.
+    - name: metallb
+      version: "~0.16.1"
+
+    - name: keycloak
+      version: "26.x"
+
+    # Observability moves faster and breaks less.
+    - name: otel-collector
+      version: "^0.158.0"
+
+    - name: victoria-metrics-operator
+      version: "~0.74.0"
+
+# If no published version satisfies a constraint, that entry fails and says
+# so — there is no silent fallback to a neighbouring version. The other
+# entries carry on: one unpublishable recipe never blocks the zone.

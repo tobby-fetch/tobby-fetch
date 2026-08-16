@@ -259,3 +259,70 @@ func TestRunnerErrorMapping(t *testing.T) {
 		t.Errorf("taxonomy error mapped to %+v", d.Error)
 	}
 }
+
+// TestRunnerReportsSurviveTheClone: every report a runner fills on its
+// task clone must reach the canonical task. Resolutions (FR-021) were
+// lost this way — the runner filled them, clone and publish ignored
+// them, and the report came back empty on the API and the screen.
+func TestRunnerReportsSurviveTheClone(t *testing.T) {
+	storeRoot := t.TempDir()
+	q, err := Open(storeRoot, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q.Register("report-check", func(_ context.Context, task *Task, _ *slog.Logger, save func()) error {
+		task.Resolutions = append(task.Resolutions, Resolution{
+			Recipe: "wordpress@6.8.2", Ingredient: "app",
+			Requested: "12.x", Resolved: "12.4.1", Digest: "sha256:abc",
+			Status: "new", Effective: "zone-a.example.com/docker.io/bitnami/wordpress",
+		})
+		task.ChartDependencies = append(task.ChartDependencies, ChartDependency{
+			Chart: "wordpress", Name: "mariadb", Version: "16.0.0", Embedded: true,
+		})
+		task.Items = append(task.Items, Item{Name: "app", Status: StatusDone})
+		save()
+		return nil
+	})
+	created, err := q.Create("report-check", "oci://cookbook.example/retriever:1", "alexis", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	q.Start(ctx)
+
+	deadline := time.Now().Add(10 * time.Second)
+	var settled *Task
+	for {
+		got, ok := q.Get(created.ID)
+		if ok && !got.Active() {
+			settled = got
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("task never settled")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if len(settled.Resolutions) != 1 {
+		t.Fatalf("resolutions = %+v, want the runner's row (FR-021 report lost in the clone)", settled.Resolutions)
+	}
+	if got := settled.Resolutions[0]; got.Resolved != "12.4.1" || got.Effective == "" {
+		t.Errorf("resolution = %+v, want the resolved tag and the effective endpoint", got)
+	}
+	if len(settled.ChartDependencies) != 1 || len(settled.Items) != 1 {
+		t.Errorf("other reports lost: deps=%d items=%d", len(settled.ChartDependencies), len(settled.Items))
+	}
+
+	// The report also survives a reload from the store (FR-050: the
+	// history travels with it).
+	reopened, err := Open(storeRoot, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, ok := reopened.Get(created.ID)
+	if !ok || len(persisted.Resolutions) != 1 {
+		t.Errorf("resolutions did not survive persistence: %+v", persisted)
+	}
+}

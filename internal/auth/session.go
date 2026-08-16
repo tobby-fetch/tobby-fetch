@@ -74,6 +74,20 @@ func (s *Sessions) Delete(id string) {
 	delete(s.m, id)
 }
 
+// DeleteOthers closes every session of account except keep. After a
+// password change (R-34, FR-061), sessions opened with the old credential
+// must not survive; the UI passes the session that performed the change as
+// keep, the API — whose callers hold no UI session — passes "".
+func (s *Sessions) DeleteOthers(account, keep string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, sess := range s.m {
+		if sess.Account == account && id != keep {
+			delete(s.m, id)
+		}
+	}
+}
+
 // CheckCSRF verifies a submitted token against the session's, in constant
 // time.
 func (sess *Session) CheckCSRF(token string) bool {

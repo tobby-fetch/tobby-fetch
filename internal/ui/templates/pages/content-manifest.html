@@ -25,7 +25,7 @@
   </div>
   {{if .Data.IsIndex}}<p class="t-muted t-note">{{.T "manifest.sparse_note"}}</p>{{end}}
 
-  <p class="t-kick">{{.T "manifest.platforms"}}</p>
+  <p class="t-kick">{{.T "manifest.platforms"}}{{if .Data.IsIndex}} <span class="t-muted">— {{.T "repo.platforms_title" "Present" .Data.PresentCount "Total" (len .Data.Platforms)}}</span>{{end}}</p>
   <table class="t-table">
     <caption class="t-visually-hidden">{{.T "manifest.table_caption" "Repo" .Data.Repo "Tag" .Data.Tag}}</caption>
     <thead>
@@ -80,6 +80,17 @@
       {{end}}
     </tbody>
   </table>
+  {{end}}
+
+  {{with .Data.Document}}
+  <p class="t-kick">{{$.T "manifest.document"}}</p>
+  <p class="t-muted t-note">{{$.T "manifest.document_note"}}</p>
+  <div class="t-row t-pullrow">
+    <button type="button" class="t-btn t-btn--secondary t-btn--sm t-chip-copy" data-copy="{{.YAML}}"
+            aria-label="{{$.T "manifest.copy_document"}}" title="{{$.T "manifest.copy_document"}}">⧉ {{$.T "manifest.copy_document"}}</button>
+    <a class="t-btn t-btn--secondary t-btn--sm" href="{{.Href}}" download>{{$.T "manifest.download_document"}}</a>
+  </div>
+  <div class="t-logview t-docview" tabindex="0"><pre translate="no" lang="en">{{.YAML}}</pre></div>
   {{end}}
 
   <div class="t-row t-pullrow">

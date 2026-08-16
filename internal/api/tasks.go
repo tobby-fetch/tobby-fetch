@@ -81,7 +81,11 @@ func newTaskJSON(t *tasks.Task) taskJSON {
 // the transfer verifies every digest at commit, FR-026).
 type createImportRequest struct {
 	Reference string `json:"reference"`
-	Platforms []struct {
+	// VendorDependencies is the FR-025 per-operation opt-in: embed a
+	// chart's missing declared dependencies before the artifact lands.
+	// Default false — a chart unusable offline is refused (TBY-CHT-001).
+	VendorDependencies bool `json:"vendorDependencies"`
+	Platforms          []struct {
 		Name   string `json:"name"`
 		Digest string `json:"digest"`
 	} `json:"platforms"`
@@ -107,8 +111,12 @@ func (t *tasksAPI) create(w http.ResponseWriter, r *http.Request) {
 	for _, p := range req.Platforms {
 		items = append(items, tasks.Item{Name: p.Name, Digest: p.Digest})
 	}
+	var copts []tasks.TaskOption
+	if req.VendorDependencies {
+		copts = append(copts, tasks.WithVendorDependencies())
+	}
 	id, _ := auth.IdentityFrom(r.Context())
-	task, err := t.queue.Create(tasks.TypeUnitImport, req.Reference, id.Name, items)
+	task, err := t.queue.Create(tasks.TypeUnitImport, req.Reference, id.Name, items, copts...)
 	if err != nil {
 		t.problem(w, r, err)
 		return

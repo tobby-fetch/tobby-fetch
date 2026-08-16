@@ -1,0 +1,135 @@
+# Harbor — the registry you install INSIDE the restricted zone.
+#
+# A common topology: Tobby carries the artifacts across the boundary, Harbor
+# is the long-lived registry the zone's clusters pull from. Tobby brings
+# Harbor in; Harbor keeps it.
+#
+# PROFILE: draft. The chart ingredient carries no digest because Harbor is
+# only published to a legacy index.yaml repository; see the note below.
+#
+# Verified against chart 1.19.2 / appVersion v2.15.2 on 2026-08-15.
+# Image list obtained with:
+#   helm repo add harbor https://helm.goharbor.io
+#   helm template t harbor/harbor | grep -E '^\s*image:'
+apiVersion: recipe.tobby.dev/v1alpha1
+kind: Recipe
+
+metadata:
+  name: harbor
+  version: 2.15.2
+  description: >-
+    Harbor registry with its database, cache, and Trivy scanner adapter —
+    the destination registry of a restricted zone.
+  annotations:
+    org.opencontainers.image.source: https://github.com/goharbor/harbor-helm
+
+spec:
+  ingredients:
+    # ------------------------------------------------------------------
+    # Same situation as MetalLB: helm.goharbor.io is a legacy index.yaml
+    # repository, so the chart must be republished to an OCI registry
+    # before it can be an ingredient (RECIPE-SPEC §7.2):
+    #
+    #   helm repo add harbor https://helm.goharbor.io
+    #   helm pull harbor/harbor --version 1.19.2
+    #   helm push harbor-1.19.2.tgz oci://registry.example.com/charts
+    # ------------------------------------------------------------------
+    - name: harbor-chart
+      kind: HelmChart
+      ref: registry.example.com/charts/harbor
+      version: 1.19.2
+      vendorDependencies: false
+
+    # ------------------------------------------------------------------
+    # NO `platforms:` FIELD ANYWHERE BELOW — and that is deliberate.
+    #
+    # Every Harbor image is published as a SINGLE linux/amd64 manifest, not
+    # as a multi-platform index. Tobby only applies platform selection to an
+    # index, so a `platforms:` list here would be silently ignored — and it
+    # would tell a reader something false about the artifact. Verify before
+    # you copy this pattern to another product:
+    #
+    #   oras manifest fetch --descriptor docker.io/goharbor/harbor-core:v2.15.2
+    #
+    # An `application/vnd.oci.image.index.v1+json` (or the Docker list
+    # equivalent) means multi-platform; anything else is one architecture.
+    # Practical consequence: Harbor does not run on an arm64 zone.
+    # ------------------------------------------------------------------
+
+    - name: harbor-core
+      kind: ContainerImage
+      ref: docker.io/goharbor/harbor-core
+      version: v2.15.2
+      digest: sha256:d7b780d23721a000f0fb8e181add6675eafa336de5d033b77fd7da0c171ff7f7
+
+    - name: harbor-portal
+      kind: ContainerImage
+      ref: docker.io/goharbor/harbor-portal
+      version: v2.15.2
+      digest: sha256:b811b67f7a7f6f1614e4bdf7478b207d13e8aa3f815ff6ad84f216a5098d213d
+
+    - name: harbor-jobservice
+      kind: ContainerImage
+      ref: docker.io/goharbor/harbor-jobservice
+      version: v2.15.2
+      digest: sha256:f71a4452a095bcd2a8f0683648a3ae28415432df87ccfb00ec7625f3e340a598
+
+    # The upstream distribution registry Harbor wraps, plus its controller.
+    - name: registry-photon
+      kind: ContainerImage
+      ref: docker.io/goharbor/registry-photon
+      version: v2.15.2
+      digest: sha256:c4ebef61ceb50a3d8bc21d149bc280422db20a1e69df317b64b74098c3615855
+
+    - name: harbor-registryctl
+      kind: ContainerImage
+      ref: docker.io/goharbor/harbor-registryctl
+      version: v2.15.2
+      digest: sha256:223d5cb49d5dbf0ba4ae022e7dd9775fa459904112dc12084d3aaa36c1408362
+
+    # The chart's bundled PostgreSQL and Valkey. Point the chart at external
+    # ones (`database.type: external`, `redis.type: external`) and these two
+    # ingredients come out of the recipe — an air-gapped zone usually has a
+    # managed database it would rather reuse.
+    - name: harbor-db
+      kind: ContainerImage
+      ref: docker.io/goharbor/harbor-db
+      version: v2.15.2
+      digest: sha256:5ebfb345b33d673fa8483ffc997013113b7d14ea56abfa65cfcb621b4acf3039
+
+    - name: valkey
+      kind: ContainerImage
+      ref: docker.io/goharbor/valkey-photon
+      version: v2.15.2
+      digest: sha256:7337783e8148f01a25b113f5c7b1d640f78b1860fcaf80a33d0dbb294f7b99d0
+
+    # ------------------------------------------------------------------
+    # The Trivy adapter ships the SCANNER, never the vulnerability DATABASE.
+    # On first start it tries to download the CVE database from GitHub — it
+    # will fail, quietly, and Harbor will report "scanner not ready" with no
+    # obvious cause. The database is a separate OCI artifact you must carry
+    # in as well:
+    #
+    #   ghcr.io/aquasecurity/trivy-db:2
+    #   ghcr.io/aquasecurity/trivy-java-db:1   (only for Java scanning)
+    #
+    # They are NOT listed here on purpose: they are re-published several
+    # times a week, so pinning a digest in a shared example would be a lie
+    # within days. Give them their own recipe, cooked on your own cadence —
+    # that recipe is the one you re-cook weekly, while this one stays put
+    # for months. Same reasoning as Tobby's own choice to keep Trivy an
+    # external, pinned dependency (docs/adr/ADR-0008).
+    # ------------------------------------------------------------------
+    - name: trivy-adapter
+      kind: ContainerImage
+      ref: docker.io/goharbor/trivy-adapter-photon
+      version: v2.15.2
+      digest: sha256:215c07b71c37fc7fc16e02d9185d936dcb8884a80e810817c2cd058bbd7c4e98
+
+    # Only rendered when `metrics.enabled: true`. Kept in: turning metrics on
+    # later, from inside a sealed zone, is exactly when you cannot fetch it.
+    - name: harbor-exporter
+      kind: ContainerImage
+      ref: docker.io/goharbor/harbor-exporter
+      version: v2.15.2
+      digest: sha256:e1b0a248f61aad5084c5d1612d5f1da89f99c23ce743eaf8cba913d6d00c0547

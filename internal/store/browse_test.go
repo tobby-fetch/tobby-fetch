@@ -210,6 +210,9 @@ func TestBrowseAccessors(t *testing.T) {
 			if tag.Platforms != 3 {
 				t.Errorf("tag %s platforms = %d, want 3", tag.Tag, tag.Platforms)
 			}
+			if tag.Present != 3 {
+				t.Errorf("tag %s present = %d, want 3 in a fully imported index (B-007)", tag.Tag, tag.Present)
+			}
 			if tag.Size <= 0 {
 				t.Errorf("tag %s size = %d, want > 0", tag.Tag, tag.Size)
 			}
@@ -436,6 +439,18 @@ func TestBrowseAccessors(t *testing.T) {
 		}
 		if present != 2 || absent != 1 {
 			t.Errorf("present/absent = %d/%d, want 2/1", present, absent)
+		}
+
+		// The tag table reports both counts — present/total, never the
+		// total alone (B-007).
+		repo, err := s.st.RepoInfo(ctx, "docker.io/bitnami/wordpress")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tag := range repo.Tags {
+			if tag.Platforms != 3 || tag.Present != 2 {
+				t.Errorf("sparse tag %s = %d/%d, want 2/3 present/total", tag.Tag, tag.Present, tag.Platforms)
+			}
 		}
 	})
 }

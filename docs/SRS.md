@@ -250,6 +250,20 @@ Registry credentials SHALL be provided in the Kubernetes
 *Acceptance:* a standard `.dockerconfigjson` payload grants Tobby authenticated
 access to the matching registries without transformation. *(ADR-0001)*
 
+**FR-005 — Guided first start. *(amendment 2026-08-12)***
+Tobby SHALL provide an interactive first-start command (`tobby quickstart`) that
+fills the missing configuration step by step — storage and state directories
+(proposed defaults), operating mode, first administrator account with the hash
+computed by the tool (FR-066) — writes the resulting configuration file, and
+offers to start serving. The interactive path SHALL never be mandatory:
+automation and containers remain fully driven by flags and environment (FR-003),
+and the command SHALL refuse non-interactive use with an actionable message
+naming the flag equivalents. Configuration validation SHALL be scoped per
+command: a command SHALL NOT require settings it does not use.
+*Acceptance:* a fresh host reaches a serving, authenticated instance through the
+guided dialogue alone; the same result is scriptable by flags without any
+prompt; `tobby user` operates without an operating mode.
+
 ### 3.2 Retriever and Recipes
 
 **FR-010 — Retriever acquisition.**
@@ -468,11 +482,23 @@ by any other locally stored recipe, and the attached signature/attestation
 artifacts (cosign tag convention and referrers) of every retained manifest, SHALL
 be preserved. Garbage collection SHALL hold an exclusive lock against store
 mutations, SHALL apply a minimum-age grace period to unlinked blobs, and SHALL be
-crash-safe (NFR-010).
+crash-safe (NFR-010). Garbage collection runs as part of the removal operations,
+under the exclusive lock — it needs no separate schedule.
+Content whose recorded provenance is a unit import (FR-023) SHALL additionally be
+removable, repository by repository, by an administrator from its repository page
+and through the API (FR-061), audit-logged (FR-094); the removal runs the same
+garbage collection. Recipe-managed content SHALL NOT be individually removable:
+the UI presents the action disabled, naming the managing recipe. No bulk removal
+SHALL exist in the content browsing surfaces — the only multi-select removal in
+the product is the prune confirmation of FR-045. *(amendment 2026-08-12)*
 *Acceptance:* removing one of two recipes sharing a base layer keeps the shared
 blobs; after GC, `cosign verify` passes on every remaining recipe and ingredient;
 a GC run concurrent with a simulated push loses no blob of a transfer that
-completes; kill -9 during GC leaves a store passing integrity verification.
+completes; kill -9 during GC leaves a store passing integrity verification;
+removing a unit-imported repository as admin deletes its manifests and its
+unshared blobs, emits the FR-094 record, and leaves recipe-managed content
+untouched; on a recipe-managed repository the removal action is disabled and
+names the recipe.
 
 **FR-045 — Prune to Retriever.**
 In mirror mode, synchronization SHALL offer a prune option — enabled by default,
@@ -714,6 +740,17 @@ credentials and/or bearer token flow) such that `docker login`, `podman login`,
 `viewer`+, push: `operator`+).
 *Acceptance:* each client logs in and pulls/pushes according to its role; anonymous
 access follows the FR-075 setting. *(ADR-0009)*
+
+**FR-077 — Self-service password change. *(amendment 2026-08-12)***
+Any locally authenticated account SHALL be able to change its own password
+through the UI and through the API (FR-061 parity), providing the current
+password; the change SHALL be audit-logged (FR-094) on success and on failure.
+Password storage follows FR-073 and NFR-015 (salted hashes only, no secret in
+any log or response).
+*Acceptance:* a viewer changes their own password after providing the current
+one and signs in with the new password; a wrong current password is refused
+with a stable error code and produces an audit record; the API mirror behaves
+identically.
 
 ### 3.9 Network
 

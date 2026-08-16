@@ -12,4 +12,9 @@ regexes = [
     # Run IDs (R-09): compact UTC timestamp + 4 random bytes in hex, e.g.
     # 20260811T140322Z-1a2b3c4d. High entropy by design, secret by nothing.
     '''\d{8}T\d{6}Z-[0-9a-f]{8}''',
+    # PEM envelopes whose entire body is the placeholder "AAAA": the
+    # negative fixtures proving the signature verifier REFUSES private-key
+    # blocks and undecodable DER. Deliberately narrow — a PEM carrying any
+    # real body still trips the rule.
+    '''BEGIN [A-Z ]*PRIVATE KEY-----(\\n|\n)AAAA(\\n|\n)-----END''',
 ]

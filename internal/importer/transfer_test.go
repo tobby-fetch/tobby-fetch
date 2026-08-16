@@ -40,14 +40,20 @@ func destStore(t *testing.T) *store.Store {
 }
 
 // runTask drives the runner exactly as the queue would.
-func runTask(t *testing.T, dst Destination, reference string, items []tasks.Item) *tasks.Task {
+func runTask(t *testing.T, dst Destination, reference string, items []tasks.Item, opts ...Option) *tasks.Task {
+	t.Helper()
+	return runTaskVendor(t, dst, reference, items, false, opts...)
+}
+
+// runTaskVendor is runTask with the FR-025 vendoring opt-in.
+func runTaskVendor(t *testing.T, dst Destination, reference string, items []tasks.Item, vendor bool, opts ...Option) *tasks.Task {
 	t.Helper()
 	task := &tasks.Task{
 		ID: "tsk_test", RunID: "run_test", Type: tasks.TypeUnitImport,
 		Reference: reference, Items: items, Status: tasks.StatusRunning,
-		Created: time.Now(),
+		Created: time.Now(), VendorDependencies: vendor,
 	}
-	err := NewRunner(dst)(context.Background(), task, slog.New(slog.DiscardHandler), func() {})
+	err := NewRunner(dst, opts...)(context.Background(), task, slog.New(slog.DiscardHandler), func() {})
 	if err != nil {
 		var te *taxonomy.Error
 		if !errors.As(err, &te) {
@@ -175,6 +181,44 @@ func val(v string) string {
 		return ""
 	}
 	return "/" + v
+}
+
+// TestTransferUntaggedReference is B-009 end to end: an untagged reference
+// on a repository without "latest" resolves to the highest stable semver
+// tag at inspection, and the transfer imports and tags exactly that.
+func TestTransferUntaggedReference(t *testing.T) {
+	host := upstream(t)
+	repo := host + "/bitnamicharts/wordpress"
+	for _, tag := range []string{"19.1.0", "19.2.6"} {
+		ref, err := name.ParseReference(repo + ":" + tag)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := remote.Write(ref, chartImage(t, true)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dst := destStore(t)
+	ctx := context.Background()
+
+	rep, err := Inspect(ctx, repo, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Tag != "19.2.6" {
+		t.Fatalf("resolved tag = %q, want 19.2.6", rep.Tag)
+	}
+	task := runTask(t, dst, repo, itemsFromReport(rep, nil))
+	if agg := task.Aggregate(); agg.Done != 1 || agg.Failed != 0 {
+		t.Fatalf("aggregates = %+v (error %+v)", agg, task.Error)
+	}
+	got, err := dst.ManifestInfo(ctx, rep.Repository, "19.2.6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Digest != rep.IndexDigest {
+		t.Errorf("stored digest %s ≠ pinned %s", got.Digest, rep.IndexDigest)
+	}
 }
 
 // chartImage packages a minimal Helm chart tgz as an OCI artifact, with or

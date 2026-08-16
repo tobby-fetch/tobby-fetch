@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright © 2026 infraBuilder SASU and contributors
+#
+# nfpm definition for the Linux distribution packages (.deb, .rpm, .apk) —
+# a single template rendered once per (version, arch) by
+# tools/package-build.sh, the only code path that consumes it. The
+# packaged payload is the exact tobby-linux-<arch> release binary from
+# tools/release-build.sh, so the packages inherit the same SBOM, SLSA
+# provenance, and double-build reproducibility guarantees as every other
+# release artifact.
+#
+# No install/remove scripts on purpose: the binary is fully self-contained
+# (CGO disabled), and scriptless packages keep offline installs
+# side-effect free.
+#
+# Reproducibility: nfpm derives every file mtime and each format's build
+# date (deb data.tar headers, rpm BUILDTIME, apk .PKGINFO builddate) from
+# SOURCE_DATE_EPOCH, which tools/package-build.sh requires — the output
+# is independent of checkout and build times.
+name: tobby
+platform: linux
+# GOARCH-style value (amd64, arm64); nfpm maps it to each format's native
+# architecture name (e.g. x86_64/aarch64 for rpm and apk).
+arch: ${TOBBY_ARCH}
+# Release tag without the leading "v" (deb/rpm/apk version convention);
+# tools/package-build.sh strips it.
+version: ${TOBBY_VERSION}
+section: utils
+priority: optional
+maintainer: infraBuilder SASU <contact@infrabuilder.com>
+vendor: infraBuilder SASU
+homepage: https://tobby-fetch.github.io/tobby-fetch/
+license: GPL-3.0-only
+description: |
+  Secure artifact fetch-and-relocate tool with an embedded OCI registry.
+  Tobby fetches OCI assets — container images, Helm charts, AI models,
+  and files — and carries them across isolated network zones, from
+  connected, through restricted, down to fully air-gapped environments.
+rpm:
+  # rpm embeds a BUILDHOST header that defaults to the build machine's
+  # hostname — the reproducibility gate rebuilds on a different runner,
+  # so a default value would break byte-identity. Pin it.
+  buildhost: reproducible
+contents:
+  - src: ${TOBBY_BINARY}
+    dst: /usr/bin/tobby
+    # nfpm only substitutes environment variables in src/dst when the
+    # entry opts in:
+    expand: true
+    file_info:
+      mode: 0755

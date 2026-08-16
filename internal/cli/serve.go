@@ -5,11 +5,16 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,9 +25,12 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/buildinfo"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/engine"
+	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/metrics"
+	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/server"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
@@ -121,7 +129,63 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	queue.Register(tasks.TypeUnitImport, importer.NewRunner(st, importer.WithInsecureHosts(cfg.Registries.Insecure)))
+
+	// The recipe engine (milestone 3): substitution-aware remote access
+	// (FR-036), trust roots resolved at configuration time (FR-033,
+	// RECIPE-SPEC §12.3 — the cache lives in the state directory, never on
+	// the transportable store), and the sync task runner (FR-014).
+	remotes, err := engine.NewRemotes(cfg.Registries.Substitutions, cfg.Registries.Insecure, cfg.Registries.CredentialsFile)
+	if err != nil {
+		return err
+	}
+	trustCache := ""
+	if cfg.State.Root != "" {
+		trustCache = filepath.Join(cfg.State.Root, "trust-cache")
+	}
+	trust, err := engine.LoadTrust(cfg.Trust, trustCache, nil)
+	if err != nil {
+		return err
+	}
+	eng := engine.New(st, remotes, trust, cfg.Retriever.Source, cfg.Storage.BasePrefix, cfg.Sync)
+	eng.SetMeters(engine.Meters{
+		TransferStarted: reg.SyncInflight.Inc,
+		TransferDone:    reg.SyncInflight.Dec,
+		BytesMoved:      func(n int64) { reg.SyncBytes.Add(float64(n)) },
+	})
+
+	// The FileSet HTTP surface (FR-047): explicitly enabled FileSets are
+	// extracted (RECIPE-SPEC §7.4/§14.5) into a store-local cache and
+	// served read-only under /files/. Refreshed after every sync.
+	fsrv := fileserve.NewServer(storeBlobs{st: st}, filepath.Join(cfg.Storage.Root, "meta", "fileserve"), fileserve.Limits{}, logger)
+	refreshFileSets := func(runCtx context.Context) {
+		sets, err := resolveFileSets(runCtx, st, cfg)
+		if err != nil {
+			logger.LogAttrs(runCtx, slog.LevelWarn, "fileset resolution failed",
+				slog.String("error", err.Error()))
+			return
+		}
+		if err := fsrv.Sync(runCtx, sets); err != nil {
+			logger.LogAttrs(runCtx, slog.LevelWarn, "fileset extraction failed",
+				slog.String("error", err.Error()))
+		}
+	}
+	refreshFileSets(ctx)
+	queue.Register(tasks.TypeSync, func(runCtx context.Context, t *tasks.Task, taskLogger *slog.Logger, save func()) error {
+		err := eng.Runner()(runCtx, t, taskLogger, save)
+		refreshFileSets(runCtx)
+		return err
+	})
 	queue.Start(ctx)
+
+	anonymous := map[string]bool{}
+	var anonymousNames []string
+	for _, f := range cfg.Files.FileSets {
+		if f.Anonymous {
+			anonymous[f.Name] = true
+			anonymousNames = append(anonymousNames, f.Name)
+		}
+	}
+	srv.Handle(fileserve.RoutePrefix, filesAuth(authn, anonymous, fsrv.Handler()))
 
 	// The versioned REST API (FR-060), strict UI parity (FR-061). Content
 	// browsing reads the store through its accessors (FR-062), never the
@@ -130,6 +194,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	api.RegisterContent(restAPI, st)
 	api.RegisterTasks(restAPI, queue, st, time.Duration(cfg.Import.InspectTimeout), cfg.Registries.Insecure)
 	api.RegisterAccounts(restAPI, accounts)
+	api.RegisterRecipes(restAPI, st, queue, cfg.Retriever.Source, eng.RelaxedScopes(), anonymousNames)
 	api.RegisterOpenAPI(restAPI)
 	srv.Handle("/api/v1/", restAPI.Handler())
 
@@ -144,6 +209,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Queue:              queue,
 		InspectTimeout:     time.Duration(cfg.Import.InspectTimeout),
 		InsecureRegistries: cfg.Registries.Insecure,
+		RetrieverSource:    cfg.Retriever.Source,
+		RelaxedTrustScopes: eng.RelaxedScopes(),
+		AnonymousFileSets:  anonymousNames,
 	})
 	webUI.Mount(srv.Mux())
 
@@ -185,6 +253,151 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Origin:  audit.OriginLocal,
 	})
 	return runErr
+}
+
+// storeBlobs adapts the embedded store to the fileserve read surface.
+type storeBlobs struct{ st *store.Store }
+
+func (b storeBlobs) Manifest(ctx context.Context, repo, dgst string) ([]byte, error) {
+	payload, _, _, err := b.st.RawManifest(ctx, repo, dgst)
+	return payload, err
+}
+
+func (b storeBlobs) Blob(ctx context.Context, repo, dgst string) (io.ReadCloser, error) {
+	return b.st.BlobReader(ctx, repo, dgst)
+}
+
+// filesAuth gates the /files/ surface (FR-047): reads need viewer, except
+// FileSets explicitly opted into anonymous access (bare-host bootstrap,
+// reported like the FR-075 override). Basic auth so apt/dnf URL
+// credentials work; the surface is read-only by construction.
+func filesAuth(a *auth.Authenticator, anonymous map[string]bool, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rest := strings.TrimPrefix(r.URL.Path, fileserve.RoutePrefix)
+		name, _, _ := strings.Cut(rest, "/")
+		if anonymous[name] {
+			next.ServeHTTP(w, r)
+			return
+		}
+		id, ok := a.Authenticate(r)
+		if !ok {
+			w.Header().Set("WWW-Authenticate", `Basic realm="tobby"`)
+			http.Error(w, "authentication required", http.StatusUnauthorized)
+			return
+		}
+		if !id.Role.AtLeast(auth.RoleViewer) {
+			http.Error(w, "insufficient role", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(auth.WithIdentity(r.Context(), id)))
+	})
+}
+
+// resolveFileSets maps the files.filesets configuration onto concrete
+// store content: each enabled FileSet resolves to one image manifest —
+// pinned version or highest local semver tag, platform selected on an
+// index (FR-047).
+func resolveFileSets(ctx context.Context, st *store.Store, cfg *config.Config) ([]fileserve.FileSet, error) {
+	var sets []fileserve.FileSet
+	var errs []error
+	for _, f := range cfg.Files.FileSets {
+		repo, err := relocate.PathWithBase(cfg.Storage.BasePrefix, f.Ref)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("fileset %s: %w", f.Name, err))
+			continue
+		}
+		set, err := resolveFileSet(ctx, st, f, repo)
+		if err != nil {
+			// A FileSet whose content has not arrived yet is not an
+			// instance failure: it starts serving after the sync lands.
+			errs = append(errs, fmt.Errorf("fileset %s: %w", f.Name, err))
+			continue
+		}
+		sets = append(sets, set)
+	}
+	return sets, errors.Join(errs...)
+}
+
+func resolveFileSet(ctx context.Context, st *store.Store, f config.FileSetServe, repo string) (fileserve.FileSet, error) {
+	tag := f.Version
+	if tag == "" {
+		tags, err := st.Tags(ctx, repo)
+		if err != nil {
+			return fileserve.FileSet{}, err
+		}
+		versions := make([]string, 0, len(tags))
+		for _, t := range tags {
+			if !strings.HasPrefix(t, "sha256-") {
+				versions = append(versions, t)
+			}
+		}
+		tag, err = engine.ResolveVersion("*", versions)
+		if err != nil {
+			return fileserve.FileSet{}, err
+		}
+	}
+	payload, mediaType, dgst, err := st.RawManifest(ctx, repo, tag)
+	if err != nil {
+		return fileserve.FileSet{}, err
+	}
+	dgst, err = selectFileSetManifest(ctx, st, repo, payload, mediaType, dgst, f.Platform)
+	if err != nil {
+		return fileserve.FileSet{}, err
+	}
+	return fileserve.FileSet{Name: f.Name, Repo: repo, ManifestDigest: dgst, Anonymous: f.Anonymous}, nil
+}
+
+// selectFileSetManifest picks the platform manifest of an index (§7.4
+// step 1): the configured platform, or the single entry of a
+// single-manifest FileSet; an ambiguous index without a configured
+// platform is refused.
+func selectFileSetManifest(ctx context.Context, st *store.Store, repo string, payload []byte, mediaType, dgst, platform string) (string, error) {
+	if !strings.Contains(mediaType, "index") && !strings.Contains(mediaType, "manifest.list") {
+		return dgst, nil
+	}
+	var idx struct {
+		Manifests []struct {
+			Digest   string `json:"digest"`
+			Platform *struct {
+				OS      string `json:"os"`
+				Arch    string `json:"architecture"`
+				Variant string `json:"variant"`
+			} `json:"platform"`
+		} `json:"manifests"`
+	}
+	if err := json.Unmarshal(payload, &idx); err != nil {
+		return "", fmt.Errorf("parsing index: %w", err)
+	}
+	var candidates []string
+	for _, m := range idx.Manifests {
+		if m.Platform == nil || m.Platform.OS == "unknown" {
+			continue
+		}
+		label := m.Platform.OS + "/" + m.Platform.Arch
+		if m.Platform.Variant != "" {
+			label += "/" + m.Platform.Variant
+		}
+		if platform == "" {
+			candidates = append(candidates, m.Digest)
+			continue
+		}
+		if label == platform {
+			if !st.HasManifest(ctx, repo, m.Digest) {
+				return "", fmt.Errorf("platform %s of %s is not present locally (sparse index)", platform, repo)
+			}
+			return m.Digest, nil
+		}
+	}
+	if platform != "" {
+		return "", fmt.Errorf("platform %s not found in the index of %s", platform, repo)
+	}
+	if len(candidates) == 1 {
+		if !st.HasManifest(ctx, repo, candidates[0]) {
+			return "", fmt.Errorf("the single platform of %s is not present locally", repo)
+		}
+		return candidates[0], nil
+	}
+	return "", fmt.Errorf("multi-platform FileSet %s needs files.filesets[].platform to pick one", repo)
 }
 
 // ensureWritableDir verifies the storage root exists (creating it if

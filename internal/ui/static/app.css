@@ -143,8 +143,19 @@ code {
 }
 .t-iconbtn:hover { color: var(--tobby-accent-text); border-color: var(--tobby-accent); }
 
-.t-usermenu { font-size: 0.78rem; color: var(--tobby-text); white-space: nowrap; }
+/* User menu: the open <details> content is a pop-under anchored to the
+   summary — never in the flow, so opening it cannot grow the header (B-005). */
+.t-usermenu { position: relative; font-size: 0.78rem; color: var(--tobby-text); white-space: nowrap; }
+.t-usermenu summary { cursor: pointer; }
 .t-usermenu i { font-style: normal; color: var(--tobby-muted); font-size: 0.7rem; }
+.t-usermenu > form {
+  position: absolute; right: 0; top: calc(100% + 0.45rem); z-index: 30;
+  padding: var(--tobby-space-2);
+  background: var(--tobby-bg-raise);
+  border: 1px solid var(--tobby-border-control);
+  border-radius: var(--tobby-radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
 
 /* ==========================================================================
    Banners — operational / security, stacked under the topbar, NOT closable
@@ -844,3 +855,10 @@ button.t-lang:hover { color: var(--tobby-accent-text); }
 .t-apidoc[open] summary { margin-bottom: 0.6rem; }
 .t-apidoc-summary { font-size: var(--tobby-text-sm); color: var(--tobby-muted); }
 .t-apidoc .t-table { margin-bottom: 0.6rem; }
+
+/* Recipe document view (R-37): the YAML this instance holds, shown so an
+   operator can start from it. Reuses the log viewer's frame — same
+   scrollable, focusable, monospaced block — with a taller ceiling, since a
+   recipe is read in one go rather than tailed. */
+.t-docview { max-height: 32rem; }
+.t-docview pre { font-size: 0.74rem; }

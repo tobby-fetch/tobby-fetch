@@ -1,0 +1,42 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /account — profile and self-service password change (R-34, FR-061),
+     open to every authenticated role. Failures re-render this page with
+     the frozen taxonomy block inline (TBY-AUTH-006 / TBY-AUTH-007); the
+     layout stamps hx-history="false" on <main> for this page — passwords
+     transit here (ADR-0015 §5). */}}
+{{define "title"}}{{.T "account.title"}}{{end}}
+{{define "main"}}
+<section class="t-account">
+  <h1 class="t-page-title">{{.T "account.title"}}</h1>
+  <p class="t-page-sub">{{.T "account.subtitle"}}</p>
+
+  <div class="t-card">
+    <h2 class="t-kick">{{.T "account.profile_title"}}</h2>
+    <dl>
+      <dt>{{.T "account.profile_name"}}</dt>
+      <dd class="t-mono" translate="no">{{.Identity.Name}}</dd>
+      <dt>{{.T "account.profile_role"}}</dt>
+      <dd><span class="t-badge" translate="no" lang="en">{{.Identity.Role}}</span></dd>
+    </dl>
+  </div>
+
+  {{/* Classic POST — the response is this page again: the taxonomized
+       block on failure, the confirmation toast on success. */}}
+  <form class="t-card t-form" method="post" action="/account/password">
+    <h2 class="t-kick">{{.T "account.pw_title"}}</h2>
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    {{with .Data.Err}}{{template "error-block" (withErr $ .)}}{{end}}
+    <label for="pw-current">{{.T "account.pw_current"}}</label>
+    <input id="pw-current" class="t-input" type="password" name="current"
+           autocomplete="current-password" required>
+    <label for="pw-new">{{.T "account.pw_new"}}</label>
+    <input id="pw-new" class="t-input" type="password" name="new"
+           autocomplete="new-password" required>
+    <label for="pw-confirm">{{.T "account.pw_confirm"}}</label>
+    <input id="pw-confirm" class="t-input" type="password" name="confirm"
+           autocomplete="new-password" required>
+    <button type="submit" class="t-btn t-btn--primary">{{.T "account.pw_submit"}}</button>
+    <p class="t-muted t-note">{{.T "account.pw_note"}}</p>
+  </form>
+</section>
+{{end}}

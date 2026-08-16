@@ -15,6 +15,7 @@ package importer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -25,6 +26,7 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
+	recipev1 "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -88,7 +90,9 @@ type Report struct {
 	// Repository is the relocated local repository (ADR-0013):
 	// "docker.io/library/redis".
 	Repository string
-	// Tag is the resolved tag ("latest" when the reference had none).
+	// Tag is the resolved tag: "latest" when the reference had none and
+	// "latest" exists, otherwise the highest stable semver tag (B-009) or
+	// the resolved chart version (FR-024).
 	Tag string
 	// IndexDigest is the pinned digest of the index (or of the single
 	// manifest). The original index travels unmodified (FR-022).
@@ -129,9 +133,31 @@ func buildOptions(opts []Option) *options {
 	return o
 }
 
+// stripOCIScheme removes the optional "oci://" prefix — the notation Helm
+// uses for OCI chart references (B-008). The canonical form is scheme-less;
+// the prefix is accepted on input and never round-tripped.
+func stripOCIScheme(reference string) string {
+	return strings.TrimPrefix(reference, "oci://")
+}
+
+// hasExplicitVersion reports whether the reference pins a tag or a digest
+// explicitly — as opposed to relying on the "latest" default (B-009).
+func hasExplicitVersion(reference string) bool {
+	reference = stripOCIScheme(reference)
+	if strings.Contains(reference, "@") {
+		return true
+	}
+	last := reference
+	if i := strings.LastIndexByte(reference, '/'); i >= 0 {
+		last = reference[i+1:]
+	}
+	return strings.Contains(last, ":")
+}
+
 // parseRef parses the reference, downgrading to the insecure scheme only
 // for hosts explicitly opted in.
 func (o *options) parseRef(reference string) (name.Reference, error) {
+	reference = stripOCIScheme(reference)
 	ref, err := name.ParseReference(reference, name.WithDefaultRegistry("docker.io"))
 	if err != nil {
 		return nil, err
@@ -151,16 +177,26 @@ type Local interface {
 	ResolveTag(ctx context.Context, repo, tag string) (string, bool)
 }
 
+// budgetOf renders the remaining inspection budget for the timeout entry.
+func budgetOf(ctx context.Context) string {
+	if dl, ok := ctx.Deadline(); ok {
+		return time.Until(dl).Round(time.Second).String()
+	}
+	return "import.inspectTimeout"
+}
+
 // Inspect fetches the reference's manifest (index or single) and builds
 // the report. The caller bounds ctx (import.inspectTimeout); a deadline
 // hit maps to the dedicated timeout code, distinct from unreachable
-// (UI-SPEC §5.6).
+// (UI-SPEC §5.6). An https:// reference designates a Helm chart-repository
+// chart (FR-024) and is inspected through its conversion.
 func Inspect(ctx context.Context, reference string, local Local, opts ...Option) (*Report, error) {
-	budget := "import.inspectTimeout"
-	if dl, ok := ctx.Deadline(); ok {
-		budget = time.Until(dl).Round(time.Second).String()
+	o := buildOptions(opts)
+	if isChartRepoURL(reference) {
+		return inspectChartRepo(ctx, reference, local, o)
 	}
-	ref, err := buildOptions(opts).parseRef(reference)
+	budget := budgetOf(ctx)
+	ref, err := o.parseRef(reference)
 	if err != nil {
 		return nil, taxonomy.New(taxonomy.CodeBadReference,
 			taxonomy.Params{"reference": reference}).WithCause(err)
@@ -173,7 +209,9 @@ func Inspect(ctx context.Context, reference string, local Local, opts ...Option)
 
 	desc, err := remote.Get(ref, remote.WithContext(ctx))
 	if err != nil {
-		return nil, mapRemoteErr(ctx, ref.Context().RegistryStr(), reference, budget, err)
+		if desc, ref, err = resolveUntagged(ctx, ref, reference, budget, err); err != nil {
+			return nil, err
+		}
 	}
 
 	tag := "latest"
@@ -239,6 +277,48 @@ func Inspect(ctx context.Context, reference string, local Local, opts ...Option)
 	}
 	rep.Platforms = []Platform{p}
 	return rep, nil
+}
+
+// resolveUntagged is the B-009 fallback: when the reference carried no
+// explicit tag or digest and the "latest" default does not exist — chart
+// repositories tag by version, without "latest" — the tag list is resolved
+// to the highest stable semver version (the FR-021 "*" rule, RECIPE-SPEC
+// §9.2) and the fetch retried on it. Every other failure re-raises the
+// original taxonomy error unchanged.
+func resolveUntagged(ctx context.Context, ref name.Reference, reference, budget string, gerr error) (*remote.Descriptor, name.Reference, error) {
+	terr := mapRemoteErr(ctx, ref.Context().RegistryStr(), reference, budget, gerr)
+	if terr.Code() != taxonomy.CodeRefNotFound || hasExplicitVersion(reference) {
+		return nil, nil, terr
+	}
+	tags, err := remote.List(ref.Context(), remote.WithContext(ctx))
+	if err != nil {
+		return nil, nil, terr
+	}
+	tag, err := highestStable(tags)
+	if err != nil {
+		// No semver tag either: the TBY-REG-005 refusal stands, enriched
+		// with what was attempted — never a silent fallback (FR-021).
+		return nil, nil, taxonomy.New(taxonomy.CodeRefNotFound,
+			taxonomy.Params{"reference": reference}).
+			WithCause(fmt.Errorf(`tag "latest" does not exist and no stable semver tag is available: %w`, err))
+	}
+	resolved := ref.Context().Tag(tag)
+	desc, err := remote.Get(resolved, remote.WithContext(ctx))
+	if err != nil {
+		return nil, nil, mapRemoteErr(ctx, ref.Context().RegistryStr(), resolved.Name(), budget, err)
+	}
+	return desc, resolved, nil
+}
+
+// highestStable resolves the highest stable semver among tags through the
+// recipe-spec SDK — the same "*" resolution rule as the recipe engine
+// (RECIPE-SPEC §9.2): non-semver tags are ignored, pre-releases excluded.
+func highestStable(tags []string) (string, error) {
+	c, err := recipev1.ParseConstraint("*")
+	if err != nil {
+		return "", err
+	}
+	return c.Resolve(tags)
 }
 
 // statusOf computes the FR-026 per-digest status.

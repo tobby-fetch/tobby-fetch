@@ -1,0 +1,82 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /recipes — the recorded recipe graph (UI-SPEC §6). Header: the
+     configured Retriever source (FR-010) and the manual "Synchronize"
+     trigger (FR-014) — live for operator+ with a source, otherwise
+     disabled with an explanation, never hidden. The verified column is
+     never silent: an admitted-unsigned recipe names its declared trust
+     scope (FR-033). */}}
+{{define "title"}}{{.T "recipes.title"}}{{end}}
+{{define "main"}}
+<section>
+  <h1 class="t-page-title">{{.T "recipes.title"}}</h1>
+  <p class="t-page-sub">{{.T "recipes.subtitle"}}</p>
+  {{if .Err}}
+  {{template "error-block" .}}
+  {{else}}
+  <div class="t-card t-row" style="justify-content:space-between;align-items:center;flex-wrap:wrap">
+    <div>
+      <span class="t-kick" style="display:block">{{.T "recipes.source_label"}}</span>
+      {{if .Data.Source}}<span class="t-mono" translate="no">{{.Data.Source}}</span>
+      {{else}}<span class="t-muted">{{.T "recipes.source_none"}}</span>{{end}}
+    </div>
+    <div>
+      {{if and .CanOperate .Data.Source}}
+      <form method="post" action="/recipes/sync">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit" class="t-btn t-btn--primary">{{.T "recipes.sync"}}</button>
+      </form>
+      {{else}}
+      {{/* Disabled with an explanation, never hidden (UI-SPEC §7). */}}
+      <button type="button" class="t-btn t-btn--primary" disabled aria-describedby="sync-note">{{.T "recipes.sync"}}</button>
+      <p id="sync-note" class="t-muted t-note">{{if .CanOperate}}{{.T "recipes.sync_no_source"}}{{else}}{{.T "recipes.sync_role"}}{{end}}</p>
+      {{end}}
+    </div>
+  </div>
+
+  {{if not .Data.Rows}}
+  <div class="t-empty">
+    <p class="t-empty-title">{{.T "recipes.empty_title"}}</p>
+    <p>{{.T "recipes.empty_text"}}</p>
+  </div>
+  {{else}}
+  <table class="t-table">
+    <caption class="t-visually-hidden">{{.T "recipes.table_caption"}}</caption>
+    <thead>
+      <tr>
+        <th scope="col">{{.T "recipes.th_name"}}</th>
+        <th scope="col">{{.T "recipes.th_version"}}</th>
+        <th scope="col">{{.T "recipes.th_zone"}}</th>
+        <th scope="col">{{.T "recipes.th_cookbook"}}</th>
+        <th scope="col" class="t-num">{{.T "recipes.th_resolved"}}</th>
+        <th scope="col">{{.T "recipes.th_verified"}}</th>
+        <th scope="col" class="t-num">{{.T "recipes.th_ingredients"}}</th>
+        <th scope="col"><span class="t-visually-hidden">{{.T "recipes.th_mapping"}}</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Data.Rows}}
+      <tr>
+        <td class="t-primary">
+          <a class="t-mono" href="{{.MappingHref}}" translate="no">{{.Name}}</a>
+          <span class="t-badge t-badge--recipe" translate="no" lang="en">Recipe</span>
+        </td>
+        <td class="t-mono" translate="no">{{.Version}}</td>
+        <td>{{if .Zone}}<span class="t-mono" translate="no">{{.Zone}}</span>{{else}}<span class="t-muted">—</span>{{end}}</td>
+        <td class="t-mono t-muted" translate="no" title="{{.CookbookRepo}}">{{$.Trunc .CookbookRepo 36}}</td>
+        <td class="t-num t-muted"><time datetime="{{$.TimeAttr .ResolvedAt}}" title="{{$.FmtTime .ResolvedAt}}">{{$.FmtAgo .ResolvedAt}}</time></td>
+        <td>
+          {{/* Never silent (FR-033): verified, or the declared scope that
+               admitted the unsigned recipe. */}}
+          {{if .Verified}}<span class="t-badge t-badge--done">{{$.T "recipes.verified_ok"}}</span>
+          {{else}}<span class="t-badge t-badge--done-errors" title="{{$.T "recipes.verified_scope_title" "Scope" .TrustScope}}">{{$.T "recipes.verified_scope" "Scope" .TrustScope}}</span>{{end}}
+        </td>
+        <td class="t-num">{{len .Ingredients}}</td>
+        <td><a href="{{.MappingHref}}">{{$.T "recipes.mapping_link"}}</a></td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{end}}
+  {{end}}
+</section>
+{{end}}

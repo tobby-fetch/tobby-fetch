@@ -35,9 +35,13 @@ const (
 	StatusSkipped Status = "skipped"
 )
 
-// TypeUnitImport is the one task type of milestone 2 (FR-023). Milestone 3
-// adds recipe synchronization, milestone 5 the media operations.
-const TypeUnitImport = "unit-import"
+// The task types: unit import (FR-023, milestone 2) and recipe
+// synchronization (FR-014, milestone 3). Milestone 5 adds the media
+// operations.
+const (
+	TypeUnitImport = "unit-import"
+	TypeSync       = "sync"
+)
 
 // Task is one tracked operation.
 type Task struct {
@@ -60,6 +64,12 @@ type Task struct {
 	// (FR-029): visible in the list and on the detail header.
 	Resumed bool `json:"resumed,omitempty"`
 
+	// VendorDependencies is the FR-025 per-operation opt-in: declared
+	// chart dependencies missing from the package are fetched and embedded
+	// before the artifact lands, breaking the upstream digest — always
+	// traced (manifest annotations, report, logs), never the default.
+	VendorDependencies bool `json:"vendor_dependencies,omitempty"`
+
 	// Error is the task-level failure (when the operation could not even
 	// decompose into items — e.g. the inspection failed).
 	Error *ItemError `json:"error,omitempty"`
@@ -72,10 +82,40 @@ type Task struct {
 	// version resolution (milestone 3) and scan results (milestone 6) join
 	// it without a schema break.
 	ChartDependencies []ChartDependency `json:"chart_dependencies,omitempty"`
+
+	// Resolutions is the FR-021 resolution report of a synchronization:
+	// requested → resolved → digest, per recipe entry and per ingredient,
+	// with the FR-026 status and the FR-036 effective endpoint when a
+	// substitution applied.
+	Resolutions []Resolution `json:"resolutions,omitempty"`
+}
+
+// Resolution is one row of the FR-021 report.
+type Resolution struct {
+	// Recipe is "name@version" once resolved ("wordpress@6.8.2").
+	Recipe string `json:"recipe"`
+	// Ingredient is empty on the recipe entry's own row.
+	Ingredient string `json:"ingredient,omitempty"`
+	// Requested is the expression as written (exact tag or constraint).
+	Requested string `json:"requested"`
+	// Resolved is the concrete tag; Digest the pinned digest.
+	Resolved string `json:"resolved"`
+	Digest   string `json:"digest,omitempty"`
+	// Status is the FR-026 per-digest status: new, outdated, up-to-date.
+	Status string `json:"status,omitempty"`
+	// Effective is the substituted endpoint actually contacted, when it
+	// differs from the nominal reference (FR-036 — both are logged).
+	Effective string `json:"effective,omitempty"`
+	// TrustScope names the declared scope that admitted the item when the
+	// strict default was relaxed (FR-033: never silent).
+	TrustScope string `json:"trust_scope,omitempty"`
 }
 
 // ChartDependency is one row of the FR-024 report.
 type ChartDependency struct {
+	// Chart names the chart carrying the dependency — a recipe
+	// synchronization can verify several charts in one task.
+	Chart      string `json:"chart,omitempty"`
 	Name       string `json:"name"`
 	Version    string `json:"version"`
 	Repository string `json:"repository,omitempty"`

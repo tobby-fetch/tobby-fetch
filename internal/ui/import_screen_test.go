@@ -108,9 +108,9 @@ func seedImportUpstream(t *testing.T, platforms ...string) string {
 	return ref
 }
 
-// postForm performs an authenticated POST /import with the session's CSRF
-// token.
-func postForm(t *testing.T, u *UI, mux *http.ServeMux, c *http.Cookie, form url.Values, hdr map[string]string) *httptest.ResponseRecorder {
+// postImportForm performs an authenticated POST /import with the
+// session's CSRF token.
+func postImportForm(t *testing.T, u *UI, mux *http.ServeMux, c *http.Cookie, form url.Values, hdr map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 	sess, ok := u.authn.Sessions.Get(c.Value, time.Now())
 	if !ok {
@@ -212,6 +212,85 @@ func TestImportInspectFragment(t *testing.T) {
 	}
 }
 
+// seedChartUpstream pushes a single-manifest artifact whose config media
+// type marks it as a Helm chart, and returns its reference.
+func seedChartUpstream(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(registry.New(registry.Logger(log.New(io.Discard, "", 0))))
+	t.Cleanup(srv.Close)
+	host, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := random.Image(128, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chart := mutate.ConfigMediaType(img, "application/vnd.cncf.helm.config.v1+json")
+	ref := host.Host + "/bitnamicharts/wordpress:19.2.6"
+	r, err := name.ParseReference(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.Write(r, chart); err != nil {
+		t.Fatal(err)
+	}
+	return ref
+}
+
+// TestImportVendorOptIn is the FR-025 screen contract: the vendoring
+// checkbox renders only when the inspection detects a chart — with the
+// FR-075 note stating the digest/signature consequence — and the POST
+// carries the explicit opt-in onto the created task, default off.
+func TestImportVendorOptIn(t *testing.T) {
+	u, q, _ := newTestUIWithQueue(t)
+	mux := mount(u)
+	c := login(t, mux, "alexis", "pw-admin")
+
+	// A container image never shows the vendoring control.
+	iref := seedImportUpstream(t, "linux/amd64")
+	w := get(t, mux, c, "/import?ref="+url.QueryEscape(iref), map[string]string{"HX-Request": "true"})
+	if strings.Contains(w.Body.String(), `name="vendor"`) {
+		t.Error("vendor checkbox rendered for a container image")
+	}
+
+	// A chart does, unchecked, with the consequence stated (FR-075).
+	cref := seedChartUpstream(t)
+	w = get(t, mux, c, "/import?ref="+url.QueryEscape(cref), map[string]string{"HX-Request": "true"})
+	body := w.Body.String()
+	if !strings.Contains(body, `name="vendor"`) {
+		t.Fatalf("vendor checkbox missing for a chart: %s", body)
+	}
+	if !strings.Contains(body, "vendoring") || !strings.Contains(body, "digest") {
+		t.Error("the vendoring note does not state the consequence")
+	}
+
+	// POST with the box checked: the task carries the opt-in.
+	w = postImportForm(t, u, mux, c, url.Values{"ref": {cref}, "platform": {"artifact"}, "vendor": {"1"}},
+		map[string]string{"HX-Request": "true"})
+	if w.Code != http.StatusOK || !strings.HasPrefix(w.Header().Get("HX-Redirect"), "/tasks/tsk_") {
+		t.Fatalf("vendor POST = %d redirect=%q", w.Code, w.Header().Get("HX-Redirect"))
+	}
+	created := q.List("", "", "")
+	if len(created) != 1 || !created[0].VendorDependencies {
+		t.Fatalf("task after checked POST = %+v", created)
+	}
+
+	// Without it: default off (TBY-CHT-001 keeps refusing at run time).
+	w = postImportForm(t, u, mux, c, url.Values{"ref": {cref}, "platform": {"artifact"}}, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("plain POST = %d", w.Code)
+	}
+	created = q.List("", "", "")
+	if len(created) != 2 {
+		t.Fatalf("queue holds %d tasks, want 2", len(created))
+	}
+	// Newest first: the unchecked submission must not carry the opt-in.
+	if created[0].VendorDependencies {
+		t.Errorf("unchecked POST created a vendoring task: %+v", created[0])
+	}
+}
+
 // TestImportInspectErrorStatus: an unreachable source registry answers the
 // R-03 block with its real HTTP status, inside the swap zone (ADR-0015
 // §6).
@@ -244,7 +323,7 @@ func TestImportSubmitCreatesTask(t *testing.T) {
 	ref := seedImportUpstream(t, "linux/amd64", "linux/arm64")
 
 	form := url.Values{"ref": {ref}, "platform": {"linux/amd64", "linux/arm64"}}
-	w := postForm(t, u, mux, c, form, map[string]string{"HX-Request": "true"})
+	w := postImportForm(t, u, mux, c, form, map[string]string{"HX-Request": "true"})
 	if w.Code != http.StatusOK {
 		t.Fatalf("htmx POST /import = %d: %s", w.Code, w.Body.String())
 	}
@@ -267,13 +346,13 @@ func TestImportSubmitCreatesTask(t *testing.T) {
 	}
 
 	// The no-JS path answers a standard 303 to the same task URL space.
-	w = postForm(t, u, mux, c, url.Values{"ref": {ref}, "platform": {"linux/amd64"}}, nil)
+	w = postImportForm(t, u, mux, c, url.Values{"ref": {ref}, "platform": {"linux/amd64"}}, nil)
 	if w.Code != http.StatusSeeOther || !strings.HasPrefix(w.Header().Get("Location"), "/tasks/tsk_") {
 		t.Errorf("plain POST /import = %d location=%q, want 303 to /tasks/…", w.Code, w.Header().Get("Location"))
 	}
 
 	// A selection that names no real platform re-opens the inspection.
-	w = postForm(t, u, mux, c, url.Values{"ref": {ref}, "platform": {"windows/amd64"}}, nil)
+	w = postImportForm(t, u, mux, c, url.Values{"ref": {ref}, "platform": {"windows/amd64"}}, nil)
 	if w.Code != http.StatusSeeOther || !strings.HasPrefix(w.Header().Get("Location"), "/import?ref=") {
 		t.Errorf("empty selection = %d location=%q, want 303 back to /import", w.Code, w.Header().Get("Location"))
 	}

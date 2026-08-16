@@ -1,0 +1,157 @@
+# VictoriaMetrics operator — the case where `helm template` lies to you.
+#
+# PROFILE: cooked.
+#
+# Verified against chart 0.67.2 / appVersion v0.74.0 on 2026-08-15.
+#
+# ====================================================================
+# WHY THIS ONE IS DIFFERENT
+#
+# Rendering the chart returns exactly one image:
+#
+#   $ helm template t oci://ghcr.io/victoriametrics/helm-charts/victoria-metrics-operator \
+#       --version 0.67.2 | grep -E '^\s*image:'
+#   victoriametrics/operator:v0.74.0
+#
+# Carry that one image into the zone and the operator starts, healthy and
+# green. Then someone applies a VMSingle, and the pod it creates sits in
+# ImagePullBackOff — for an image nobody ever saw in a manifest.
+#
+# An operator does not deploy its own images. It deploys the images written
+# in ITS DEFAULTS, compiled into the operator binary and overridable by
+# environment variable. They appear in no chart, no manifest, and no
+# rendered template — only in the operator's own configuration.
+#
+# Ask the operator itself. This is the authoritative list, and it is
+# reproducible without a cluster:
+#
+#   $ docker run --rm victoriametrics/operator:v0.74.0 --printDefaults \
+#       | grep -E 'IMAGE|VERSION'
+#
+#   VM_METRICS_VERSION                          v1.148.0
+#   VM_LOGS_VERSION                             v1.52.0
+#   VM_ANOMALY_VERSION                          v1.30.0
+#   VM_TRACES_VERSION                           v0.10.0
+#   VM_CONFIG_RELOADER_IMAGE                    victoriametrics/operator:config-reloader-${VM_OPERATOR_VERSION}
+#   VM_VMSINGLEDEFAULT_IMAGE                    victoriametrics/victoria-metrics
+#   VM_VMAGENTDEFAULT_IMAGE                     victoriametrics/vmagent
+#   VM_VMALERTDEFAULT_IMAGE                     victoriametrics/vmalert
+#   VM_VMAUTHDEFAULT_IMAGE                      victoriametrics/vmauth
+#   VM_VMALERTMANAGER_ALERTMANAGERDEFAULTBASEIMAGE  prom/alertmanager
+#   … and ~20 more for logs, traces, anomaly, cluster and backup
+#
+# Note the indirection: the versions are TEMPLATES. VM_VMSINGLEDEFAULT_VERSION
+# is "${VM_METRICS_VERSION}", so the tag is v1.148.0; the cluster components
+# resolve to "${VM_METRICS_VERSION}-cluster". Resolve them before pinning.
+#
+# The same question applies to every operator you take through a boundary —
+# cert-manager, Strimzi, Prometheus, ECK. If the answer is not in a rendered
+# manifest, it is in the operator's defaults, its CRD defaults, or its
+# documentation. Find it BEFORE the zone is sealed.
+# ====================================================================
+apiVersion: recipe.tobby.dev/v1alpha1
+kind: Recipe
+
+metadata:
+  name: victoria-metrics-operator
+  version: 0.74.0
+  description: >-
+    VictoriaMetrics operator and the single-node metrics stack it deploys:
+    VMSingle, VMAgent, VMAlert, VMAuth and Alertmanager. The components are
+    listed explicitly because the operator carries them in its defaults,
+    not in the chart.
+  annotations:
+    recipe.tobby.dev/cooked-at: "2026-08-15T09:00:00Z"
+    org.opencontainers.image.source: https://github.com/VictoriaMetrics/operator
+
+spec:
+  ingredients:
+    - name: vm-operator-chart
+      kind: HelmChart
+      ref: ghcr.io/victoriametrics/helm-charts/victoria-metrics-operator
+      version: 0.67.2
+      digest: sha256:454e94bbc58a44edf760c69d69d3e2cbc4a355b90b5adda2dcc28069213fb442
+      vendorDependencies: false
+
+    # --- The only image the chart itself names -------------------------
+    - name: vm-operator
+      kind: ContainerImage
+      ref: docker.io/victoriametrics/operator
+      version: v0.74.0
+      digest: sha256:c4fde419a4f03c7c45d7ee554e7039c12c75af161f7f7e1baef1b343015e3df9
+      platforms: [linux/amd64, linux/arm64]
+
+    # --- Everything below comes from --printDefaults -------------------
+
+    # VM_CONFIG_RELOADER_IMAGE. Same repository as the operator, different
+    # tag prefix: a sidecar injected into every component pod. Forgetting it
+    # breaks every component at once, which at least makes it easy to spot.
+    - name: config-reloader
+      kind: ContainerImage
+      ref: docker.io/victoriametrics/operator
+      version: config-reloader-v0.74.0
+      digest: sha256:2ad04439b0cb092765126f7947eff5ad6949d0332c5dbadf5fdd45b418569120
+      platforms: [linux/amd64, linux/arm64]
+
+    # VM_VMSINGLEDEFAULT_IMAGE, tag from VM_METRICS_VERSION.
+    - name: victoria-metrics
+      kind: ContainerImage
+      ref: docker.io/victoriametrics/victoria-metrics
+      version: v1.148.0
+      digest: sha256:407013e902f9a0ba1d4b2d4c077c47bbaf917c893c52ff39b19efe83a654afda
+      platforms: [linux/amd64, linux/arm64]
+
+    # VM_VMAGENTDEFAULT_IMAGE.
+    - name: vmagent
+      kind: ContainerImage
+      ref: docker.io/victoriametrics/vmagent
+      version: v1.148.0
+      digest: sha256:7da85e2d2fc24452979d0ff19b957901ba14e50217e7cc1de1146d3d5e698ab4
+      platforms: [linux/amd64, linux/arm64]
+
+    # VM_VMALERTDEFAULT_IMAGE.
+    - name: vmalert
+      kind: ContainerImage
+      ref: docker.io/victoriametrics/vmalert
+      version: v1.148.0
+      digest: sha256:268ab5df69360a236e1382db0dbde44d5c32362b85501f761d61fc25c76f05ce
+      platforms: [linux/amd64, linux/arm64]
+
+    # VM_VMAUTHDEFAULT_IMAGE.
+    - name: vmauth
+      kind: ContainerImage
+      ref: docker.io/victoriametrics/vmauth
+      version: v1.148.0
+      digest: sha256:46b832a5a25bf3888783a8bbf84273825129aba8977972c85605765bcb49448b
+      platforms: [linux/amd64, linux/arm64]
+
+    # VM_VMALERTMANAGER_ALERTMANAGERDEFAULTBASEIMAGE — an upstream Prometheus
+    # image, pinned by VM_VMALERTMANAGER_ALERTMANAGERVERSION, on its own
+    # release cadence. It moves when Alertmanager moves, not when
+    # VictoriaMetrics does.
+    - name: alertmanager
+      kind: ContainerImage
+      ref: docker.io/prom/alertmanager
+      version: v0.31.0
+      digest: sha256:cc54cc450174ada901b32eb2538de5fc70ee259a1ac551ed38023f2ca2ad00e3
+      platforms: [linux/amd64, linux/arm64]
+
+    # ------------------------------------------------------------------
+    # DELIBERATELY LEFT OUT — and named, so the omission is a decision
+    # rather than an oversight. Add the matching ingredients if the zone
+    # deploys the corresponding custom resources:
+    #
+    #   VMCluster        vmselect / vmstorage / vminsert, tagged
+    #                    ${VM_METRICS_VERSION}-cluster
+    #   VictoriaLogs     VLogs, VLAgent, VLSingle, VLCluster — ${VM_LOGS_VERSION}
+    #   VictoriaTraces   VTSingle, VTCluster — ${VM_TRACES_VERSION}
+    #   VMAnomaly        victoriametrics/vmanomaly — ${VM_ANOMALY_VERSION}
+    #   VMBackup         victoriametrics/vmbackupmanager, tagged
+    #                    ${VM_METRICS_VERSION}-enterprise (licensed)
+    #
+    # A cheap way to make the omission safe: pin the images you carry in
+    # the operator's own environment (VM_VMSINGLEDEFAULT_IMAGE and friends)
+    # to your destination registry. A resource whose image was not carried
+    # then fails at admission, in the open, instead of at pull time in a
+    # cluster nobody is watching.
+    # ------------------------------------------------------------------

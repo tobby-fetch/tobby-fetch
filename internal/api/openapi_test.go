@@ -24,13 +24,19 @@ import (
 // documenting it in openapi.yaml — or documenting a route that is not
 // registered — fails the cross-check below (FR-060).
 var registeredRoutes = []string{
+	"POST /api/v1/account/password",
 	"GET /api/v1/accounts",
 	"GET /api/v1/content",
+	"DELETE /api/v1/content/{repo}",
 	"GET /api/v1/content/{repo}",
 	"GET /api/v1/content/{repo}/-/tags/{tag}",
 	"POST /api/v1/import",
 	"GET /api/v1/import/inspect",
 	"GET /api/v1/openapi.yaml",
+	"GET /api/v1/recipes",
+	"GET /api/v1/recipes/{recipe}/mapping",
+	"GET /api/v1/retriever",
+	"POST /api/v1/sync",
 	"GET /api/v1/tasks",
 	"GET /api/v1/tasks/{id}",
 	"GET /api/v1/tasks/{id}/logs",

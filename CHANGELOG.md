@@ -6,7 +6,153 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 starting with `v0.1.0`.
 
-## [Unreleased]
+## [0.3.0] - 2026-08-16
+
+Milestone 3 — the recipe engine: a signed Recipe becomes verified content
+in the local store — automatically, completely, and replayable with no
+side effect.
+
+### Added
+
+- Recipe engine (roadmap 3.1–3.5): the configured Retriever (HTTP(S) URL,
+  OCI reference, or local file) is parsed and validated through the
+  recipe-spec Go SDK (strict: unknown field = rejection, actionable
+  file/path/constraint errors); every entry resolves from its cookbook —
+  exact tags or semver constraints (`12.x`, `^`, `~`, `>=`), highest
+  match, never a silent fallback — and lands bit-exactly under its
+  relocated path with an optional instance-wide base prefix. All four
+  ingredient kinds transfer (ContainerImage with sparse platform
+  selection preserving the pinned index digest, HelmChart with offline
+  dependency verification, OCIArtifact with artifactType enforcement,
+  FileSet), streamed, with bounded parallelism, bounded retries, and
+  per-digest new/outdated/up-to-date statuses: a second identical run
+  transfers zero bytes.
+- Signature verification at entry (roadmap 3.4): cosign key-based, fully
+  offline, in **both published layouts** — the classic attached signature
+  and the Sigstore bundle that cosign 3.x produces by default, discovered
+  through the OCI 1.1 Referrers API or its fallback tag. Publishers pick a
+  format; consumers no longer have to. Trust roots are configured inline,
+  as files, or as HTTPS URLs fetched at configuration time; multiple keys
+  for rotation by overlap.
+  Verification is on by default for every recipe; relaxation exists only
+  as explicitly declared trust scopes (repository patterns), visible in
+  the configuration report, a permanent banner, the logs, and the task
+  report — never a silent switch. Recipe and ingredient signature
+  artifacts travel with the content.
+- Source substitution and cascade (roadmap 3.5): a downstream zone
+  fetches nominal references from its upstream zone registry without
+  modifying the recipes; the relocated path is invariant across hops;
+  logs and the resolution report show nominal and effective endpoints.
+  Registry credentials load from a standard dockerconfigjson file.
+- FileSet HTTP serving (roadmap 3.6): explicitly enabled, verified
+  FileSets are extracted (OCI whiteout semantics, strict path-safety
+  rules, decompression-bomb bounds) and served read-only under
+  `/files/<name>/` with byte-range support; anonymous read is a
+  per-FileSet opt-in, reported like every security reduction.
+- Recipes screens and API: `/recipes` with the per-recipe
+  source→destination mapping table, the configured Retriever source, and
+  the Synchronize action; `/admin/retriever` for the admin view; strict
+  API parity (`/api/v1/recipes`, `/api/v1/sync`, `/api/v1/retriever`).
+  Synchronizations are tracked tasks with per-ingredient items and a
+  resolution report (requested → resolved → digest → status).
+- Admin removal of unit-imported content (FR-044 amendment): from the
+  repository page or `DELETE /api/v1/content/{repo}`, audit-logged, with
+  mark-and-sweep garbage collection preserving shared blobs and attached
+  signatures; recipe-managed content shows the action disabled, naming
+  the managing recipe. The store now records provenance (recipe-managed,
+  unit import, seeded) and the recipe→content graph, and stamps its
+  format version with an explicit compatibility policy.
+- Guided first start: `tobby quickstart` fills the missing configuration
+  step by step (directories, mode, first admin account, config file) and
+  offers to serve — never mandatory, flags and environment keep full
+  control; configuration validation is now scoped per command.
+- Self-service password change: any account changes its own password on
+  `/account` (current password required) or through the API mirror,
+  audit-logged; other sessions of the account are signed out.
+- Helm charts import directly from HTTPS chart repositories
+  (`https://…/charts/<name>`), converted to standard OCI chart artifacts
+  that `helm pull` reads back unchanged, with the FR-024 dependency
+  verification; optional per-operation dependency vendoring produces a
+  traced, self-contained chart (original and new digests recorded).
+- Releases now also ship `.deb`, `.rpm`, and `.apk` packages (nfpm,
+  linux amd64/arm64) inside the same reproducible chain — same
+  SHA256SUMS, same SLSA provenance, same double-build gate — installable
+  fully offline.
+- Crucible scenario m3: real cosign-signed recipes on real nodes —
+  verified synchronization, foreign-signature refusal, idempotence,
+  FileSet serving with ranges, and a two-hop cascade with unmodified
+  recipes and identical relocated paths.
+- Trivy integration spike (ADR-0008 exit criterion): measured
+  library-vs-binary footprint; recommendation recorded in
+  `docs/spikes/trivy-library-vs-binary.md`.
+- `tobby recipe push <file> <ref>` (R-36): publishes a recipe to any OCI
+  registry, checking it first — which is the difference with a generic
+  push tool. It refuses a document that is not a valid recipe, one that
+  is not fully pinned (a cookbook holds cooked recipes only), one whose
+  name or version contradicts the reference it is published under, and
+  any republication of an existing version onto different content — a
+  published recipe version is immutable. Republishing identical bytes is
+  a no-op, not a conflict. The published digest goes to stdout, ready for
+  `cosign sign`; signing stays outside Tobby, which never holds a private
+  key. New refusal `TBY-POL-004`. Source substitution deliberately does
+  not apply to a publication: it answers where content is read from, and
+  letting it redirect a write would publish to an endpoint the author
+  never named.
+- The recipe document is now readable in the interface (R-37): the
+  manifest page of a recipe shows the YAML this instance holds and
+  verified on entry — with its digest, a copy button and a download — so
+  deriving the next version no longer means leaving the tool for an
+  `oras pull`. Deliberately a download and not an editor: a cooked recipe
+  is immutable, so the next version is a new document under a new
+  `metadata.version`.
+- `examples/`: five recipes for software that really crosses into
+  restricted zones — Harbor, Keycloak, MetalLB, the OpenTelemetry
+  Collector and the VictoriaMetrics operator — plus the Retriever that
+  ties them into one zone. Each carries the reasoning behind its
+  ingredient list, because `helm template | grep image:` misses four
+  distinct classes of image; the VictoriaMetrics operator is the worked
+  example of the worst one, where the components live in the operator's
+  own compiled defaults. Every digest and platform label was checked
+  against the live registries, and a test parses the whole directory with
+  the specification SDK so an example cannot drift from what the engine
+  accepts.
+
+### Fixed
+
+- The Content and Tasks filters only reacted to their first control
+  (B-011): ticking any kind badge but `ContainerImage`, or changing the
+  task type, toggled the widget and requested nothing. `from:find <sel>`
+  binds the htmx listener to the FIRST matching descendant — the
+  attribute reads "listen to the checkboxes" and means "listen to the
+  first checkbox". Both forms now listen on the form itself, where a
+  descendant's event bubbles. A template guard rejects the pattern:
+  `from:find` is allowed only for a selector unique in its file, and a
+  filter form must carry an unscoped `change`.
+- Copy chips fired one toast per page visited: the layout script re-ran on
+  every boosted navigation and stacked its document-level listeners; it now
+  wires them exactly once per browser page.
+- The task detail reached right after starting an import never refreshed its
+  item statuses or badge: the body zone now polls while the task is active,
+  with the same auto-terminating, server-decided contract as the task list.
+- The language switcher highlighted the language you would switch to instead
+  of the current one.
+- The theme toggle and language switch had no visible effect under boosted
+  navigation: both live on `<html>`, so their forms now force a full page
+  load.
+- Opening the user menu grew the header bar; the menu is now a pop-under.
+- `tobby user` demanded `--mode` although it only uses the state directory:
+  configuration validation is now scoped per command.
+- Tag tables and the manifest heading showed the total platform count of an
+  index even when only a few platforms are local; they now show
+  present/total (e.g. `2/16`), in the UI and as `presentPlatforms` in the
+  API.
+- `tobby config dump` and `tobby version` wrote their output to standard
+  error, so redirecting the dump to a file produced an empty file — the
+  very command the configuration error message recommends.
+- Unit import refused the helm-style `oci://` reference form.
+- Unit import of a reference without a tag failed as "not found" on chart
+  repositories, which publish versions and no `latest` tag: the highest
+  stable semver tag is now resolved and reported.
 
 ## [0.2.0] - 2026-08-12
 
@@ -80,6 +226,7 @@ import, track, browse, pull) behind authentication that is on by default.
 - Release chain groundwork for SLSA Build L3 provenance and signed
   artifacts.
 
-[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/tobby-fetch/tobby-fetch/releases/tag/v0.1.0

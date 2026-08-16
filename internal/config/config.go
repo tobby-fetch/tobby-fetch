@@ -47,8 +47,97 @@ type Config struct {
 	Registries Registries `yaml:"registries"`
 	UI         UI         `yaml:"ui"`
 	Import     Import     `yaml:"import"`
+	Retriever  Retriever  `yaml:"retriever"`
+	Sync       Sync       `yaml:"sync"`
+	Trust      Trust      `yaml:"trust"`
+	Files      Files      `yaml:"files"`
 	Logging    Logging    `yaml:"logging"`
 	Shutdown   Shutdown   `yaml:"shutdown"`
+}
+
+// Retriever locates the desired-state document (FR-010): an HTTP(S) URL,
+// an OCI reference, or a local file path — reported as configured through
+// the UI and the API.
+type Retriever struct {
+	Source string `yaml:"source"`
+}
+
+// Sync bounds the recipe engine's transfers (NFR-008, FR-029).
+type Sync struct {
+	// Parallelism caps concurrent ingredient transfers. Default 3.
+	Parallelism int `yaml:"parallelism"`
+	// Retries bounds per-ingredient retry attempts on transient transfer
+	// failures (bounded backoff, FR-029). Default 3.
+	Retries int `yaml:"retries"`
+}
+
+// Trust configures signature verification (FR-033, ADR-0007,
+// RECIPE-SPEC §12.3). Verification is on by default for every recipe;
+// relaxation exists only as explicitly declared scopes — never a global
+// bypass — and every relaxed scope is visible in the reported
+// configuration (FR-075 principle). List-valued: configuration file only.
+type Trust struct {
+	Roots  []TrustRoot  `yaml:"roots,omitempty"`
+	Scopes []TrustScope `yaml:"scopes,omitempty"`
+}
+
+// TrustRoot is one trusted public key (cosign key-based, multi-key set for
+// rotation by overlap). Exactly one of Key, KeyFile, KeyURL is set; a URL
+// is fetched and cached at configuration time, never at verification time
+// (RECIPE-SPEC §12.3 — air-gapped instances use inline or file forms).
+type TrustRoot struct {
+	Name    string `yaml:"name"`
+	Key     string `yaml:"key,omitempty"`
+	KeyFile string `yaml:"keyFile,omitempty"`
+	KeyURL  string `yaml:"keyURL,omitempty"`
+}
+
+// TrustScope declares one relaxed verification perimeter (§12.3: "a named
+// low-assurance source restricted to specific repositories"). Scopes are
+// evaluated in declaration order; the first match applies; no match means
+// the strict default (signature required, any configured root). A scope
+// must relax or restrict something: AllowUnsigned, or a Roots restriction.
+type TrustScope struct {
+	Name string `yaml:"name"`
+	// Repositories are glob patterns matched against the recipe's nominal
+	// cookbook repository path ("lab.example.com/cookbook/*"; "**" spans
+	// separators). Trust follows the nominal ref, never the substituted
+	// endpoint (FR-036).
+	Repositories []string `yaml:"repositories"`
+	// AllowUnsigned admits unsigned recipes inside the scope — reported on
+	// every surface (banner, logs, task report), never silent (FR-075).
+	AllowUnsigned bool `yaml:"allowUnsigned,omitempty"`
+	// Roots restricts verification to the named trust roots within the
+	// scope (defense in depth for multi-tenant cookbooks).
+	Roots []string `yaml:"roots,omitempty"`
+}
+
+// Files configures the FileSet HTTP serving surface (FR-047). Disabled by
+// default: only FileSets listed here are served. List-valued:
+// configuration file only.
+type Files struct {
+	FileSets []FileSetServe `yaml:"filesets,omitempty"`
+}
+
+// FileSetServe enables one verified FileSet under /files/<name>/.
+type FileSetServe struct {
+	// Name is the URL segment ("debs" serves under /files/debs/).
+	Name string `yaml:"name"`
+	// Ref is the nominal ingredient reference of the FileSet
+	// ("registry.example.com/filesets/site-config": host + repository, no
+	// tag or digest — the served content is whatever verified digest the
+	// store holds for it).
+	Ref string `yaml:"ref"`
+	// Version pins the served tag; empty serves the highest semver tag
+	// present locally.
+	Version string `yaml:"version,omitempty"`
+	// Platform selects the platform manifest of a multi-platform FileSet
+	// ("linux/amd64"); empty picks the single manifest and fails on an
+	// ambiguous index.
+	Platform string `yaml:"platform,omitempty"`
+	// Anonymous opts this FileSet into unauthenticated reads (bare-host
+	// bootstrap) — reported like the FR-075 override, never silent.
+	Anonymous bool `yaml:"anonymous,omitempty"`
 }
 
 // Import configures the unit-import screens and endpoints (FR-023).
@@ -66,6 +155,20 @@ type Registries struct {
 	// never a global switch (FR-075). The enterprise TLS/PKI support of
 	// milestone 4 (roadmap 4.4) supersedes this for verified private CAs.
 	Insecure []string `yaml:"insecure,omitempty"`
+	// Substitutions maps a nominal registry host to a substitute registry
+	// base (FR-036, RECIPE-SPEC §11.5), applied at fetch time: a downstream
+	// zone fetches "docker.io/…" from its upstream zone registry without
+	// modifying the recipes. Substitution changes only the endpoint
+	// contacted, never the relocated path (FR-035); credentials apply to
+	// the effective host, trust scopes to the nominal ref. List-valued:
+	// configuration file only.
+	Substitutions map[string]string `yaml:"substitutions,omitempty"`
+	// CredentialsFile points at a kubernetes.io/dockerconfigjson payload
+	// (FR-004): registry credentials looked up by the effective host
+	// actually contacted (RECIPE-SPEC §13.2). Secrets never live in the
+	// configuration file itself, and the file must sit outside the
+	// transportable store (R-16).
+	CredentialsFile string `yaml:"credentialsFile,omitempty"`
 }
 
 // UI configures the web interface (ADR-0010, ADR-0015).
@@ -85,6 +188,9 @@ type Storage struct {
 	// Root is the store directory. Required for serving: everything Tobby
 	// holds — artifacts, recipes, operation logs — lives under it.
 	Root string `yaml:"root"`
+	// BasePrefix is the optional relocation base prefix (FR-035), applied
+	// identically to every ingredient of the instance. Default: none.
+	BasePrefix string `yaml:"basePrefix,omitempty"`
 }
 
 // State locates the instance state directory: accounts and tokens today,
@@ -135,15 +241,42 @@ func Default() Config {
 		Server:   Server{Addr: ":8080"},
 		Auth:     Auth{SessionTTL: Duration(12 * time.Hour)},
 		Import:   Import{InspectTimeout: Duration(20 * time.Second)},
+		Sync:     Sync{Parallelism: 3, Retries: 3},
 		Logging:  Logging{Level: "info"},
 		Shutdown: Shutdown{GracePeriod: Duration(30 * time.Second)},
 	}
 }
 
+// Scope names the configuration slice a command actually uses: validation
+// is per-command (R-34) — a command must never demand a setting it ignores
+// (B-006: `tobby user` only needs the state directory, not a mode).
+type Scope int
+
+const (
+	// ScopeInstance validates the full instance configuration — what
+	// serving requires, mode included (FR-001).
+	ScopeInstance Scope = iota
+	// ScopeState validates only what state-directory commands need:
+	// everything set must be coherent, but no mode is required.
+	ScopeState
+	// ScopeRegistries validates what registry-facing commands need
+	// (`tobby recipe push`, R-36): credentials and per-host insecure
+	// opt-ins. Like ScopeState it requires no mode — publishing a recipe
+	// is an authoring act, it says nothing about how this host serves.
+	ScopeRegistries
+)
+
 // Load builds the effective configuration: defaults, overlaid with the YAML
 // file at path (skipped when path is empty and optional), then environment
-// variables, then flag overrides. Validation runs on the merged result.
+// variables, then flag overrides. Validation runs on the merged result, for
+// the full instance scope.
 func Load(path string, pathExplicit bool, overrides ...Override) (Config, error) {
+	return LoadFor(ScopeInstance, path, pathExplicit, overrides...)
+}
+
+// LoadFor is Load with per-command validation (R-34): the merged result is
+// validated only against what the command's scope actually uses.
+func LoadFor(scope Scope, path string, pathExplicit bool, overrides ...Override) (Config, error) {
 	cfg := Default()
 
 	if path != "" {
@@ -171,7 +304,7 @@ func Load(path string, pathExplicit bool, overrides ...Override) (Config, error)
 		o(&cfg)
 	}
 
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.validate(scope); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
@@ -181,13 +314,21 @@ func Load(path string, pathExplicit bool, overrides ...Override) (Config, error)
 // The CLI translates every set flag into one Override.
 type Override func(*Config)
 
-// Validate checks the merged configuration. Error messages state what to fix.
-func (c *Config) Validate() error {
+// Validate checks the merged configuration for the full instance scope.
+// Error messages state what to fix.
+func (c *Config) Validate() error { return c.validate(ScopeInstance) }
+
+// validate checks the merged configuration against one command scope: what
+// is set must always be coherent; what is absent is only an error when the
+// scope requires it (R-34).
+func (c *Config) validate(scope Scope) error {
 	var errs []error
 	switch c.Mode {
 	case ModePassthrough, ModeMirror:
 	case "":
-		errs = append(errs, errors.New(`mode is required: set "passthrough" or "mirror" (flag --mode, env TOBBY_MODE, or "mode:" in the configuration file)`))
+		if scope == ScopeInstance {
+			errs = append(errs, errors.New(`mode is required: set "passthrough" or "mirror" (flag --mode, env TOBBY_MODE, or "mode:" in the configuration file)`))
+		}
 	default:
 		errs = append(errs, fmt.Errorf(`unknown mode %q: valid modes are "passthrough" and "mirror"`, c.Mode))
 	}
@@ -209,7 +350,98 @@ func (c *Config) Validate() error {
 	if err := disjointRoots(c.State.Root, c.Storage.Root); err != nil {
 		errs = append(errs, err)
 	}
+	if c.Sync.Parallelism <= 0 {
+		errs = append(errs, errors.New("sync.parallelism must be positive"))
+	}
+	if c.Sync.Retries < 0 {
+		errs = append(errs, errors.New("sync.retries must not be negative"))
+	}
+	errs = append(errs, c.validateTrust()...)
+	errs = append(errs, c.validateFiles()...)
 	return errors.Join(errs...)
+}
+
+// validateTrust checks the trust-root set and the declared scopes
+// (FR-033): a malformed trust configuration must fail startup, never relax
+// silently.
+func (c *Config) validateTrust() []error {
+	var errs []error
+	rootNames := map[string]bool{}
+	for i, r := range c.Trust.Roots {
+		if r.Name == "" {
+			errs = append(errs, fmt.Errorf("trust.roots[%d]: name is required", i))
+		} else if rootNames[r.Name] {
+			errs = append(errs, fmt.Errorf("trust.roots[%d]: duplicate name %q", i, r.Name))
+		}
+		rootNames[r.Name] = true
+		set := 0
+		for _, v := range []string{r.Key, r.KeyFile, r.KeyURL} {
+			if v != "" {
+				set++
+			}
+		}
+		if set != 1 {
+			errs = append(errs, fmt.Errorf("trust.roots[%d] (%s): exactly one of key, keyFile, keyURL is required", i, r.Name))
+		}
+		if r.KeyURL != "" && !strings.HasPrefix(r.KeyURL, "https://") {
+			errs = append(errs, fmt.Errorf("trust.roots[%d] (%s): keyURL must be https:// (RECIPE-SPEC §12.3)", i, r.Name))
+		}
+	}
+	scopeNames := map[string]bool{}
+	for i, s := range c.Trust.Scopes {
+		if s.Name == "" {
+			errs = append(errs, fmt.Errorf("trust.scopes[%d]: name is required", i))
+		} else if scopeNames[s.Name] {
+			errs = append(errs, fmt.Errorf("trust.scopes[%d]: duplicate name %q", i, s.Name))
+		}
+		scopeNames[s.Name] = true
+		if len(s.Repositories) == 0 {
+			errs = append(errs, fmt.Errorf("trust.scopes[%d] (%s): repositories patterns are required — a scope is always an explicitly declared perimeter", i, s.Name))
+		}
+		if !s.AllowUnsigned && len(s.Roots) == 0 {
+			errs = append(errs, fmt.Errorf("trust.scopes[%d] (%s): a scope must declare what it changes — allowUnsigned and/or a roots restriction", i, s.Name))
+		}
+		for _, want := range s.Roots {
+			if !rootNames[want] {
+				errs = append(errs, fmt.Errorf("trust.scopes[%d] (%s): unknown trust root %q", i, s.Name, want))
+			}
+		}
+	}
+	return errs
+}
+
+// validateFiles checks the FileSet serving declarations (FR-047).
+func (c *Config) validateFiles() []error {
+	var errs []error
+	names := map[string]bool{}
+	for i, f := range c.Files.FileSets {
+		if !validFileSetName(f.Name) {
+			errs = append(errs, fmt.Errorf("files.filesets[%d]: name %q must be a lowercase URL segment ([a-z0-9._-])", i, f.Name))
+		} else if names[f.Name] {
+			errs = append(errs, fmt.Errorf("files.filesets[%d]: duplicate name %q", i, f.Name))
+		}
+		names[f.Name] = true
+		if f.Ref == "" {
+			errs = append(errs, fmt.Errorf("files.filesets[%d] (%s): ref is required", i, f.Name))
+		}
+	}
+	return errs
+}
+
+// validFileSetName accepts a safe URL path segment: lowercase alphanumeric
+// plus [._-], no traversal, no separator.
+func validFileSetName(s string) bool {
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // disjointRoots refuses a state directory inside the transportable store or

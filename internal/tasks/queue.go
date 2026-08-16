@@ -111,8 +111,17 @@ func (q *Queue) Register(taskType string, r Runner) {
 	q.runners[taskType] = r
 }
 
+// TaskOption adjusts a task at creation time (Queue.Create).
+type TaskOption func(*Task)
+
+// WithVendorDependencies enables the FR-025 dependency vendoring for this
+// operation. Explicit and per-operation — never a default.
+func WithVendorDependencies() TaskOption {
+	return func(t *Task) { t.VendorDependencies = true }
+}
+
 // Create persists and enqueues a new task, returning it.
-func (q *Queue) Create(taskType, reference, actor string, items []Item) (*Task, error) {
+func (q *Queue) Create(taskType, reference, actor string, items []Item, opts ...TaskOption) (*Task, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	t := &Task{
@@ -124,6 +133,9 @@ func (q *Queue) Create(taskType, reference, actor string, items []Item) (*Task, 
 		Status:    StatusPending,
 		Created:   q.Now().UTC(),
 		Items:     items,
+	}
+	for _, opt := range opts {
+		opt(t)
 	}
 	q.tasks[t.ID] = t
 	q.persist(t)
@@ -202,11 +214,13 @@ func (q *Queue) execute(ctx context.Context, id string) {
 
 // clone deep-copies the task for the runner's exclusive use (items and
 // reports are the runner-mutated parts; persisted errors are never
-// mutated in place).
+// mutated in place). Every runner-mutated slice belongs here: a report
+// the runner fills but clone and publish ignore is silently lost.
 func (t *Task) clone() *Task {
 	cp := *t
 	cp.Items = append([]Item(nil), t.Items...)
 	cp.ChartDependencies = append([]ChartDependency(nil), t.ChartDependencies...)
+	cp.Resolutions = append([]Resolution(nil), t.Resolutions...)
 	return &cp
 }
 
@@ -218,6 +232,7 @@ func (q *Queue) publish(dst, src *Task) {
 	dst.Finished = src.Finished
 	dst.Items = append([]Item(nil), src.Items...)
 	dst.ChartDependencies = append([]ChartDependency(nil), src.ChartDependencies...)
+	dst.Resolutions = append([]Resolution(nil), src.Resolutions...)
 	q.persist(dst)
 }
 

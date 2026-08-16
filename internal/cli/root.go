@@ -51,8 +51,15 @@ func (f *commonFlags) register(cmd *cobra.Command) {
 }
 
 // load builds the effective configuration from all layers (FR-003:
-// flags > environment > file > defaults).
+// flags > environment > file > defaults), validated for the full
+// instance scope.
 func (f *commonFlags) load(cmd *cobra.Command) (config.Config, error) {
+	return f.loadFor(cmd, config.ScopeInstance)
+}
+
+// loadFor is load with per-command validation (R-34, B-006): a command
+// states the configuration scope it actually uses.
+func (f *commonFlags) loadFor(cmd *cobra.Command, scope config.Scope) (config.Config, error) {
 	path, explicit := f.configPath, true
 	if path == "" {
 		path, explicit = DefaultConfigPath, false
@@ -82,7 +89,7 @@ func (f *commonFlags) load(cmd *cobra.Command) (config.Config, error) {
 		overrides = append(overrides, func(c *config.Config) { c.Shutdown.GracePeriod = d })
 	}
 
-	return config.Load(path, explicit, overrides...)
+	return config.LoadFor(scope, path, explicit, overrides...)
 }
 
 // New builds the root command.
@@ -94,7 +101,7 @@ func New() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(newServeCmd(), newVersionCmd(), newConfigCmd(), newUserCmd())
+	root.AddCommand(newServeCmd(), newVersionCmd(), newConfigCmd(), newUserCmd(), newQuickstartCmd(), newRecipeCmd())
 	return root
 }
 

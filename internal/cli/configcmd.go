@@ -4,6 +4,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 )
 
@@ -33,7 +35,11 @@ func newConfigDumpCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cmd.Print(out)
+			// The effective configuration is machine output: stdout, so
+			// `tobby config dump > config.yaml` writes the file the
+			// TBY-CFG-001 corrective action tells operators to check
+			// (cobra's Print* helpers default to stderr).
+			_, _ = fmt.Fprint(cmd.OutOrStdout(), out)
 			return nil
 		},
 	}

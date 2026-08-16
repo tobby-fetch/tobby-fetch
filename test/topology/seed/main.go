@@ -5,13 +5,26 @@
 // a real third-party client (go-containerregistry) — the topology scenarios
 // never mock the OCI protocol.
 //
-//	go run ./test/topology/seed push  <host:port>/<repo>:<tag>   → prints the index digest
-//	go run ./test/topology/seed pull  <host:port>/<repo>:<tag> <expected-digest>
+//	go run ./test/topology/seed push         <host:port>/<repo>:<tag>              → prints the index digest
+//	go run ./test/topology/seed pull         <host:port>/<repo>:<tag> <digest>
+//	go run ./test/topology/seed push-recipe  <host:port>/<repo>:<tag> <yaml-file>  → prints the manifest digest
+//	go run ./test/topology/seed push-fileset <host:port>/<repo>:<tag> <dir>        → prints the manifest digest
+//
+// push-recipe publishes the §11.2 recipe artifact layout (artifactType,
+// empty config, single YAML layer); push-fileset packages a directory as
+// a single-layer OCI image (the FileSet form of RECIPE-SPEC §7.4).
 package main
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -21,7 +34,10 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/static"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/google/go-containerregistry/pkg/v1/validate"
+	"github.com/opencontainers/go-digest"
 )
 
 // platformedIndex builds a 3-platform index the way production images are
@@ -98,12 +114,24 @@ func run(args []string) error {
 		if err := remote.WriteIndex(ref, idx, options()...); err != nil {
 			return fmt.Errorf("pushing %s: %w", ref, err)
 		}
-		digest, err := idx.Digest()
+		d, err := idx.Digest()
 		if err != nil {
 			return err
 		}
-		fmt.Println(digest)
+		fmt.Println(d)
 		return nil
+
+	case "push-recipe":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: seed push-recipe <ref> <yaml-file>")
+		}
+		return pushRecipe(ref, args[2])
+
+	case "push-fileset":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: seed push-fileset <ref> <dir>")
+		}
+		return pushFileSet(ref, args[2])
 
 	case "pull":
 		if len(args) != 3 {
@@ -113,18 +141,129 @@ func run(args []string) error {
 		if err != nil {
 			return fmt.Errorf("pulling %s: %w", ref, err)
 		}
-		digest, err := idx.Digest()
+		d, err := idx.Digest()
 		if err != nil {
 			return err
 		}
-		if digest.String() != args[2] {
-			return fmt.Errorf("digest mismatch: pulled %s, expected %s", digest, args[2])
+		if d.String() != args[2] {
+			return fmt.Errorf("digest mismatch: pulled %s, expected %s", d, args[2])
 		}
 		if err := validate.Index(idx); err != nil {
 			return fmt.Errorf("validating %s: %w", ref, err)
 		}
-		fmt.Println("ok", digest)
+		fmt.Println("ok", d)
 		return nil
 	}
 	return fmt.Errorf("unknown command %q", cmd)
+}
+
+// mediaTypeRecipe is the recipe artifact envelope (RECIPE-SPEC §11.2).
+const mediaTypeRecipe = "application/vnd.tobby.recipe.v1+yaml"
+
+// pushRecipe publishes a recipe document under the §11.2 artifact layout:
+// artifactType, OCI empty config, exactly one YAML layer.
+func pushRecipe(ref name.Reference, yamlPath string) error {
+	doc, err := os.ReadFile(yamlPath) //nolint:gosec // G304: test-tool input path
+	if err != nil {
+		return err
+	}
+	layer := static.NewLayer(doc, types.MediaType(mediaTypeRecipe))
+	config := static.NewLayer([]byte("{}"), "application/vnd.oci.empty.v1+json")
+	for _, l := range []v1.Layer{layer, config} {
+		if err := remote.WriteLayer(ref.Context(), l, options()...); err != nil {
+			return fmt.Errorf("uploading blob: %w", err)
+		}
+	}
+	man := map[string]any{
+		"schemaVersion": 2,
+		"mediaType":     string(types.OCIManifestSchema1),
+		"artifactType":  mediaTypeRecipe,
+		"config": map[string]any{
+			"mediaType": "application/vnd.oci.empty.v1+json",
+			"digest":    digest.FromBytes([]byte("{}")).String(),
+			"size":      2,
+		},
+		"layers": []map[string]any{{
+			"mediaType":   mediaTypeRecipe,
+			"digest":      digest.FromBytes(doc).String(),
+			"size":        len(doc),
+			"annotations": map[string]string{"org.opencontainers.image.title": "recipe.yaml"},
+		}},
+	}
+	raw, err := json.Marshal(man)
+	if err != nil {
+		return err
+	}
+	if err := remote.Put(ref, rawManifest{raw: raw}, options()...); err != nil {
+		return fmt.Errorf("pushing recipe manifest: %w", err)
+	}
+	fmt.Println(digest.FromBytes(raw))
+	return nil
+}
+
+// rawManifest satisfies remote.Taggable with pre-built manifest bytes.
+type rawManifest struct{ raw []byte }
+
+func (m rawManifest) RawManifest() ([]byte, error) { return m.raw, nil }
+func (m rawManifest) MediaType() (types.MediaType, error) {
+	return types.OCIManifestSchema1, nil
+}
+
+// pushFileSet packages a directory as a single-layer OCI image — the
+// FileSet ingredient form (RECIPE-SPEC §7.4) — and prints its digest.
+func pushFileSet(ref name.Reference, dir string) error {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	var paths []string
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		paths = append(paths, p)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	sort.Strings(paths)
+	for _, p := range paths {
+		rel, err := filepath.Rel(dir, p)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(p) //nolint:gosec // G304: test-tool input tree
+		if err != nil {
+			return err
+		}
+		if err := tw.WriteHeader(&tar.Header{
+			Name: filepath.ToSlash(rel), Mode: 0o644, Size: int64(len(data)),
+		}); err != nil {
+			return err
+		}
+		if _, err := tw.Write(data); err != nil {
+			return err
+		}
+	}
+	if err := tw.Close(); err != nil {
+		return err
+	}
+	if err := gz.Close(); err != nil {
+		return err
+	}
+
+	layer := static.NewLayer(buf.Bytes(), types.OCILayer)
+	img, err := mutate.AppendLayers(mutate.MediaType(mutate.ConfigMediaType(empty.Image, types.OCIConfigJSON), types.OCIManifestSchema1), layer)
+	if err != nil {
+		return err
+	}
+	if err := remote.Write(ref, img, options()...); err != nil {
+		return fmt.Errorf("pushing fileset: %w", err)
+	}
+	d, err := img.Digest()
+	if err != nil {
+		return err
+	}
+	fmt.Println(d)
+	return nil
 }

@@ -11,6 +11,7 @@ import "testing"
 var uiRoutes = []string{
 	"/",
 	"/login",
+	"/account",
 	"/content",
 	"/import",
 	"/tasks",
@@ -18,12 +19,12 @@ var uiRoutes = []string{
 	"/about",
 	"/api-docs",
 	"/admin/accounts",
-	"/admin/retriever",    // milestone 3
+	"/admin/retriever",
 	"/admin/registries",   // milestone 4
 	"/admin/certificates", // milestone 4
 	"/admin/maintenance",  // milestone 4
-	"/recipes",            // milestone 3
-	"/media",              // milestone 5
+	"/recipes",
+	"/media", // milestone 5
 }
 
 func TestUIRoutesAvoidReservedPrefixes(t *testing.T) {

@@ -100,6 +100,21 @@ paths:
                 $ref: "#/components/schemas/ContentRepo"
         default:
           $ref: "#/components/responses/Problem"
+    delete:
+      summary: >-
+        Remove one unit-imported repository and garbage-collect (FR-044
+        amendment). Mirror of the repository page's removal action.
+        Recipe-managed content is refused with TBY-POL-002 naming the
+        managing recipes; seeded content (pushed through /v2/) with
+        TBY-POL-003 — only unit-import provenance is removable. Audited
+        (FR-094). Role admin.
+      parameters:
+        - $ref: "#/components/parameters/Repo"
+      responses:
+        "204":
+          description: The repository was removed and the store swept.
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v1/content/{repo}/-/tags/{tag}:
     get:
       summary: >-
@@ -265,6 +280,130 @@ paths:
               schema:
                 type: string
                 description: The complete log (?format=raw).
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/recipes:
+    get:
+      summary: >-
+        List the recipe graph recorded in the local store, one entry per
+        recorded recipe version, name-ordered and most recently resolved
+        first. Mirror of the /recipes screen. An admitted-unsigned recipe
+        carries verified=false plus the declared trust_scope that admitted
+        it (FR-033) — never silently. Role viewer.
+      responses:
+        "200":
+          description: The recorded recipes.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recipes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RecipeRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/recipes/{recipe}/mapping:
+    get:
+      summary: >-
+        The source→destination mapping of one recipe (FR-035, FR-065):
+        every recorded version, most recently resolved first, with its
+        ingredient rows — kind, local relocated repository path, tag, and
+        pinned digest. Mirror of the /recipes/{recipe}/mapping screen.
+        Role viewer.
+      parameters:
+        - name: recipe
+          in: path
+          required: true
+          description: The recipe name.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The recorded versions and their ingredient mapping.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recipe:
+                    type: string
+                  versions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RecipeRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/sync:
+    post:
+      summary: >-
+        Trigger one synchronization (FR-014): enqueue a sync task whose
+        reference is the configured Retriever source (FR-010); the runner
+        discovers the items. Mirror of the screens' "Synchronize" button.
+        Without a configured source the trigger answers TBY-CFG-001.
+        Audited (FR-094). Role operator.
+      responses:
+        "201":
+          description: The created task.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/retriever:
+    get:
+      summary: >-
+        The Retriever configuration in effect, read-only — the
+        configuration itself comes from file, environment, and flags only
+        (FR-003). Mirror of the /admin/retriever screen: configured
+        source (FR-010), declared relaxed trust scopes (FR-033),
+        anonymously served FileSets (FR-047), and the latest sync task.
+        Role admin.
+      responses:
+        "200":
+          description: The Retriever configuration and the last sync.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Retriever"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/account/password:
+    post:
+      summary: >-
+        Change the authenticated account's own password. Mirror of the
+        /account screen (FR-061), any authenticated role — administrators
+        manage other accounts through /admin/accounts. The new password
+        must be non-empty and different from the current one
+        (TBY-AUTH-007); a wrong current password answers TBY-AUTH-006.
+        API tokens carry no password and fail the current-password check.
+        On success every UI session of the account is closed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current, new]
+              properties:
+                current:
+                  type: string
+                  description: The account's current password.
+                new:
+                  type: string
+                  description: >-
+                    The new password — non-empty, different from the
+                    current one.
+      responses:
+        "204":
+          description: >-
+            The password was changed; other sessions of the account are
+            signed out.
         default:
           $ref: "#/components/responses/Problem"
   /api/v1/accounts:
@@ -491,6 +630,10 @@ components:
                 type: integer
               platforms:
                 type: integer
+                description: Index entries, locally present or not.
+              presentPlatforms:
+                type: integer
+                description: Entries whose manifest is locally held (sparse index, FR-022).
     ContentManifest:
       type: object
       properties:
@@ -535,7 +678,20 @@ components:
       properties:
         reference:
           type: string
-          description: "The reference to import (registry/repo:tag or @digest)."
+          description: >-
+            The reference to import: registry/repo:tag or @digest, the
+            oci:// notation, or an https:// Helm chart-repository URL
+            (https://<base>/<chart>[:<version>], FR-024).
+        vendorDependencies:
+          type: boolean
+          default: false
+          description: >-
+            FR-025 opt-in: embed a chart's missing declared dependencies
+            before the artifact lands. Breaks the upstream digest and any
+            upstream signature; the substitution is traced on the manifest
+            (dev.tobby.vendored/* annotations), in the task report, and in
+            the logs. Without it a chart unusable offline is refused
+            (TBY-CHT-001).
         platforms:
           type: array
           description: The selected platforms of a prior inspection.
@@ -621,6 +777,9 @@ components:
         resumed:
           type: boolean
           description: True after an instance-restart re-queue (FR-029).
+        vendor_dependencies:
+          type: boolean
+          description: True when the FR-025 vendoring opt-in was requested.
         error:
           $ref: "#/components/schemas/ItemError"
         items:
@@ -679,6 +838,87 @@ components:
         params:
           type: object
           additionalProperties: true
+    RecipeRecord:
+      type: object
+      description: >-
+        One recorded recipe graph entry: the recipe artifact and the
+        content it manages. The ingredient list is the reachability set of
+        FR-044/FR-045; zone and resolvedAt feed the media manifest
+        (FR-054).
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        cookbookRepo:
+          type: string
+          description: The relocated repository holding the recipe artifact.
+        digest:
+          type: string
+          description: The pinned digest of the recipe artifact.
+        runId:
+          type: string
+          description: The FR-090 correlation identifier of the recording run.
+        zone:
+          type: string
+        resolvedAt:
+          type: string
+          format: date-time
+        verified:
+          type: boolean
+          description: >-
+            True when the recipe signature was verified against a trust
+            root (FR-033).
+        trustScope:
+          type: string
+          description: >-
+            The declared relaxed scope that admitted the recipe when
+            verified is false — never empty in that case (FR-033: no
+            undeclared bypass exists).
+        ingredients:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngredientRecord"
+    IngredientRecord:
+      type: object
+      description: >-
+        One ingredient of a recorded recipe: where it landed locally
+        (relocated path, FR-035) and under which pinned digest.
+      properties:
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/Kind"
+        repo:
+          type: string
+          description: The local relocated repository path (ADR-0013).
+        tag:
+          type: string
+        digest:
+          type: string
+    Retriever:
+      type: object
+      description: >-
+        The Retriever configuration in effect — read-only, mirror of the
+        /admin/retriever screen.
+      properties:
+        source:
+          type: string
+          description: >-
+            The configured desired-state source (FR-010); empty when not
+            configured.
+        relaxed_trust_scopes:
+          type: array
+          description: The declared allowUnsigned trust scopes (FR-033).
+          items:
+            type: string
+        anonymous_filesets:
+          type: array
+          description: FileSets served without authentication (FR-047).
+          items:
+            type: string
+        last_sync:
+          $ref: "#/components/schemas/Task"
     Account:
       type: object
       properties:

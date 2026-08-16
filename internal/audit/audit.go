@@ -53,7 +53,8 @@ const (
 	ActionInstanceStart = "instance.start"
 	ActionInstanceStop  = "instance.stop"
 
-	// Account lifecycle (R-01; local CLI, actor "local").
+	// Account lifecycle (R-01: local CLI, actor "local"; R-34: the
+	// self-service password change carries the authenticated identity).
 	ActionAccountCreate = "account.create"
 	ActionAccountPasswd = "account.password_change"
 
@@ -73,6 +74,14 @@ const (
 	// ActionImportCreate is a unit-import task creation (FR-023): the actor
 	// is the authenticated identity, the target the requested reference.
 	ActionImportCreate = "import.create"
+
+	// ActionSyncCreate is a synchronization trigger (FR-014): the actor is
+	// the authenticated identity, the target the configured Retriever source.
+	ActionSyncCreate = "sync.create"
+
+	// ActionContentDelete is the admin removal of one unit-imported
+	// repository (FR-044 amendment): the target is the repository path.
+	ActionContentDelete = "content.delete"
 )
 
 // Event is one security audit event (FR-094 schema).

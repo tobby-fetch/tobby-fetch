@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/audit"
+	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -102,6 +104,15 @@ func (u *UI) contentList(w http.ResponseWriter, r *http.Request) {
 		u.render.Fragment(w, r, "content-list", "content-results", data)
 		return
 	}
+	// The removal redirect (FR-044 amendment) lands here with ?deleted=…:
+	// a success toast on the full page, display-only — the parameter is
+	// not part of the FR-061 filter contract and never reaches the store.
+	if del := r.URL.Query().Get("deleted"); del != "" {
+		v := u.render.view(r, data)
+		v.Toasts = append(v.Toasts, v.T("repo.deleted_toast", "Repo", del))
+		u.render.render(w, r, "content-list", http.StatusOK, v)
+		return
+	}
 	u.render.Page(w, r, "content-list", data)
 }
 
@@ -126,7 +137,21 @@ func (u *UI) contentDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tag, ok := strings.CutPrefix(sub, "tags/")
-	if !ok || tag == "" || strings.Contains(tag, "/") || repo == "" {
+	if !ok || tag == "" || repo == "" {
+		u.render.Error(w, r, taxonomy.New(taxonomy.CodeNotFound, nil))
+		return
+	}
+	// One trailing segment is legal after the tag: the recipe document
+	// download (R-37). A tag itself never contains a slash.
+	if base, isDoc := strings.CutSuffix(tag, "/"+recipeFileName); isDoc {
+		if base == "" || strings.Contains(base, "/") {
+			u.render.Error(w, r, taxonomy.New(taxonomy.CodeNotFound, nil))
+			return
+		}
+		u.contentRecipeDocument(w, r, repo, base)
+		return
+	}
+	if strings.Contains(tag, "/") {
 		u.render.Error(w, r, taxonomy.New(taxonomy.CodeNotFound, nil))
 		return
 	}
@@ -168,6 +193,42 @@ type contentRepoData struct {
 	Size        int64
 	Crumbs      []crumb
 	PullCommand string
+	// Provenance zone (FR-044 amendment, UI-SPEC §5.4): the recorded class
+	// decides removability — unit-import only. ManagedBy names the managing
+	// recipes so the disabled action explains itself, never hides.
+	ProvClass store.ProvenanceClass
+	ManagedBy []string
+}
+
+// CanDelete reports whether the removal action is live: unit-import
+// provenance and no managing recipe (FR-044 amendment). The admin role
+// gate is the template's IsAdmin.
+func (d *contentRepoData) CanDelete() bool {
+	return d.ProvClass == store.ProvenanceUnitImport && len(d.ManagedBy) == 0
+}
+
+// ManagedByList renders the managing recipes for the disabled-action
+// explanation ("managed by X — it goes away by removing the recipe").
+func (d *contentRepoData) ManagedByList() string {
+	return strings.Join(d.ManagedBy, ", ")
+}
+
+// repoProvenance resolves the displayed provenance of one repository: the
+// live recipe graph wins (a repo listed among any recipe's ingredients is
+// recipe-managed), then the recorded ledger class, then seed — content
+// pushed through /v2/ by a standard client leaves no record.
+func (u *UI) repoProvenance(name string) (class store.ProvenanceClass, managedBy []string) {
+	managed := u.store.ManagingRecipes(name)
+	if len(managed) > 0 {
+		return store.ProvenanceRecipe, managed
+	}
+	if p, ok := u.store.ProvenanceOf(name); ok {
+		if p.Class == store.ProvenanceRecipe && p.Recipe != "" {
+			return p.Class, []string{p.Recipe + "@" + p.RecipeVersion}
+		}
+		return p.Class, nil
+	}
+	return store.ProvenanceSeed, nil
 }
 
 // contentRepo serves the repository detail: navigable breadcrumb, kind
@@ -180,7 +241,7 @@ func (u *UI) contentRepo(w http.ResponseWriter, r *http.Request, name string) {
 			u.render.Error(w, r, taxonomy.New(taxonomy.CodeNotFound, nil))
 			return
 		}
-		u.contentError(w, r, "content-repo", contentRepoData{Name: name, Crumbs: crumbs(name, "")}, storeErr(err))
+		u.contentError(w, r, "content-repo", &contentRepoData{Name: name, Crumbs: crumbs(name, "")}, storeErr(err))
 		return
 	}
 	data := contentRepoData{
@@ -190,10 +251,11 @@ func (u *UI) contentRepo(w http.ResponseWriter, r *http.Request, name string) {
 		Size:   info.Size,
 		Crumbs: crumbs(name, ""),
 	}
+	data.ProvClass, data.ManagedBy = u.repoProvenance(name)
 	if len(info.Tags) > 0 {
 		data.PullCommand = pullByTag(info.Kind, r.Host, name, info.Tags[0].Tag)
 	}
-	u.render.Page(w, r, "content-repo", data)
+	u.render.Page(w, r, "content-repo", &data)
 }
 
 // contentPlatform decorates a store platform for the platform table.
@@ -232,6 +294,22 @@ type contentManifestData struct {
 	Platforms   []contentPlatform
 	Crumbs      []crumb
 	PullCommand string
+	// Document is the recipe YAML this instance holds, when the artifact
+	// is a recipe — nil for every other kind (R-37).
+	Document *recipeDocument
+}
+
+// PresentCount counts the locally held platforms of the detail — shown
+// next to the total, never the total alone (B-007). The page renders the
+// data by pointer so the template sees this method.
+func (d *contentManifestData) PresentCount() int {
+	n := 0
+	for i := range d.Platforms {
+		if d.Platforms[i].Present {
+			n++
+		}
+	}
+	return n
 }
 
 // contentManifest serves the manifest detail: pinned index digest,
@@ -276,7 +354,10 @@ func (u *UI) contentManifest(w http.ResponseWriter, r *http.Request, name, tag s
 		}
 		data.Platforms = append(data.Platforms, cp)
 	}
-	u.render.Page(w, r, "content-manifest", data)
+	if info.Kind == store.KindRecipe {
+		data.Document = u.recipeDocumentOf(r, name, tag)
+	}
+	u.render.Page(w, r, "content-manifest", &data)
 }
 
 // pullByTag builds the copyable pull command of a repository page,
@@ -305,6 +386,72 @@ func pullByDigest(kind store.Kind, host, repo, dgst, tag string) string {
 	default:
 		return "oras pull " + host + "/" + repo + "@" + dgst
 	}
+}
+
+// contentDelete serves POST /content/{repo...}/-/delete (FR-044
+// amendment, UI-SPEC §5.4): remove one unit-imported repository and
+// garbage-collect. Runs behind the admin gate and the session CSRF check.
+// Policy first: recipe-managed content answers TBY-POL-002 naming the
+// managing recipes, seeded content TBY-POL-003 — removal covers
+// unit-import provenance only. Audited (FR-094), then redirect to the
+// listing with a confirmation toast.
+func (u *UI) contentDelete(w http.ResponseWriter, r *http.Request) {
+	rest := r.PathValue("repo")
+	repo, ok := strings.CutSuffix(rest, "/-/delete")
+	if !ok || repo == "" {
+		u.render.Error(w, r, taxonomy.New(taxonomy.CodeNotFound, nil))
+		return
+	}
+	id, _ := auth.IdentityFrom(r.Context())
+	denied := func(e *taxonomy.Error) {
+		audit.Log(r.Context(), u.logger, &audit.Event{
+			Actor: id.Name, Action: audit.ActionContentDelete, Target: repo,
+			Outcome: audit.OutcomeDenied, Origin: auth.ClientOrigin(r),
+		})
+		u.render.Error(w, r, e)
+	}
+	class, managed := u.repoProvenance(repo)
+	if class != store.ProvenanceUnitImport {
+		// A policy answer must not leak on an unknown path: 404 first.
+		if _, err := u.store.RepoInfo(r.Context(), repo); errors.Is(err, store.ErrNotFound) {
+			u.render.Error(w, r, taxonomy.New(taxonomy.CodeNotFound, nil))
+			return
+		}
+		if class == store.ProvenanceRecipe {
+			denied(taxonomy.New(taxonomy.CodeRecipeManaged,
+				taxonomy.Params{"repository": repo, "recipes": strings.Join(managed, ", ")}))
+			return
+		}
+		// Seeded (or unrecorded) content: pushed through /v2/, outside the
+		// FR-044 amendment's removal scope.
+		denied(taxonomy.New(taxonomy.CodeSeedContent, taxonomy.Params{"repository": repo}))
+		return
+	}
+	if err := u.store.DeleteRepository(r.Context(), repo, u.logger); err != nil {
+		var rme *store.RecipeManagedError
+		if errors.As(err, &rme) {
+			// The store's own guard raced a fresh sync: same policy answer.
+			denied(taxonomy.New(taxonomy.CodeRecipeManaged,
+				taxonomy.Params{"repository": repo, "recipes": strings.Join(rme.Recipes, ", ")}))
+			return
+		}
+		if errors.Is(err, store.ErrNotFound) {
+			u.render.Error(w, r, taxonomy.New(taxonomy.CodeNotFound, nil))
+			return
+		}
+		audit.Log(r.Context(), u.logger, &audit.Event{
+			Actor: id.Name, Action: audit.ActionContentDelete, Target: repo,
+			Outcome: audit.OutcomeFailure, Origin: auth.ClientOrigin(r),
+		})
+		u.render.Error(w, r, taxonomy.New(taxonomy.CodeStoreWrite,
+			taxonomy.Params{"detail": err.Error()}).WithCause(err))
+		return
+	}
+	audit.Log(r.Context(), u.logger, &audit.Event{
+		Actor: id.Name, Action: audit.ActionContentDelete, Target: repo,
+		Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r),
+	})
+	u.redirectTo(w, r, "/content?deleted="+url.QueryEscape(repo))
 }
 
 // contentError renders a screen in its store-error state: the taxonomized

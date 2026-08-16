@@ -6,7 +6,9 @@ package cli
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -134,6 +136,75 @@ func TestRunServeServesRegistry(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatalf("runServe returned %v, want nil", err)
+	}
+}
+
+// TestFilesAuthGatesFileSets is the FR-047 access rule on /files/: a
+// FileSet explicitly opted into anonymous access is served without
+// credentials (bare-host bootstrap), every other one demands at least a
+// viewer and answers the Basic challenge apt and dnf understand. The
+// anonymous grant is per FileSet name, matched exactly — a neighbouring
+// name must never inherit it.
+func TestFilesAuthGatesFileSets(t *testing.T) {
+	accounts, err := auth.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := accounts.AddAccount("lecteur", auth.RoleViewer, "pw-view", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	authn := &auth.Authenticator{
+		Store:    accounts,
+		Sessions: auth.NewSessions(time.Hour),
+		Logger:   slog.New(slog.DiscardHandler),
+	}
+
+	var servedFor string
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id, _ := auth.IdentityFrom(r.Context())
+		servedFor = id.Name
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := filesAuth(authn, map[string]bool{"public-debs": true}, next)
+
+	call := func(target, user, pass string) *httptest.ResponseRecorder {
+		servedFor = ""
+		r := httptest.NewRequest(http.MethodGet, target, http.NoBody)
+		if user != "" {
+			r.SetBasicAuth(user, pass)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+
+	w := call("/files/public-debs/dists/stable/Release", "", "")
+	if w.Code != http.StatusOK {
+		t.Errorf("anonymous FileSet = %d, want 200 (bare-host bootstrap)", w.Code)
+	}
+	if servedFor != "" {
+		t.Errorf("anonymous read attached identity %q", servedFor)
+	}
+
+	w = call("/files/internal/dists/stable/Release", "", "")
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("unauthenticated read of a gated FileSet = %d, want 401", w.Code)
+	}
+	if !strings.Contains(w.Header().Get("WWW-Authenticate"), "Basic") {
+		t.Error("missing Basic challenge: apt and dnf would never send credentials")
+	}
+
+	w = call("/files/internal/dists/stable/Release", "lecteur", "pw-view")
+	if w.Code != http.StatusOK || servedFor != "lecteur" {
+		t.Errorf("viewer read = %d for %q, want 200 for lecteur", w.Code, servedFor)
+	}
+	if w := call("/files/internal/dists/stable/Release", "lecteur", "wrong"); w.Code != http.StatusUnauthorized {
+		t.Errorf("wrong password = %d, want 401", w.Code)
+	}
+
+	// Prefix confusion: "public-debs-secret" is a different FileSet.
+	if w := call("/files/public-debs-secret/x", "", ""); w.Code != http.StatusUnauthorized {
+		t.Errorf("FileSet sharing a name prefix with an anonymous one = %d, want 401", w.Code)
 	}
 }
 

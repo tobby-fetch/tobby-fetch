@@ -28,6 +28,15 @@ const (
 	CodeCSRF Code = "TBY-AUTH-004"
 	// CodeSessionExpired is an expired or unknown UI session.
 	CodeSessionExpired Code = "TBY-AUTH-005"
+	// CodePasswordCurrent is a failed current-password check on a
+	// self-service password change (R-34, FR-061). Deliberately
+	// parameter-free, like CodeAuthFailed: the message never reveals
+	// account details (NFR-015).
+	CodePasswordCurrent Code = "TBY-AUTH-006" //nolint:gosec // G101: a stable error code, not a credential
+	// CodePasswordInvalid is a rejected new password on a self-service
+	// password change: empty, identical to the current one, or its
+	// confirmation does not match.
+	CodePasswordInvalid Code = "TBY-AUTH-007" //nolint:gosec // G101: a stable error code, not a credential
 
 	// CodeConfigInvalid is a rejected configuration (FR-003 validation).
 	CodeConfigInvalid Code = "TBY-CFG-001"
@@ -47,17 +56,35 @@ const (
 	CodeInspectTimeout Code = "TBY-REG-004"
 	// CodeRefNotFound is a reference missing on the source registry.
 	CodeRefNotFound Code = "TBY-REG-005"
+	// CodeVersionResolve is a version expression no available tag
+	// satisfies (FR-021): never a silent fallback.
+	CodeVersionResolve Code = "TBY-REG-006"
 
 	// CodeNotAllowlisted is the pre-transfer allowlist refusal (FR-030).
 	// Reserved: emitter lands at milestone 4.
 	CodeNotAllowlisted Code = "TBY-POL-001"
+	// CodeRecipeManaged refuses individual removal of recipe-managed
+	// content (FR-044 amendment): it goes away by removing the recipe.
+	CodeRecipeManaged Code = "TBY-POL-002"
+	// CodeSeedContent refuses UI/API removal of seeded content — pushed
+	// through /v2/ by a standard client: the FR-044 amendment scopes
+	// individual removal to unit-import provenance only.
+	CodeSeedContent Code = "TBY-POL-003"
+	// CodeTagImmutable refuses to republish a cooked recipe tag onto
+	// different content (RECIPE-SPEC §8: a cooked recipe is immutable —
+	// any change, even a single digest, requires a new metadata.version).
+	CodeTagImmutable Code = "TBY-POL-004"
 
 	// CodeSignature is a recipe signature that no configured trust root
-	// validates (FR-033). Reserved: emitter lands at milestone 3.
+	// validates (FR-033).
 	CodeSignature Code = "TBY-SIG-001"
 	// CodeDigestMismatch is fetched content not matching its pinned digest
 	// (FR-033). Reserved: emitter lands at milestone 3.
 	CodeDigestMismatch Code = "TBY-SIG-002"
+	// CodeArtifactType is an OCIArtifact whose fetched artifactType does
+	// not match the recipe's declaration (RECIPE-SPEC §7.3 — anti
+	// tag-reuse and repository confusion).
+	CodeArtifactType Code = "TBY-SIG-003"
 
 	// CodeDestinationLimit is a pre-push refusal naming the destination's
 	// limit (FR-035). Reserved: emitter lands at milestone 3.
@@ -88,11 +115,13 @@ const (
 )
 
 var catalog = map[Code]Entry{
-	CodeNoAccount:      {Code: CodeNoAccount, Class: ClassPolicy},
-	CodeAuthFailed:     {Code: CodeAuthFailed, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized},
-	CodeRoleDenied:     {Code: CodeRoleDenied, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"role"}},
-	CodeCSRF:           {Code: CodeCSRF, Class: ClassOperational, HTTPStatus: http.StatusForbidden},
-	CodeSessionExpired: {Code: CodeSessionExpired, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized},
+	CodeNoAccount:       {Code: CodeNoAccount, Class: ClassPolicy},
+	CodeAuthFailed:      {Code: CodeAuthFailed, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized},
+	CodeRoleDenied:      {Code: CodeRoleDenied, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"role"}},
+	CodeCSRF:            {Code: CodeCSRF, Class: ClassOperational, HTTPStatus: http.StatusForbidden},
+	CodeSessionExpired:  {Code: CodeSessionExpired, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized},
+	CodePasswordCurrent: {Code: CodePasswordCurrent, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity},
+	CodePasswordInvalid: {Code: CodePasswordInvalid, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity},
 
 	CodeConfigInvalid: {Code: CodeConfigInvalid, Class: ClassOperational, Params: []string{"detail"}},
 
@@ -105,9 +134,15 @@ var catalog = map[Code]Entry{
 	CodeRefNotFound:         {Code: CodeRefNotFound, Class: ClassOperational, HTTPStatus: http.StatusBadGateway, Params: []string{"reference"}},
 
 	CodeNotAllowlisted: {Code: CodeNotAllowlisted, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"host"}},
+	CodeRecipeManaged:  {Code: CodeRecipeManaged, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"repository", "recipes"}},
+	CodeSeedContent:    {Code: CodeSeedContent, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"repository"}},
+	CodeTagImmutable:   {Code: CodeTagImmutable, Class: ClassPolicy, HTTPStatus: http.StatusConflict, Params: []string{"reference", "published", "candidate"}},
 
-	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe"}},
+	CodeVersionResolve: {Code: CodeVersionResolve, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "constraint", "detail"}},
+
+	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "fingerprints"}},
 	CodeDigestMismatch: {Code: CodeDigestMismatch, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "expected", "actual"}},
+	CodeArtifactType:   {Code: CodeArtifactType, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "expected", "actual"}},
 
 	CodeDestinationLimit: {Code: CodeDestinationLimit, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "limit"}},
 

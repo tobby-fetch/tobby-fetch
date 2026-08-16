@@ -166,8 +166,15 @@ func (u *UI) importSubmit(w http.ResponseWriter, r *http.Request) {
 		u.importError(w, r, ref, errors.New("task queue not configured"))
 		return
 	}
+	// The FR-025 vendoring opt-in — a checkbox only rendered for charts,
+	// never a default; the runner keeps refusing missing dependencies
+	// (TBY-CHT-001) without it.
+	var copts []tasks.TaskOption
+	if r.PostFormValue("vendor") == "1" {
+		copts = append(copts, tasks.WithVendorDependencies())
+	}
 	id, _ := auth.IdentityFrom(r.Context())
-	t, err := u.queue.Create(tasks.TypeUnitImport, ref, id.Name, items)
+	t, err := u.queue.Create(tasks.TypeUnitImport, ref, id.Name, items, copts...)
 	if err != nil {
 		u.importError(w, r, ref, err)
 		return
