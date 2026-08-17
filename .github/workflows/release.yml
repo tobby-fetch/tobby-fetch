@@ -7,8 +7,15 @@
 # requires the trusted-builder reusable workflows to be referenced by a
 # `@vX.Y.Z` tag — referencing them by hash breaks provenance verification.
 #
-# No secrets beyond GITHUB_TOKEN are required: all signatures (binaries,
-# SBOMs, image) are Sigstore keyless via the job's OIDC identity.
+# Signatures need no secret: binaries, SBOMs and the image are all signed
+# keyless via the job's OIDC identity. The one secret this workflow uses is
+# HOMEBREW_TAP_TOKEN, and only to push the formula bump into the separate
+# tap repository — a cross-repository write GITHUB_TOKEN cannot perform. It
+# is a fine-grained token restricted to tobby-fetch/homebrew-tap with
+# `contents: write` and nothing else; it signs nothing and touches no
+# artifact. When it is absent or expired the homebrew job fails loudly at
+# release time, which is the point: a formula silently left behind is worse
+# than a red job.
 name: Release
 
 on:
@@ -414,6 +421,81 @@ jobs:
           --title "tobby ${VERSION}"
           --notes-file notes.md
           dist/* sboms/* image-sboms/*
+
+  # Homebrew tap: bump the published formula in the same breath as the
+  # release, so `brew install` never serves a version behind. Needs the one
+  # secret of this workflow (see header) — GITHUB_TOKEN cannot write to
+  # another repository.
+  #
+  # Checksums are read from the SHA256SUMS this run just built and the SLSA
+  # provenance covers, not recomputed from a re-download.
+  homebrew:
+    name: Bump the Homebrew formula
+    runs-on: ubuntu-latest
+    needs: [build, release]
+    permissions: {}
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Checkout this repository (for the formula template)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: binaries
+          path: dist
+      - name: Fail early when the token is missing
+        env:
+          TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::HOMEBREW_TAP_TOKEN is not set. The release is published, but the"
+            echo "::error::Homebrew formula was NOT bumped. Create a fine-grained token limited"
+            echo "::error::to tobby-fetch/homebrew-tap with contents:write, store it as this"
+            echo "::error::repository's HOMEBREW_TAP_TOKEN secret, then re-run this job."
+            exit 1
+          fi
+      - name: Render the formula from the template
+        run: |
+          set -euo pipefail
+          arm64="$(awk '$2 ~ /tobby-darwin-arm64$/ {print $1}' dist/SHA256SUMS)"
+          amd64="$(awk '$2 ~ /tobby-darwin-amd64$/ {print $1}' dist/SHA256SUMS)"
+          for v in "$arm64" "$amd64"; do
+            [ "${#v}" -eq 64 ] || { echo "::error::missing or malformed darwin checksum"; exit 1; }
+          done
+          VERSION="${VERSION#v}" ARM64="$arm64" AMD64="$amd64" python3 - <<'PY'
+          import os, re, pathlib
+          s = pathlib.Path("packaging/homebrew/tobby.rb").read_text()
+          s = re.sub(r'^(\s*version\s+)"[^"]*"',
+                     lambda m: f'{m.group(1)}"{os.environ["VERSION"]}"', s, count=1, flags=re.M)
+          it = iter([os.environ["ARM64"], os.environ["AMD64"]])  # template order: arm64, then amd64
+          s = re.sub(r'^(\s*sha256\s+)"[0-9a-f]{64}"',
+                     lambda m: f'{m.group(1)}"{next(it)}"', s, count=2, flags=re.M)
+          pathlib.Path("rendered-tobby.rb").write_text(s)
+          PY
+          grep -q "version \"${VERSION#v}\"" rendered-tobby.rb || { echo "::error::version substitution did not apply"; exit 1; }
+      - name: Push the bump into the tap
+        env:
+          TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/tobby-fetch/homebrew-tap.git" tap
+          cp rendered-tobby.rb tap/Formula/tobby.rb
+          cd tap
+          if git diff --quiet -- Formula/tobby.rb; then
+            echo "Formula already on ${VERSION} — nothing to push."
+            exit 0
+          fi
+          git config user.name "tobby release bot"
+          git config user.email "noreply@github.com"
+          git add Formula/tobby.rb
+          git commit -m "⬆️ tobby ${VERSION}: formula and release checksums
+
+          Pushed by the release workflow of tobby-fetch at ${VERSION}.
+          Checksums come from that release's SHA256SUMS, which the SLSA
+          provenance covers.
+
+          Signed-off-by: tobby release bot <noreply@github.com>"
+          git push
 
   # SLSA Build L3 provenance for the binaries, uploaded to the release by
   # the isolated trusted builder itself (not by this workflow).
