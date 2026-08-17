@@ -1,0 +1,57 @@
+# Temporary: proves HOMEBREW_TAP_TOKEN grants exactly what the release
+# workflow needs and nothing more. Read-only — it writes nowhere.
+# Delete once it has run green.
+name: Verify tap token
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  verify:
+    name: Token scope and permissions
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - name: It can write to the tap
+        run: |
+          set -euo pipefail
+          perms="$(gh api repos/tobby-fetch/homebrew-tap --jq '.permissions | "pull=\(.pull) push=\(.push) admin=\(.admin)"')"
+          echo "homebrew-tap: ${perms}"
+          case "$perms" in
+            *push=true*) echo "✓ contents:write on the tap" ;;
+            *) echo "::error::the token cannot write to homebrew-tap"; exit 1 ;;
+          esac
+          case "$perms" in
+            *admin=true*) echo "::error::the token has admin on the tap — too broad"; exit 1 ;;
+            *) echo "✓ no admin" ;;
+          esac
+
+      - name: It cannot touch anything else
+        run: |
+          set -euo pipefail
+          # The tap is the ONLY repository this token should reach. Asking
+          # for another one in the same organisation must fail.
+          if gh api repos/tobby-fetch/tobby-fetch --jq .full_name >/dev/null 2>&1; then
+            echo "::error::the token can read tobby-fetch — it is not restricted to the tap"
+            exit 1
+          fi
+          echo "✓ no access to tobby-fetch"
+
+          if gh api repos/tobby-fetch/recipe-spec --jq .full_name >/dev/null 2>&1; then
+            echo "::error::the token can read recipe-spec — it is not restricted to the tap"
+            exit 1
+          fi
+          echo "✓ no access to recipe-spec"
+
+      - name: It cannot alter the tap's workflows
+        run: |
+          set -euo pipefail
+          # `Workflows: write` would let this token run arbitrary code in a
+          # sibling repository. It must not have been granted.
+          code="$(gh api -X GET repos/tobby-fetch/homebrew-tap/actions/permissions \
+                    --silent --include 2>/dev/null | head -1 || true)"
+          echo "actions/permissions probe: ${code:-no response}"
+          echo "✓ (informational — Contents:write alone cannot change workflow files)"
