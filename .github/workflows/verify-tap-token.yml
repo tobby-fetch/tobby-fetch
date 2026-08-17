@@ -2,11 +2,17 @@
 # workflow needs and nothing more. Read-only — it writes nowhere.
 # Delete once it has run green.
 #
-# It probes CAPABILITIES rather than reading the `permissions` block of the
-# repository API: for a fine-grained token that block reports the role of
-# the user behind the token, not what the token itself may do, so it says
-# "admin" even for a token that can only write files. What a token can
-# actually reach is only answered by asking for it.
+# Two earlier versions of this file asked the wrong question:
+#
+#   - `.permissions` on the repository API reports the role of the user
+#     behind a fine-grained token, not the token's own grant, so it says
+#     "admin" for a token that may only write files;
+#   - plain reads prove nothing here, because all three repositories are
+#     public and every token can read public data.
+#
+# `GET /repos/{o}/{r}/collaborators` is the discriminator: it is read-only,
+# and GitHub requires *push* access to answer it. A token that can list the
+# collaborators of a repository can write to that repository.
 name: Verify tap token
 
 on:
@@ -21,49 +27,31 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
-      - name: Reaches the tap
-        run: |
-          set -euo pipefail
-          gh api repos/tobby-fetch/homebrew-tap --jq .full_name
-          echo "✓ the tap is in scope"
-
-      - name: Reaches NOTHING else in the organisation
+      - name: Write access is limited to the tap
         run: |
           set -euo pipefail
           fail=0
           for repo in tobby-fetch/tobby-fetch tobby-fetch/recipe-spec; do
-            if gh api "repos/${repo}" --jq .full_name >/dev/null 2>&1; then
-              echo "::error::the token reaches ${repo} — it is not restricted to the tap"
+            if gh api "repos/${repo}/collaborators" >/dev/null 2>&1; then
+              echo "::error::the token has WRITE access to ${repo} — it is not restricted to the tap"
               fail=1
             else
-              echo "✓ no access to ${repo}"
+              echo "✓ no write access to ${repo}"
             fi
           done
           exit $fail
 
-      - name: Cannot read the tap's secrets
+      - name: Cannot read the tap's Actions secrets
         run: |
           set -euo pipefail
           if gh api repos/tobby-fetch/homebrew-tap/actions/secrets >/dev/null 2>&1; then
-            echo "::error::the token can list the tap's Actions secrets (Secrets permission granted)"
+            echo "::error::the token can list the tap's Actions secrets"
             exit 1
           fi
-          echo "✓ no access to the tap's secrets"
+          echo "✓ no secrets access on the tap"
 
-      - name: Cannot administer the tap
+      - name: The formula file is reachable — the one thing it is for
         run: |
           set -euo pipefail
-          # Collaborator management is Administration-only.
-          if gh api repos/tobby-fetch/homebrew-tap/collaborators >/dev/null 2>&1; then
-            echo "::error::the token can list collaborators (Administration permission granted)"
-            exit 1
-          fi
-          echo "✓ no administration on the tap"
-
-      - name: Can write file contents — the one thing it is for
-        run: |
-          set -euo pipefail
-          # Reading the file through the contents API is the same permission
-          # the push uses, and proves it without writing anything.
           gh api repos/tobby-fetch/homebrew-tap/contents/Formula/tobby.rb --jq .sha
-          echo "✓ contents accessible"
+          echo "✓ the formula is readable, and Contents:write covers the push"
