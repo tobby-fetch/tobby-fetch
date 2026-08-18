@@ -64,7 +64,7 @@ func runImport(ctx context.Context, t *tasks.Task, dst Destination, logger *slog
 
 	// The transfer re-fetches the root by reference: the raw payload the
 	// registry serves now is exactly what lands (bit-exact copy).
-	desc, err := remote.Get(ref, remote.WithContext(ctx))
+	desc, err := remote.Get(ref, o.remoteOpts(ctx)...)
 	if err != nil {
 		return mapRemoteErr(ctx, host, t.Reference, "import.inspectTimeout", err)
 	}

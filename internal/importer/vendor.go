@@ -205,7 +205,7 @@ func fetchOCIDependency(ctx context.Context, chartRef, version string, o *option
 		if err != nil {
 			return nil, "", err
 		}
-		tags, err := remote.List(base.Context(), remote.WithContext(ctx))
+		tags, err := remote.List(base.Context(), o.remoteOpts(ctx)...)
 		if err != nil {
 			return nil, "", err
 		}
@@ -217,7 +217,7 @@ func fetchOCIDependency(ctx context.Context, chartRef, version string, o *option
 	if err != nil {
 		return nil, "", err
 	}
-	img, err := remote.Image(ref, remote.WithContext(ctx))
+	img, err := remote.Image(ref, o.remoteOpts(ctx)...)
 	if err != nil {
 		return nil, "", err
 	}
@@ -239,7 +239,7 @@ func fetchRepoDependency(ctx context.Context, repository, depName, version strin
 	if err := checkRepoScheme(base, o, reference); err != nil {
 		return nil, "", err
 	}
-	idx, err := fetchChartIndex(ctx, base, reference)
+	idx, err := fetchChartIndex(ctx, o, base, reference)
 	if err != nil {
 		return nil, "", err
 	}

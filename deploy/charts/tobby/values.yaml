@@ -107,9 +107,57 @@ config:
     source: ""
     # source: https://cookbook.example.com/desired-state.yaml
 
+  # How the instance reaches the outside world (FR-080, FR-081). One
+  # transport for every outbound path — recipe engine, unit import, Helm
+  # repositories, the retriever, trust roots fetched by URL, publication.
+  #
+  # Note what is NOT here: any way to disable certificate verification. A
+  # registry behind an internal PKI becomes reachable by trusting its
+  # authority under `tls`, never by dropping the check.
+  network: {}
+    # proxy:
+    #   url: http://proxy.example.com:3128
+    #   # Only when https:// destinations take a different route.
+    #   httpsURL: http://proxy.example.com:3129
+    #   # Destinations reached directly: host, .suffix, or CIDR.
+    #   noProxy:
+    #     - .internal.example.com
+    #     - 10.0.0.0/8
+    #   username: tobby
+    #   # Do NOT put the password here: Helm stores rendered values in the
+    #   # release Secret. Supply TOBBY_NETWORK_PROXY_PASSWORD through
+    #   # `envFrom` or an `env` entry with a secretKeyRef instead. Either
+    #   # way it is redacted in logs and in `tobby config dump`.
+    # tls:
+    #   # Authorities trusted on top of the public ones, for registries and
+    #   # for the proxy alike. Mount the bundle through extraVolumes.
+    #   caFiles:
+    #     - /etc/tobby-ca/internal-root.pem
+    #   # Drops the public root store, leaving only the authorities above.
+    #   # A hardening step for an instance whose every peer is internal.
+    #   exclusiveTrust: false
+
+  # The certificate the listener presents (FR-082). One listener carries
+  # the UI, the API and the embedded registry, so one certificate covers
+  # all three. Leave it out when an ingress or a mesh terminates TLS.
+  #
+  # `server.addr` stays chart-managed; only the tls block is yours.
+  # server:
+  #   tls:
+  #     # Implied by certFile/keyFile. On its own, it makes Tobby generate
+  #     # a self-signed certificate and log its SHA-256 fingerprint.
+  #     enabled: true
+  #     certFile: /etc/tobby-tls/tls.crt
+  #     keyFile: /etc/tobby-tls/tls.key
+  #     # Subject names of the generated fallback only.
+  #     hosts:
+  #       - tobby.example.com
+
   registries: {}
-    # Hosts reachable over plain HTTP or unverifiable TLS. Per-host and
-    # explicit — there is no global switch.
+    # Hosts reachable over plain HTTP. Per-host and explicit — there is no
+    # global switch (FR-075). This is NOT the answer to a registry behind
+    # an internal PKI: that is network.tls above, which keeps the peer
+    # authenticated.
     # insecure:
     #   - registry.zone-a.example.com:5000
     #

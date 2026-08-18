@@ -18,9 +18,13 @@ import (
 	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 )
+
+// trustFetchTimeout bounds one configuration-time trust-root download.
+const trustFetchTimeout = 30 * time.Second
 
 // TrustPolicy is the loaded trust configuration (FR-033, RECIPE-SPEC
 // §12.3): the multi-key trust-root set and the declared scopes. The
@@ -50,10 +54,15 @@ type Decision struct {
 // PEM, local file, or HTTPS URL fetched now — at configuration time, never
 // at verification time (§12.3) — and cached under cacheDir so an
 // unreachable key server degrades to the cached copy instead of an outage.
-func LoadTrust(cfg config.Trust, cacheDir string, client *http.Client) (*TrustPolicy, error) {
-	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
-	}
+//
+// The URL form travels on the instance's shared outbound transport
+// (FR-080, FR-081) like every other fetch. It is the least obvious of the
+// outbound paths — it runs once, at startup, before anything looks like a
+// transfer — and therefore the one most likely to be left dialing
+// directly into a blocked egress, where it would not fail but hang the
+// whole startup. A nil egress is the unconfigured direct one.
+func LoadTrust(cfg config.Trust, cacheDir string, eg *netx.Egress) (*TrustPolicy, error) {
+	client := netx.Or(eg).Client(trustFetchTimeout)
 	p := &TrustPolicy{roots: map[string]*sigverify.Keys{}, scopes: cfg.Scopes}
 	var allPEM [][]byte
 	for _, r := range cfg.Roots {

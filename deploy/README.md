@@ -265,6 +265,85 @@ ingress:
 Clients authenticate the standard way — `docker login`, `helm registry
 login`, `oras login` — against the same accounts as the UI.
 
+### Serving TLS from the instance itself
+
+An Ingress terminating TLS covers the common case, and then the instance
+keeps serving in the clear behind it. When nothing terminates in front —
+a bare-host deployment, a zone where the hop to the pod also has to be
+encrypted — the instance presents its own certificate (FR-082):
+
+```yaml
+config:
+  server:
+    tls:
+      certFile: /etc/tobby-tls/tls.crt
+      keyFile: /etc/tobby-tls/tls.key
+```
+
+Mount the pair through `extraVolumes`. The files are re-read when they
+change, so cert-manager rotating a Secret in place is picked up on the
+next handshake without a restart. Remember to switch the probes to
+`scheme: HTTPS` in the same change — one listener carries the probes too.
+
+With `enabled: true` and no pair, Tobby generates a self-signed
+certificate and logs its SHA-256 fingerprint at startup:
+
+```
+{"level":"info","msg":"serving TLS","self_signed":true,
+ "fingerprint_sha256":"A1:B2:…","requirement":"FR-082"}
+```
+
+Compare that value against what your client saw before trusting it. The
+generated pair is persisted under `state.root/tls/`, so the fingerprint
+survives a restart — an operator who distributed it stays right.
+
+---
+
+## Reaching the outside world through a proxy
+
+In a segmented zone, direct egress is usually dropped rather than
+refused, which means a misconfigured instance does not fail — it hangs on
+every fetch until the deadline. Tobby has one outbound transport, shared
+by every path that leaves the pod (recipe engine, unit import, Helm chart
+repositories, the retriever document, trust roots fetched by URL,
+publication), and it is configured once:
+
+```yaml
+config:
+  network:
+    proxy:
+      url: http://proxy.example.com:3128
+      noProxy:
+        - .internal.example.com
+        - 10.0.0.0/8
+      username: tobby
+    tls:
+      caFiles:
+        - /etc/tobby-ca/internal-root.pem
+```
+
+The proxy password never goes in the file or in Helm values — Helm keeps
+rendered values in the release Secret. Pass it as an environment
+variable from a Secret you already manage:
+
+```yaml
+env:
+  - name: TOBBY_NETWORK_PROXY_PASSWORD
+    valueFrom:
+      secretKeyRef: {name: tobby-proxy, key: password}
+```
+
+It is redacted in every log record and in `tobby config dump` regardless
+of how it arrives; the redaction is a property of the type that holds it,
+not of the code that prints it.
+
+`network.tls.caFiles` is how a registry behind an internal PKI becomes
+reachable — it adds authorities, it does not weaken the check. There is
+no setting anywhere in Tobby that disables certificate verification. The
+neighbouring `registries.insecure` answers a different question ("this
+host speaks plain HTTP"), stays per-host and explicit, and is not needed
+once the authority is configured.
+
 ---
 
 ## Probes, metrics, shutdown

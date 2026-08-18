@@ -29,6 +29,7 @@ import (
 	recipev1 "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -114,6 +115,7 @@ type Option func(*options)
 type options struct {
 	insecure  map[string]bool
 	allowlist *policy.Allowlist
+	egress    *netx.Egress
 }
 
 // WithSourcePolicy carries everything that decides which sources a unit
@@ -121,13 +123,18 @@ type options struct {
 // opt-ins (registries.insecure — per host and declared, never a global
 // switch, FR-075).
 //
-// The two travel as one option on purpose. They are the same decision
-// seen twice — "may this instance talk to that host, and how" — and a
-// call site that remembered one but not the other would be a call site
-// with no allowlist at all.
-func WithSourcePolicy(cfg config.Registries, allow *policy.Allowlist) Option {
+// eg is the instance's shared outbound transport — the proxy and the
+// private authorities the bytes travel through (FR-080, FR-081).
+//
+// The three travel as one option on purpose. They are the same decision
+// seen three times — "may this instance talk to that host, over what, and
+// by which route" — and a call site that remembered one but not the
+// others would be a call site with no allowlist and no proxy at all. A
+// nil egress is the unconfigured direct one.
+func WithSourcePolicy(cfg config.Registries, allow *policy.Allowlist, eg *netx.Egress) Option {
 	return func(o *options) {
 		o.allowlist = allow
+		o.egress = netx.Or(eg)
 		for _, h := range cfg.Insecure {
 			o.insecure[h] = true
 		}
@@ -135,7 +142,7 @@ func WithSourcePolicy(cfg config.Registries, allow *policy.Allowlist) Option {
 }
 
 func buildOptions(opts []Option) *options {
-	o := &options{insecure: map[string]bool{}}
+	o := &options{insecure: map[string]bool{}, egress: netx.Direct()}
 	for _, fn := range opts {
 		// A nil Option is an unset one, not a crash: callers thread the
 		// source policy through struct fields, and a zero field must
@@ -188,6 +195,23 @@ func (o *options) parseRef(reference string) (name.Reference, error) {
 	return ref, nil
 }
 
+// remoteOpts are the go-containerregistry options of every outbound read
+// a unit import performs: the caller's deadline and the instance's shared
+// transport (FR-080, FR-081). Every remote.* call in this package takes
+// them, which is what keeps the proxy from being honored on the paths
+// somebody remembered and skipped on the rest.
+func (o *options) remoteOpts(ctx context.Context) []remote.Option {
+	return []remote.Option{remote.WithContext(ctx), remote.WithTransport(o.egress.RoundTripper())}
+}
+
+// client returns an HTTP client on the shared transport for the plain
+// HTTP(S) paths — Helm chart repositories (FR-024), which are not
+// registries and would otherwise quietly acquire a transport of their
+// own.
+func (o *options) client() *http.Client {
+	return o.egress.Client(0)
+}
+
 // Local answers presence questions against the embedded store. Implemented
 // by the store package; nil means "nothing is local" (tests).
 type Local interface {
@@ -227,9 +251,9 @@ func Inspect(ctx context.Context, reference string, local Local, opts ...Option)
 			taxonomy.Params{"reference": reference}).WithCause(err)
 	}
 
-	desc, err := remote.Get(ref, remote.WithContext(ctx))
+	desc, err := remote.Get(ref, o.remoteOpts(ctx)...)
 	if err != nil {
-		if desc, ref, err = resolveUntagged(ctx, ref, reference, budget, err); err != nil {
+		if desc, ref, err = resolveUntagged(ctx, o, ref, reference, budget, err); err != nil {
 			return nil, err
 		}
 	}
@@ -305,12 +329,12 @@ func Inspect(ctx context.Context, reference string, local Local, opts ...Option)
 // to the highest stable semver version (the FR-021 "*" rule, RECIPE-SPEC
 // §9.2) and the fetch retried on it. Every other failure re-raises the
 // original taxonomy error unchanged.
-func resolveUntagged(ctx context.Context, ref name.Reference, reference, budget string, gerr error) (*remote.Descriptor, name.Reference, error) {
+func resolveUntagged(ctx context.Context, o *options, ref name.Reference, reference, budget string, gerr error) (*remote.Descriptor, name.Reference, error) {
 	terr := mapRemoteErr(ctx, ref.Context().RegistryStr(), reference, budget, gerr)
 	if terr.Code() != taxonomy.CodeRefNotFound || hasExplicitVersion(reference) {
 		return nil, nil, terr
 	}
-	tags, err := remote.List(ref.Context(), remote.WithContext(ctx))
+	tags, err := remote.List(ref.Context(), o.remoteOpts(ctx)...)
 	if err != nil {
 		return nil, nil, terr
 	}
@@ -323,7 +347,7 @@ func resolveUntagged(ctx context.Context, ref name.Reference, reference, budget 
 			WithCause(fmt.Errorf(`tag "latest" does not exist and no stable semver tag is available: %w`, err))
 	}
 	resolved := ref.Context().Tag(tag)
-	desc, err := remote.Get(resolved, remote.WithContext(ctx))
+	desc, err := remote.Get(resolved, o.remoteOpts(ctx)...)
 	if err != nil {
 		return nil, nil, mapRemoteErr(ctx, ref.Context().RegistryStr(), resolved.Name(), budget, err)
 	}

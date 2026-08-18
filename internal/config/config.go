@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,7 @@ type Config struct {
 	State      State      `yaml:"state"`
 	Server     Server     `yaml:"server"`
 	Auth       Auth       `yaml:"auth"`
+	Network    Network    `yaml:"network"`
 	Registries Registries `yaml:"registries"`
 	UI         UI         `yaml:"ui"`
 	Import     Import     `yaml:"import"`
@@ -150,10 +152,17 @@ type Import struct {
 
 // Registries configures how source registries are reached.
 type Registries struct {
-	// Insecure lists source hosts reachable over plain HTTP or
-	// unverifiable TLS ("host" or "host:port"). Per-host and explicit —
-	// never a global switch (FR-075). The enterprise TLS/PKI support of
-	// milestone 4 (roadmap 4.4) supersedes this for verified private CAs.
+	// Insecure lists source hosts reachable over plain HTTP ("host" or
+	// "host:port"). Per-host and explicit — never a global switch
+	// (FR-075) — it selects the scheme for the named host and changes
+	// nothing for any other.
+	//
+	// It is NOT the answer to a registry behind a private PKI: that is
+	// network.tls (FR-081), which keeps the peer authenticated. The two
+	// coexist because they answer different questions — "this host
+	// speaks plain HTTP" versus "this host's certificate chains to our
+	// own authority" — and configuring the authority is what makes this
+	// list unnecessary in the ordinary enterprise case.
 	Insecure []string `yaml:"insecure,omitempty"`
 	// Substitutions maps a nominal registry host to a substitute registry
 	// base (FR-036, RECIPE-SPEC §11.5), applied at fetch time: a downstream
@@ -235,7 +244,116 @@ type Auth struct {
 type Server struct {
 	// Addr is the listen address, host:port. Default ":8080".
 	Addr string `yaml:"addr"`
+	// TLS configures the certificate the listener presents (FR-082).
+	TLS ServerTLS `yaml:"tls"`
 }
+
+// ServerTLS configures the listener's own certificate (FR-082). One
+// listener carries the UI, the API and the embedded registry (ADR-0015),
+// so one certificate covers all three: there is nothing to configure per
+// surface, and no surface can be left in the clear by accident.
+type ServerTLS struct {
+	// Enabled serves TLS. Supplying certFile and keyFile implies it —
+	// an administrator who hands over a certificate has stated the
+	// intent — so this flag is only needed to ask for the self-signed
+	// fallback described below.
+	Enabled bool `yaml:"enabled,omitempty"`
+	// CertFile and KeyFile are the administrator-supplied PEM pair.
+	// Both or neither. They are re-read whenever the files change on
+	// disk, so replacing them replaces the served certificate without
+	// restarting the instance — the "certificate replacement is
+	// possible via configuration" half of FR-082.
+	CertFile string `yaml:"certFile,omitempty"`
+	KeyFile  string `yaml:"keyFile,omitempty"`
+	// Hosts are the subject alternative names the self-signed fallback
+	// is issued for, on top of the loopback names and the machine's own
+	// hostname. Ignored when a certificate is supplied. List-valued:
+	// configuration file only.
+	Hosts []string `yaml:"hosts,omitempty"`
+}
+
+// Serves reports whether the listener must speak TLS: either explicitly
+// enabled, or implied by a supplied certificate.
+func (t *ServerTLS) Serves() bool {
+	return t.Enabled || t.CertFile != "" || t.KeyFile != ""
+}
+
+// Network configures how this instance reaches the outside world: the
+// forward proxy every outbound connection goes through (FR-080) and the
+// certificate authorities it trusts on top of the public ones (FR-081).
+//
+// There is deliberately no "skip TLS verification" setting anywhere in
+// this structure. FR-081 asks for private authorities to be TRUSTED, not
+// for verification to be dropped, and the two are not interchangeable: a
+// private CA still authenticates the peer, a disabled check authenticates
+// nothing. The only relaxation Tobby offers remains registries.insecure —
+// per host, explicitly named, and reported (FR-075) — which selects the
+// plain-HTTP scheme for one host rather than weakening TLS for all of
+// them. Configuring the private CA here is what makes that opt-in
+// unnecessary in the ordinary enterprise case.
+type Network struct {
+	Proxy Proxy     `yaml:"proxy"`
+	TLS   ClientTLS `yaml:"tls"`
+}
+
+// Proxy is the forward proxy every outbound request goes through
+// (FR-080). It is instance-global on purpose: in a segmented enterprise
+// zone direct egress is blocked, so a fetch path that does not use the
+// proxy does not fail loudly — it hangs until its timeout. One setting,
+// one transport, every path.
+type Proxy struct {
+	// URL is the forward proxy ("http://proxy.example.com:3128"). An
+	// https:// proxy is accepted: the hop to the proxy is then itself
+	// TLS, verified against the same trust store as everything else.
+	// Credentials never belong in this string — they have their own
+	// fields below, so that nothing which formats a URL can print them.
+	URL string `yaml:"url,omitempty"`
+	// HTTPSURL proxies https:// destinations when they take a different
+	// route from plain-HTTP ones. Empty means URL serves both, the
+	// common case: one CONNECT-capable proxy for everything.
+	HTTPSURL string `yaml:"httpsURL,omitempty"`
+	// NoProxy lists destinations reached directly — a host, a ".suffix",
+	// a CIDR block, or "*" for everything. The peer zone's registry and
+	// the instance's own loopback usually belong here. List-valued:
+	// configuration file only (or the TOBBY_NETWORK_PROXY_NO_PROXY
+	// comma-separated form).
+	NoProxy []string `yaml:"noProxy,omitempty"`
+	// Username authenticates to the proxy.
+	Username string `yaml:"username,omitempty"`
+	// Password is the proxy credential. Its type is what guarantees the
+	// FR-080 acceptance criterion — proxy credentials never appear in
+	// logs, error messages, or `tobby config dump` — by construction
+	// rather than by review discipline (NFR-015). Settable in the
+	// configuration file or through TOBBY_NETWORK_PROXY_PASSWORD, never
+	// by flag: a flag value is readable in the process table.
+	Password Secret `yaml:"password,omitempty"`
+}
+
+// Configured reports whether a proxy is set at all.
+func (p *Proxy) Configured() bool { return p.URL != "" || p.HTTPSURL != "" }
+
+// ClientTLS extends the outbound trust store (FR-081): the certificate
+// authorities this instance trusts in addition to the public ones, used
+// for registries, Helm repositories, the retriever, trust-root URLs, and
+// the TLS hop to the proxy itself — one trust store, like one transport.
+type ClientTLS struct {
+	// CAFiles are paths to PEM bundles. List-valued: configuration file
+	// only (or the TOBBY_NETWORK_TLS_CA_FILES comma-separated form).
+	CAFiles []string `yaml:"caFiles,omitempty"`
+	// CA is an inline PEM bundle, for deployments that inject
+	// configuration but cannot mount a file.
+	CA string `yaml:"ca,omitempty"`
+	// ExclusiveTrust drops the host's public root store, leaving only
+	// the authorities configured above. Default false: a private CA
+	// normally adds to public trust rather than replacing it. This
+	// setting only ever narrows what is trusted — it is the opposite
+	// direction from the skip-verify switch FR-081 forbids, and it is
+	// named so that the difference is not a matter of memory.
+	ExclusiveTrust bool `yaml:"exclusiveTrust,omitempty"`
+}
+
+// Configured reports whether any additional authority is declared.
+func (t *ClientTLS) Configured() bool { return len(t.CAFiles) > 0 || t.CA != "" }
 
 // Logging configures the structured JSON logs (FR-090).
 type Logging struct {
@@ -371,9 +489,80 @@ func (c *Config) validate(scope Scope) error {
 	if c.Sync.Retries < 0 {
 		errs = append(errs, errors.New("sync.retries must not be negative"))
 	}
+	errs = append(errs, c.validateNetwork()...)
+	errs = append(errs, c.validateServerTLS()...)
 	errs = append(errs, c.validateTrust()...)
 	errs = append(errs, c.validateFiles()...)
 	return errors.Join(errs...)
+}
+
+// validateNetwork checks the outbound network configuration (FR-080,
+// FR-081). A malformed proxy must fail startup rather than degrade to
+// direct egress: in a zone where direct egress is blocked, the degraded
+// mode is not "slower", it is "hangs until every timeout expires".
+//
+// Error messages quote the proxy URL as configured. That is safe by
+// construction: credentials live in their own fields, never in the URL,
+// so there is nothing in this string to redact.
+func (c *Config) validateNetwork() []error {
+	var errs []error
+	for _, f := range []struct {
+		key, value string
+	}{
+		{"network.proxy.url", c.Network.Proxy.URL},
+		{"network.proxy.httpsURL", c.Network.Proxy.HTTPSURL},
+	} {
+		if f.value == "" {
+			continue
+		}
+		u, err := url.Parse(f.value)
+		switch {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("%s: %q is not a URL", f.key, f.value))
+			continue
+		case u.Scheme != "http" && u.Scheme != "https":
+			errs = append(errs, fmt.Errorf("%s: scheme %q is not a forward-proxy scheme (expected http:// or https://)", f.key, u.Scheme))
+		case u.Host == "":
+			errs = append(errs, fmt.Errorf("%s: %q has no host", f.key, f.value))
+		}
+		if u.User != nil {
+			// Credentials in the URL would travel through every string
+			// that ever formats it. The dedicated fields exist so that
+			// cannot happen (NFR-015); accepting both would make the
+			// guarantee conditional.
+			errs = append(errs, fmt.Errorf("%s: credentials must not be embedded in the URL — use network.proxy.username and network.proxy.password, which never serialize", f.key))
+		}
+	}
+	if !c.Network.Proxy.Configured() {
+		if c.Network.Proxy.Username != "" || !c.Network.Proxy.Password.IsZero() {
+			errs = append(errs, errors.New("network.proxy.username/password are set without network.proxy.url: credentials without a proxy would be silently unused"))
+		}
+		if len(c.Network.Proxy.NoProxy) > 0 {
+			errs = append(errs, errors.New("network.proxy.noProxy is set without network.proxy.url: there is no proxy to exempt destinations from"))
+		}
+	}
+	if c.Network.TLS.ExclusiveTrust && !c.Network.TLS.Configured() {
+		errs = append(errs, errors.New("network.tls.exclusiveTrust drops the public root store but network.tls declares no authority: the instance would trust nothing"))
+	}
+	return errs
+}
+
+// validateServerTLS checks the listener certificate configuration
+// (FR-082): a half-declared pair is a configuration error, never a
+// silent fall back to the self-signed certificate — an operator who
+// supplied a certificate must be told it was not used.
+func (c *Config) validateServerTLS() []error {
+	t := &c.Server.TLS
+	switch {
+	case t.CertFile != "" && t.KeyFile == "":
+		return []error{errors.New("server.tls.certFile is set without server.tls.keyFile: a certificate needs its private key")}
+	case t.KeyFile != "" && t.CertFile == "":
+		return []error{errors.New("server.tls.keyFile is set without server.tls.certFile")}
+	}
+	if len(t.Hosts) > 0 && t.CertFile != "" {
+		return []error{errors.New("server.tls.hosts names the subjects of the generated fallback certificate and has no effect when server.tls.certFile supplies one: remove it, or remove the certificate")}
+	}
+	return nil
 }
 
 // validateTrust checks the trust-root set and the declared scopes

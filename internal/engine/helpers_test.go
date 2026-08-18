@@ -389,7 +389,7 @@ func retrieverYAML(t *testing.T, zone, cookbook string, entries []spec.RecipeSel
 // newRemotes builds a substitution-aware remote access or fails the test.
 func newRemotes(t *testing.T, subs map[string]string) *Remotes {
 	t.Helper()
-	r, err := NewRemotes(config.Registries{Substitutions: subs}, nil)
+	r, err := NewRemotes(config.Registries{Substitutions: subs}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

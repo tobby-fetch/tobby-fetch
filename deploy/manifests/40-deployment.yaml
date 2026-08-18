@@ -74,6 +74,15 @@ spec:
           # env:
           #   - name: TOBBY_LOGGING_LEVEL
           #     value: debug
+          #   # The proxy password (FR-080). It belongs here rather than in
+          #   # the configuration file so it comes from a Secret you
+          #   # already manage; Tobby redacts it in every log record and in
+          #   # `tobby config dump` either way.
+          #   - name: TOBBY_NETWORK_PROXY_PASSWORD
+          #     valueFrom:
+          #       secretKeyRef:
+          #         name: tobby-proxy
+          #         key: password
           ports:
             - name: http
               containerPort: 8080

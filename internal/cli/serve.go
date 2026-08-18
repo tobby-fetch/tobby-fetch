@@ -30,6 +30,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/metrics"
+	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/server"
@@ -102,6 +103,23 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	reg := metrics.New()
 	srv := server.New(cfg.Server.Addr, time.Duration(cfg.Shutdown.GracePeriod), reg, logger)
 
+	// The listener's own certificate (FR-082): the administrator's pair,
+	// or a self-signed fallback whose fingerprint is logged — an
+	// operator has to be able to compare what the instance presents
+	// against what their client saw.
+	if cfg.Server.TLS.Serves() {
+		cert, cerr := netx.NewServerCert(cfg.Server.TLS, cfg.State.Root)
+		if cerr != nil {
+			return cerr
+		}
+		srv.SetTLS(cert.TLSConfig())
+		logger.LogAttrs(ctx, slog.LevelInfo, "serving TLS",
+			slog.String("certificate", cert.Source()),
+			slog.Bool("self_signed", cert.SelfSigned()),
+			slog.String("fingerprint_sha256", cert.Fingerprint()),
+			slog.String("requirement", "FR-082"))
+	}
+
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
@@ -149,17 +167,33 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			slog.String("requirement", "FR-030"))
 	}
 
+	// One outbound transport for the whole instance (FR-080, FR-081):
+	// the proxy every fetch path goes through and the private
+	// authorities they all trust. Built here, beside the allowlist, and
+	// handed to every outbound component — there is deliberately no
+	// other place a transport can come from, because a path that built
+	// its own would not fail visibly in a zone that blocks direct
+	// egress, it would hang.
+	egress, err := netx.New(&cfg.Network)
+	if err != nil {
+		return err
+	}
+	defer egress.CloseIdleConnections()
+	logger.LogAttrs(ctx, slog.LevelInfo, "outbound network configured",
+		slog.String("egress", egress.Describe()),
+		slog.String("requirement", "FR-080/FR-081"))
+
 	// The source policy every surface that can start an import runs
 	// under — the runner, the API and the UI. Built here rather than at
 	// each call site: that is what makes forgetting it impossible.
-	importPolicy := importer.WithSourcePolicy(cfg.Registries, allowlist)
+	importPolicy := importer.WithSourcePolicy(cfg.Registries, allowlist, egress)
 	queue.Register(tasks.TypeUnitImport, importer.NewRunner(st, importPolicy))
 
 	// The recipe engine (milestone 3): substitution-aware remote access
 	// (FR-036), trust roots resolved at configuration time (FR-033,
 	// RECIPE-SPEC §12.3 — the cache lives in the state directory, never on
 	// the transportable store), and the sync task runner (FR-014).
-	remotes, err := engine.NewRemotes(cfg.Registries, allowlist)
+	remotes, err := engine.NewRemotes(cfg.Registries, allowlist, egress)
 	if err != nil {
 		return err
 	}
@@ -167,7 +201,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if cfg.State.Root != "" {
 		trustCache = filepath.Join(cfg.State.Root, "trust-cache")
 	}
-	trust, err := engine.LoadTrust(cfg.Trust, trustCache, nil)
+	trust, err := engine.LoadTrust(cfg.Trust, trustCache, egress)
 	if err != nil {
 		return err
 	}

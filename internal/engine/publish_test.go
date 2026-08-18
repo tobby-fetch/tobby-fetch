@@ -36,7 +36,7 @@ func cookedIngredient() spec.Ingredient {
 // HTTP — the httptest server speaks no TLS.
 func publisherFor(t *testing.T, r *registry) *Publisher {
 	t.Helper()
-	p, err := NewPublisher(config.Registries{Insecure: []string{r.addr}}, nil)
+	p, err := NewPublisher(config.Registries{Insecure: []string{r.addr}}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestPublishRecipeLayout(t *testing.T) {
 	}
 
 	// Read it back through the consumer path, which enforces §11.2.
-	remotes, err := NewRemotes(config.Registries{Insecure: []string{r.addr}}, nil)
+	remotes, err := NewRemotes(config.Registries{Insecure: []string{r.addr}}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,12 +211,12 @@ func TestPublishRecipeRefusals(t *testing.T) {
 func TestPublishRecipeNeverSubstitutes(t *testing.T) {
 	author := newRegistry(t)   // where the operator says to publish
 	upstream := newRegistry(t) // a substitute, configured for reads
-	if _, err := NewRemotes(config.Registries{Substitutions: map[string]string{author.addr: upstream.addr}}, nil); err != nil {
+	if _, err := NewRemotes(config.Registries{Substitutions: map[string]string{author.addr: upstream.addr}}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
 	doc := cookedRecipeYAML(t, "wordpress", "6.8.2", []spec.Ingredient{cookedIngredient()})
-	p, err := NewPublisher(config.Registries{Insecure: []string{author.addr, upstream.addr}}, nil)
+	p, err := NewPublisher(config.Registries{Insecure: []string{author.addr, upstream.addr}}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
