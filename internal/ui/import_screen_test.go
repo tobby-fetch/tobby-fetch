@@ -50,16 +50,7 @@ func newTestUIWithQueue(t *testing.T) (*UI, *tasks.Queue, *store.Store) {
 	}
 	q.Register(tasks.TypeUnitImport, importer.NewRunner(st))
 
-	accounts, err := auth.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := accounts.AddAccount("alexis", auth.RoleAdmin, "pw-admin", t0); err != nil {
-		t.Fatal(err)
-	}
-	if err := accounts.AddAccount("lecteur", auth.RoleViewer, "pw-view", t0); err != nil {
-		t.Fatal(err)
-	}
+	accounts := testAccounts(t)
 	authn := &auth.Authenticator{
 		Store:    accounts,
 		Sessions: auth.NewSessions(12 * time.Hour),

@@ -9,9 +9,12 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -109,20 +112,58 @@ func openTestStore(t *testing.T) *store.Store {
 	return st
 }
 
+// fixtureAccounts holds the accounts file every UI test starts from,
+// built exactly once.
+//
+// argon2id is deliberately expensive — that is its job — and this package
+// runs ~96 tests, each of which used to hash two passwords, doubled again
+// by the anti-flaky -count=2. On the slower CI architecture that alone
+// pushed the package past the ten-minute test timeout. The cost belongs
+// in the product, not in repeating the same two hashes four hundred
+// times: they are computed once and the resulting file is copied per
+// test, so every test still gets its own mutable store.
+var fixtureAccounts = sync.OnceValues(func() ([]byte, error) {
+	dir, err := os.MkdirTemp("", "tobby-ui-accounts")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	acc, err := auth.Open(dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := acc.AddAccount("alexis", auth.RoleAdmin, "pw-admin", t0); err != nil {
+		return nil, err
+	}
+	if err := acc.AddAccount("lecteur", auth.RoleViewer, "pw-view", t0); err != nil {
+		return nil, err
+	}
+	return os.ReadFile(filepath.Join(dir, "accounts.yaml")) //nolint:gosec // G304: dir comes from os.MkdirTemp just above, not from input
+})
+
+// testAccounts returns a private account store seeded with the fixture.
+func testAccounts(t *testing.T) *auth.Store {
+	t.Helper()
+	raw, err := fixtureAccounts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "accounts.yaml"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	acc, err := auth.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return acc
+}
+
 // newTestUIWithStore wires a full UI over a real account store and the
 // given OCI store.
 func newTestUIWithStore(t *testing.T, disabled bool, st *store.Store) *UI {
 	t.Helper()
-	accounts, err := auth.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := accounts.AddAccount("alexis", auth.RoleAdmin, "pw-admin", t0); err != nil {
-		t.Fatal(err)
-	}
-	if err := accounts.AddAccount("lecteur", auth.RoleViewer, "pw-view", t0); err != nil {
-		t.Fatal(err)
-	}
+	accounts := testAccounts(t)
 	authn := &auth.Authenticator{
 		Store:    accounts,
 		Sessions: auth.NewSessions(12 * time.Hour),

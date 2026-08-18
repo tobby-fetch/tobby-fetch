@@ -23,17 +23,11 @@ import (
 // writer captures them for audit assertions (FR-094).
 func newTestUIWithOptions(t *testing.T, opts *Options, logw io.Writer) *UI {
 	t.Helper()
-	accounts, err := auth.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := accounts.AddAccount("alexis", auth.RoleAdmin, "pw-admin", t0); err != nil {
-		t.Fatal(err)
-	}
+	accounts := testAccounts(t)
+	// This file's screens exercise the operator floor, so it adds the one
+	// account the shared fixture leaves out — admin_screen_test creates
+	// "op" itself and must not find it already there.
 	if err := accounts.AddAccount("op", auth.RoleOperator, "pw-op", t0); err != nil {
-		t.Fatal(err)
-	}
-	if err := accounts.AddAccount("lecteur", auth.RoleViewer, "pw-view", t0); err != nil {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.DiscardHandler)

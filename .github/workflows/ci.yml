@@ -112,7 +112,13 @@ jobs:
       - name: Unit and integration tests
         env:
           TOBBY_OCILOGIN_REQUIRE_DOCKER: ${{ runner.os == 'Linux' && '1' || '' }}
-        run: go test -race -count=2 ./...
+        # -timeout: the default is ten minutes PER PACKAGE, and internal/ui
+        # is now large enough that the slower runner architecture used to
+        # hit it under -race -count=2. The fixture cost was cut where it
+        # belonged (the account fixture is hashed once per package, not
+        # once per test), and this margin exists so the next screen added
+        # reports a real failure rather than a timeout.
+        run: go test -race -count=2 -timeout 30m ./...
       - name: Per-package coverage floor (NFR-016)
         run: sh tools/check-coverage.sh
 
