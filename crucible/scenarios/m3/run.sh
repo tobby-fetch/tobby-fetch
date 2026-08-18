@@ -142,7 +142,12 @@ sign_recipe "$WORK/cosign.key" "$SOURCE_IP:8080/cookbook/sample-app@$RECIPE_DIGE
     fail "cosign signing the recipe"
 
 # A second version signed by a FOREIGN key: the tamper case.
-sed 's/version: 2.0.0/version: 2.0.1/' "$WORK/sample-app.yaml" > "$WORK/sample-app-2.0.1.yaml"
+# Only metadata.version is rewritten: it is indented two spaces, the
+# ingredient's is indented six. A pattern matching both would move the
+# ingredient to a tag the source registry does not carry, and the content
+# would land under that tag at the relocated path — which is exactly how
+# the cascade step broke once the 2.0.2 fixture was added.
+sed 's/^  version: 2.0.0/  version: 2.0.1/' "$WORK/sample-app.yaml" > "$WORK/sample-app-2.0.1.yaml"
 BAD_DIGEST=$( cd "$DIR/../../.." && go run ./test/topology/seed push-recipe \
     "$SOURCE_IP:8080/cookbook/sample-app:2.0.1" "$WORK/sample-app-2.0.1.yaml" ) ||
     fail "publishing the foreign-signed recipe"
@@ -260,7 +265,7 @@ check "idempotence: second synchronization transferred zero bytes"
 # both, because the choice belongs to whoever signs — this step signs with
 # cosign's own defaults (minus the transparency log, unreachable here) and
 # expects the same verdict as the classic layout.
-sed 's/version: 2.0.0/version: 2.0.2/' "$WORK/sample-app.yaml" > "$WORK/sample-app-2.0.2.yaml"
+sed 's/^  version: 2.0.0/  version: 2.0.2/' "$WORK/sample-app.yaml" > "$WORK/sample-app-2.0.2.yaml"
 BUNDLE_DIGEST=$( cd "$DIR/../../.." && go run ./test/topology/seed push-recipe \
     "$SOURCE_IP:8080/cookbook/sample-app:2.0.2" "$WORK/sample-app-2.0.2.yaml" ) ||
     fail "publishing the bundle-signed recipe"
