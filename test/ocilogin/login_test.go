@@ -371,45 +371,75 @@ func helmEnv(t *testing.T, name string) []string {
 // ignores SSL_CERT_FILE, so on a developer's Mac the second door is closed
 // too; the test then says exactly that instead of passing on a
 // technicality.
+// TestDockerLogin exercises the plain-HTTP door.
+//
+// Deliberately NOT a fallback chain. It used to try HTTP and only reach
+// for TLS when Docker refused, which meant the TLS door was unreachable
+// wherever the HTTP door worked — and it always works on Linux, where the
+// daemon treats 127.0.0.0/8 as insecure by default. The transport that
+// production actually uses (FR-082 serves TLS) was therefore never
+// exercised, on the one platform where it could have been. Two doors, two
+// tests, like oras.
 func TestDockerLogin(t *testing.T) {
 	requireBinary(t, "docker")
 
 	dir := t.TempDir()
-	plain := startRegistry(t)
+	reg := startRegistry(t)
 	env := []string{"DOCKER_CONFIG=" + filepath.Join(dir, "docker")}
-	out, err := run(t, dir, env, "docker", "login", plain.Host, "-u", opUser, "-p", opPass)
-	reg := plain
+	out, err := run(t, dir, env, "docker", "login", reg.Host, "-u", opUser, "-p", opPass)
 	if err != nil {
-		if !requiresTLS(out) {
-			if unreachable(out) {
-				t.Skipf("FR-076 not verified for docker: this host's Docker cannot reach a loopback "+
-					"listener on the host (VM-isolated daemon). Output:\n%s", out)
-			}
-			t.Fatalf("docker login over plain HTTP failed: %v\n%s", err, out)
+		switch {
+		case unreachable(out):
+			t.Skipf("FR-076 not verified for docker over plain HTTP: this host's Docker cannot reach a "+
+				"loopback listener on the host (VM-isolated daemon). Output:\n%s", out)
+		case requiresTLS(out):
+			t.Skipf("FR-076 not verified for docker over plain HTTP: this daemon refuses HTTP to %s. "+
+				"TestDockerLoginOverTLS covers the transport that matters. Output:\n%s", reg.Host, out)
 		}
-		// Second door: TLS with our own root.
-		reg = startTLSRegistry(t)
-		env = append(env,
-			"SSL_CERT_FILE="+reg.CAFile,
-			"SSL_CERT_DIR="+filepath.Dir(reg.CAFile))
-		out, err = run(t, dir, env, "docker", "login", reg.Host, "-u", opUser, "-p", opPass)
-		if err != nil {
-			if untrustedRoot(out) {
-				t.Skipf("FR-076 not verified for docker on this platform: docker refuses plain HTTP "+
-					"and resolves TLS roots through the platform verifier, which ignores SSL_CERT_FILE "+
-					"(macOS). The check runs on the Linux operating scope. Output:\n%s", out)
-			}
-			t.Fatalf("docker login over TLS failed: %v\n%s", err, out)
-		}
+		t.Fatalf("docker login over plain HTTP failed: %v\n%s", err, out)
 	}
+	assertDockerSession(t, dir, env, reg, out)
+}
+
+// TestDockerLoginOverTLS exercises the door a deployed instance presents
+// (FR-082). It runs unconditionally rather than as anyone's fallback.
+func TestDockerLoginOverTLS(t *testing.T) {
+	requireBinary(t, "docker")
+
+	dir := t.TempDir()
+	reg := startTLSRegistry(t)
+	env := []string{
+		"DOCKER_CONFIG=" + filepath.Join(dir, "docker"),
+		"SSL_CERT_FILE=" + reg.CAFile,
+		"SSL_CERT_DIR=" + filepath.Dir(reg.CAFile),
+	}
+	out, err := run(t, dir, env, "docker", "login", reg.Host, "-u", opUser, "-p", opPass)
+	if err != nil {
+		switch {
+		case unreachable(out):
+			t.Skipf("FR-076 not verified for docker over TLS: this host's Docker cannot reach a loopback "+
+				"listener on the host (VM-isolated daemon). Output:\n%s", out)
+		case untrustedRoot(out):
+			t.Skipf("FR-076 not verified for docker over TLS on this platform: TLS roots resolve through "+
+				"the platform verifier, which ignores SSL_CERT_FILE (macOS). The check runs on the Linux "+
+				"operating scope. Output:\n%s", out)
+		}
+		t.Fatalf("docker login over TLS failed: %v\n%s", err, out)
+	}
+	assertDockerSession(t, dir, env, reg, out)
+}
+
+// assertDockerSession checks what both doors must produce: a session, and
+// a verdict that comes from Tobby rather than from the client — the same
+// registry refuses a wrong password.
+func assertDockerSession(t *testing.T, dir string, env []string, reg *registry, out string) {
+	t.Helper()
 	t.Cleanup(func() {
 		_, _ = run(t, dir, env, "docker", "logout", reg.Host)
 	})
 	if !strings.Contains(out, "Login Succeeded") {
 		t.Errorf("docker did not report a successful login:\n%s", out)
 	}
-	// The verdict comes from Tobby, not from the client: a wrong password
-	// against the same registry is refused.
 	if out, err := run(t, dir, env, "docker", "login", reg.Host,
 		"-u", opUser, "-p", "not-the-password"); err == nil {
 		t.Errorf("docker login accepted a wrong password:\n%s", out)

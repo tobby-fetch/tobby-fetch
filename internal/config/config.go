@@ -167,9 +167,20 @@ type TrustRoot struct {
 type TrustScope struct {
 	Name string `yaml:"name"`
 	// Repositories are glob patterns matched against the recipe's nominal
-	// cookbook repository path ("lab.example.com/cookbook/*"; "**" spans
-	// separators). Trust follows the nominal ref, never the substituted
-	// endpoint (FR-036).
+	// cookbook repository path in its CANONICAL form ("*" stays within one
+	// path segment, "**" spans separators). Trust follows the nominal ref,
+	// never the substituted endpoint (FR-036).
+	//
+	// Canonical means the form of ADR-0013: the host lowercased, the
+	// Docker Hub aliases folded to "docker.io", and a port's ":" written
+	// "_" — because ":" cannot appear in a repository path. A registry on
+	// port 5000 is therefore matched by
+	//
+	//	lab.example.com_5000/cookbook/*
+	//
+	// and not by the "lab.example.com:5000/…" spelling of the reference
+	// itself. The portless case reads the same either way, which is what
+	// made this worth spelling out (B-014).
 	Repositories []string `yaml:"repositories"`
 	// AllowUnsigned admits unsigned recipes inside the scope — reported on
 	// every surface (banner, logs, task report), never silent (FR-075).
