@@ -1,20 +1,11 @@
-ok   scenario m2 started 2026-08-12T14:37:03Z
+ok   scenario m2 started 2026-08-18T14:36:07Z
 ok   built tobby for linux/amd64
 ok   instances launched (source registry + secure node)
-ok   source registry serving (10.180.10.12:8080)
+ok   source registry serving (10.180.10.16:8080)
 ok   R-01: no-account start refused (exit 3, TBY-AUTH-001)
 ok   account created (first account admin), secure node ready
 ok   anonymous refused on API (RFC 9457) and registry (Basic challenge)
-ok   import through the API done (3/3), pinned digest preserved (sha256:ca79e494511deca1e35a0a027301f1b30bae525b27b1deab3ef7bf6afb859e9c)
+ok   import through the API done (3/3), pinned digest preserved (sha256:4bcce951b6f3368773d4e52b869f749e85f4fd904184272a8143f256ced6b9a7)
 ok   standard third-party client pulls the import with Basic credentials
 ok   FR-029: task survived a SIGKILL restart, settled done, zero re-transfer
 ok   scenario m2 complete — report: crucible-report-m2.txt
-
-# Acceptance host: disposable Scaleway Elastic Metal (cheapest hourly offer
-# in stock, fr-par-2, Ubuntu 24.04, Incus 6.0/apt, dir pool), created
-# 2026-08-12 14:21 UTC, destroyed 14:4x UTC after report retrieval
-# (ADR-0014 disposable-host profile; containers only, no KVM needed).
-# The m1 scenario was replayed green on the same host beforehand
-# (non-regression of the milestone-1 surface under the new default-on
-# authentication): registry round-trip, block-device medium transport,
-# egress canary, air-gapped serving.

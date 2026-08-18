@@ -8,7 +8,76 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-18
+
+Milestone 4 — use case one: Tobby as a long-lived service between two
+connected zones, holding the destination registry at the level the
+Retriever asks for.
+
 ### Added
+
+- Continuous promotion (4.1, FR-013/026/028/034/035). A configured
+  `destination:` is reconciled on a schedule in passthrough mode: only the
+  blobs the destination lacks are transferred, signatures are re-verified
+  against the local copy before EVERY push rather than once at import, and
+  the signed recipes are propagated to the zone cookbook alongside their
+  ingredients. Destination names follow the relocation convention, and a
+  destination that will not accept them says so before anything moves
+  (`TBY-DST-001`). The refresh interval is changeable at runtime, survives
+  a restart, and the change is audited as sensitive configuration. The
+  write path is deliberately NOT built on source substitution:
+  substitution answers where content is read FROM, and applying it to a
+  write would send bytes to an endpoint nobody named — unattended, once
+  per interval, for as long as the instance lives.
+- Registry allowlist (4.2, FR-030), evaluated on the host actually
+  contacted — which under substitution is not the one the recipe names —
+  and refused before the socket is opened, on every outbound path
+  including the destination and HTTPS chart repositories. An absent key
+  means no restriction and an empty list means nothing is allowed, as with
+  a NetworkPolicy; an undeclared policy is reported as undeclared rather
+  than rendered like a satisfied one. Refusals are audited and counted.
+- Account lifecycle in the UI and the API (4.3, FR-073/074): accounts can
+  be created, re-roled and removed without leaving the tool, with the hash
+  always computed by the tool. An instance can never lose its last
+  administrator, by deletion or by self-demotion — check and write are
+  atomic in the store, so no surface added later can route around it. The
+  permission matrix is documented in `docs/rbac-matrix.md` and enforced by
+  a table that FAILS when a route is registered without declaring its role
+  floor.
+- Authentication audit coverage (FR-094): every failed verification of a
+  presented credential is recorded and never deduplicated — collapsing
+  them would hide the brute force the trail exists to show — successes are
+  recorded once per credential and origin per window, and a request
+  carrying no credential records nothing, that last one being every OCI
+  client's opening probe.
+- `docker login`, `helm registry login` and `oras login` are exercised
+  against the embedded registry over real sockets, with the role ladder
+  checked on the wire (FR-076), and CI installs the clients so the checks
+  run instead of skipping.
+- Enterprise network (4.4, FR-080/081/082): one outbound transport shared
+  by every path — authenticated forward proxies, private certificate
+  authorities added WITHOUT ever disabling verification, and server TLS
+  with an administrator-supplied certificate or a generated fallback whose
+  fingerprint is logged and which reloads on replacement. A test proves no
+  outbound path bypasses the shared transport, and its negative proves the
+  test itself: with the proxy removed, every path must fail.
+- Publishing a recipe from the interface (R-40), the counterpart of
+  `tobby recipe push`: the document is validated before anything is sent,
+  and the published digest comes with the `cosign sign` command to run
+  next. Tobby holds no private key and says so on the screen.
+- A network posture screen: what the listener actually presents, its
+  fingerprint, SANs and validity, with a self-signed fallback shown as the
+  degraded posture it is. Certificate replacement takes files, never text
+  fields, and the private key is returned in no form at all — not its
+  bytes, not its length, not a digest.
+- Reference deployment (4.5): a Helm chart and raw manifests — non-root,
+  read-only root filesystem, every capability dropped, seccomp
+  `RuntimeDefault`, probes wired, no service-account token mounted. The
+  store and the state directory get separate volumes, and the chart
+  refuses to render when they would share one.
+- Milestone-4 crucible scenarios and a hermetic topology scenario, both
+  covering promotion behind an authenticated proxy and a private PKI, an
+  off-list destination refused, and a second cycle that moves nothing.
 
 - Fine-grained resume of large downloads (R-29, completing FR-029). A blob
   interrupted at 90 % now restarts at 90 %, not at zero: above
@@ -51,6 +120,21 @@ starting with `v0.1.0`.
 
 ### Fixed
 
+- Trust scopes were matched against two different pattern spaces on the
+  two halves of a promotion (B-014). On any registry carrying a port, a
+  correctly written scope admitted a recipe at import and then refused it
+  before the push with `TBY-SIG-001`, and only listing both spellings
+  worked. Canonicalization now happens inside the policy instead of at
+  each call site: a third caller could not have guessed which of the two
+  forms was expected. Found by the milestone-4 crucible run.
+- A Sigstore bundle signature — cosign 3.x's default — verified on the
+  zone that fetched it and was gone one hop down (B-015). The verifier
+  learned both cosign layouts at milestone 3; the copy had only ever
+  learned the tag-attached one, so the referring artifact and the index
+  that makes it findable were left behind, and a downstream zone refused
+  content its upstream had accepted with "no signature artifact found".
+  Signatures travel with content whatever shape they arrive in (§12.2).
+  Found by the milestone-3 crucible scenario replayed for this milestone.
 - The polled zones of the task screens swapped their response INTO
   themselves instead of replacing it (B-012). `hx-swap="morph:outerHTML"`
   is a swap style htmx only knows once the idiomorph htmx extension is
@@ -289,7 +373,8 @@ import, track, browse, pull) behind authentication that is on by default.
 - Release chain groundwork for SLSA Build L3 provenance and signed
   artifacts.
 
-[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/tobby-fetch/tobby-fetch/releases/tag/v0.1.0
