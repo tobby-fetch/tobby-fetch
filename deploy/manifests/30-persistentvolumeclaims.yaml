@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright © 2026 infraBuilder SASU and contributors
+#
+# Two claims, never one.
+#
+# The store holds artifacts, recipes and operation logs. It is
+# self-contained and relocatable: this is the unit that physically crosses
+# a network boundary. The state directory holds the instance's identity —
+# accounts, tokens, and the secrets that follow. Keeping them on separate
+# volumes is what lets the store travel without carrying credentials with
+# it, and it is why the state claim, not the store, is the backup target.
+#
+# Neither claim declares a storageClassName: the cluster's default class is
+# used. Set it explicitly in production — the store wants capacity, the
+# state wants durability, and they are rarely the same class.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tobby-store
+  namespace: tobby
+  labels:
+    app.kubernetes.io/name: tobby
+    app.kubernetes.io/instance: tobby
+    app.kubernetes.io/component: store
+    app.kubernetes.io/part-of: tobby
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # Sized for content. Raise it before the first large synchronization,
+      # not after: a store that runs out of space mid-transfer is a
+      # resumable failure, but a noisy one.
+      storage: 100Gi
+  # storageClassName: fast-ssd
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tobby-state
+  namespace: tobby
+  labels:
+    app.kubernetes.io/name: tobby
+    app.kubernetes.io/instance: tobby
+    app.kubernetes.io/component: state
+    app.kubernetes.io/part-of: tobby
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # Small on purpose: accounts and tokens, not artifacts. Losing this
+      # volume loses every account of the instance — back it up.
+      storage: 1Gi
+  # storageClassName: replicated

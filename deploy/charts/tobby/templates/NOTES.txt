@@ -1,0 +1,58 @@
+{{/*
+SPDX-License-Identifier: GPL-3.0-only
+Copyright © 2026 infraBuilder SASU and contributors
+*/}}
+Tobby {{ .Chart.AppVersion }} — release {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+
+  image:   {{ include "tobby.image" . }}
+  mode:    {{ .Values.config.mode }}
+  store:   {{ .Values.persistence.storage.mountPath }}{{ if .Values.persistence.storage.enabled }} (persistent){{ else }} (EPHEMERAL — emptyDir){{ end }}
+  state:   {{ .Values.persistence.state.mountPath }}{{ if .Values.persistence.state.enabled }} (persistent){{ else }} (EPHEMERAL — emptyDir){{ end }}
+
+Reach the instance:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "tobby.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+
+  UI and API   http://127.0.0.1:{{ .Values.service.port }}/
+  registry     http://127.0.0.1:{{ .Values.service.port }}/v2/
+  probes       /healthz (liveness) and /readyz (readiness)
+  metrics      /metrics (OpenMetrics)
+
+{{- if .Values.ingress.enabled }}
+
+Ingress hosts:
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- end }}
+
+{{- if not .Values.config.auth.disabled }}
+
+FIRST ACCOUNT. Authentication is on, and Tobby refuses to serve until the
+state directory holds at least one account — so a brand-new install stays in
+CrashLoopBackOff, logging TBY-AUTH-001, until you create the administrator.
+The account lives in the state volume, not in this release, so you do it
+once per instance:
+
+  kubectl --namespace {{ .Release.Namespace }} scale deploy/{{ include "tobby.fullname" . }} --replicas=0
+  # then run `tobby user add admin` against a pod mounting the state claim
+  # {{ if .Values.persistence.state.existingClaim }}{{ .Values.persistence.state.existingClaim }}{{ else }}{{ include "tobby.fullname" . }}-state{{ end }} — see deploy/README.md, "Creating the first account"
+  kubectl --namespace {{ .Release.Namespace }} scale deploy/{{ include "tobby.fullname" . }} --replicas=1
+{{- else }}
+
+*** AUTHENTICATION IS DISABLED (config.auth.disabled: true) ***
+Every surface is open, including the embedded registry and the API. The UI
+displays a permanent warning banner while this holds. Do not leave it on.
+{{- end }}
+
+{{- if not .Values.persistence.state.enabled }}
+
+*** THE STATE VOLUME IS EPHEMERAL ***
+Accounts and tokens are lost the moment the pod is replaced. Set
+persistence.state.enabled=true for anything you intend to keep.
+{{- end }}
+
+BACKUPS. Back up the state claim: it carries the instance's accounts, tokens
+and secrets, and nothing else recreates them. The store claim is content —
+large, re-fetchable, and deliberately kept on its own volume so that what
+travels between zones never carries credentials with it.

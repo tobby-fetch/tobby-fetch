@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright © 2026 infraBuilder SASU and contributors
+#
+# One listener carries everything: the web UI, the API, the embedded OCI
+# registry under /v2/, the probes, and /metrics. Reserved path prefixes
+# keep the machine surfaces off the UI's routes, so a single port is
+# enough.
+#
+# ClusterIP on purpose. Exposing the instance is a deliberate act, and an
+# ingress in front of an OCI registry needs an explicit body-size limit and
+# generous timeouts — a default ingress controller will fail large blob
+# pushes in ways that look like network flakiness. See deploy/README.md.
+apiVersion: v1
+kind: Service
+metadata:
+  name: tobby
+  namespace: tobby
+  labels:
+    app.kubernetes.io/name: tobby
+    app.kubernetes.io/instance: tobby
+    app.kubernetes.io/component: instance
+    app.kubernetes.io/part-of: tobby
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: tobby
+    app.kubernetes.io/instance: tobby

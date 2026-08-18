@@ -1,0 +1,386 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright © 2026 infraBuilder SASU and contributors
+#
+# Default values for the Tobby reference chart.
+#
+# Tobby reads its settings from three layers, lowest to highest precedence:
+# the YAML configuration file, TOBBY_* environment variables, then
+# command-line flags (FR-003). This chart drives all three:
+#
+#   config     -> rendered into a Secret and mounted as /etc/tobby/config.yaml
+#   env        -> TOBBY_* variables on the container
+#   extraArgs  -> flags appended after `serve`
+#
+# A value set in `env` therefore overrides the same setting in `config`, and
+# a flag in `extraArgs` overrides both. Prefer `config` for everything that
+# is not a per-environment override.
+
+# -- Container image. The published image is multi-arch (amd64/arm64),
+# Wolfi-based, shell-less, and already runs as uid 65532 (apko.yaml).
+image:
+  repository: ghcr.io/tobby-fetch/tobby-fetch
+  # Release tags carry a leading "v"; empty means "v<Chart.AppVersion>".
+  tag: ""
+  # Pin by digest instead of (or in addition to) the tag. When set, the
+  # digest wins and the tag becomes documentation only. Recommended in
+  # regulated environments: it is the reference the release provenance and
+  # the cosign signature are made against.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# Secrets used by the kubelet to pull the Tobby image itself. Unrelated to
+# `registryCredentials` below, which is what Tobby uses to reach the
+# registries it mirrors.
+imagePullSecrets: []
+# - name: ghcr-pull
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Port the Tobby process listens on. The chart derives `server.addr` in the
+# rendered configuration from it, so do not set `config.server.addr`
+# yourself — the chart refuses to render if you do.
+containerPort: 8080
+
+# Extra flags appended after `serve`. Highest precedence layer (FR-003).
+extraArgs: []
+# - --log-level=debug
+
+# TOBBY_* environment variables. Middle precedence layer: they override the
+# configuration file and are overridden by extraArgs.
+env: []
+# - name: TOBBY_LOGGING_LEVEL
+#   value: debug
+# Pull whole sets of TOBBY_* variables from ConfigMaps or Secrets.
+envFrom: []
+# - secretRef:
+#     name: tobby-extra-env
+
+# ---------------------------------------------------------------------------
+# Tobby configuration file
+# ---------------------------------------------------------------------------
+# Everything under `config` is rendered verbatim into /etc/tobby/config.yaml.
+# The keys mirror internal/config exactly, so `tobby config dump` output can
+# be pasted here as-is.
+#
+# Four keys are managed by the chart and MUST NOT appear here — the chart
+# derives them from the values that also drive the volume mounts, and fails
+# loudly rather than let the configuration and the pod disagree:
+#   storage.root  <- persistence.storage.mountPath
+#   state.root    <- persistence.state.mountPath
+#   server.addr   <- containerPort
+#   registries.credentialsFile <- registryCredentials mount (when enabled)
+config:
+  # Operating mode. Required, no default: an instance must state what it is
+  # (FR-001). "passthrough" is a long-lived service between two connected
+  # zones; "mirror" drives a transportable store across an air gap.
+  mode: passthrough
+
+  logging:
+    # debug, info, warn, or error.
+    level: info
+
+  auth:
+    # Secure by default. Setting this to true opens every surface and makes
+    # the UI display a permanent warning banner (FR-075) — it is an
+    # explicit, auditable opt-in, never a convenience.
+    disabled: false
+    # Lifetime of a UI session. Sessions live in memory: restarting the pod
+    # signs everyone out.
+    sessionTTL: 12h
+
+  shutdown:
+    # Budget given to in-flight transfers to finish or checkpoint after
+    # SIGTERM (FR-093). Keep terminationGracePeriodSeconds strictly above
+    # this value.
+    gracePeriod: 30s
+
+  sync:
+    # Concurrent ingredient transfers.
+    parallelism: 3
+    # Retry attempts per ingredient on transient transfer failures.
+    retries: 3
+
+  # Where the desired-state document is fetched from (FR-010): an HTTP(S)
+  # URL, an OCI reference, or a path inside the container.
+  retriever:
+    source: ""
+    # source: https://cookbook.example.com/desired-state.yaml
+
+  registries: {}
+    # Hosts reachable over plain HTTP or unverifiable TLS. Per-host and
+    # explicit — there is no global switch.
+    # insecure:
+    #   - registry.zone-a.example.com:5000
+    #
+    # Fetch a nominal registry from a substitute endpoint without editing
+    # the recipes (FR-036). Only the endpoint contacted changes; the
+    # relocated path and the trust decision follow the nominal reference.
+    # substitutions:
+    #   docker.io: registry.zone-a.example.com/dockerhub
+
+  ui:
+    # Render future-milestone navigation entries as inert placeholders.
+    # Off in production.
+    showUpcoming: false
+    # Operator stylesheet served after the embedded design tokens
+    # (rebranding without a rebuild). Mount it through extraVolumes.
+    themeOverride: ""
+
+  # Signature verification (FR-033). On by default for every recipe;
+  # relaxation exists only as explicitly declared, reported scopes.
+  trust: {}
+    # roots:
+    #   - name: platform-team
+    #     keyFile: /etc/tobby-trust/platform-team.pub
+    # scopes:
+    #   - name: lab
+    #     repositories: ["lab.example.com/cookbook/*"]
+    #     allowUnsigned: true
+
+  # FileSets served over HTTP under /files/<name>/ (FR-047). Disabled
+  # unless listed here.
+  files: {}
+    # filesets:
+    #   - name: site-config
+    #     ref: registry.example.com/filesets/site-config
+
+# Mount an already-existing Secret as the configuration instead of letting
+# the chart render one. The Secret must carry a `config.yaml` key; the
+# `config` block above is then ignored.
+existingConfigSecret: ""
+
+# ---------------------------------------------------------------------------
+# Registry credentials (FR-004)
+# ---------------------------------------------------------------------------
+# Tobby authenticates to the registries it reads from and writes to with a
+# standard `kubernetes.io/dockerconfigjson` payload, looked up by the host
+# actually contacted. Credentials never live in the configuration file and
+# never travel on the transportable store.
+registryCredentials:
+  enabled: false
+  # Reuse a Secret you already manage (external-secrets, sealed-secrets,
+  # `kubectl create secret docker-registry`, ...). It must be of type
+  # kubernetes.io/dockerconfigjson. Takes precedence over `dockerconfigjson`.
+  existingSecret: ""
+  # Inline payload, rendered into a chart-managed Secret. Fine for a lab;
+  # in production prefer existingSecret so the value never sits in a values
+  # file. Note that Helm stores rendered values in the release Secret.
+  dockerconfigjson: ""
+  # dockerconfigjson: |
+  #   {"auths":{"registry.example.com":{"auth":"<base64 of user:password>"}}}
+
+# ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
+# The store and the state are two different things and never share a volume:
+#
+#   store  — artifacts, recipes and operation logs. Self-contained and
+#            relocatable: this is what physically crosses an air gap.
+#   state  — the instance's identity: accounts, tokens, and the secrets that
+#            follow. It is the backup target, and it must never end up on
+#            the transportable media.
+#
+# Tobby refuses to start if one root is nested inside the other.
+persistence:
+  storage:
+    enabled: true
+    mountPath: /var/lib/tobby/store
+    existingClaim: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 100Gi
+    # Empty uses the cluster's default StorageClass; "-" disables dynamic
+    # provisioning.
+    storageClassName: ""
+    annotations: {}
+  state:
+    enabled: true
+    mountPath: /var/lib/tobby/state
+    existingClaim: ""
+    accessModes:
+      - ReadWriteOnce
+    # Small on purpose: accounts and tokens, not artifacts.
+    size: 1Gi
+    storageClassName: ""
+    annotations: {}
+    # Setting enabled: false falls back to an emptyDir, which loses every
+    # account on pod replacement. Only ever acceptable with
+    # config.auth.disabled: true in a throwaway environment.
+
+# Size of the writable /tmp emptyDir. The root filesystem is read-only, so
+# this is the only scratch space the process has.
+tmpSizeLimit: 1Gi
+
+# ---------------------------------------------------------------------------
+# Service and ingress
+# ---------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 8080
+  # Only honoured for type NodePort / LoadBalancer.
+  nodePort: ""
+  annotations: {}
+  labels: {}
+
+# The UI, the API and the embedded OCI registry all share this one listener,
+# so an Ingress exposes all three. Off by default: exposure is a deliberate
+# act, and an OCI registry behind an ingress needs large request bodies and
+# generous timeouts.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  # nginx.ingress.kubernetes.io/proxy-body-size: "0"
+  # nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+  hosts:
+    - host: tobby.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  # - secretName: tobby-tls
+  #   hosts:
+  #     - tobby.example.com
+
+# ---------------------------------------------------------------------------
+# Security
+# ---------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  # Tobby never talks to the Kubernetes API. Projecting a token would only
+  # widen the blast radius of a compromise.
+  automountServiceAccountToken: false
+
+# Pod-level security context. fsGroup makes the two PersistentVolumes
+# writable by the non-root uid the image ships with (apko.yaml: uid/gid
+# 65532). OnRootMismatch keeps restarts fast on large stores by skipping the
+# recursive chown when the top-level ownership already matches.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container-level security context. Satisfies the restricted Pod Security
+# Standard as written.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  allowPrivilegeEscalation: false
+  privileged: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# ---------------------------------------------------------------------------
+# Probes (FR-092)
+# ---------------------------------------------------------------------------
+# /healthz answers as soon as the HTTP listener is up; /readyz stays 503
+# until the store and the configuration are usable, and flips back to 503
+# during the shutdown drain so the Service stops sending traffic first.
+probes:
+  startup:
+    enabled: true
+    initialDelaySeconds: 0
+    periodSeconds: 5
+    timeoutSeconds: 3
+    # 30 x 5s = 150s to open a large store before the pod is declared dead.
+    failureThreshold: 30
+  liveness:
+    enabled: true
+    initialDelaySeconds: 0
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+    successThreshold: 1
+
+# ---------------------------------------------------------------------------
+# Metrics (FR-091)
+# ---------------------------------------------------------------------------
+# /metrics is always served on the same listener. It sits behind the same
+# authentication as every other surface, so a scraper needs credentials
+# unless authentication is disabled.
+metrics:
+  # Prometheus scrape annotations on the pod, for annotation-based
+  # discovery. Harmless when nothing consumes them.
+  podAnnotations: false
+  serviceMonitor:
+    # Requires the Prometheus Operator CRDs in the cluster.
+    enabled: false
+    namespace: ""
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+    # Credentials for the scrape, when authentication is on.
+    basicAuth: {}
+    # basicAuth:
+    #   username:
+    #     name: tobby-metrics-scraper
+    #     key: username
+    #   password:
+    #     name: tobby-metrics-scraper
+    #     key: password
+    relabelings: []
+    metricRelabelings: []
+
+# ---------------------------------------------------------------------------
+# Scheduling and resources
+# ---------------------------------------------------------------------------
+# Starting point, not a recommendation: the right ceiling depends on store
+# size and sync parallelism. Memory is the resource that matters — a limit
+# below the working set gets the pod OOM-killed mid-transfer. There is no
+# CPU limit by default: throttling a transfer to save cycles nobody else
+# wants is a bad trade.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+# Must exceed config.shutdown.gracePeriod, or the kubelet kills the process
+# before it finishes checkpointing.
+terminationGracePeriodSeconds: 60
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+priorityClassName: ""
+runtimeClassName: ""
+dnsPolicy: ""
+dnsConfig: {}
+hostAliases: []
+
+# Extra volumes, for private CA bundles, trust roots, a theme override, or a
+# proxy configuration. Mounted read-only in production.
+extraVolumes: []
+# - name: trust-roots
+#   secret:
+#     secretName: tobby-trust-roots
+extraVolumeMounts: []
+# - name: trust-roots
+#   mountPath: /etc/tobby-trust
+#   readOnly: true
+
+# Extra containers, for a log shipper or a sidecar proxy.
+extraContainers: []
+initContainers: []

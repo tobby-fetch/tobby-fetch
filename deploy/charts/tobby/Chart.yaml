@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright © 2026 infraBuilder SASU and contributors
+#
+# Reference Helm chart for a Tobby instance (DEVELOPMENT-PLAN §2.4,
+# public feature 4.5). The chart is the supported way to run Tobby on
+# Kubernetes: non-root container, read-only root filesystem, every
+# capability dropped, wired probes, and separate volumes for the
+# transportable store and the instance state.
+apiVersion: v2
+name: tobby
+description: Secure artifact fetch-and-relocate tool with an embedded OCI registry
+type: application
+
+# version is the chart's own version and moves independently of the tool.
+# appVersion is the Tobby release the default image tag points at; the
+# release process bumps it in the same commit as the tag.
+version: 0.1.0
+appVersion: "0.3.0"
+
+# HTTP probes use the `GET /path` httpGet form and `Recreate` deployment
+# strategy; both are long-standing APIs. 1.25 is the floor because the
+# defaults assume the restricted Pod Security Standard is enforceable.
+kubeVersion: ">=1.25.0-0"
+
+home: https://tobby-fetch.github.io/tobby-fetch/
+sources:
+  - https://github.com/tobby-fetch/tobby-fetch
+keywords:
+  - oci
+  - registry
+  - artifacts
+  - air-gap
+  - supply-chain
+maintainers:
+  - name: infraBuilder SASU
+    email: contact@infrabuilder.com
+    url: https://github.com/tobby-fetch
+annotations:
+  licenses: GPL-3.0-only

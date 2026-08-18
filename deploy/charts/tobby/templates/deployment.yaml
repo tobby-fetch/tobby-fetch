@@ -1,0 +1,217 @@
+{{/*
+SPDX-License-Identifier: GPL-3.0-only
+Copyright © 2026 infraBuilder SASU and contributors
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tobby.fullname" . }}
+  labels:
+    {{- include "tobby.labels" . | nindent 4 }}
+    app.kubernetes.io/component: instance
+spec:
+  # A Tobby instance owns its store and state directories on disk. Exactly
+  # one replica, and the old pod releases its volumes before the new one
+  # starts — never two writers on the same store.
+  replicas: 1
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      {{- include "tobby.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        # Roll the pod when the rendered configuration changes.
+        checksum/config: {{ include "tobby.config" . | sha256sum }}
+        {{- if .Values.metrics.podAnnotations }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.containerPort | quote }}
+        prometheus.io/path: /metrics
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "tobby.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "tobby.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      {{- with .Values.runtimeClassName }}
+      runtimeClassName: {{ . | quote }}
+      {{- end }}
+      {{- with .Values.dnsPolicy }}
+      dnsPolicy: {{ . | quote }}
+      {{- end }}
+      {{- with .Values.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # Must exceed config.shutdown.gracePeriod: SIGTERM stops new work and
+      # gives in-flight transfers that budget to finish or checkpoint
+      # (FR-093). /readyz flips to 503 first, so the Service drains before
+      # anything is interrupted.
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: tobby
+          image: {{ include "tobby.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # The image entrypoint is /usr/bin/tobby; the configuration file
+          # sits at Tobby's default location, so `serve` needs no --config.
+          args:
+            - serve
+            {{- with .Values.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPort }}
+              protocol: TCP
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.probes.startup.enabled }}
+          # Opening a large store can take a while. The startup probe buys
+          # that time without loosening the liveness threshold afterwards.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.liveness.enabled }}
+          # /healthz answers as soon as the listener is up: it says the
+          # process is alive, never that it is useful (FR-092).
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          # /readyz stays 503 until the store and the configuration are
+          # usable, and returns to 503 during the shutdown drain.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+            successThreshold: {{ .Values.probes.readiness.successThreshold }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: {{ include "tobby.configMountPath" . | quote }}
+              readOnly: true
+            {{- if include "tobby.registryCredentialsEnabled" . }}
+            - name: registry-credentials
+              mountPath: {{ include "tobby.registryCredentialsMountPath" . | quote }}
+              readOnly: true
+            {{- end }}
+            - name: store
+              mountPath: {{ .Values.persistence.storage.mountPath | quote }}
+            - name: state
+              mountPath: {{ .Values.persistence.state.mountPath | quote }}
+            # readOnlyRootFilesystem leaves the process no scratch space;
+            # this emptyDir is it.
+            - name: tmp
+              mountPath: /tmp
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        {{- with .Values.extraContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: config
+          secret:
+            secretName: {{ include "tobby.configSecretName" . }}
+            defaultMode: 0440
+        {{- if include "tobby.registryCredentialsEnabled" . }}
+        - name: registry-credentials
+          secret:
+            secretName: {{ include "tobby.registryCredentialsSecretName" . }}
+            defaultMode: 0440
+        {{- end }}
+        - name: store
+          {{- if .Values.persistence.storage.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-store" (include "tobby.fullname" .)) .Values.persistence.storage.existingClaim }}
+          {{- else }}
+          # Ephemeral store: everything fetched is lost on pod replacement.
+          emptyDir: {}
+          {{- end }}
+        - name: state
+          {{- if .Values.persistence.state.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-state" (include "tobby.fullname" .)) .Values.persistence.state.existingClaim }}
+          {{- else }}
+          # Ephemeral state: every account and token is lost on pod
+          # replacement. Only defensible in a throwaway environment.
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          # Node-backed, not Memory-backed: a tmpfs would be charged to the
+          # container's memory limit, and a large staged blob would look
+          # like a memory leak right before an OOM kill.
+          emptyDir:
+            sizeLimit: {{ .Values.tmpSizeLimit | quote }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

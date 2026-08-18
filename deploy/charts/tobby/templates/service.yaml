@@ -1,0 +1,34 @@
+{{/*
+SPDX-License-Identifier: GPL-3.0-only
+Copyright © 2026 infraBuilder SASU and contributors
+
+One listener carries everything: the web UI, the API, the embedded OCI
+registry (/v2/), the probes, and /metrics. Reserved path prefixes keep the
+machine surfaces off the UI's routes, so a single port is enough.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "tobby.fullname" . }}
+  labels:
+    {{- include "tobby.labels" . | nindent 4 }}
+    app.kubernetes.io/component: instance
+    {{- with .Values.service.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      {{- if and .Values.service.nodePort (or (eq .Values.service.type "NodePort") (eq .Values.service.type "LoadBalancer")) }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "tobby.selectorLabels" . | nindent 4 }}

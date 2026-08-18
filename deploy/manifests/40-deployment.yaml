@@ -1,0 +1,182 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright © 2026 infraBuilder SASU and contributors
+#
+# The Tobby instance. Equivalent to what the Helm chart in
+# ../charts/tobby renders with its default values, written out for
+# clusters that do not run Helm.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tobby
+  namespace: tobby
+  labels:
+    app.kubernetes.io/name: tobby
+    app.kubernetes.io/instance: tobby
+    app.kubernetes.io/component: instance
+    app.kubernetes.io/part-of: tobby
+spec:
+  # A Tobby instance owns its store and state directories on disk. Exactly
+  # one replica, and Recreate so the old pod releases its volumes before
+  # the new one starts — never two writers on the same store.
+  replicas: 1
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tobby
+      app.kubernetes.io/instance: tobby
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tobby
+        app.kubernetes.io/instance: tobby
+      # annotations:
+      #   Annotation-based Prometheus discovery, if that is how your
+      #   cluster scrapes. /metrics sits behind the same authentication as
+      #   every other surface, so the scraper needs credentials.
+      #   prometheus.io/scrape: "true"
+      #   prometheus.io/port: "8080"
+      #   prometheus.io/path: /metrics
+    spec:
+      serviceAccountName: tobby
+      automountServiceAccountToken: false
+      # Must exceed shutdown.gracePeriod in the configuration: SIGTERM
+      # stops new work and gives in-flight transfers that budget to finish
+      # or checkpoint (FR-093). /readyz flips to 503 first, so the Service
+      # stops sending traffic before anything is interrupted.
+      terminationGracePeriodSeconds: 60
+      # fsGroup makes both PersistentVolumes writable by the non-root uid
+      # the image ships with. OnRootMismatch skips the recursive chown when
+      # the top-level ownership already matches, which keeps restarts fast
+      # on a large store.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: tobby
+          # Multi-arch (amd64/arm64), Wolfi-based, no shell, already
+          # non-root. Pin by digest in production: the digest is what the
+          # release provenance and the cosign signature are made against.
+          image: ghcr.io/tobby-fetch/tobby-fetch:v0.3.0
+          imagePullPolicy: IfNotPresent
+          # The image entrypoint is /usr/bin/tobby, and the configuration
+          # is mounted at Tobby's default path, so `serve` needs no
+          # --config. Flags appended here are the highest configuration
+          # layer, above TOBBY_* variables and above the file.
+          args:
+            - serve
+          # env:
+          #   - name: TOBBY_LOGGING_LEVEL
+          #     value: debug
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          # Opening a large store can take a while. The startup probe buys
+          # that time without loosening the liveness threshold afterwards.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          # /healthz answers as soon as the listener is up: it says the
+          # process is alive, never that it is useful (FR-092).
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # /readyz stays 503 until the store and the configuration are
+          # usable, and returns to 503 during the shutdown drain.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          # A starting point, not a recommendation: the right ceiling
+          # depends on store size and sync parallelism. Memory is what
+          # matters — a limit below the working set gets the pod OOM-killed
+          # mid-transfer. No CPU limit on purpose: throttling a transfer to
+          # save cycles nobody else wants is a bad trade.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tobby
+              readOnly: true
+            - name: registry-credentials
+              mountPath: /etc/tobby-registries
+              readOnly: true
+            - name: store
+              mountPath: /var/lib/tobby/store
+            - name: state
+              mountPath: /var/lib/tobby/state
+            # readOnlyRootFilesystem leaves the process no scratch space;
+            # this emptyDir is it.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          secret:
+            secretName: tobby-config
+            defaultMode: 0440
+        - name: registry-credentials
+          secret:
+            secretName: tobby-registry-credentials
+            defaultMode: 0440
+        - name: store
+          persistentVolumeClaim:
+            claimName: tobby-store
+        - name: state
+          persistentVolumeClaim:
+            claimName: tobby-state
+        - name: tmp
+          # Node-backed, not Memory-backed: a tmpfs would be charged to the
+          # container's memory limit, and a large staged blob would look
+          # like a memory leak right before an OOM kill.
+          emptyDir:
+            sizeLimit: 1Gi
+      # nodeSelector:
+      #   kubernetes.io/arch: amd64
+      # tolerations:
+      #   - key: dedicated
+      #     operator: Equal
+      #     value: tobby
+      #     effect: NoSchedule
+      # affinity:
+      #   nodeAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #       nodeSelectorTerms:
+      #         - matchExpressions:
+      #             - key: topology.kubernetes.io/zone
+      #               operator: In
+      #               values: [zone-a]

@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright © 2026 infraBuilder SASU and contributors
+#
+# The namespace every other manifest in this directory targets. The labels
+# enforce the restricted Pod Security Standard: the reference deployment is
+# built to satisfy it, and pinning it here means a later edit that weakens
+# the pod's security context is rejected by the API server instead of
+# silently accepted.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tobby
+  labels:
+    app.kubernetes.io/name: tobby
+    app.kubernetes.io/part-of: tobby
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

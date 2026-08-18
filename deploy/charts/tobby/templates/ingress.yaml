@@ -1,0 +1,46 @@
+{{/*
+SPDX-License-Identifier: GPL-3.0-only
+Copyright © 2026 infraBuilder SASU and contributors
+
+Optional and off by default. Exposing the instance also exposes the embedded
+OCI registry, which pushes multi-hundred-megabyte blobs: an ingress
+controller with a default body-size cap or a short read timeout will fail
+those pushes in ways that look like network flakiness. Set the controller's
+limits explicitly through annotations before turning this on.
+*/}}
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "tobby.fullname" . }}
+  labels:
+    {{- include "tobby.labels" . | nindent 4 }}
+    app.kubernetes.io/component: instance
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ default "Prefix" .pathType }}
+            backend:
+              service:
+                name: {{ include "tobby.fullname" $ }}
+                port:
+                  number: {{ $.Values.service.port }}
+          {{- end }}
+    {{- end }}
+{{- end }}
