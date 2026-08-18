@@ -9,7 +9,8 @@
   <h1 class="t-page-title">{{.T "apidocs.title"}}</h1>
   <p class="t-page-sub">{{.T "apidocs.subtitle"}}</p>
   <p class="t-row">
-    <a class="t-btn t-btn--secondary t-btn--sm" href="/api/v1/openapi.yaml">{{.T "apidocs.download"}}</a>
+    {{/* Raw file off the machine surface: never boosted (B-013). */}}
+    <a class="t-btn t-btn--secondary t-btn--sm" href="/api/v1/openapi.yaml" hx-boost="false">{{.T "apidocs.download"}}</a>
     <span class="t-muted t-note">{{.T "apidocs.auth_note"}}</span>
   </p>
 

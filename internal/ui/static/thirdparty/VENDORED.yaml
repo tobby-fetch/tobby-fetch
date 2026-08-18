@@ -15,10 +15,14 @@ assets:
     sha256: 57d9191515339922bd1356d7b2d80b1ee3b29f1b3a2c65a078bb8b2e8fd9ae5f
     license: 0BSD
     vendored: "2026-08-12"
+  # The htmx-extension build, not the bare library: `hx-swap="morph:*"` is
+  # a swap style htmx does not know, and only this distribution registers
+  # it. With the bare library the polled zones fell back to the default
+  # innerHTML swap and nested inside themselves (B-012).
   - name: idiomorph
-    file: idiomorph.min.js
+    file: idiomorph-ext.min.js
     version: "0.7.4"
-    source_url: https://raw.githubusercontent.com/bigskysoftware/idiomorph/v0.7.4/dist/idiomorph.min.js
-    sha256: 0eb0f881553bd509fe7a7e3064a1089141e089583c506c1217e885a2e608b4a4
+    source_url: https://raw.githubusercontent.com/bigskysoftware/idiomorph/v0.7.4/dist/idiomorph-ext.min.js
+    sha256: a6437e55b1b6a07bc421f0d230266a39399b6826c6ed19e0ed9c63b707444a5f
     license: 0BSD
-    vendored: "2026-08-12"
+    vendored: "2026-08-18"
