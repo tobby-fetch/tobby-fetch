@@ -326,3 +326,41 @@ func TestRunnerReportsSurviveTheClone(t *testing.T) {
 		t.Errorf("resolutions did not survive persistence: %+v", persisted)
 	}
 }
+
+// TestBlobProgressIsKeyedByDigest: a resumed blob updates its own row
+// rather than appending a second one, or the task detail would grow a new
+// line per attempt and describe a restart it did not perform (FR-029).
+func TestBlobProgressIsKeyedByDigest(t *testing.T) {
+	const a, b = "sha256:aaa", "sha256:bbb"
+	it := &Item{Name: "linux/amd64"}
+
+	it.TrackBlob(a, 100, 1000, false, false)
+	it.TrackBlob(a, 400, 1000, false, false)
+	it.TrackBlob(b, 50, 200, false, false)
+	if len(it.Blobs) != 2 {
+		t.Fatalf("blobs = %+v, want one row per digest", it.Blobs)
+	}
+	if it.Blobs[0].ReceivedBytes != 400 || it.Blobs[0].SizeBytes != 1000 {
+		t.Errorf("row a = %+v", it.Blobs[0])
+	}
+
+	// Once a blob has been resumed the row says so for good: it records
+	// that the transfer picked up earlier bytes, not what the last chunk
+	// happened to do.
+	it.TrackBlob(a, 600, 1000, true, false)
+	it.TrackBlob(a, 800, 1000, false, false)
+	if !it.Blobs[0].Resumed {
+		t.Errorf("row a = %+v, want Resumed to stick", it.Blobs[0])
+	}
+
+	it.TrackBlobDone(a)
+	if !it.Blobs[0].Done || it.Blobs[0].ReceivedBytes != 1000 {
+		t.Errorf("row a = %+v, want done at full size", it.Blobs[0])
+	}
+	// A digest that was never tracked — every blob below the resume
+	// threshold — is not invented on completion.
+	it.TrackBlobDone("sha256:never-seen")
+	if len(it.Blobs) != 2 {
+		t.Errorf("blobs = %+v, want no row for an untracked blob", it.Blobs)
+	}
+}

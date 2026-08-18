@@ -23,6 +23,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/api"
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/blobfetch"
 	"github.com/tobby-fetch/tobby-fetch/internal/buildinfo"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
@@ -190,11 +191,29 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		slog.String("egress", egress.Describe()),
 		slog.String("requirement", "FR-080/FR-081"))
 
+	// In-blob resumption of large downloads (FR-029, R-29). One resumer
+	// for the instance, on the same shared transport as everything else,
+	// spooling into the STATE directory — never the store, which is
+	// transportable and must not carry a half-received blob across a zone
+	// boundary (R-16). An instance without a state directory, or with the
+	// threshold at zero, keeps the plain streaming path.
+	resumer := blobfetch.New(egress, nil, cfg.State.Root, cfg.Transfer.ResumeThreshold)
+	if resumer.Threshold() > 0 {
+		logger.LogAttrs(ctx, slog.LevelInfo, "large transfers are resumable",
+			slog.String("threshold", cfg.Transfer.ResumeThreshold.String()),
+			slog.String("partials", filepath.Join(cfg.State.Root, "partials")),
+			slog.String("requirement", "FR-029"))
+	} else {
+		logger.LogAttrs(ctx, slog.LevelInfo, "large transfers are not resumable",
+			slog.String("reason", resumeDisabledReason(cfg)),
+			slog.String("requirement", "FR-029"))
+	}
+
 	// The source policy every surface that can start an import runs
 	// under — the runner, the API and the UI. Built here rather than at
 	// each call site: that is what makes forgetting it impossible.
 	importPolicy := importer.WithSourcePolicy(cfg.Registries, allowlist, egress)
-	queue.Register(tasks.TypeUnitImport, importer.NewRunner(st, importPolicy))
+	queue.Register(tasks.TypeUnitImport, importer.NewRunner(st, importPolicy, importer.WithResume(resumer)))
 
 	// The recipe engine (milestone 3): substitution-aware remote access
 	// (FR-036), trust roots resolved at configuration time (FR-033,
@@ -204,6 +223,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
+	// The engine resumes through the same object as the import path, but
+	// with the registry keychain attached: a synchronization reads private
+	// cookbooks, and a resumed blob must authenticate exactly like the
+	// manifest that named it (FR-004).
+	remotes.SetResumer(blobfetch.New(egress, remotes.Keychain(), cfg.State.Root, cfg.Transfer.ResumeThreshold))
 	trustCache := ""
 	if cfg.State.Root != "" {
 		trustCache = filepath.Join(cfg.State.Root, "trust-cache")
@@ -563,4 +587,15 @@ func ensureWritableDir(dir string) error {
 		return err
 	}
 	return os.Remove(filepath.Clean(name))
+}
+
+// resumeDisabledReason says WHY an instance does not resume large
+// transfers, because the two reasons have different fixes and an operator
+// staring at a restarted 6 GB layer should not have to guess which one
+// applies (FR-029).
+func resumeDisabledReason(cfg *config.Config) string {
+	if cfg.Transfer.ResumeThreshold <= 0 {
+		return "transfer.resumeThreshold is 0"
+	}
+	return "no state.root is configured, and partial downloads never live in the transportable store"
 }

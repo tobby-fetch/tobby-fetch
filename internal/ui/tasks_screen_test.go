@@ -419,3 +419,32 @@ func TestDashboardRecentTasks(t *testing.T) {
 		t.Error("dashboard keeps the empty state with a non-empty queue")
 	}
 }
+
+// TestBlobProgressRendering covers the arithmetic the task detail shows
+// for a resumable transfer (FR-029). The percentage is computed here
+// rather than in the template because the zero-size case has to be
+// decided somewhere, and a template is the wrong place to decide it.
+func TestBlobProgressRendering(t *testing.T) {
+	got := blobViews(&tasks.Item{Blobs: []tasks.BlobProgress{
+		{Digest: "sha256:a", SizeBytes: 1000, ReceivedBytes: 780, Resumed: true},
+		{Digest: "sha256:b", SizeBytes: 1000, ReceivedBytes: 1000, Done: true},
+		// A blob whose size the manifest never declared: no percentage
+		// can be honest, and inventing one would be worse than none.
+		{Digest: "sha256:c", ReceivedBytes: 4096},
+	}})
+	if len(got) != 3 {
+		t.Fatalf("views = %+v", got)
+	}
+	if got[0].Percent != 78 || !got[0].Resumed {
+		t.Errorf("row a = %+v, want 78%% and resumed", got[0])
+	}
+	if got[1].Percent != 100 || !got[1].Done {
+		t.Errorf("row b = %+v, want 100%% and done", got[1])
+	}
+	if got[2].Percent != 0 {
+		t.Errorf("row c = %+v, want no invented percentage", got[2])
+	}
+	if blobViews(&tasks.Item{}) != nil {
+		t.Error("an item with no tracked blob produced rows")
+	}
+}

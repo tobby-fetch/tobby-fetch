@@ -93,6 +93,13 @@ const (
 	// CodeVersionResolve is a version expression no available tag
 	// satisfies (FR-021): never a silent fallback.
 	CodeVersionResolve Code = "TBY-REG-006"
+	// CodeRangeUnusable is a source whose partial responses do not add up
+	// while a large blob is being resumed (FR-029): a 206 that starts at
+	// the wrong byte, a Content-Range contradicting the manifest, a
+	// refused range, or content that changed between two attempts.
+	// Operational, not a verification verdict: nothing has been proven
+	// wrong about the content — the conversation about it broke.
+	CodeRangeUnusable Code = "TBY-REG-007"
 
 	// CodeNotAllowlisted is the pre-transfer allowlist refusal (FR-030).
 	// Reserved: emitter lands at milestone 4.
@@ -133,6 +140,13 @@ const (
 	CodeStoreRead Code = "TBY-STO-001"
 	// CodeStoreWrite is a failed write to the local store.
 	CodeStoreWrite Code = "TBY-STO-002"
+	// CodeResumeSpool is a failed write to the partial-download area of
+	// the state directory (FR-029). Deliberately distinct from
+	// CodeStoreWrite: the two directories have different owners, different
+	// sizing and different corrective actions, and sending an operator to
+	// check the store when the state disk is full sends them to the wrong
+	// machine — sometimes literally (R-16).
+	CodeResumeSpool Code = "TBY-STO-003"
 
 	// CodeTaskNotFound is a task identifier unknown to this instance.
 	CodeTaskNotFound Code = "TBY-TSK-001"
@@ -184,6 +198,8 @@ var catalog = map[Code]Entry{
 	CodeSeedContent:    {Code: CodeSeedContent, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"repository"}},
 	CodeTagImmutable:   {Code: CodeTagImmutable, Class: ClassPolicy, HTTPStatus: http.StatusConflict, Params: []string{"reference", "published", "candidate"}},
 
+	CodeRangeUnusable: {Code: CodeRangeUnusable, Class: ClassOperational, HTTPStatus: http.StatusBadGateway, Params: []string{"reference", "detail"}},
+
 	CodeVersionResolve: {Code: CodeVersionResolve, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "constraint", "detail"}},
 
 	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "fingerprints"}},
@@ -194,8 +210,9 @@ var catalog = map[Code]Entry{
 
 	CodeChartDependency: {Code: CodeChartDependency, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"chart", "dependency"}},
 
-	CodeStoreRead:  {Code: CodeStoreRead, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
-	CodeStoreWrite: {Code: CodeStoreWrite, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
+	CodeStoreRead:   {Code: CodeStoreRead, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
+	CodeStoreWrite:  {Code: CodeStoreWrite, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
+	CodeResumeSpool: {Code: CodeResumeSpool, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"path", "detail"}},
 
 	CodeTaskNotFound: {Code: CodeTaskNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound, Params: []string{"id"}},
 

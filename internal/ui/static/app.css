@@ -772,6 +772,14 @@ button.t-lang:hover { color: var(--tobby-accent-text); }
 .t-errrow summary { cursor: pointer; display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
 .t-errrow[open] summary { margin-bottom: 0.5rem; }
 
+/* Per-blob progress of resumable transfers (FR-029): a sub-row under the
+   item it belongs to, so a multi-gigabyte layer says how far it got and
+   whether it resumed rather than restarted. */
+.t-table tr.t-blobrow td { padding-top: 0; border-top: 0; }
+.t-bloblist { list-style: none; margin: 0 0 0.5rem; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.t-bloblist li { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; font-size: var(--tobby-text-sm); }
+.t-bloblist progress { inline-size: 12rem; block-size: 0.55rem; }
+
 /* Extensible reports zone (FR-024; version resolution and scans join it). */
 .t-report-title { margin: 0 0 0.5rem; font-size: var(--tobby-text-sm); font-weight: 600; }
 

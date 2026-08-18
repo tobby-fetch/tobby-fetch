@@ -115,6 +115,29 @@
           {{else}}<span class="t-badge t-badge--pending">{{$.T "task.item_pending"}}</span>{{end}}
         </td>
       </tr>
+      {{/* Per-blob progress of the item's resumable transfers (FR-029):
+           only blobs above the configured threshold are tracked, so this
+           row exists precisely on the transfers where "running" tells an
+           operator nothing. */}}
+      {{if .LargeBlobs}}
+      <tr class="t-blobrow">
+        <td colspan="4">
+          <p class="t-kick">{{$.T "task.blobs_title"}}</p>
+          <ul class="t-bloblist">
+            {{range .LargeBlobs}}
+            <li>
+              <span class="t-mono" translate="no" title="{{.Digest}}">{{$.Trunc .Digest 26}}</span>
+              <progress max="100" value="{{.Percent}}"
+                        aria-label="{{$.T "task.blob_progress_label" "Digest" .Digest}}">{{.Percent}}%</progress>
+              <span class="t-muted">{{$.FmtBytes .Received}}{{if .Size}} / {{$.FmtBytes .Size}}{{end}} · {{.Percent}}%</span>
+              {{if .Resumed}}<span class="t-badge t-badge--up-to-date" title="{{$.T "task.blob_resumed_title"}}">{{$.T "task.blob_resumed"}}</span>{{end}}
+              {{if .Done}}<span class="t-badge t-badge--done">{{$.T "task.blob_verified"}}</span>{{end}}
+            </li>
+            {{end}}
+          </ul>
+        </td>
+      </tr>
+      {{end}}
       {{end}}
     </tbody>
   </table>

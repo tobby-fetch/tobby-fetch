@@ -228,7 +228,7 @@ func (e *Engine) syncRecipe(ctx context.Context, t *tasks.Task, logger *slog.Log
 		go func(i int, ing *spec.Ingredient, itemName string) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			rec, res, err := e.syncIngredient(ctx, t, &mu, logger, ing, rid)
+			rec, res, err := e.syncIngredient(ctx, t, &mu, logger, save, ing, rid)
 			mu.Lock()
 			item := itemFor(t, itemName)
 			if err != nil {
@@ -319,7 +319,7 @@ func (e *Engine) verifyRecipe(ctx context.Context, f *FetchedRecipe, d Decision)
 // relocated repository (FR-035), with source substitution (FR-036),
 // platform selection (FR-022), artifactType enforcement (§7.3), chart
 // dependency verification (FR-024), and bounded retries (FR-029).
-func (e *Engine) syncIngredient(ctx context.Context, t *tasks.Task, mu *sync.Mutex, logger *slog.Logger, ing *spec.Ingredient, rid string) (store.IngredientRecord, tasks.Resolution, error) {
+func (e *Engine) syncIngredient(ctx context.Context, t *tasks.Task, mu *sync.Mutex, logger *slog.Logger, save func(), ing *spec.Ingredient, rid string) (store.IngredientRecord, tasks.Resolution, error) {
 	logger = logger.With(slog.String("ingredient", ing.Name), slog.String("digest", ing.Digest))
 	rec := e.ingredientRecord(ing)
 	res := tasks.Resolution{
@@ -360,7 +360,7 @@ func (e *Engine) syncIngredient(ctx context.Context, t *tasks.Task, mu *sync.Mut
 	}
 	var transferred int64
 	err = withRetries(ctx, e.cfg.Retries, func() error {
-		n, err := e.transferIngredient(ctx, t, mu, ing, repo)
+		n, err := e.transferIngredient(ctx, t, mu, save, ing, repo, rid)
 		transferred += n
 		return err
 	})
@@ -387,8 +387,12 @@ func (e *Engine) syncIngredient(ctx context.Context, t *tasks.Task, mu *sync.Mut
 }
 
 // transferIngredient performs the bit-exact copy of one ingredient.
-func (e *Engine) transferIngredient(ctx context.Context, t *tasks.Task, mu *sync.Mutex, ing *spec.Ingredient, repo string) (int64, error) {
+func (e *Engine) transferIngredient(ctx context.Context, t *tasks.Task, mu *sync.Mutex, save func(), ing *spec.Ingredient, repo, rid string) (int64, error) {
 	desc, err := e.remotes.Get(ctx, ing.Ref, ing.Digest)
+	if err != nil {
+		return 0, err
+	}
+	bl, err := e.blobsFor(ing.Ref, e.itemTracker(t, mu, save, rid+"/"+ing.Name))
 	if err != nil {
 		return 0, err
 	}
@@ -411,7 +415,7 @@ func (e *Engine) transferIngredient(ctx context.Context, t *tasks.Task, mu *sync
 		if err != nil {
 			return 0, err
 		}
-		return copyIndexChildren(ctx, e.store, repo, ing.Version, desc, selected)
+		return copyIndexChildren(ctx, e.store, repo, ing.Version, desc, selected, bl)
 	}
 
 	img, err := desc.Image()
@@ -427,7 +431,38 @@ func (e *Engine) transferIngredient(ctx context.Context, t *tasks.Task, mu *sync
 			return 0, err
 		}
 	}
-	return copyImage(ctx, e.store, repo, ing.Version, img)
+	return copyImage(ctx, e.store, repo, ing.Version, img, bl)
+}
+
+// blobsFor builds the resumable-fetch context of one ingredient: the
+// effective source repository (FR-036 substitution applied — the bytes
+// come from the endpoint actually contacted, not from the nominal one)
+// and the instance resumer.
+func (e *Engine) blobsFor(nominalRef string, track func(string, int64, int64, bool, bool)) (blobs, error) {
+	repo, _, err := e.remotes.Repository(nominalRef)
+	if err != nil {
+		return blobs{}, err
+	}
+	return blobs{src: repo, resumer: e.remotes.Resumer(), track: track}, nil
+}
+
+// itemTracker records per-blob progress on one task item and persists it.
+// Ingredients are transferred concurrently (NFR-008), so every write goes
+// through the task mutex the rest of the run already uses.
+func (e *Engine) itemTracker(t *tasks.Task, mu *sync.Mutex, save func(), itemName string) func(string, int64, int64, bool, bool) {
+	return func(dgst string, received, total int64, resumed, done bool) {
+		mu.Lock()
+		item := itemFor(t, itemName)
+		if done {
+			item.TrackBlobDone(dgst)
+		} else {
+			item.TrackBlob(dgst, received, total, resumed, false)
+		}
+		mu.Unlock()
+		if save != nil {
+			save()
+		}
+	}
 }
 
 // selectPlatforms maps the ingredient's platforms field (FR-022,

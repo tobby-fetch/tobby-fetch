@@ -11,10 +11,12 @@ import (
 	"io"
 	"log/slog"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/opencontainers/go-digest"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/blobfetch"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -94,7 +96,7 @@ func runImport(ctx context.Context, t *tasks.Task, dst Destination, logger *slog
 			if err != nil {
 				return err
 			}
-			return importImage(ctx, dst, repo, itemTag, img, item, t, logger, o)
+			return importImage(ctx, dst, repo, itemTag, img, item, t, logger, o, blobs{src: ref.Context(), save: save})
 		}()
 		if err != nil {
 			var te *taxonomy.Error
@@ -149,7 +151,16 @@ func imageForItem(idx v1.ImageIndex, desc *remote.Descriptor, item *tasks.Item) 
 // dependency-complete rebuild. Vendoring only applies to the tagged
 // single-manifest form: an index child cannot change digest without
 // breaking its index.
-func importImage(ctx context.Context, dst Destination, repo, tag string, img v1.Image, item *tasks.Item, t *tasks.Task, logger *slog.Logger, o *options) error {
+// blobs carries what the resumable blob path needs about the transfer in
+// progress: the SOURCE repository the bytes come from — not the relocated
+// local one they land in — and the task checkpoint, so per-blob progress
+// survives the restart it is meant to describe.
+type blobs struct {
+	src  name.Repository
+	save func()
+}
+
+func importImage(ctx context.Context, dst Destination, repo, tag string, img v1.Image, item *tasks.Item, t *tasks.Task, logger *slog.Logger, o *options, bl blobs) error {
 	man, err := img.Manifest()
 	if err != nil {
 		return err
@@ -176,7 +187,11 @@ func importImage(ctx context.Context, dst Destination, repo, tag string, img v1.
 		if dst.HasBlob(ctx, repo, dgst) {
 			return nil
 		}
-		rc, err := open()
+		// Above the configured threshold the blob is fetched resumably and
+		// its advance is checkpointed on the item (FR-029); below it,
+		// open() is the unchanged streaming path.
+		rc, err := o.resumer.OpenOr(ctx, bl.src, dgst, size,
+			blobProgress(item, dgst.String(), bl.save), open)
 		if err != nil {
 			return err
 		}
@@ -184,6 +199,7 @@ func importImage(ctx context.Context, dst Destination, repo, tag string, img v1.
 		if err := dst.WriteBlob(ctx, repo, dgst, rc); err != nil {
 			return err
 		}
+		item.TrackBlobDone(dgst.String())
 		transferred += size
 		return nil
 	}
@@ -229,4 +245,17 @@ func importImage(ctx context.Context, dst Destination, repo, tag string, img v1.
 		slog.String("digest", item.Digest),
 		slog.Int64("transferred_bytes", transferred))
 	return nil
+}
+
+// blobProgress is the bridge from one resumable download to the task
+// detail: every checkpoint lands on the item and is persisted, so the
+// screen shows which blob is moving and how far — and, after an
+// interruption, that it did not start over.
+func blobProgress(item *tasks.Item, dgst string, save func()) blobfetch.Progress {
+	return func(received, total int64, resumed bool) {
+		item.TrackBlob(dgst, received, total, resumed, false)
+		if save != nil {
+			save()
+		}
+	}
 }

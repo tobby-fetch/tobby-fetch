@@ -15,6 +15,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/blobfetch"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
@@ -34,6 +35,12 @@ type Remotes struct {
 	keychain  authn.Keychain
 	allowlist *policy.Allowlist
 	egress    *netx.Egress
+	// resumer opens blobs above the configured threshold on the
+	// resumable path (FR-029). It lives here, beside the keychain and the
+	// egress, because it needs exactly the same two things this type
+	// already holds — and because a second place to build one would be a
+	// second place to forget the transport.
+	resumer *blobfetch.Resumer
 }
 
 // NewRemotes builds the substitution-aware remote access from the
@@ -75,6 +82,21 @@ func NewRemotes(cfg config.Registries, allow *policy.Allowlist, eg *netx.Egress)
 // Allowlist exposes the configured policy, for the surfaces that report
 // what this instance is allowed to reach.
 func (r *Remotes) Allowlist() *policy.Allowlist { return r.allowlist }
+
+// SetResumer wires the instance's blob resumer (FR-029, R-29). A nil
+// resumer — the default — leaves every blob on the plain streaming path,
+// which is what a build without a state directory and every test that
+// does not care about resumption get.
+func (r *Remotes) SetResumer(res *blobfetch.Resumer) { r.resumer = res }
+
+// Resumer returns the blob resumer, built from this type's own keychain
+// and egress so a resumed blob authenticates and travels exactly like the
+// manifest that named it.
+func (r *Remotes) Resumer() *blobfetch.Resumer { return r.resumer }
+
+// Keychain exposes the credential source, so the resumer authenticates
+// through the same one (FR-004, RECIPE-SPEC §13.2).
+func (r *Remotes) Keychain() authn.Keychain { return r.keychain }
 
 // keychainFor builds the credential keychain of a configured
 // credentialsFile (FR-004), falling back to the default keychain

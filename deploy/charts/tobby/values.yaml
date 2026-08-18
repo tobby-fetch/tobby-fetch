@@ -109,6 +109,21 @@ config:
     # where FR-014 requires synchronization to be triggered manually.
     interval: 15m
 
+  # How blobs cross the wire, whichever operation asks for them.
+  transfer:
+    # Blob size from which a download becomes resumable inside the blob
+    # itself (FR-029): a multi-gigabyte layer cut at 90 % restarts at
+    # 90 %, through an HTTP Range request, instead of at zero.
+    #
+    # It is not free. A resumable blob transits the state volume before
+    # reaching the store, so it costs its own size in temporary space
+    # there and one extra pass of local I/O — which is why there is a
+    # threshold rather than "always", and why persistence.state.size must
+    # have room for the largest layers in flight at once.
+    #
+    # 0 disables it entirely and restores plain streaming for every blob.
+    resumeThreshold: 64MiB
+
   # Where the desired-state document is fetched from (FR-010): an HTTP(S)
   # URL, an OCI reference, or a path inside the container.
   retriever:
@@ -259,8 +274,9 @@ registryCredentials:
 #   store  — artifacts, recipes and operation logs. Self-contained and
 #            relocatable: this is what physically crosses an air gap.
 #   state  — the instance's identity: accounts, tokens, and the secrets that
-#            follow. It is the backup target, and it must never end up on
-#            the transportable media.
+#            follow, plus the partial-download area of FR-029. It is the
+#            backup target, and it must never end up on the transportable
+#            media — a half-received blob is local progress, not content.
 #
 # Tobby refuses to start if one root is nested inside the other.
 persistence:
@@ -281,8 +297,12 @@ persistence:
     existingClaim: ""
     accessModes:
       - ReadWriteOnce
-    # Small on purpose: accounts and tokens, not artifacts.
-    size: 1Gi
+    # Accounts and tokens, not artifacts — but every blob at or above
+    # config.transfer.resumeThreshold transits here before reaching the
+    # store, so leave room for the largest layers in flight at once.
+    # Lower config.transfer.resumeThreshold (or set it to 0) if this
+    # volume has to stay small.
+    size: 20Gi
     storageClassName: ""
     annotations: {}
     # Setting enabled: false falls back to an emptyDir, which loses every

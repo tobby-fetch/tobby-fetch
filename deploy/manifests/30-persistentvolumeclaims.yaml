@@ -49,7 +49,12 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      # Small on purpose: accounts and tokens, not artifacts. Losing this
-      # volume loses every account of the instance — back it up.
-      storage: 1Gi
+      # Accounts and tokens, not artifacts — but also the partial-download
+      # area of FR-029: every blob at or above transfer.resumeThreshold
+      # transits here before it reaches the store, so this volume needs
+      # room for the largest layers in flight at once. 20Gi covers the
+      # usual case; raise it, or lower transfer.resumeThreshold, if the
+      # content is unusually large. Losing this volume loses every account
+      # of the instance — back it up.
+      storage: 20Gi
   # storageClassName: replicated

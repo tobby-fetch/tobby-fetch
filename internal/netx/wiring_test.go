@@ -5,6 +5,7 @@ package netx_test
 
 import (
 	"errors"
+	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -17,10 +18,12 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/static"
 	"github.com/google/go-containerregistry/pkg/v1/types"
+	"github.com/opencontainers/go-digest"
 	"gopkg.in/yaml.v3"
 
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/blobfetch"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
@@ -202,6 +205,32 @@ func TestEveryOutboundPathUsesTheSharedTransport(t *testing.T) {
 		z.AssertRoutedThroughProxy(t, "Helm chart repository import", a, p)
 	})
 
+	t.Run("resumable large blob fetch (FR-029)", func(t *testing.T) {
+		// The R-29 path is the only one that does NOT go through
+		// go-containerregistry's fetch: it issues the blob GET itself so
+		// it can carry a Range header. That is exactly the kind of path
+		// this test exists to catch, so it is proved here rather than
+		// asserted in a comment.
+		dgst, size := seedLayer(t, zoneEgress(t, z), z.Addr+"/library/resumable:1")
+		eg := zoneEgress(t, z)
+		a, p := z.Snapshot()
+		res := blobfetch.New(eg, nil, t.TempDir(), 1)
+		repo, err := name.NewRepository(z.Addr + "/library/resumable")
+		if err != nil {
+			t.Fatal(err)
+		}
+		rc, err := res.Open(t.Context(), repo, dgst, size, nil)
+		if err != nil {
+			t.Fatalf("resuming through the shared transport: %v", err)
+		}
+		n, err := io.Copy(io.Discard, rc)
+		_ = rc.Close()
+		if err != nil || n != size {
+			t.Fatalf("read %d of %d bytes: %v", n, size, err)
+		}
+		z.AssertRoutedThroughProxy(t, "resumable large blob fetch", a, p)
+	})
+
 	// The invariant over the whole run, independent of any single path:
 	// the origin never accepted a connection the proxy did not open for
 	// it. Nothing reached the registry by a route of its own.
@@ -272,6 +301,22 @@ func TestOutboundPathsFailWithoutTheProxy(t *testing.T) {
 		{"Helm chart repository", func() error {
 			_, ierr := importer.Inspect(t.Context(), z.URL("/charts/gitea"), local, sourcePolicy)
 			return ierr
+		}},
+		{"resumable large blob fetch", func() error {
+			repo, rerr := name.NewRepository(z.Addr + "/library/resumable")
+			if rerr != nil {
+				return rerr
+			}
+			d, derr := digest.Parse("sha256:" + strings.Repeat("ab", 32))
+			if derr != nil {
+				return derr
+			}
+			rc, oerr := blobfetch.New(direct, nil, t.TempDir(), 1).
+				Open(t.Context(), repo, d, 4096, nil)
+			if oerr == nil {
+				_ = rc.Close()
+			}
+			return oerr
 		}},
 	}
 	for _, tc := range cases {
@@ -402,6 +447,36 @@ func proxyConfig(z *zone) config.Proxy {
 		Username: proxyUser,
 		Password: config.NewSecret(proxyPass),
 	}
+}
+
+// seedLayer pushes a single-layer image and returns its layer digest and
+// size — what the resumable blob path is addressed by.
+func seedLayer(t *testing.T, eg *netx.Egress, reference string) (dgst digest.Digest, size int64) {
+	t.Helper()
+	img, err := random.Image(64<<10, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := name.ParseReference(reference)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.Write(ref, img, remote.WithTransport(eg.RoundTripper())); err != nil {
+		t.Fatal(err)
+	}
+	layers, err := img.Layers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := layers[0].Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	size, err = layers[0].Size()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return digest.NewDigestFromEncoded(digest.Algorithm(h.Algorithm), h.Hex), size
 }
 
 // seedIndex pushes a two-platform image to the origin, as a standard

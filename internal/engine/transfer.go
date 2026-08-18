@@ -10,10 +10,52 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/opencontainers/go-digest"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/blobfetch"
 )
+
+// blobs is the resumable-fetch context threaded down the copy tree
+// (FR-029, R-29): the SOURCE repository the bytes come from — the
+// effective one after substitution, not the relocated one they land in —
+// the instance resumer, and where per-blob progress is recorded.
+//
+// It travels as one value because the three are useless apart: a resumer
+// without the source repository cannot address the blob, and a resumer
+// without the progress sink resumes invisibly, which on a four-hour
+// transfer is barely better than not resuming at all.
+type blobs struct {
+	src     name.Repository
+	resumer *blobfetch.Resumer
+	// track records one blob's advance. Nil where no task is watching —
+	// the FR-022 index completion of the promotion path, which repairs a
+	// sparse index outside any item.
+	track func(dgst string, received, total int64, resumed, done bool)
+}
+
+// open returns the reader for one blob: the resumable path above the
+// configured threshold, plain otherwise.
+func (b blobs) open(ctx context.Context, dgst digest.Digest, size int64, plain func() (io.ReadCloser, error)) (io.ReadCloser, error) {
+	return b.resumer.OpenOr(ctx, b.src, dgst, size, b.progress(dgst.String()), plain)
+}
+
+func (b blobs) progress(dgst string) blobfetch.Progress {
+	if b.track == nil {
+		return nil
+	}
+	return func(received, total int64, resumed bool) {
+		b.track(dgst, received, total, resumed, false)
+	}
+}
+
+func (b blobs) done(dgst string) {
+	if b.track != nil {
+		b.track(dgst, 0, 0, false, true)
+	}
+}
 
 // Store is the direct-to-storage write surface the engine needs
 // (ADR-0005), implemented by the embedded store. Every write verifies the
@@ -29,7 +71,7 @@ type Store interface {
 // copyImage streams one image manifest's blobs — only the missing ones
 // (FR-026) — then the manifest itself, bit-exactly (NFR-007: streamed,
 // never whole in memory). Returns the transferred byte count.
-func copyImage(ctx context.Context, dst Store, repo, tag string, img v1.Image) (int64, error) {
+func copyImage(ctx context.Context, dst Store, repo, tag string, img v1.Image, bl blobs) (int64, error) {
 	man, err := img.Manifest()
 	if err != nil {
 		return 0, err
@@ -40,7 +82,7 @@ func copyImage(ctx context.Context, dst Store, repo, tag string, img v1.Image) (
 		if dst.HasBlob(ctx, repo, d) {
 			return nil
 		}
-		rc, err := open()
+		rc, err := bl.open(ctx, d, size, open)
 		if err != nil {
 			return err
 		}
@@ -48,6 +90,7 @@ func copyImage(ctx context.Context, dst Store, repo, tag string, img v1.Image) (
 		if err := dst.WriteBlob(ctx, repo, d, rc); err != nil {
 			return err
 		}
+		bl.done(d.String())
 		transferred += size
 		return nil
 	}
@@ -91,7 +134,7 @@ func copyImage(ctx context.Context, dst Store, repo, tag string, img v1.Image) (
 // preserved even when a platform selection makes it sparse (FR-022).
 // selected nil copies every child; otherwise only the listed platform
 // digests are copied.
-func copyIndexChildren(ctx context.Context, dst Store, repo, tag string, desc *remote.Descriptor, selected map[string]bool) (int64, error) {
+func copyIndexChildren(ctx context.Context, dst Store, repo, tag string, desc *remote.Descriptor, selected map[string]bool, bl blobs) (int64, error) {
 	idx, err := desc.ImageIndex()
 	if err != nil {
 		return 0, err
@@ -114,7 +157,7 @@ func copyIndexChildren(ctx context.Context, dst Store, repo, tag string, desc *r
 			if err != nil {
 				return transferred, err
 			}
-			n, err := copyNestedIndex(ctx, dst, repo, nested)
+			n, err := copyNestedIndex(ctx, dst, repo, nested, bl)
 			transferred += n
 			if err != nil {
 				return transferred, err
@@ -125,7 +168,7 @@ func copyIndexChildren(ctx context.Context, dst Store, repo, tag string, desc *r
 		if err != nil {
 			return transferred, err
 		}
-		n, err := copyImage(ctx, dst, repo, "", img)
+		n, err := copyImage(ctx, dst, repo, "", img, bl)
 		transferred += n
 		if err != nil {
 			return transferred, err
@@ -142,7 +185,7 @@ func copyIndexChildren(ctx context.Context, dst Store, repo, tag string, desc *r
 }
 
 // copyNestedIndex copies a nested index and all its children, untagged.
-func copyNestedIndex(ctx context.Context, dst Store, repo string, idx v1.ImageIndex) (int64, error) {
+func copyNestedIndex(ctx context.Context, dst Store, repo string, idx v1.ImageIndex, bl blobs) (int64, error) {
 	man, err := idx.IndexManifest()
 	if err != nil {
 		return 0, err
@@ -158,7 +201,7 @@ func copyNestedIndex(ctx context.Context, dst Store, repo string, idx v1.ImageIn
 			if err != nil {
 				return transferred, err
 			}
-			n, err := copyNestedIndex(ctx, dst, repo, nested)
+			n, err := copyNestedIndex(ctx, dst, repo, nested, bl)
 			transferred += n
 			if err != nil {
 				return transferred, err
@@ -169,7 +212,7 @@ func copyNestedIndex(ctx context.Context, dst Store, repo string, idx v1.ImageIn
 		if err != nil {
 			return transferred, err
 		}
-		n, err := copyImage(ctx, dst, repo, "", img)
+		n, err := copyImage(ctx, dst, repo, "", img, bl)
 		transferred += n
 		if err != nil {
 			return transferred, err
