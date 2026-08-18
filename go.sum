@@ -154,8 +154,8 @@ github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXf
 github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/tobby-fetch/recipe-spec v0.0.0-20260811224804-d14073735e19 h1:a85krpGYQwTI80kF92lPHWhOvHKKrWiA0ulSEPrNl6s=
-github.com/tobby-fetch/recipe-spec v0.0.0-20260811224804-d14073735e19/go.mod h1:Zdt/ni9TAuCRxzL0W76u28rXiMpahhyCx3ocKPHQAp0=
+github.com/tobby-fetch/recipe-spec v0.0.0-20260818001428-d850144f090a h1:1pc8Fef8674EkgwWsc8/L8RLtD+yZiKqn5F1wqlPBkY=
+github.com/tobby-fetch/recipe-spec v0.0.0-20260818001428-d850144f090a/go.mod h1:Zdt/ni9TAuCRxzL0W76u28rXiMpahhyCx3ocKPHQAp0=
 github.com/yuin/gopher-lua v1.1.1 h1:kYKnWBjvbNP4XLT3+bPEwAXJx262OhaHDWDVOPjL46M=
 github.com/yuin/gopher-lua v1.1.1/go.mod h1:GBR0iDaNXjAgGg9zfCvksxSRnQx76gclCIb7kdAd1Pw=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=

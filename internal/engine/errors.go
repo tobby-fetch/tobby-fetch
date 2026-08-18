@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 
+	"github.com/tobby-fetch/recipe-spec/cookbook"
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
@@ -45,10 +46,10 @@ func (e *Engine) mapError(err error, subject string) *taxonomy.Error {
 
 	// §11.2 layout violations read as validation failures too: the
 	// artifact, not the network, is wrong.
-	var le *layoutError
+	var le *cookbook.LayoutError
 	if errors.As(err, &le) {
 		return taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
-			"file": subject, "path": "artifact layout (RECIPE-SPEC §11.2)", "constraint": le.reason,
+			"file": subject, "path": layoutPath, "constraint": le.Error(),
 		}).WithCause(err)
 	}
 

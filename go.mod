@@ -13,7 +13,7 @@ require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
-	github.com/tobby-fetch/recipe-spec v0.0.0-20260811224804-d14073735e19
+	github.com/tobby-fetch/recipe-spec v0.0.0-20260818001428-d850144f090a
 	golang.org/x/crypto v0.55.0
 	golang.org/x/term v0.45.0
 	golang.org/x/text v0.41.0

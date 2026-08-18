@@ -4,28 +4,22 @@
 package engine
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/static"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 
+	"github.com/tobby-fetch/recipe-spec/cookbook"
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
-
-// emptyConfigJSON is the canonical empty OCI config payload — the two
-// bytes "{}", digest sha256:44136fa3…, required by RECIPE-SPEC §11.2.
-var emptyConfigJSON = []byte("{}")
 
 // Publisher writes recipe artifacts to a cookbook (R-36).
 //
@@ -69,71 +63,54 @@ type PublishResult struct {
 // PublishRecipe validates a recipe document and publishes it as the OCI
 // artifact of RECIPE-SPEC §11.2.
 //
-// The validation is the point of the command. `oras push` moves bytes
-// without knowing what they are; this refuses to publish
-//   - a document that is not a valid Recipe,
-//   - a recipe that is not fully pinned (§8: a cookbook holds cooked
-//     recipes only — every ingredient carries a digest and an exact tag),
-//   - a recipe whose name or version contradicts where it is being
-//     published (§11.3, anti tag-reuse),
-//   - a republication of an existing tag onto different content (§8
-//     immutability: any change requires a new metadata.version).
+// The validation is the point of the command — `oras push` moves bytes
+// without knowing what they are — and it is not implemented here: what a
+// recipe artifact must look like belongs to the format, so the recipe-spec
+// SDK owns it and every implementation refuses the same documents. This
+// function owns the other half, the one the SDK deliberately has no
+// business knowing: how to talk to a registry.
 //
-// Signing stays outside: Tobby never holds a private key (ADR-0007). The
-// returned digest is what `cosign sign` takes.
+// Signing stays outside both: Tobby never holds a private key (ADR-0007).
+// The returned digest is what `cosign sign` takes.
 func (p *Publisher) PublishRecipe(ctx context.Context, ref string, doc []byte) (*PublishResult, error) {
 	tagRef, err := p.parseTagRef(ref)
 	if err != nil {
 		return nil, err
 	}
 
-	recipe, err := spec.ParseRecipe(doc)
-	if err != nil {
-		return nil, validationError(ref, err)
-	}
-	if err := recipe.Validate(spec.ProfileCooked); err != nil {
-		return nil, validationError(ref, err)
-	}
 	segments := strings.Split(tagRef.Context().RepositoryStr(), "/")
-	if err := recipe.ValidatePublishLocation(segments[len(segments)-1], tagRef.TagStr()); err != nil {
-		return nil, validationError(ref, err)
-	}
-
-	manifest, digest, err := recipeManifest(doc)
+	art, err := cookbook.Build(doc, segments[len(segments)-1], tagRef.TagStr())
 	if err != nil {
-		return nil, err
+		return nil, validationError(ref, err)
 	}
 
 	opts := []remote.Option{remote.WithContext(ctx), remote.WithAuthFromKeychain(p.keychain)}
-	switch existing, err := remote.Head(tagRef, opts...); {
-	case err == nil && existing.Digest.String() == digest:
-		return &PublishResult{Reference: tagRef.String(), Digest: digest, Unchanged: true}, nil
-	case err == nil:
+	switch existing, headErr := remote.Head(tagRef, opts...); {
+	case headErr == nil:
+		// The tag exists: §8 says what writing to it would mean.
+		if cookbook.DecideRepublication(existing.Digest.String(), art.Manifest.Digest) == cookbook.RepublicationIdentical {
+			return &PublishResult{Reference: tagRef.String(), Digest: art.Manifest.Digest, Unchanged: true}, nil
+		}
 		return nil, taxonomy.New(taxonomy.CodeTagImmutable, taxonomy.Params{
 			"reference": tagRef.String(),
 			"published": existing.Digest.String(),
-			"candidate": digest,
+			"candidate": art.Manifest.Digest,
 		})
-	case !isNotFound(err):
-		return nil, err
+	case !isNotFound(headErr):
+		return nil, headErr
 	}
 
 	repo := tagRef.Context()
-	for _, l := range []struct {
-		payload   []byte
-		mediaType types.MediaType
-	}{
-		{emptyConfigJSON, mediaTypeEmptyConfig},
-		{doc, MediaTypeRecipe},
-	} {
-		if err := remote.WriteLayer(repo, static.NewLayer(l.payload, l.mediaType), opts...); err != nil {
-			return nil, fmt.Errorf("uploading the %s blob: %w", l.mediaType, err)
+	for _, b := range []cookbook.Blob{art.Config, art.Document} {
+		layer := static.NewLayer(b.Content, types.MediaType(b.MediaType))
+		if err := remote.WriteLayer(repo, layer, opts...); err != nil {
+			return nil, fmt.Errorf("uploading the %s blob: %w", b.MediaType, err)
 		}
 	}
-	if err := remote.Put(tagRef, rawManifest{bytes: manifest}, opts...); err != nil {
+	if err := remote.Put(tagRef, rawManifest{bytes: art.Manifest.Content}, opts...); err != nil {
 		return nil, fmt.Errorf("publishing the manifest: %w", err)
 	}
-	return &PublishResult{Reference: tagRef.String(), Digest: digest}, nil
+	return &PublishResult{Reference: tagRef.String(), Digest: art.Manifest.Digest}, nil
 }
 
 // parseTagRef requires a tagged reference: §11.3 makes the tag carry
@@ -164,53 +141,7 @@ func (p *Publisher) parseTagRef(ref string) (name.Tag, error) {
 	return tagRef, nil
 }
 
-// recipeManifest builds the §11.2 artifact manifest for a document and
-// returns it with its digest. The layout is written out rather than
-// assembled through image helpers: it is fixed by the specification, and a
-// literal is what a reader can check against §11.2 line by line.
-func recipeManifest(doc []byte) (manifest []byte, digest string, err error) {
-	docHash, docSize, err := v1.SHA256(bytes.NewReader(doc))
-	if err != nil {
-		return nil, "", err
-	}
-	cfgHash, cfgSize, err := v1.SHA256(bytes.NewReader(emptyConfigJSON))
-	if err != nil {
-		return nil, "", err
-	}
-	m := v1.Manifest{
-		SchemaVersion: 2,
-		MediaType:     types.OCIManifestSchema1,
-		ArtifactType:  MediaTypeRecipe,
-		Config: v1.Descriptor{
-			MediaType: mediaTypeEmptyConfig,
-			Digest:    cfgHash,
-			Size:      cfgSize,
-		},
-		Layers: []v1.Descriptor{{
-			MediaType:   MediaTypeRecipe,
-			Digest:      docHash,
-			Size:        docSize,
-			Annotations: map[string]string{"org.opencontainers.image.title": recipeLayerTitle},
-		}},
-	}
-	manifest, err = json.Marshal(m)
-	if err != nil {
-		return nil, "", err
-	}
-	manHash, _, err := v1.SHA256(bytes.NewReader(manifest))
-	if err != nil {
-		return nil, "", err
-	}
-	return manifest, manHash.String(), nil
-}
-
-// recipeLayerTitle is the layer file name of a published recipe. §11.2
-// shows it in its example manifest without a normative clause, and the
-// consumer side does not check it; writing it keeps published artifacts
-// consistent with the publishing guide and with `oras push recipe.yaml`.
-const recipeLayerTitle = "recipe.yaml"
-
-// rawManifest is a remote.Taggable over manifest bytes we built ourselves:
+// rawManifest is a remote.Taggable over the manifest bytes the SDK built:
 // go-containerregistry's image helpers cannot set artifactType, and §11.2
 // requires it.
 type rawManifest struct{ bytes []byte }
@@ -218,13 +149,20 @@ type rawManifest struct{ bytes []byte }
 func (r rawManifest) RawManifest() ([]byte, error)        { return r.bytes, nil }
 func (r rawManifest) MediaType() (types.MediaType, error) { return types.OCIManifestSchema1, nil }
 
-// validationError wraps an SDK validation failure in the taxonomy, so the
-// CLI prints the same what/cause/action shape as every other refusal.
+// validationError wraps an SDK refusal in the taxonomy, so the CLI prints
+// the same what/cause/action shape as every other refusal. Both refusal
+// shapes the SDK returns land here: a document that is not a publishable
+// recipe (an ErrorList over its fields), and one that is not shaped like a
+// recipe artifact at all (a LayoutError).
 func validationError(ref string, err error) error {
-	var list spec.ErrorList
 	path := ""
-	if errors.As(err, &list) && len(list) > 0 {
+	var list spec.ErrorList
+	var layout *cookbook.LayoutError
+	switch {
+	case errors.As(err, &list) && len(list) > 0:
 		path = list[0].Path
+	case errors.As(err, &layout):
+		path = layoutPath
 	}
 	return taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
 		"file":       ref,

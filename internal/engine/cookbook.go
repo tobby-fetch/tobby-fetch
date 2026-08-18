@@ -5,7 +5,6 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,21 +15,25 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 
+	"github.com/tobby-fetch/recipe-spec/cookbook"
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 )
 
-// Recipe artifact layout constants (RECIPE-SPEC §11.2). The v1 in the
-// media type versions the envelope; the document schema is versioned by
-// apiVersion.
+// The recipe artifact layout (RECIPE-SPEC §11.2) is the format's, not
+// ours: the SDK holds it, and these names exist so the rest of the engine
+// reads the same values without importing it everywhere.
 const (
 	// MediaTypeRecipe is the artifactType and single-layer media type of a
 	// published recipe.
-	MediaTypeRecipe = "application/vnd.tobby.recipe.v1+yaml"
+	MediaTypeRecipe = cookbook.ArtifactType
 	// mediaTypeEmptyConfig is the OCI empty config of an artifact manifest.
-	mediaTypeEmptyConfig = "application/vnd.oci.empty.v1+json"
+	mediaTypeEmptyConfig = cookbook.ConfigMediaType
 	// maxRecipeBytes bounds a recipe document read (a recipe is a small
-	// YAML file; anything larger is hostile or wrong).
-	maxRecipeBytes = 4 << 20
+	// YAML file; anything larger is hostile or wrong). Retrievers are read
+	// under the same bound: they are the same kind of document.
+	maxRecipeBytes = cookbook.MaxDocumentBytes
+	// layoutPath names the §11.2 layout in taxonomy error paths.
+	layoutPath = "artifact layout (RECIPE-SPEC §11.2)"
 )
 
 // Cookbook reads recipes from one cookbook — an ordinary OCI repository
@@ -89,27 +92,6 @@ type FetchedRecipe struct {
 	Recipe *spec.Recipe
 }
 
-// layoutError is a §11.2 violation: consumers MUST reject artifacts not
-// conforming to the recipe layout.
-type layoutError struct{ reason string }
-
-func (e *layoutError) Error() string { return "recipe artifact layout: " + e.reason }
-
-// artifactManifest is the subset of an OCI image manifest the layout
-// check reads.
-type artifactManifest struct {
-	ArtifactType string `json:"artifactType"`
-	Config       struct {
-		MediaType string `json:"mediaType"`
-		Digest    string `json:"digest"`
-	} `json:"config"`
-	Layers []struct {
-		MediaType string `json:"mediaType"`
-		Digest    string `json:"digest"`
-		Size      int64  `json:"size"`
-	} `json:"layers"`
-}
-
 // FetchArtifact pulls one recipe artifact's MANIFEST by tag and enforces
 // the §11.2 layout — without touching the document yet. The caller
 // verifies the signature over the manifest digest first (§12.3 point 1:
@@ -121,24 +103,9 @@ func (c *Cookbook) FetchArtifact(ctx context.Context, recipeName, tag string) (*
 		return nil, err
 	}
 
-	var man artifactManifest
-	if err := json.Unmarshal(desc.Manifest, &man); err != nil {
-		return nil, &layoutError{reason: "unparseable manifest: " + err.Error()}
-	}
-	if man.ArtifactType != MediaTypeRecipe {
-		return nil, &layoutError{reason: fmt.Sprintf("artifactType %q, want %q", man.ArtifactType, MediaTypeRecipe)}
-	}
-	if man.Config.MediaType != mediaTypeEmptyConfig {
-		return nil, &layoutError{reason: fmt.Sprintf("config media type %q, want the empty config %q", man.Config.MediaType, mediaTypeEmptyConfig)}
-	}
-	if len(man.Layers) != 1 {
-		return nil, &layoutError{reason: fmt.Sprintf("%d layers, want exactly one recipe document layer", len(man.Layers))}
-	}
-	if man.Layers[0].MediaType != MediaTypeRecipe {
-		return nil, &layoutError{reason: fmt.Sprintf("layer media type %q, want %q", man.Layers[0].MediaType, MediaTypeRecipe)}
-	}
-	if man.Layers[0].Size > maxRecipeBytes {
-		return nil, &layoutError{reason: "recipe document layer exceeds the size bound"}
+	layout, err := cookbook.VerifyManifest(desc.Manifest)
+	if err != nil {
+		return nil, err
 	}
 
 	return &FetchedRecipe{
@@ -147,8 +114,8 @@ func (c *Cookbook) FetchArtifact(ctx context.Context, recipeName, tag string) (*
 		ManifestBytes:  desc.Manifest,
 		MediaType:      string(desc.MediaType),
 		ManifestDigest: desc.Digest.String(),
-		ConfigDigest:   man.Config.Digest,
-		LayerDigest:    man.Layers[0].Digest,
+		ConfigDigest:   layout.Config.Digest,
+		LayerDigest:    layout.Document.Digest,
 	}, nil
 }
 

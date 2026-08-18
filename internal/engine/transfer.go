@@ -189,6 +189,23 @@ func copyNestedIndex(ctx context.Context, dst Store, repo string, idx v1.ImageIn
 	return transferred, nil
 }
 
+// artifactManifest is the handful of OCI manifest fields the generic copy
+// paths read: which blobs to move, and what kind of artifact this is. It
+// is NOT the §11.2 recipe layout check — that rule belongs to the format
+// and lives in the recipe-spec SDK (cookbook.VerifyManifest).
+type artifactManifest struct {
+	ArtifactType string `json:"artifactType"`
+	Config       struct {
+		MediaType string `json:"mediaType"`
+		Digest    string `json:"digest"`
+	} `json:"config"`
+	Layers []struct {
+		MediaType string `json:"mediaType"`
+		Digest    string `json:"digest"`
+		Size      int64  `json:"size"`
+	} `json:"layers"`
+}
+
 // copyArtifact copies a small artifact manifest (a recipe, a cosign
 // signature) with its config and layer blobs, fetched from the nominal
 // repository, into dst under the given repository and tag. Artifact blobs

@@ -11,6 +11,10 @@ import (
 	"strings"
 	"testing"
 
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/types"
+
+	"github.com/tobby-fetch/recipe-spec/cookbook"
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -86,8 +90,8 @@ func TestPublishRecipeLayout(t *testing.T) {
 	if err := json.Unmarshal(fetched.ManifestBytes, &man); err != nil {
 		t.Fatal(err)
 	}
-	if got := man.Layers[0].Annotations["org.opencontainers.image.title"]; got != recipeLayerTitle {
-		t.Errorf("layer title = %q, want %q", got, recipeLayerTitle)
+	if got := man.Layers[0].Annotations["org.opencontainers.image.title"]; got != cookbook.LayerTitle {
+		t.Errorf("layer title = %q, want %q", got, cookbook.LayerTitle)
 	}
 }
 
@@ -239,5 +243,71 @@ func assertTaxonomy(t *testing.T, err error, want taxonomy.Code) {
 	}
 	if te.Code() != want {
 		t.Fatalf("expected %s, got %s: %v", want, te.Code(), err)
+	}
+}
+
+// TestSDKManifestIsByteIdenticalToTheLibraryLayout pins the one thing the
+// R-39 extraction could silently break.
+//
+// Publishing moved from a go-containerregistry v1.Manifest to bytes the
+// recipe-spec SDK builds, because the layout belongs to the format. But
+// the manifest digest IS the artifact's identity: JSON that differs only
+// in field order or in an omitted empty field hashes differently, and a
+// recipe already published by an earlier version would then look like
+// different content under the same tag — an immutability conflict (§8)
+// where nothing changed, and a signature over a digest nobody can
+// reproduce.
+//
+// So the two encodings must agree byte for byte. This test builds the
+// same artifact both ways and compares. It lives here, not in the SDK,
+// because this is the only side that has the library to compare against.
+func TestSDKManifestIsByteIdenticalToTheLibraryLayout(t *testing.T) {
+	doc := cookedRecipeYAML(t, "wordpress", "6.8.2", []spec.Ingredient{cookedIngredient()})
+
+	art, err := cookbook.Build(doc, "wordpress", "6.8.2")
+	if err != nil {
+		t.Fatalf("cookbook.Build: %v", err)
+	}
+
+	docHash, docSize, err := v1.SHA256(bytes.NewReader(doc))
+	if err != nil {
+		t.Fatalf("hashing the document: %v", err)
+	}
+	emptyConfig := []byte("{}")
+	cfgHash, cfgSize, err := v1.SHA256(bytes.NewReader(emptyConfig))
+	if err != nil {
+		t.Fatalf("hashing the empty config: %v", err)
+	}
+	fromLibrary, err := json.Marshal(v1.Manifest{
+		SchemaVersion: 2,
+		MediaType:     types.OCIManifestSchema1,
+		ArtifactType:  MediaTypeRecipe,
+		Config: v1.Descriptor{
+			MediaType: mediaTypeEmptyConfig,
+			Digest:    cfgHash,
+			Size:      cfgSize,
+		},
+		Layers: []v1.Descriptor{{
+			MediaType:   MediaTypeRecipe,
+			Digest:      docHash,
+			Size:        docSize,
+			Annotations: map[string]string{"org.opencontainers.image.title": cookbook.LayerTitle},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshaling the library manifest: %v", err)
+	}
+
+	if !bytes.Equal(art.Manifest.Content, fromLibrary) {
+		t.Errorf("the SDK and the library disagree on the manifest bytes.\nSDK:     %s\nlibrary: %s",
+			art.Manifest.Content, fromLibrary)
+	}
+	manHash, _, err := v1.SHA256(bytes.NewReader(fromLibrary))
+	if err != nil {
+		t.Fatalf("hashing the library manifest: %v", err)
+	}
+	if art.Manifest.Digest != manHash.String() {
+		t.Errorf("manifest digest = %s, want %s — already-published recipes would conflict",
+			art.Manifest.Digest, manHash.String())
 	}
 }

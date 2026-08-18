@@ -4,19 +4,19 @@
 package ui
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 
-	"github.com/tobby-fetch/tobby-fetch/internal/engine"
+	"github.com/tobby-fetch/recipe-spec/cookbook"
+
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
 // maxRecipeDocument bounds a document read. The same bound the cookbook
 // reader applies on the way in (RECIPE-SPEC artifact layout): a recipe is
 // a small YAML file, anything larger never entered the store.
-const maxRecipeDocument = 4 << 20
+const maxRecipeDocument = cookbook.MaxDocumentBytes
 
 // recipeDocument is the YAML a recipe artifact carries, read back from the
 // local store (R-37).
@@ -40,21 +40,14 @@ func (u *UI) recipeDocumentOf(r *http.Request, name, tag string) *recipeDocument
 	if err != nil {
 		return nil
 	}
-	var man struct {
-		ArtifactType string `json:"artifactType"`
-		Layers       []struct {
-			MediaType string `json:"mediaType"`
-			Digest    string `json:"digest"`
-		} `json:"layers"`
-	}
-	if err := json.Unmarshal(raw, &man); err != nil {
+	// The same §11.2 check the engine applies on the way in, from the
+	// same place: a screen that showed a document the fetch path would
+	// have refused would be showing something nobody verified.
+	layout, err := cookbook.VerifyManifest(raw)
+	if err != nil {
 		return nil
 	}
-	if man.ArtifactType != engine.MediaTypeRecipe || len(man.Layers) != 1 ||
-		man.Layers[0].MediaType != engine.MediaTypeRecipe {
-		return nil
-	}
-	doc, err := u.readBlob(r, name, man.Layers[0].Digest)
+	doc, err := u.readBlob(r, name, layout.Document.Digest)
 	if err != nil {
 		return nil
 	}
@@ -66,8 +59,9 @@ func (u *UI) recipeDocumentOf(r *http.Request, name, tag string) *recipeDocument
 }
 
 // recipeFileName is the download name, and the last path segment that
-// routes to it. It matches the layer title a published recipe carries.
-const recipeFileName = "recipe.yaml"
+// routes to it: the layer title a published recipe carries, so what is
+// downloaded here is named what `oras pull` would have named it.
+const recipeFileName = cookbook.LayerTitle
 
 // readBlob reads one bounded blob of a repository.
 func (u *UI) readBlob(r *http.Request, name, dgst string) ([]byte, error) {
