@@ -190,10 +190,6 @@ spec:
 EOF
 inc exec tbc-m3-node -- mkdir -p /etc/tobby
 inc file push "$WORK/node.yaml" tbc-m3-node/etc/tobby/config.yaml
-echo "DIAG tags on the node for $COOKBOOK_REPO:" >&2
-curl -fsS -u "$CRED" "$API/content/$COOKBOOK_REPO" 2>/dev/null | jq -c '[.tags[]?.name]' >&2 || true
-echo "DIAG source tags:" >&2
-curl -fsS "http://$SOURCE_IP:8080/v2/cookbook/sample-app/tags/list" 2>/dev/null | jq -c '.tags' >&2 || true
 inc file push "$WORK/retriever.yaml" tbc-m3-node/etc/tobby/retriever.yaml
 inc exec tbc-m3-node -- sh -c "printf '%s\n' '$CRED_PASS' |
     tobby user add $CRED_USER --state-root /srv/state --password-stdin" >/dev/null ||

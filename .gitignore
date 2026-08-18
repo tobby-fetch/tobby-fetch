@@ -16,3 +16,4 @@ coverage.*
 
 # Topology scenario scratch (generated configs and throwaway PKI)
 /test/topology/.m4/
+docs/acceptance/crucible-report-*.txt
