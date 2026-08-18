@@ -88,7 +88,11 @@
   <div class="t-row t-pullrow">
     <button type="button" class="t-btn t-btn--secondary t-btn--sm t-chip-copy" data-copy="{{.YAML}}"
             aria-label="{{$.T "manifest.copy_document"}}" title="{{$.T "manifest.copy_document"}}">⧉ {{$.T "manifest.copy_document"}}</button>
-    <a class="t-btn t-btn--secondary t-btn--sm" href="{{.Href}}" download>{{$.T "manifest.download_document"}}</a>
+    {{/* hx-boost="false": a boosted anchor is fetched by the client and
+         swapped into the page, so the document would be DISPLAYED as raw
+         YAML instead of downloaded — the `download` attribute never gets a
+         say, htmx cancels the navigation first (B-013, ADR-0015 §7). */}}
+    <a class="t-btn t-btn--secondary t-btn--sm" href="{{.Href}}" download hx-boost="false">{{$.T "manifest.download_document"}}</a>
   </div>
   <div class="t-logview t-docview" tabindex="0"><pre translate="no" lang="en">{{.YAML}}</pre></div>
   {{end}}

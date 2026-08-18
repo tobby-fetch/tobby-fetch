@@ -11,7 +11,8 @@
 
   <div class="t-row t-logbar">
     <p class="t-kick">{{.T "task.logs_title"}}</p>
-    <a class="t-btn t-btn--secondary t-btn--sm" href="{{.Data.DownloadHref}}">↓ {{.T "task.logs_download"}}</a>
+    {{/* Raw file off the machine surface: never boosted (B-013). */}}
+    <a class="t-btn t-btn--secondary t-btn--sm" href="{{.Data.DownloadHref}}" hx-boost="false">↓ {{.T "task.logs_download"}}</a>
   </div>
   {{if .Data.LogErr}}
   <p class="t-muted">{{.T "task.logs_unavailable"}}</p>

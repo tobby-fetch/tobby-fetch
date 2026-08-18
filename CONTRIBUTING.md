@@ -87,6 +87,8 @@ Day-to-day commands (the same ones CI runs):
 ```sh
 mise run build       # go build ./cmd/tobby
 mise run test         # go test -race -count=2 ./... (unit + integration)
+mise run test-browser # browser non-regression (R-38); needs a local Chrome,
+                      # which is used as installed and never downloaded
 mise run lint         # golangci-lint run, strict profile, zero suppressions
 mise run coverage     # per-package coverage floor (tools/check-coverage.sh)
 ```

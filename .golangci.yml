@@ -4,6 +4,13 @@
 # written justification (enforced by nolintlint).
 version: "2"
 
+run:
+  # The browser level (R-38) sits behind the `browser` build tag so it never
+  # slows `go test ./...` down; lint it all the same — an unlinted suite
+  # rots faster than the code it guards.
+  build-tags:
+    - browser
+
 linters:
   default: standard # errcheck, govet, ineffassign, staticcheck, unused
   enable:

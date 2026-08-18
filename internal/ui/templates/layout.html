@@ -13,9 +13,14 @@
 <link rel="stylesheet" href="/static/app.css">
 {{if .HasThemeOverride}}<link rel="stylesheet" href="/static/theme-override.css">{{end}}
 <script src="/static/thirdparty/htmx.min.js" defer></script>
-<script src="/static/thirdparty/idiomorph.min.js" defer></script>
+<script src="/static/thirdparty/idiomorph-ext.min.js" defer></script>
 </head>
-<body hx-boost="true">
+{{/* hx-ext="morph" enables the idiomorph swap styles for the whole shell.
+     Without it `hx-swap="morph:outerHTML"` is a swap style htmx does not
+     recognise and silently degrades to innerHTML, nesting a polled zone
+     inside itself (B-012). Boosted swaps replace the body's CONTENT, so
+     this attribute survives navigation. */}}
+<body hx-boost="true" hx-ext="morph">
 <a class="t-skip-link" href="#main">{{.T "shell.skip"}}</a>
 
 <header class="t-header">
