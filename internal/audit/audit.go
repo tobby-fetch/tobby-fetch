@@ -46,17 +46,35 @@ const ActorLocal = "local"
 const OriginLocal = "local"
 
 // Actions recorded so far. The catalog grows with the features that ship
-// (sensitive configuration changes, audited overrides — FR-046, FR-054);
-// full authentication coverage (throttling, session timeout events)
-// lands at milestone 4 with R-14.
+// (sensitive configuration changes, audited overrides — FR-046, FR-054).
 const (
 	ActionInstanceStart = "instance.start"
 	ActionInstanceStop  = "instance.stop"
 
 	// Account lifecycle (R-01: local CLI, actor "local"; R-34: the
-	// self-service password change carries the authenticated identity).
+	// self-service password change carries the authenticated identity;
+	// milestone 4 feature 4.3: the admin surfaces carry the acting
+	// administrator as actor and the managed account as target).
 	ActionAccountCreate = "account.create"
 	ActionAccountPasswd = "account.password_change"
+	ActionAccountDelete = "account.delete"
+	ActionAccountRole   = "account.role_change"
+
+	// ActionAuthenticate is one credential verification on a machine
+	// surface — the /v2/ registry or /api/v1 (FR-094, FR-076). The target
+	// names the surface, not the path: authenticating is not the same
+	// event as reaching a resource, and the authorization verdict has its
+	// own action below. Emission is deliberately event-shaped rather than
+	// request-shaped; see auth.Authenticator for the rule.
+	ActionAuthenticate = "auth.authenticate"
+
+	// Authorization verdicts, per surface. These fire on refusal only: a
+	// permitted request is the traffic the operational log already carries
+	// (FR-090), and duplicating it here would bury the refusals that make
+	// the trail worth reading.
+	ActionRegistryAccess = "registry.access"
+	ActionAPIAccess      = "api.access"
+	ActionUIAccess       = "ui.access"
 
 	// Static token lifecycle (FR-072).
 	ActionTokenCreate = "token.create"
@@ -65,7 +83,18 @@ const (
 	// UI sessions (interactive sign-in and sign-out).
 	ActionLogin  = "session.login"
 	ActionLogout = "session.logout"
+)
 
+// Surfaces named as the target of authentication events. A surface, not a
+// path: "which door was tried" is the security question; "which resource"
+// is answered by the authorization actions and by the operational log.
+const (
+	SurfaceUI       = "ui"
+	SurfaceAPI      = "api"
+	SurfaceRegistry = "registry"
+)
+
+const (
 	// ActionAuthOverride is emitted at startup while authentication is
 	// disabled by the explicit FR-075 opt-out — the trail's counterpart of
 	// the permanent UI banner.

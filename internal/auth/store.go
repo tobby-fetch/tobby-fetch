@@ -47,6 +47,15 @@ var ErrNotFound = errors.New("not found")
 // ErrExists reports a duplicate account or token name.
 var ErrExists = errors.New("already exists")
 
+// ErrLastAdmin refuses a removal or a demotion that would leave the
+// instance with no administrator. The invariant is enforced here, under
+// the store lock, rather than at the call sites: it is the only place
+// where the check and the write are atomic, and it is what makes the rule
+// impossible to forget on a surface added later (FR-073, FR-074). An
+// instance without an admin is unmanageable, and FR-005 makes it refuse to
+// start with no account at all — the file must never reach that state.
+var ErrLastAdmin = errors.New("last administrator account")
+
 // Open loads (or initializes empty) the account store under stateRoot. The
 // directory is created 0700 if missing.
 func Open(stateRoot string) (*Store, error) {
@@ -121,6 +130,32 @@ func (s *Store) Accounts() []Account {
 	return out
 }
 
+// Account returns the account named name. The password hash travels with
+// it; callers outside this package only ever read the name, role, and
+// timestamps (NFR-015).
+func (s *Store) Account(name string) (Account, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Accounts {
+		if s.data.Accounts[i].Name == name {
+			return s.data.Accounts[i], true
+		}
+	}
+	return Account{}, false
+}
+
+// adminsLocked counts the accounts holding the admin role, excluding
+// except when it is non-empty. Callers hold s.mu.
+func (s *Store) adminsLocked(except string) int {
+	n := 0
+	for i := range s.data.Accounts {
+		if s.data.Accounts[i].Role == RoleAdmin && s.data.Accounts[i].Name != except {
+			n++
+		}
+	}
+	return n
+}
+
 // AddAccount creates an account with the given role, hashing password with
 // argon2id (R-01: the tool computes the hash).
 func (s *Store) AddAccount(name string, role Role, password string, now time.Time) error {
@@ -142,6 +177,53 @@ func (s *Store) AddAccount(name string, role Role, password string, now time.Tim
 		Name: name, Role: role, Hash: hash, Created: now.UTC(),
 	})
 	return s.save()
+}
+
+// DeleteAccount removes name (FR-073). Removing the last admin is
+// refused with ErrLastAdmin — including the self-removal an administrator
+// might attempt on itself, which is the most likely way to lock an
+// instance out. Deleting an account does not touch its live UI sessions:
+// closing them is the caller's job, on the surface that owns the session
+// table.
+func (s *Store) DeleteAccount(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Accounts {
+		if s.data.Accounts[i].Name != name {
+			continue
+		}
+		if s.data.Accounts[i].Role == RoleAdmin && s.adminsLocked(name) == 0 {
+			return fmt.Errorf("auth: account %q: %w", name, ErrLastAdmin)
+		}
+		s.data.Accounts = append(s.data.Accounts[:i], s.data.Accounts[i+1:]...)
+		return s.save()
+	}
+	return fmt.Errorf("auth: account %q: %w", name, ErrNotFound)
+}
+
+// SetRole changes name's role (FR-074). Demoting the last admin is
+// refused with ErrLastAdmin, for the same reason as DeleteAccount: an
+// administrator taking its own admin role away while it is the only one
+// leaves nobody able to grant it back. Setting the role an account already
+// holds is a no-op that still succeeds — idempotence keeps the API mirror
+// honest.
+func (s *Store) SetRole(name string, role Role) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Accounts {
+		if s.data.Accounts[i].Name != name {
+			continue
+		}
+		if s.data.Accounts[i].Role == role {
+			return nil
+		}
+		if s.data.Accounts[i].Role == RoleAdmin && s.adminsLocked(name) == 0 {
+			return fmt.Errorf("auth: account %q: %w", name, ErrLastAdmin)
+		}
+		s.data.Accounts[i].Role = role
+		return s.save()
+	}
+	return fmt.Errorf("auth: account %q: %w", name, ErrNotFound)
 }
 
 // SetPassword replaces name's password hash.

@@ -31,6 +31,22 @@
 "TBY-AUTH-007.cause": "It is empty, identical to the current password, or its confirmation does not match."
 "TBY-AUTH-007.action": "Choose a non-empty password different from the current one, type the same value in both new-password fields, then submit again."
 
+"TBY-AUTH-008.what": "The account could not be created or updated."
+"TBY-AUTH-008.cause": "The login is empty, the role is not one of viewer, operator, or admin, or the password is empty or was mistyped in the confirmation field."
+"TBY-AUTH-008.action": "Give a non-empty login, pick one of the three roles, and type the same non-empty password in both password fields, then submit again."
+
+"TBY-AUTH-009.what": "The account {{.name}} already exists."
+"TBY-AUTH-009.cause": "This instance already holds a local account with that login; logins are unique."
+"TBY-AUTH-009.action": "Choose another login, or manage the existing account from the accounts screen — its role can be changed and its password reset without creating a second one."
+
+"TBY-AUTH-010.what": "No account named {{.name}} on this instance."
+"TBY-AUTH-010.cause": "The account was removed, or the login is misspelled — the screen you acted from may predate the removal."
+"TBY-AUTH-010.action": "Reload the accounts screen to see the current list, then retry on an account it shows."
+
+"TBY-AUTH-011.what": "Refused: {{.name}} is the last administrator of this instance."
+"TBY-AUTH-011.cause": "Removing it, or taking its admin role away, would leave nobody able to manage the instance — and an instance without an account refuses to start at all."
+"TBY-AUTH-011.action": "Create a second admin account first, then retry. On the instance host the same result comes from `tobby user add --role admin <name>`."
+
 "TBY-CFG-001.what": "The configuration is invalid."
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Fix the reported setting (precedence: flags, then TOBBY_* environment variables, then the YAML file), check the result with `tobby config dump`, then restart."

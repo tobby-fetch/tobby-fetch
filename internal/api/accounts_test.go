@@ -247,3 +247,103 @@ func TestPasswordChangeEndpoint(t *testing.T) {
 		t.Errorf("token caller = %d, want taxonomized 422 TBY-AUTH-006", w.Code)
 	}
 }
+
+// problemCode reads the RFC 9457 taxonomy code of a problem document.
+func problemCode(t *testing.T, w *httptest.ResponseRecorder) string {
+	t.Helper()
+	var p struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &p); err != nil {
+		t.Fatalf("not a problem document: %v (%s)", err, w.Body.String())
+	}
+	return p.Code
+}
+
+// TestAccountCreateEndpoint is the FR-073 mirror of the creation form: the
+// instance derives the hash (FR-066), and the created account authenticates
+// immediately with the role it was given.
+func TestAccountCreateEndpoint(t *testing.T) {
+	mux, store, _ := newAccountsAPI(t)
+
+	w := adminDo(t, mux, http.MethodPost, "/api/v1/accounts",
+		`{"name":"claire","role":"operator","password":"pw-claire"}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create = %d: %s", w.Code, w.Body.String())
+	}
+	var created struct {
+		Account struct {
+			Name string    `json:"name"`
+			Role auth.Role `json:"role"`
+		} `json:"account"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.Account.Name != "claire" || created.Account.Role != auth.RoleOperator {
+		t.Errorf("created account = %+v", created.Account)
+	}
+	if strings.Contains(w.Body.String(), "hash") || strings.Contains(w.Body.String(), "pw-claire") {
+		t.Errorf("the response leaks credential material: %s", w.Body.String())
+	}
+	if _, ok := store.VerifyPassword("claire", "pw-claire", time.Now()); !ok {
+		t.Error("the created account does not authenticate")
+	}
+
+	// Validation and duplication carry their own codes.
+	for body, want := range map[string]string{
+		`{"name":"","role":"viewer","password":"pw"}`:      "TBY-AUTH-008",
+		`{"name":"x","role":"root","password":"pw"}`:       "TBY-AUTH-008",
+		`{"name":"x","role":"viewer","password":""}`:       "TBY-AUTH-008",
+		`{"name":"claire","role":"viewer","password":"p"}`: "TBY-AUTH-009",
+	} {
+		w := adminDo(t, mux, http.MethodPost, "/api/v1/accounts", body)
+		if got := problemCode(t, w); got != want {
+			t.Errorf("%s: code = %q, want %q", body, got, want)
+		}
+	}
+}
+
+// TestAccountRoleAndDeleteEndpoints: the FR-074 role change and the FR-073
+// removal, with the session invalidation both imply.
+func TestAccountRoleAndDeleteEndpoints(t *testing.T) {
+	mux, store, authn := newAccountsAPI(t)
+	sess := authn.Sessions.Create("lecteur", auth.RoleViewer, time.Now())
+
+	w := adminDo(t, mux, http.MethodPatch, "/api/v1/accounts/lecteur", `{"role":"operator"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("role change = %d: %s", w.Code, w.Body.String())
+	}
+	if acct, _ := store.Account("lecteur"); acct.Role != auth.RoleOperator {
+		t.Errorf("role = %s, want operator", acct.Role)
+	}
+	if _, ok := authn.Sessions.Get(sess.ID, time.Now()); ok {
+		t.Error("the account kept a session opened with its former role")
+	}
+
+	if w := adminDo(t, mux, http.MethodDelete, "/api/v1/accounts/lecteur", ""); w.Code != http.StatusNoContent {
+		t.Fatalf("delete = %d: %s", w.Code, w.Body.String())
+	}
+	if _, ok := store.Account("lecteur"); ok {
+		t.Error("account still present after the delete")
+	}
+
+	for _, c := range []struct {
+		method, target, body, want string
+	}{
+		{http.MethodPatch, "/api/v1/accounts/ghost", `{"role":"viewer"}`, "TBY-AUTH-010"},
+		{http.MethodDelete, "/api/v1/accounts/ghost", "", "TBY-AUTH-010"},
+		{http.MethodPatch, "/api/v1/accounts/alexis", `{"role":"root"}`, "TBY-AUTH-008"},
+		// The last administrator is protected on this surface too (FR-005).
+		{http.MethodPatch, "/api/v1/accounts/alexis", `{"role":"viewer"}`, "TBY-AUTH-011"},
+		{http.MethodDelete, "/api/v1/accounts/alexis", "", "TBY-AUTH-011"},
+	} {
+		w := adminDo(t, mux, c.method, c.target, c.body)
+		if got := problemCode(t, w); got != c.want {
+			t.Errorf("%s %s: code = %q, want %q", c.method, c.target, got, c.want)
+		}
+	}
+	if acct, ok := store.Account("alexis"); !ok || acct.Role != auth.RoleAdmin {
+		t.Error("the last administrator lost its role or its existence")
+	}
+}

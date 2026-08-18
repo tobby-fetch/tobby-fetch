@@ -108,9 +108,21 @@ func (u *UI) now() time.Time {
 	return time.Now()
 }
 
+// Router is the subset of *http.ServeMux Mount needs. The seam exists so
+// the RBAC matrix test can record the route table as it is declared and
+// fail on a route that ships without a documented role floor (FR-074) —
+// Go's ServeMux is write-only, a mounted route cannot be enumerated after
+// the fact. Production code passes the real mux (internal/cli/serve.go).
+type Router interface {
+	Handle(pattern string, handler http.Handler)
+	HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request))
+}
+
 // Mount registers every UI route on mux. Routes and reserved prefixes are
-// kept apart by the ADR-0015 collision test.
-func (u *UI) Mount(mux *http.ServeMux) {
+// kept apart by the ADR-0015 collision test; the role floor of each route
+// is the wrapper it is declared with here, and docs/rbac-matrix.md is its
+// documented form (FR-074).
+func (u *UI) Mount(mux Router) {
 	mux.Handle("GET /static/", StaticHandler(u.themeOverride))
 
 	// Session endpoints (outside the session gate).
@@ -155,6 +167,13 @@ func (u *UI) Mount(mux *http.ServeMux) {
 	// Annex surfaces (UI-SPEC §5.9-§5.12): accounts & tokens behind the
 	// admin gate; help, about, and the API viewer readable by every role.
 	mux.Handle("GET /admin/accounts", admin(u.adminAccounts))
+	// Account lifecycle (FR-073, FR-074): creation, removal, and role
+	// change, so a second administrator can be provisioned without leaving
+	// the tool. Sub-resources of /admin/accounts rather than a REST-ish
+	// method on the collection: the surface is HTML forms (ADR-0015 §3).
+	mux.Handle("POST /admin/accounts", admin(u.adminAccountCreate))
+	mux.Handle("POST /admin/accounts/delete", admin(u.adminAccountDelete))
+	mux.Handle("POST /admin/accounts/role", admin(u.adminAccountRole))
 	mux.Handle("POST /admin/accounts/tokens", admin(u.adminTokenCreate))
 	mux.Handle("POST /admin/accounts/tokens/revoke", admin(u.adminTokenRevoke))
 	mux.Handle("GET /admin/retriever", admin(u.adminRetriever))

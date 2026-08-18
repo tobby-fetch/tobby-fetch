@@ -25,6 +25,11 @@ type API struct {
 	mux    *http.ServeMux
 	authn  *auth.Authenticator
 	logger *slog.Logger
+	// routes records every registered pattern in declaration order. Go's
+	// ServeMux is write-only, and two tests need to walk the surface: the
+	// OpenAPI cross-check (FR-060) and the RBAC matrix (FR-074), which
+	// fails on any endpoint shipped without a documented role floor.
+	routes []string
 }
 
 // New builds the API surface.
@@ -40,7 +45,17 @@ func New(authn *auth.Authenticator, logger *slog.Logger) *API {
 // Handle registers an endpoint with a Go 1.22 method-aware pattern
 // ("GET /api/v1/content").
 func (a *API) Handle(pattern string, h http.HandlerFunc) {
+	a.routes = append(a.routes, pattern)
 	a.mux.HandleFunc(pattern, h)
+}
+
+// Routes returns the registered patterns, in declaration order. The
+// catch-all registered by New is not one of them: it is the surface's 404,
+// not an endpoint.
+func (a *API) Routes() []string {
+	out := make([]string, len(a.routes))
+	copy(out, a.routes)
+	return out
 }
 
 // Handler returns the authenticated handler to mount at /api/v1/.

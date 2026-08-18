@@ -1,10 +1,12 @@
 {{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
-{{/* /admin/accounts — accounts & tokens (R-01, FR-072, UI-SPEC §5.9).
-     Accounts are read-only here (creation and passwords go through the
-     tobby user CLI at this milestone). Token creation re-renders this page
-     with the secret displayed exactly once; revocation confirms through
-     the native <dialog> danger-zone component — never confirm(). The
-     layout stamps hx-history="false" on <main> for this page. */}}
+{{/* /admin/accounts — accounts & tokens (R-01, FR-072, FR-073, FR-074,
+     UI-SPEC §5.9). Accounts carry their full lifecycle here: creation with
+     the password typed in clear and hashed by the tool (FR-066 — no field
+     accepts a hash), role change, removal. Token creation re-renders this
+     page with the secret displayed exactly once; removals and revocations
+     confirm through the native <dialog> danger-zone component — never
+     confirm(). The layout stamps hx-history="false" on <main> for this
+     page. */}}
 {{define "title"}}{{.T "admin.title"}}{{end}}
 {{define "main"}}
 <section class="t-admin">
@@ -29,6 +31,11 @@
 
   <h2 class="t-kick">{{.T "admin.accounts_title"}}</h2>
   <p class="t-muted t-note">{{.T "admin.cli_note"}}</p>
+
+  {{/* Account-lifecycle failures land here, above the table they concern:
+       TBY-AUTH-008 to TBY-AUTH-011, rendered by the frozen block. */}}
+  {{with .Data.AccountErr}}{{template "error-block" (withErr $ .)}}{{end}}
+
   <table class="t-table t-admin-table">
     <caption class="t-visually-hidden">{{.T "admin.accounts_caption"}}</caption>
     <thead>
@@ -37,19 +44,90 @@
         <th scope="col">{{.T "admin.th_role"}}</th>
         <th scope="col" class="t-num">{{.T "admin.th_created"}}</th>
         <th scope="col" class="t-num">{{.T "admin.th_lastlogin"}}</th>
+        <th scope="col"><span class="t-visually-hidden">{{.T "admin.th_actions"}}</span></th>
       </tr>
     </thead>
     <tbody>
-      {{range .Data.Accounts}}
+      {{range $i, $a := .Data.Accounts}}
       <tr>
-        <td class="t-mono" translate="no">{{.Name}}</td>
-        <td><span class="t-badge" translate="no" lang="en">{{.Role}}</span></td>
-        <td class="t-num t-muted"><time datetime="{{$.TimeAttr .Created}}">{{$.FmtTime .Created}}</time></td>
-        <td class="t-num t-muted">{{if .LastLogin.IsZero}}—{{else}}<time datetime="{{$.TimeAttr .LastLogin}}">{{$.FmtTime .LastLogin}}</time>{{end}}</td>
+        <td class="t-mono" translate="no">{{$a.Name}}{{if eq $a.Name $.Data.Self}} <span class="t-badge">{{$.T "admin.account_self"}}</span>{{end}}</td>
+        <td>
+          {{/* The role select IS the change: one classic POST per row,
+               no bulk edit — a role change signs the account out. */}}
+          <form method="post" action="/admin/accounts/role" class="t-row">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="name" value="{{$a.Name}}">
+            <label class="t-visually-hidden" for="role-{{$i}}">{{$.T "admin.account_role_label" "Name" $a.Name}}</label>
+            <select id="role-{{$i}}" name="role" class="t-select">
+              <option value="viewer"{{if eq (printf "%s" $a.Role) "viewer"}} selected{{end}}>viewer</option>
+              <option value="operator"{{if eq (printf "%s" $a.Role) "operator"}} selected{{end}}>operator</option>
+              <option value="admin"{{if eq (printf "%s" $a.Role) "admin"}} selected{{end}}>admin</option>
+            </select>
+            <button type="submit" class="t-btn t-btn--secondary t-btn--sm">{{$.T "admin.account_role_submit"}}</button>
+          </form>
+        </td>
+        <td class="t-num t-muted"><time datetime="{{$.TimeAttr $a.Created}}">{{$.FmtTime $a.Created}}</time></td>
+        <td class="t-num t-muted">{{if $a.LastLogin.IsZero}}—{{else}}<time datetime="{{$.TimeAttr $a.LastLogin}}">{{$.FmtTime $a.LastLogin}}</time>{{end}}</td>
+        <td class="t-num">
+          <button type="button" class="t-btn t-btn--danger t-btn--sm" data-dialog="delete-dlg-{{$i}}">{{$.T "admin.account_delete"}}</button>
+        </td>
       </tr>
       {{end}}
     </tbody>
   </table>
+
+  {{/* Account creation: classic POST. The password is typed here and
+       hashed by the tool (FR-066); this page is excluded from the history
+       cache for that reason. */}}
+  <form class="t-card t-admin-create" method="post" action="/admin/accounts">
+    <h2 class="t-kick">{{.T "admin.account_create_title"}}</h2>
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="t-row">
+      <div>
+        <label for="account-name">{{.T "admin.account_name_label"}}</label>
+        <input id="account-name" class="t-input t-mono" type="text" name="name" value="{{.Data.AccountName}}"
+               required autocomplete="off" autocapitalize="off" spellcheck="false" translate="no">
+      </div>
+      <div>
+        <label for="account-role">{{.T "admin.create_role_label"}}</label>
+        <select id="account-role" name="role" class="t-select">
+          <option value="viewer">viewer</option>
+          <option value="operator">operator</option>
+          <option value="admin">admin</option>
+        </select>
+      </div>
+      <div>
+        <label for="account-password">{{.T "admin.account_password_label"}}</label>
+        <input id="account-password" class="t-input" type="password" name="password"
+               required autocomplete="new-password">
+      </div>
+      <div>
+        <label for="account-confirm">{{.T "admin.account_confirm_label"}}</label>
+        <input id="account-confirm" class="t-input" type="password" name="confirm"
+               required autocomplete="new-password">
+      </div>
+      <button type="submit" class="t-btn t-btn--primary">{{.T "admin.account_create_submit"}}</button>
+    </div>
+    <p class="t-muted t-note">{{.T "admin.account_create_note"}}</p>
+  </form>
+
+  {{/* Removal dialogs: one native <dialog> per account. The last
+       administrator is refused by the server (TBY-AUTH-011), not hidden
+       here — the operator gets the reason, not a missing button. */}}
+  {{range $i, $a := .Data.Accounts}}
+  <dialog class="t-dialog" id="delete-dlg-{{$i}}">
+    <h2 class="t-dialog-title">{{$.T "admin.account_delete_title" "Name" $a.Name}}</h2>
+    <p>{{$.T "admin.account_delete_text"}}</p>
+    <div class="t-dialog-actions">
+      <form method="dialog"><button type="submit" class="t-btn t-btn--secondary">{{$.T "common.cancel"}}</button></form>
+      <form method="post" action="/admin/accounts/delete">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="name" value="{{$a.Name}}">
+        <button type="submit" class="t-btn t-btn--danger">{{$.T "admin.account_delete_submit"}}</button>
+      </form>
+    </div>
+  </dialog>
+  {{end}}
 
   <h2 class="t-kick">{{.T "admin.tokens_title"}}</h2>
   {{if .Data.Tokens}}

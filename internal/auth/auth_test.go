@@ -4,6 +4,8 @@
 package auth
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -323,5 +325,241 @@ func TestAPISessionReadOnly(t *testing.T) {
 	}
 	if got := req(http.MethodPost, true); got != http.StatusUnauthorized {
 		t.Errorf("POST with session only = %d, want 401 (mutations need Basic/Bearer)", got)
+	}
+}
+
+// TestAccountDeleteAndRole covers the FR-073/FR-074 lifecycle the admin
+// surfaces expose: removal, role change, and their unknown-account paths.
+func TestAccountDeleteAndRole(t *testing.T) {
+	s := newStore(t)
+	for _, a := range []struct {
+		name string
+		role Role
+	}{{"alexis", RoleAdmin}, {"claire", RoleAdmin}, {"lecteur", RoleViewer}} {
+		if err := s.AddAccount(a.name, a.role, "pw-"+a.name, t0); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := s.SetRole("lecteur", RoleOperator); err != nil {
+		t.Fatal(err)
+	}
+	acct, ok := s.Account("lecteur")
+	if !ok || acct.Role != RoleOperator {
+		t.Fatalf("role change not applied: %+v ok=%v", acct, ok)
+	}
+	// Idempotent: setting the role an account already holds succeeds.
+	if err := s.SetRole("lecteur", RoleOperator); err != nil {
+		t.Errorf("no-op role change failed: %v", err)
+	}
+
+	if err := s.DeleteAccount("lecteur"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.Account("lecteur"); ok {
+		t.Error("deleted account still resolves")
+	}
+	if _, ok := s.VerifyPassword("lecteur", "pw-lecteur", t0); ok {
+		t.Error("deleted account still authenticates")
+	}
+
+	if err := s.DeleteAccount("ghost"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("delete unknown: err = %v, want ErrNotFound", err)
+	}
+	if err := s.SetRole("ghost", RoleViewer); !errors.Is(err, ErrNotFound) {
+		t.Errorf("role change on unknown: err = %v, want ErrNotFound", err)
+	}
+
+	// The change survives a reopen: the invariant is on the file, not on
+	// the in-memory copy.
+	reopened, err := Open(filepath.Dir(s.path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(reopened.Accounts()); got != 2 {
+		t.Errorf("reopened store holds %d accounts, want 2", got)
+	}
+}
+
+// TestLastAdminProtected is the FR-005 safety invariant: an instance can
+// never be driven into a state with no administrator — not by deleting the
+// last one, and not by an administrator demoting itself.
+func TestLastAdminProtected(t *testing.T) {
+	s := newStore(t)
+	if err := s.AddAccount("alexis", RoleAdmin, "pw", t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddAccount("lecteur", RoleViewer, "pw", t0); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.DeleteAccount("alexis"); !errors.Is(err, ErrLastAdmin) {
+		t.Errorf("deleting the last admin: err = %v, want ErrLastAdmin", err)
+	}
+	if err := s.SetRole("alexis", RoleOperator); !errors.Is(err, ErrLastAdmin) {
+		t.Errorf("demoting the last admin: err = %v, want ErrLastAdmin", err)
+	}
+	if acct, _ := s.Account("alexis"); acct.Role != RoleAdmin {
+		t.Errorf("refused demotion still changed the role: %s", acct.Role)
+	}
+
+	// Promoting a second administrator unlocks both operations.
+	if err := s.SetRole("lecteur", RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetRole("alexis", RoleOperator); err != nil {
+		t.Errorf("demotion with a second admin present: %v", err)
+	}
+	// And the invariant now protects the remaining one.
+	if err := s.DeleteAccount("lecteur"); !errors.Is(err, ErrLastAdmin) {
+		t.Errorf("deleting the new last admin: err = %v, want ErrLastAdmin", err)
+	}
+	if !s.HasAccounts() {
+		t.Error("the store must never end up empty through this path (FR-005)")
+	}
+}
+
+// auditRecords decodes the audit lines of a captured JSON-Lines log,
+// keeping only the requested action.
+func auditRecords(t *testing.T, raw []byte, action string) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for _, line := range bytes.Split(bytes.TrimSpace(raw), []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal(line, &rec); err != nil {
+			t.Fatalf("audit log is not JSON Lines: %v", err)
+		}
+		if rec["log_type"] != "audit" || rec["action"] != action {
+			continue
+		}
+		for _, field := range []string{"actor", "action", "target", "outcome", "origin", "time"} {
+			if _, ok := rec[field]; !ok {
+				t.Errorf("audit record misses the %q field of the FR-094 schema: %v", field, rec)
+			}
+		}
+		out = append(out, rec)
+	}
+	return out
+}
+
+// TestMachineAuthAudited is the FR-094 authentication coverage of the
+// machine surfaces: a wrong credential is recorded every time with the
+// name that was tried, a valid one is recorded once per window, and a
+// request carrying no credential at all records an authorization denial
+// rather than a phantom authentication failure.
+func TestMachineAuthAudited(t *testing.T) {
+	s := newStore(t)
+	if err := s.AddAccount("op", RoleOperator, "pw-o", t0); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	a := &Authenticator{
+		Store:  s,
+		Logger: slog.New(slog.NewJSONHandler(&buf, nil)),
+		Now:    func() time.Time { return t0 },
+	}
+	h := a.Registry(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	pull := func(user, pass string) {
+		r := httptest.NewRequest(http.MethodGet, "/v2/lib/redis/manifests/7", http.NoBody)
+		if user != "" {
+			r.SetBasicAuth(user, pass)
+		}
+		h.ServeHTTP(httptest.NewRecorder(), r)
+	}
+
+	pull("", "")           // bare probe: the challenge exchange, not an event
+	pull("op", "wrong")    // failure
+	pull("ghost", "wrong") // failure, unknown name
+	for range 5 {
+		pull("op", "pw-o") // one event, four requests of traffic
+	}
+
+	failures := auditRecords(t, buf.Bytes(), "auth.authenticate")
+	var names, outcomes []string
+	for _, rec := range failures {
+		names = append(names, rec["actor"].(string))
+		outcomes = append(outcomes, rec["outcome"].(string))
+		if rec["target"] != "registry" {
+			t.Errorf("authentication record targets %v, want the surface", rec["target"])
+		}
+		if rec["origin"] != "192.0.2.1" {
+			t.Errorf("authentication record origin = %v, want the peer address", rec["origin"])
+		}
+	}
+	if len(failures) != 3 {
+		t.Fatalf("auth.authenticate records = %v (%d), want 2 failures and 1 success", outcomes, len(failures))
+	}
+	if outcomes[0] != "failure" || outcomes[1] != "failure" || outcomes[2] != "success" {
+		t.Errorf("outcomes = %v, want [failure failure success]", outcomes)
+	}
+	if names[0] != "op" || names[1] != "ghost" || names[2] != "op" {
+		t.Errorf("actors = %v, want the presented names", names)
+	}
+	// The bare probe recorded a denial, not an authentication failure.
+	if got := len(auditRecords(t, buf.Bytes(), "registry.access")); got != 1 {
+		t.Errorf("registry.access denials = %d, want 1 (the credential-less probe)", got)
+	}
+}
+
+// TestAuthSuccessWindowExpires: past the window the same credential is an
+// event again — a token still in use tomorrow shows up in tomorrow's trail.
+func TestAuthSuccessWindowExpires(t *testing.T) {
+	s := newStore(t)
+	secret, _, err := s.CreateToken("ci", RoleViewer, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	now := t0
+	a := &Authenticator{
+		Store:      s,
+		Logger:     slog.New(slog.NewJSONHandler(&buf, nil)),
+		Now:        func() time.Time { return now },
+		AuthWindow: time.Hour,
+	}
+	h := a.API(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	call := func() {
+		r := httptest.NewRequest(http.MethodGet, "/api/v1/tasks", http.NoBody)
+		r.Header.Set("Authorization", "Bearer "+secret)
+		h.ServeHTTP(httptest.NewRecorder(), r)
+	}
+
+	call()
+	call()
+	now = now.Add(30 * time.Minute)
+	call()
+	now = now.Add(31 * time.Minute)
+	call()
+
+	records := auditRecords(t, buf.Bytes(), "auth.authenticate")
+	if len(records) != 2 {
+		t.Fatalf("auth.authenticate records = %d, want 2 (one per window)", len(records))
+	}
+	for _, rec := range records {
+		if rec["actor"] != "ci" || rec["target"] != "api" || rec["outcome"] != "success" {
+			t.Errorf("record off schema: %v", rec)
+		}
+	}
+}
+
+// TestAuthOverrideEmitsNoPerRequestAudit: with authentication disabled
+// (FR-075) there is no credential to verify, and the override is already
+// audited once at startup — the request path must stay silent.
+func TestAuthOverrideEmitsNoPerRequestAudit(t *testing.T) {
+	var buf bytes.Buffer
+	a := &Authenticator{Disabled: true, Logger: slog.New(slog.NewJSONHandler(&buf, nil))}
+	h := a.Registry(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPut, "/v2/x/blobs/uploads/", http.NoBody))
+	if buf.Len() != 0 {
+		t.Errorf("the FR-075 override audits per request: %s", buf.String())
 	}
 }

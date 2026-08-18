@@ -26,6 +26,9 @@ import (
 var registeredRoutes = []string{
 	"POST /api/v1/account/password",
 	"GET /api/v1/accounts",
+	"POST /api/v1/accounts",
+	"PATCH /api/v1/accounts/{name}",
+	"DELETE /api/v1/accounts/{name}",
 	"GET /api/v1/content",
 	"DELETE /api/v1/content/{repo}",
 	"GET /api/v1/content/{repo}",

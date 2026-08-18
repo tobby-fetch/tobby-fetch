@@ -31,6 +31,22 @@
 "TBY-AUTH-007.cause": "Il est vide, identique au mot de passe actuel, ou sa confirmation ne correspond pas."
 "TBY-AUTH-007.action": "Choisissez un mot de passe non vide et différent de l'actuel, saisissez la même valeur dans les deux champs du nouveau mot de passe, puis soumettez à nouveau."
 
+"TBY-AUTH-008.what": "Le compte n'a pas pu être créé ou modifié."
+"TBY-AUTH-008.cause": "Le login est vide, le rôle n'est pas l'un des trois (viewer, operator, admin), ou le mot de passe est vide ou mal ressaisi dans le champ de confirmation."
+"TBY-AUTH-008.action": "Indiquez un login non vide, choisissez l'un des trois rôles, et saisissez le même mot de passe non vide dans les deux champs, puis soumettez à nouveau."
+
+"TBY-AUTH-009.what": "Le compte {{.name}} existe déjà."
+"TBY-AUTH-009.cause": "Cette instance possède déjà un compte local portant ce login ; les logins sont uniques."
+"TBY-AUTH-009.action": "Choisissez un autre login, ou gérez le compte existant depuis l'écran des comptes — son rôle se change et son mot de passe se réinitialise sans en créer un second."
+
+"TBY-AUTH-010.what": "Aucun compte nommé {{.name}} sur cette instance."
+"TBY-AUTH-010.cause": "Le compte a été supprimé, ou le login est mal orthographié — l'écran depuis lequel vous avez agi est peut-être antérieur à la suppression."
+"TBY-AUTH-010.action": "Rechargez l'écran des comptes pour voir la liste à jour, puis réessayez sur un compte qui y figure."
+
+"TBY-AUTH-011.what": "Refusé : {{.name}} est le dernier administrateur de cette instance."
+"TBY-AUTH-011.cause": "Le supprimer, ou lui retirer le rôle admin, ne laisserait plus personne pour administrer l'instance — et une instance sans aucun compte refuse purement et simplement de démarrer."
+"TBY-AUTH-011.action": "Créez d'abord un second compte admin, puis réessayez. Sur l'hôte de l'instance, `tobby user add --role admin <nom>` donne le même résultat."
+
 "TBY-CFG-001.what": "La configuration est invalide."
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Corrigez le réglage indiqué (précédence : drapeaux, puis variables d'environnement TOBBY_*, puis fichier YAML), vérifiez le résultat avec `tobby config dump`, puis redémarrez."

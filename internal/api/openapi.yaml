@@ -409,8 +409,7 @@ paths:
   /api/v1/accounts:
     get:
       summary: >-
-        List the local accounts — never password hashes. Accounts are
-        created on the host with the tobby user CLI (R-01). Mirror of the
+        List the local accounts — never password hashes. Mirror of the
         /admin/accounts screen. Role admin.
       responses:
         "200":
@@ -424,6 +423,96 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Account"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      summary: >-
+        Create a local account (FR-073). The instance derives the argon2id
+        password hash: there is no hash field, and a password hash is
+        never submitted (FR-066). Mirror of the account creation form of
+        the /admin/accounts screen. Role admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, role, password]
+              properties:
+                name:
+                  type: string
+                  description: Unique login among the local accounts.
+                role:
+                  $ref: "#/components/schemas/Role"
+                password:
+                  type: string
+                  description: >-
+                    The clear password, hashed with argon2id by the
+                    instance. Non-empty (TBY-AUTH-008).
+      responses:
+        "201":
+          description: The created account.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account:
+                    $ref: "#/components/schemas/Account"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/accounts/{name}:
+    patch:
+      summary: >-
+        Change an account's role (FR-074). Demoting the last administrator
+        is refused with TBY-AUTH-011: the instance would become
+        unmanageable. Every UI session of the account is closed on
+        success — a session carries the role it was opened with. Role
+        admin.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: The account login.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  $ref: "#/components/schemas/Role"
+      responses:
+        "200":
+          description: The updated account.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account:
+                    $ref: "#/components/schemas/Account"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      summary: >-
+        Delete a local account (FR-073). Deleting the last administrator is
+        refused with TBY-AUTH-011. Open UI sessions of the account are
+        closed. Role admin.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: The account login.
+          schema:
+            type: string
+      responses:
+        "204":
+          description: The account was deleted and its sessions closed.
         default:
           $ref: "#/components/responses/Problem"
   /api/v1/tokens:

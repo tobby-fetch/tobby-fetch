@@ -37,6 +37,23 @@ const (
 	// password change: empty, identical to the current one, or its
 	// confirmation does not match.
 	CodePasswordInvalid Code = "TBY-AUTH-007" //nolint:gosec // G101: a stable error code, not a credential
+	// CodeAccountInvalid is a rejected account creation or update
+	// (FR-073): empty name, unknown role, empty or mistyped password.
+	// Deliberately parameter-free — the submitted name is echoed by the
+	// form, not by the message.
+	CodeAccountInvalid Code = "TBY-AUTH-008"
+	// CodeAccountExists is an account creation whose name is already
+	// taken (FR-073).
+	CodeAccountExists Code = "TBY-AUTH-009"
+	// CodeAccountUnknown is an account operation targeting a name this
+	// instance does not know (FR-073). Distinct from the generic 404: the
+	// corrective action is an account one.
+	CodeAccountUnknown Code = "TBY-AUTH-010"
+	// CodeLastAdmin refuses the removal or the demotion of the last
+	// administrator (FR-073, FR-074): the instance would become
+	// unmanageable, and FR-005 makes it refuse to start with no account at
+	// all. A policy refusal, like every other secure-by-default barrier.
+	CodeLastAdmin Code = "TBY-AUTH-011"
 
 	// CodeConfigInvalid is a rejected configuration (FR-003 validation).
 	CodeConfigInvalid Code = "TBY-CFG-001"
@@ -122,6 +139,10 @@ var catalog = map[Code]Entry{
 	CodeSessionExpired:  {Code: CodeSessionExpired, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized},
 	CodePasswordCurrent: {Code: CodePasswordCurrent, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity},
 	CodePasswordInvalid: {Code: CodePasswordInvalid, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity},
+	CodeAccountInvalid:  {Code: CodeAccountInvalid, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity},
+	CodeAccountExists:   {Code: CodeAccountExists, Class: ClassOperational, HTTPStatus: http.StatusConflict, Params: []string{"name"}},
+	CodeAccountUnknown:  {Code: CodeAccountUnknown, Class: ClassOperational, HTTPStatus: http.StatusNotFound, Params: []string{"name"}},
+	CodeLastAdmin:       {Code: CodeLastAdmin, Class: ClassPolicy, HTTPStatus: http.StatusConflict, Params: []string{"name"}},
 
 	CodeConfigInvalid: {Code: CodeConfigInvalid, Class: ClassOperational, Params: []string{"detail"}},
 

@@ -29,6 +29,12 @@ import (
 func RegisterAccounts(a *API, store *auth.Store) {
 	acc := &accountsAPI{api: a, store: store}
 	a.Handle("GET /api/v1/accounts", a.RequireRole(auth.RoleAdmin, acc.listAccounts))
+	// Account lifecycle (FR-073, FR-074) — the strict mirror of the
+	// /admin/accounts screen actions (FR-061), same rules, same taxonomy
+	// codes, same last-administrator refusal.
+	a.Handle("POST /api/v1/accounts", a.RequireRole(auth.RoleAdmin, acc.createAccount))
+	a.Handle("PATCH /api/v1/accounts/{name}", a.RequireRole(auth.RoleAdmin, acc.updateAccount))
+	a.Handle("DELETE /api/v1/accounts/{name}", a.RequireRole(auth.RoleAdmin, acc.deleteAccount))
 	a.Handle("GET /api/v1/tokens", a.RequireRole(auth.RoleAdmin, acc.listTokens))
 	a.Handle("POST /api/v1/tokens", a.RequireRole(auth.RoleAdmin, acc.createToken))
 	a.Handle("POST /api/v1/tokens/{name}/revoke", a.RequireRole(auth.RoleAdmin, acc.revokeToken))
@@ -87,6 +93,146 @@ func (c *accountsAPI) listAccounts(w http.ResponseWriter, r *http.Request) {
 		resp = append(resp, item)
 	}
 	c.api.JSON(w, http.StatusOK, map[string]any{"accounts": resp})
+}
+
+// createAccountRequest is the POST /api/v1/accounts body. There is no hash
+// field, and there will not be one: the tool derives the argon2id hash
+// (FR-066). The password travels in clear inside the authenticated
+// request, exactly as it does on the screen's form.
+type createAccountRequest struct {
+	Name     string `json:"name"`
+	Role     string `json:"role"`
+	Password string `json:"password"`
+}
+
+// createAccount serves POST /api/v1/accounts (FR-073): 201 with the
+// created account. Both outcomes are audited (FR-094).
+func (c *accountsAPI) createAccount(w http.ResponseWriter, r *http.Request) {
+	if !c.ready(w, r) {
+		return
+	}
+	id, _ := auth.IdentityFrom(r.Context())
+	var req createAccountRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		c.api.Problem(w, r, taxonomy.New(taxonomy.CodeAccountInvalid, nil).WithCause(err))
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	role, roleErr := auth.ParseRole(req.Role)
+	if req.Name == "" || roleErr != nil || req.Password == "" {
+		c.auditAccount(r, audit.ActionAccountCreate, id.Name, req.Name, audit.OutcomeFailure)
+		c.api.Problem(w, r, taxonomy.New(taxonomy.CodeAccountInvalid, nil))
+		return
+	}
+	if err := c.store.AddAccount(req.Name, role, req.Password, c.now()); err != nil {
+		c.auditAccount(r, audit.ActionAccountCreate, id.Name, req.Name, audit.OutcomeFailure)
+		c.api.Problem(w, r, accountProblem(req.Name, err))
+		return
+	}
+	c.auditAccount(r, audit.ActionAccountCreate, id.Name, req.Name, audit.OutcomeSuccess)
+	// Answer from the stored record, not from the request: the creation
+	// timestamp a later GET reports must be the one this response carried.
+	acct, _ := c.store.Account(req.Name)
+	c.api.JSON(w, http.StatusCreated, map[string]any{
+		"account": accountJSON{Name: acct.Name, Role: acct.Role, Created: acct.Created},
+	})
+}
+
+// updateAccountRequest is the PATCH /api/v1/accounts/{name} body. Role
+// only: passwords are changed by their owner through
+// /api/v1/account/password (R-34), and on the host with tobby user passwd.
+type updateAccountRequest struct {
+	Role string `json:"role"`
+}
+
+// updateAccount serves PATCH /api/v1/accounts/{name} (FR-074): change an
+// account's role. Demoting the last administrator answers TBY-AUTH-011 —
+// the same refusal the screen renders. Every session of the account is
+// closed on success: a session carries the role it was opened with.
+func (c *accountsAPI) updateAccount(w http.ResponseWriter, r *http.Request) {
+	if !c.ready(w, r) {
+		return
+	}
+	id, _ := auth.IdentityFrom(r.Context())
+	name := r.PathValue("name")
+	var req updateAccountRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		c.api.Problem(w, r, taxonomy.New(taxonomy.CodeAccountInvalid, nil).WithCause(err))
+		return
+	}
+	role, err := auth.ParseRole(req.Role)
+	if err != nil {
+		c.auditAccount(r, audit.ActionAccountRole, id.Name, name, audit.OutcomeFailure)
+		c.api.Problem(w, r, taxonomy.New(taxonomy.CodeAccountInvalid, nil).WithCause(err))
+		return
+	}
+	if err := c.store.SetRole(name, role); err != nil {
+		c.auditAccount(r, audit.ActionAccountRole, id.Name, name, accountOutcome(err))
+		c.api.Problem(w, r, accountProblem(name, err))
+		return
+	}
+	if s := c.api.authn.Sessions; s != nil {
+		s.DeleteOthers(name, "")
+	}
+	c.auditAccount(r, audit.ActionAccountRole, id.Name, name, audit.OutcomeSuccess)
+	acct, _ := c.store.Account(name)
+	c.api.JSON(w, http.StatusOK, map[string]any{
+		"account": accountJSON{Name: acct.Name, Role: acct.Role, Created: acct.Created},
+	})
+}
+
+// deleteAccount serves DELETE /api/v1/accounts/{name} (FR-073): 204 on
+// success. Removing the last administrator answers TBY-AUTH-011.
+func (c *accountsAPI) deleteAccount(w http.ResponseWriter, r *http.Request) {
+	if !c.ready(w, r) {
+		return
+	}
+	id, _ := auth.IdentityFrom(r.Context())
+	name := r.PathValue("name")
+	if err := c.store.DeleteAccount(name); err != nil {
+		c.auditAccount(r, audit.ActionAccountDelete, id.Name, name, accountOutcome(err))
+		c.api.Problem(w, r, accountProblem(name, err))
+		return
+	}
+	if s := c.api.authn.Sessions; s != nil {
+		s.DeleteOthers(name, "")
+	}
+	c.auditAccount(r, audit.ActionAccountDelete, id.Name, name, audit.OutcomeSuccess)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// accountProblem maps a store error onto its catalog entry — the same
+// mapping the UI applies, so both surfaces answer the same code for the
+// same request (FR-061).
+func accountProblem(name string, err error) *taxonomy.Error {
+	switch {
+	case errors.Is(err, auth.ErrLastAdmin):
+		return taxonomy.New(taxonomy.CodeLastAdmin, taxonomy.Params{"name": name})
+	case errors.Is(err, auth.ErrNotFound):
+		return taxonomy.New(taxonomy.CodeAccountUnknown, taxonomy.Params{"name": name})
+	case errors.Is(err, auth.ErrExists):
+		return taxonomy.New(taxonomy.CodeAccountExists, taxonomy.Params{"name": name})
+	default:
+		return taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err)
+	}
+}
+
+// accountOutcome distinguishes the FR-094 negative outcomes: a policy
+// barrier refused the action (denied), or it did not work (failure).
+func accountOutcome(err error) string {
+	if errors.Is(err, auth.ErrLastAdmin) {
+		return audit.OutcomeDenied
+	}
+	return audit.OutcomeFailure
+}
+
+// auditAccount emits one FR-094 account-lifecycle record: the acting
+// administrator is the actor, the managed account the target.
+func (c *accountsAPI) auditAccount(r *http.Request, action, actor, target, outcome string) {
+	audit.Log(r.Context(), c.api.logger, &audit.Event{
+		Actor: actor, Action: action, Target: target,
+		Outcome: outcome, Origin: auth.ClientOrigin(r),
+	})
 }
 
 // tokenJSON is one token of the listing — never the secret nor its hash.
