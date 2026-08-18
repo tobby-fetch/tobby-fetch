@@ -18,6 +18,10 @@ import (
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 )
 
+// retrieverTimeout bounds one desired-state fetch. The document is a few
+// kilobytes of YAML; a minute is generous even across a slow proxy.
+const retrieverTimeout = 60 * time.Second
+
 // LoadRetriever fetches and validates the desired-state document from the
 // configured source (FR-010): an HTTP(S) URL, an OCI reference (with or
 // without the helm-style oci:// prefix), or a local file path. The
@@ -39,7 +43,7 @@ func readRetrieverSource(ctx context.Context, remotes *Remotes, source string) (
 	case source == "":
 		return nil, fmt.Errorf("retriever.source is not configured: set an HTTP(S) URL, an OCI reference, or a file path (FR-010)")
 	case strings.HasPrefix(source, "http://"), strings.HasPrefix(source, "https://"):
-		return fetchRetrieverURL(ctx, source)
+		return fetchRetrieverURL(ctx, remotes, source)
 	case strings.HasPrefix(source, "oci://"):
 		return fetchRetrieverOCI(ctx, remotes, strings.TrimPrefix(source, "oci://"))
 	}
@@ -56,9 +60,13 @@ func readRetrieverSource(ctx context.Context, remotes *Remotes, source string) (
 	return nil, fmt.Errorf("retriever file %s does not exist (and the value is not an URL or an OCI reference)", source)
 }
 
-// fetchRetrieverURL reads the document over HTTP(S).
-func fetchRetrieverURL(ctx context.Context, url string) ([]byte, error) {
-	client := &http.Client{Timeout: 60 * time.Second}
+// fetchRetrieverURL reads the document over HTTP(S) through the
+// instance's shared outbound transport (FR-080, FR-081): the desired
+// state is fetched from wherever the operator publishes it, which in a
+// segmented zone is reachable only through the proxy — and is exactly
+// the kind of path that gets forgotten because it is not a registry.
+func fetchRetrieverURL(ctx context.Context, remotes *Remotes, url string) ([]byte, error) {
+	client := remotes.Egress().Client(retrieverTimeout)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return nil, err

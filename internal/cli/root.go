@@ -36,6 +36,9 @@ type commonFlags struct {
 	serverAddr  string
 	logLevel    string
 	gracePeriod string
+	proxyURL    string
+	tlsCertFile string
+	tlsKeyFile  string
 }
 
 // register declares the flags on cmd.
@@ -48,6 +51,13 @@ func (f *commonFlags) register(cmd *cobra.Command) {
 	fs.StringVar(&f.serverAddr, "server-addr", "", "HTTP listen address (default :8080)")
 	fs.StringVar(&f.logLevel, "log-level", "", "log level: debug, info, warn, or error (default info)")
 	fs.StringVar(&f.gracePeriod, "shutdown-grace-period", "", `graceful-shutdown drain budget, e.g. "30s" (default 30s)`)
+	// The proxy URL is a flag; the proxy password deliberately is not
+	// (FR-080, NFR-015): a flag value is visible in the process table
+	// and in shell history. Credentials arrive through the
+	// configuration file or TOBBY_NETWORK_PROXY_PASSWORD.
+	fs.StringVar(&f.proxyURL, "proxy-url", "", "forward proxy for all outbound traffic, e.g. http://proxy.example.com:3128")
+	fs.StringVar(&f.tlsCertFile, "tls-cert-file", "", "PEM certificate the listener presents (requires --tls-key-file)")
+	fs.StringVar(&f.tlsKeyFile, "tls-key-file", "", "PEM private key of --tls-cert-file")
 }
 
 // load builds the effective configuration from all layers (FR-003:
@@ -87,6 +97,15 @@ func (f *commonFlags) loadFor(cmd *cobra.Command, scope config.Scope) (config.Co
 			return config.Config{}, fmt.Errorf("--shutdown-grace-period: %w", err)
 		}
 		overrides = append(overrides, func(c *config.Config) { c.Shutdown.GracePeriod = d })
+	}
+	if cmd.Flags().Changed("proxy-url") {
+		overrides = append(overrides, func(c *config.Config) { c.Network.Proxy.URL = f.proxyURL })
+	}
+	if cmd.Flags().Changed("tls-cert-file") {
+		overrides = append(overrides, func(c *config.Config) { c.Server.TLS.CertFile = f.tlsCertFile })
+	}
+	if cmd.Flags().Changed("tls-key-file") {
+		overrides = append(overrides, func(c *config.Config) { c.Server.TLS.KeyFile = f.tlsKeyFile })
 	}
 
 	return config.LoadFor(scope, path, explicit, overrides...)

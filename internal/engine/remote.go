@@ -16,6 +16,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
@@ -32,6 +33,7 @@ type Remotes struct {
 	insecure  map[string]bool
 	keychain  authn.Keychain
 	allowlist *policy.Allowlist
+	egress    *netx.Egress
 }
 
 // NewRemotes builds the substitution-aware remote access from the
@@ -42,8 +44,15 @@ type Remotes struct {
 // shared with every other outbound path, so that one object decides — and
 // one object is observed — wherever the bytes are headed. A nil allow is
 // an undeclared policy: no restriction.
-func NewRemotes(cfg config.Registries, allow *policy.Allowlist) (*Remotes, error) {
-	r := &Remotes{subs: map[string]string{}, insecure: map[string]bool{}}
+//
+// eg is the instance's single outbound transport (FR-080, FR-081): the
+// proxy and the trust store the bytes actually travel through. It is a
+// constructor argument rather than something this type builds, for the
+// same reason the allowlist is — there must be no second place an
+// outbound connection can come from. A nil egress is the unconfigured
+// direct one.
+func NewRemotes(cfg config.Registries, allow *policy.Allowlist, eg *netx.Egress) (*Remotes, error) {
+	r := &Remotes{subs: map[string]string{}, insecure: map[string]bool{}, egress: netx.Or(eg)}
 	for nominal, base := range cfg.Substitutions {
 		canonical, err := relocate.Host(nominal)
 		if err != nil {
@@ -191,10 +200,23 @@ func (r *Remotes) Repository(nominalRepo string) (name.Repository, string, error
 	return repo, eff, nil
 }
 
-// options are the per-request remote options (auth via the keychain).
+// options are the per-request remote options: authentication through the
+// keychain, and the instance's shared transport — proxy and private
+// authorities included (FR-080, FR-081). Every read this type performs
+// goes through here, which is what makes the transport impossible to
+// forget on the reading side.
 func (r *Remotes) options(ctx context.Context) []remote.Option {
-	return []remote.Option{remote.WithContext(ctx), remote.WithAuthFromKeychain(r.keychain)}
+	return []remote.Option{
+		remote.WithContext(ctx),
+		remote.WithAuthFromKeychain(r.keychain),
+		remote.WithTransport(r.egress.RoundTripper()),
+	}
 }
+
+// Egress exposes the shared outbound transport to the paths that reach
+// the network without going through go-containerregistry — the retriever
+// over HTTP(S) (FR-010) — so they cannot end up on a different one.
+func (r *Remotes) Egress() *netx.Egress { return r.egress }
 
 // Get fetches the descriptor of nominalRepo at reference (tag or digest).
 func (r *Remotes) Get(ctx context.Context, nominalRepo, reference string) (*remote.Descriptor, error) {

@@ -19,6 +19,7 @@ import (
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -34,19 +35,22 @@ type Publisher struct {
 	keychain  authn.Keychain
 	insecure  map[string]bool
 	allowlist *policy.Allowlist
+	egress    *netx.Egress
 }
 
 // NewPublisher builds the publishing side from the same registry
 // configuration the reading side uses: credentials (FR-004 — pushing
 // simply needs one with write scope on the destination), per-host
 // insecure opt-ins, and the instance's allowlist (FR-030, which covers
-// destinations as well as sources).
-func NewPublisher(cfg config.Registries, allow *policy.Allowlist) (*Publisher, error) {
+// destinations as well as sources). eg is the same shared outbound
+// transport the reading side uses (FR-080): a zone that reaches its
+// registries through a proxy reaches them through it in both directions.
+func NewPublisher(cfg config.Registries, allow *policy.Allowlist, eg *netx.Egress) (*Publisher, error) {
 	kc, err := keychainFor(cfg.CredentialsFile)
 	if err != nil {
 		return nil, err
 	}
-	p := &Publisher{keychain: kc, insecure: map[string]bool{}, allowlist: allow}
+	p := &Publisher{keychain: kc, insecure: map[string]bool{}, allowlist: allow, egress: netx.Or(eg)}
 	for _, h := range cfg.Insecure {
 		p.insecure[h] = true
 	}
@@ -89,7 +93,11 @@ func (p *Publisher) PublishRecipe(ctx context.Context, ref string, doc []byte) (
 		return nil, validationError(ref, err)
 	}
 
-	opts := []remote.Option{remote.WithContext(ctx), remote.WithAuthFromKeychain(p.keychain)}
+	opts := []remote.Option{
+		remote.WithContext(ctx),
+		remote.WithAuthFromKeychain(p.keychain),
+		remote.WithTransport(p.egress.RoundTripper()),
+	}
 	switch existing, headErr := remote.Head(tagRef, opts...); {
 	case headErr == nil:
 		// The tag exists: §8 says what writing to it would mean.

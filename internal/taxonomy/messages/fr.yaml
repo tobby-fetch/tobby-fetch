@@ -35,6 +35,18 @@
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Corrigez le réglage indiqué (précédence : drapeaux, puis variables d'environnement TOBBY_*, puis fichier YAML), vérifiez le résultat avec `tobby config dump`, puis redémarrez."
 
+"TBY-NET-001.what": "La configuration du proxy sortant est inutilisable : l'instance refuse de démarrer."
+"TBY-NET-001.cause": "{{.setting}} vaut {{.proxy}}, qui n'est pas une URL de proxy exploitable (http:// ou https:// avec un hôte attendus)."
+"TBY-NET-001.action": "Corrigez {{.setting}} sous la forme http://proxy.example.com:3128, sans identifiants dans l'URL : ceux-ci relèvent de network.proxy.username et network.proxy.password, qui n'apparaissent jamais dans les journaux ni dans `tobby config dump`. Puis redémarrez."
+
+"TBY-NET-002.what": "Une autorité de certification configurée n'a pas pu être chargée."
+"TBY-NET-002.cause": "{{.source}} est illisible, ne contient aucun bloc PEM CERTIFICATE, ou n'ajoute aucune autorité que l'instance ne connaissait déjà."
+"TBY-NET-002.action": "Vérifiez que {{.source}} existe, est lisible par l'instance et contient bien le certificat de l'autorité au format PEM (`openssl x509 -in <fichier> -noout -subject` doit afficher un sujet). Puis redémarrez. Faire confiance à une autorité privée est la voie prévue pour joindre une registry interne ; aucun réglage ne désactive la vérification des certificats."
+
+"TBY-NET-003.what": "Le certificat de l'écouteur est inutilisable : l'instance refuse de servir."
+"TBY-NET-003.cause": "{{.source}} est absent, illisible, n'est pas une paire certificat/clé au format PEM, ou la clé ne correspond pas au certificat."
+"TBY-NET-003.action": "Vérifiez server.tls.certFile et server.tls.keyFile : deux fichiers PEM lisibles formant une même paire (`openssl x509 -noout -modulus` et `openssl rsa -noout -modulus` doivent concorder). Retirez les deux pour laisser Tobby générer un certificat auto-signé — son empreinte est affichée au démarrage. Puis redémarrez."
+
 "TBY-VAL-001.what": "Le fichier recipe ou retriever est invalide."
 "TBY-VAL-001.cause": "Dans {{.file}}, à {{.path}} : {{.constraint}}."
 "TBY-VAL-001.action": "Corrigez le champ {{.path}} pour satisfaire la contrainte, puis soumettez le fichier à nouveau."

@@ -154,17 +154,24 @@ type helmIndexEntry struct {
 	Digest  string   `yaml:"digest"`
 }
 
-// httpFetch performs one bounded GET, mapping failures onto the taxonomy
-// exactly like the OCI paths (R-03): timeout, authentication, unknown
-// reference, unreachable — each its own stable code.
-func httpFetch(ctx context.Context, target string, limit int64, reference string) ([]byte, error) {
+// httpFetch performs one bounded GET on the instance's shared outbound
+// transport (FR-080, FR-081), mapping failures onto the taxonomy exactly
+// like the OCI paths (R-03): timeout, authentication, unknown reference,
+// unreachable — each its own stable code.
+//
+// A Helm chart repository is a plain web server, not a registry, which is
+// precisely why it is the easiest outbound path to leave on the default
+// client: nothing about it looks like the registry code. Behind a blocked
+// egress the symptom would be an import that hangs on the index rather
+// than one that fails.
+func httpFetch(ctx context.Context, o *options, target string, limit int64, reference string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, http.NoBody)
 	if err != nil {
 		return nil, taxonomy.New(taxonomy.CodeBadReference,
 			taxonomy.Params{"reference": reference}).WithCause(err)
 	}
 	host := req.URL.Host
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := o.client().Do(req)
 	if err != nil {
 		return nil, mapRemoteErr(ctx, host, reference, budgetOf(ctx), err)
 	}
@@ -191,8 +198,8 @@ func httpFetch(ctx context.Context, target string, limit int64, reference string
 }
 
 // fetchChartIndex downloads and parses <base>/index.yaml.
-func fetchChartIndex(ctx context.Context, base *url.URL, reference string) (*helmIndex, error) {
-	raw, err := httpFetch(ctx, base.JoinPath("index.yaml").String(), maxIndexBytes, reference)
+func fetchChartIndex(ctx context.Context, o *options, base *url.URL, reference string) (*helmIndex, error) {
+	raw, err := httpFetch(ctx, o, base.JoinPath("index.yaml").String(), maxIndexBytes, reference)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +273,7 @@ func downloadChart(ctx context.Context, base *url.URL, entry *helmIndexEntry, re
 	if err := checkRepoScheme(target, o, reference); err != nil {
 		return nil, err
 	}
-	data, err := httpFetch(ctx, target.String(), maxChartBytes, reference)
+	data, err := httpFetch(ctx, o, target.String(), maxChartBytes, reference)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +379,7 @@ func inspectChartRepo(ctx context.Context, reference string, local Local, o *opt
 	if err != nil {
 		return nil, err
 	}
-	idx, err := fetchChartIndex(ctx, cr.base, reference)
+	idx, err := fetchChartIndex(ctx, o, cr.base, reference)
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +420,7 @@ func runChartRepoImport(ctx context.Context, t *tasks.Task, dst Destination, log
 	if err != nil {
 		return err
 	}
-	idx, err := fetchChartIndex(ctx, cr.base, t.Reference)
+	idx, err := fetchChartIndex(ctx, o, cr.base, t.Reference)
 	if err != nil {
 		return err
 	}

@@ -20,7 +20,7 @@ func mustSourcePolicy(t *testing.T, cfg config.Registries) Option {
 	if err != nil {
 		t.Fatalf("NewAllowlist(%v): %v", cfg.Allowlist, err)
 	}
-	return WithSourcePolicy(cfg, allow)
+	return WithSourcePolicy(cfg, allow, nil)
 }
 
 // The allowlist must refuse a reference before anything is dialed. The

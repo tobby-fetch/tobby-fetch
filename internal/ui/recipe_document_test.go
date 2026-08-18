@@ -37,7 +37,7 @@ spec:
       version: 6.8.2
       digest: sha256:8acca98ed81b53b482870d6b2081e60d2aa77293895c90c97d2b0e76f469ffb1
 `)
-	p, err := engine.NewPublisher(config.Registries{Insecure: []string{addr}}, nil)
+	p, err := engine.NewPublisher(config.Registries{Insecure: []string{addr}}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

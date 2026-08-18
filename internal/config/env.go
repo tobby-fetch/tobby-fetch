@@ -31,7 +31,47 @@ const (
 	EnvSyncRetries         = "TOBBY_SYNC_RETRIES"
 	EnvLoggingLevel        = "TOBBY_LOGGING_LEVEL"
 	EnvShutdownGracePeriod = "TOBBY_SHUTDOWN_GRACE_PERIOD"
+
+	// Outbound network (FR-080, FR-081). The proxy password is
+	// deliberately readable from the environment and from the
+	// configuration file, but from no flag: a flag value sits in the
+	// process table for anyone with a shell on the host.
+	EnvNetworkProxyURL      = "TOBBY_NETWORK_PROXY_URL"
+	EnvNetworkProxyHTTPSURL = "TOBBY_NETWORK_PROXY_HTTPS_URL"
+	EnvNetworkProxyNoProxy  = "TOBBY_NETWORK_PROXY_NO_PROXY"
+	EnvNetworkProxyUsername = "TOBBY_NETWORK_PROXY_USERNAME"
+	EnvNetworkProxyPassword = "TOBBY_NETWORK_PROXY_PASSWORD" //nolint:gosec // G101: the NAME of an environment variable, not a credential
+	EnvNetworkTLSCAFiles    = "TOBBY_NETWORK_TLS_CA_FILES"
+
+	// Listener certificate (FR-082).
+	EnvServerTLSEnabled  = "TOBBY_SERVER_TLS_ENABLED"
+	EnvServerTLSCertFile = "TOBBY_SERVER_TLS_CERT_FILE"
+	EnvServerTLSKeyFile  = "TOBBY_SERVER_TLS_KEY_FILE"
 )
+
+// splitList parses a comma-separated environment list, dropping empty
+// entries: an environment variable is one string, so a list arrives
+// flattened. The configuration file keeps the structured form.
+func splitList(v string) []string {
+	var out []string
+	for _, item := range strings.Split(v, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// parseBool reads the boolean spelling the other TOBBY_* booleans accept.
+func parseBool(name, v string) (bool, error) {
+	switch v {
+	case "true", "1":
+		return true, nil
+	case "false", "0", "":
+		return false, nil
+	}
+	return false, fmt.Errorf("%s: invalid boolean %q (expected true or false)", name, v)
+}
 
 // applyEnv overlays environment values onto cfg. lookup is os.LookupEnv in
 // production and a map lookup in tests.
@@ -49,14 +89,11 @@ func applyEnv(cfg *Config, lookup func(string) (string, bool)) error {
 		cfg.Server.Addr = v
 	}
 	if v, ok := lookup(EnvAuthDisabled); ok {
-		switch v {
-		case "true", "1":
-			cfg.Auth.Disabled = true
-		case "false", "0", "":
-			cfg.Auth.Disabled = false
-		default:
-			return fmt.Errorf("%s: invalid boolean %q (expected true or false)", EnvAuthDisabled, v)
+		b, err := parseBool(EnvAuthDisabled, v)
+		if err != nil {
+			return err
 		}
+		cfg.Auth.Disabled = b
 	}
 	if v, ok := lookup(EnvAuthSessionTTL); ok {
 		d, err := time.ParseDuration(v)
@@ -66,25 +103,48 @@ func applyEnv(cfg *Config, lookup func(string) (string, bool)) error {
 		cfg.Auth.SessionTTL = Duration(d)
 	}
 	if v, ok := lookup(EnvRegistriesInsecure); ok {
-		cfg.Registries.Insecure = nil
-		for _, h := range strings.Split(v, ",") {
-			if h = strings.TrimSpace(h); h != "" {
-				cfg.Registries.Insecure = append(cfg.Registries.Insecure, h)
-			}
+		cfg.Registries.Insecure = splitList(v)
+	}
+	if v, ok := lookup(EnvNetworkProxyURL); ok {
+		cfg.Network.Proxy.URL = v
+	}
+	if v, ok := lookup(EnvNetworkProxyHTTPSURL); ok {
+		cfg.Network.Proxy.HTTPSURL = v
+	}
+	if v, ok := lookup(EnvNetworkProxyNoProxy); ok {
+		cfg.Network.Proxy.NoProxy = splitList(v)
+	}
+	if v, ok := lookup(EnvNetworkProxyUsername); ok {
+		cfg.Network.Proxy.Username = v
+	}
+	if v, ok := lookup(EnvNetworkProxyPassword); ok {
+		cfg.Network.Proxy.Password = NewSecret(v)
+	}
+	if v, ok := lookup(EnvNetworkTLSCAFiles); ok {
+		cfg.Network.TLS.CAFiles = splitList(v)
+	}
+	if v, ok := lookup(EnvServerTLSEnabled); ok {
+		b, err := parseBool(EnvServerTLSEnabled, v)
+		if err != nil {
+			return err
 		}
+		cfg.Server.TLS.Enabled = b
+	}
+	if v, ok := lookup(EnvServerTLSCertFile); ok {
+		cfg.Server.TLS.CertFile = v
+	}
+	if v, ok := lookup(EnvServerTLSKeyFile); ok {
+		cfg.Server.TLS.KeyFile = v
 	}
 	if v, ok := lookup(EnvUIThemeOverride); ok {
 		cfg.UI.ThemeOverride = v
 	}
 	if v, ok := lookup(EnvUIShowUpcoming); ok {
-		switch v {
-		case "true", "1":
-			cfg.UI.ShowUpcoming = true
-		case "false", "0", "":
-			cfg.UI.ShowUpcoming = false
-		default:
-			return fmt.Errorf("%s: invalid boolean %q (expected true or false)", EnvUIShowUpcoming, v)
+		b, err := parseBool(EnvUIShowUpcoming, v)
+		if err != nil {
+			return err
 		}
+		cfg.UI.ShowUpcoming = b
 	}
 	if v, ok := lookup(EnvImportInspectTO); ok {
 		d, err := time.ParseDuration(v)

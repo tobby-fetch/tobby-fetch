@@ -41,6 +41,17 @@ const (
 	// CodeConfigInvalid is a rejected configuration (FR-003 validation).
 	CodeConfigInvalid Code = "TBY-CFG-001"
 
+	// CodeProxyInvalid is an unusable outbound proxy configuration
+	// (FR-080). Parameters name the setting and the credential-free
+	// proxy URL — never the credentials, which have no path here.
+	CodeProxyInvalid Code = "TBY-NET-001"
+	// CodeTrustStore is a configured certificate authority that cannot
+	// be loaded or that contributes nothing (FR-081).
+	CodeTrustStore Code = "TBY-NET-002"
+	// CodeServerTLS is an unusable listener certificate (FR-082):
+	// missing file, mismatched key, unparseable PEM.
+	CodeServerTLS Code = "TBY-NET-003"
+
 	// CodeValidation is a rejected recipe/retriever file: file, path,
 	// violated constraint (FR-011). Reserved: emitter lands at milestone 3.
 	CodeValidation Code = "TBY-VAL-001"
@@ -124,6 +135,10 @@ var catalog = map[Code]Entry{
 	CodePasswordInvalid: {Code: CodePasswordInvalid, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity},
 
 	CodeConfigInvalid: {Code: CodeConfigInvalid, Class: ClassOperational, Params: []string{"detail"}},
+
+	CodeProxyInvalid: {Code: CodeProxyInvalid, Class: ClassOperational, Params: []string{"setting", "proxy"}},
+	CodeTrustStore:   {Code: CodeTrustStore, Class: ClassOperational, Params: []string{"source"}},
+	CodeServerTLS:    {Code: CodeServerTLS, Class: ClassOperational, Params: []string{"source"}},
 
 	CodeValidation: {Code: CodeValidation, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"file", "path", "constraint"}},
 

@@ -3,6 +3,12 @@
 
 package config
 
+import (
+	"errors"
+
+	"gopkg.in/yaml.v3"
+)
+
 // Redacted is what every serialization of a Secret shows instead of the
 // value (NFR-015).
 const Redacted = "REDACTED"
@@ -51,3 +57,30 @@ func (s Secret) MarshalJSON() ([]byte, error) {
 
 // MarshalText implements encoding.TextMarshaler; the value never serializes.
 func (s Secret) MarshalText() ([]byte, error) { return []byte(s.String()), nil }
+
+// UnmarshalYAML implements yaml.Unmarshaler: a secret is written as an
+// ordinary scalar in the configuration file and becomes unprintable the
+// moment it is read.
+//
+// The error deliberately does not quote the offending node. Every other
+// configuration error names the value it rejected, which is how an
+// operator finds the typo; here the value is the secret, and a type
+// mismatch is not worth leaking it into a startup log (NFR-015).
+func (s *Secret) UnmarshalYAML(value *yaml.Node) error {
+	var v string
+	if err := value.Decode(&v); err != nil {
+		return errors.New("expected a string value (the value is not quoted back: it is a secret)")
+	}
+	s.value = v
+	return nil
+}
+
+// Redact reports the value's presence without revealing it, for the log
+// lines and reporting surfaces that must state whether a credential is
+// configured at all.
+func (s Secret) Redact() string {
+	if s.value == "" {
+		return "(unset)"
+	}
+	return Redacted
+}

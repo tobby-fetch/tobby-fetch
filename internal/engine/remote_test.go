@@ -63,7 +63,7 @@ func TestEffective(t *testing.T) {
 		}
 	})
 	t.Run("invalid substitution key", func(t *testing.T) {
-		if _, err := NewRemotes(config.Registries{Substitutions: map[string]string{"not a host": "x"}}, nil); err == nil {
+		if _, err := NewRemotes(config.Registries{Substitutions: map[string]string{"not a host": "x"}}, nil, nil); err == nil {
 			t.Error("NewRemotes accepted an invalid substitution key")
 		}
 	})
@@ -72,7 +72,7 @@ func TestEffective(t *testing.T) {
 // TestRepositoryInsecure locks the per-host insecure opt-in: only listed
 // EFFECTIVE hosts downgrade to HTTP.
 func TestRepositoryInsecure(t *testing.T) {
-	r, err := NewRemotes(config.Registries{Insecure: []string{"reg.example.com"}}, nil)
+	r, err := NewRemotes(config.Registries{Insecure: []string{"reg.example.com"}}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,14 +145,14 @@ func TestDockerConfigKeychain(t *testing.T) {
 // configuration time.
 func TestNewRemotesCredentialsFile(t *testing.T) {
 	path := writeTempFile(t, "creds.json", []byte(`{"auths":{"registry.example.com":{"username":"a","password":"b"}}}`))
-	if _, err := NewRemotes(config.Registries{CredentialsFile: path}, nil); err != nil {
+	if _, err := NewRemotes(config.Registries{CredentialsFile: path}, nil, nil); err != nil {
 		t.Errorf("NewRemotes with a valid credentials file: %v", err)
 	}
-	if _, err := NewRemotes(config.Registries{CredentialsFile: path + ".missing"}, nil); err == nil {
+	if _, err := NewRemotes(config.Registries{CredentialsFile: path + ".missing"}, nil, nil); err == nil {
 		t.Error("NewRemotes accepted a missing credentials file")
 	}
 	bad := writeTempFile(t, "bad.json", []byte("not-json"))
-	if _, err := NewRemotes(config.Registries{CredentialsFile: bad}, nil); err == nil {
+	if _, err := NewRemotes(config.Registries{CredentialsFile: bad}, nil, nil); err == nil {
 		t.Error("NewRemotes accepted an unparseable credentials file")
 	}
 }

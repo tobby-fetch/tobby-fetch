@@ -9,6 +9,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -28,6 +29,13 @@ type Server struct {
 	mux         *http.ServeMux
 	httpSrv     *http.Server
 	gracePeriod time.Duration
+
+	// tls holds the listener's certificate source when TLS is
+	// configured (FR-082); nil serves in the clear. One listener serves
+	// the UI, the API and the embedded registry, so this single field
+	// decides for all three — none of them can be left exposed while
+	// another is protected.
+	tls *tls.Config
 
 	// ready gates /readyz: false during startup and drain (FR-092).
 	ready atomic.Bool
@@ -90,6 +98,11 @@ func (s *Server) SetReady(ready bool) {
 	s.ready.Store(ready)
 }
 
+// SetTLS makes the listener serve TLS with cfg (FR-082). Call before Run.
+// Nil leaves the listener in the clear — the shape an instance behind a
+// terminating reverse proxy keeps.
+func (s *Server) SetTLS(cfg *tls.Config) { s.tls = cfg }
+
 // Addr returns the effective listen address once Run is serving. Empty
 // before that.
 func (s *Server) Addr() string {
@@ -108,8 +121,14 @@ func (s *Server) Run(ctx context.Context) error {
 		return fmt.Errorf("listening on %s: %w", s.httpSrv.Addr, err)
 	}
 	s.addr.Store(ln.Addr().String())
+	scheme := "http"
+	if s.tls != nil {
+		ln = tls.NewListener(ln, s.tls)
+		scheme = "https"
+	}
 	s.logger.LogAttrs(ctx, slog.LevelInfo, "http server listening",
-		slog.String("addr", ln.Addr().String()))
+		slog.String("addr", s.Addr()),
+		slog.String("scheme", scheme))
 
 	serveErr := make(chan error, 1)
 	go func() {

@@ -50,6 +50,7 @@ func TestAllowlistRefusesBeforeAnyConnection(t *testing.T) {
 	remotes, err := NewRemotes(
 		config.Registries{Insecure: []string{addr}},
 		mustAllow(t, []string{"allowed.example.com"}),
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -75,6 +76,7 @@ func TestAllowlistRefusesPublicationBeforeAnyConnection(t *testing.T) {
 	p, err := NewPublisher(
 		config.Registries{Insecure: []string{addr}},
 		mustAllow(t, []string{"allowed.example.com"}),
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -105,6 +107,7 @@ func TestAllowlistFollowsTheSubstitutedEndpointNotTheRecipe(t *testing.T) {
 			Insecure:      []string{addr},
 		},
 		mustAllow(t, []string{"docker.io"}),
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -127,6 +130,7 @@ func TestAllowlistFollowsTheSubstitutedEndpointNotTheRecipe(t *testing.T) {
 			Insecure:      []string{addr},
 		},
 		mustAllow(t, []string{addr}),
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -145,7 +149,7 @@ func TestRefusalsAreObserved(t *testing.T) {
 	var refused []string
 	allow.Observe(func(host string) { refused = append(refused, host) })
 
-	remotes, err := NewRemotes(config.Registries{}, allow)
+	remotes, err := NewRemotes(config.Registries{}, allow, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

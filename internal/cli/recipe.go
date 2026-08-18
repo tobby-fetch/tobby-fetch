@@ -12,6 +12,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
+	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 )
 
@@ -66,7 +67,12 @@ digest is printed on stdout, ready for cosign:
 			if err != nil {
 				return err
 			}
-			publisher, err := engine.NewPublisher(cfg.Registries, allowlist)
+			egress, err := netx.New(&cfg.Network)
+			if err != nil {
+				return err
+			}
+			defer egress.CloseIdleConnections()
+			publisher, err := engine.NewPublisher(cfg.Registries, allowlist, egress)
 			if err != nil {
 				return err
 			}
