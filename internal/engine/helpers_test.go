@@ -10,9 +10,13 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -73,6 +77,102 @@ func newRegistry(t *testing.T) *registry {
 	srv := httptest.NewServer(st.APIHandler())
 	t.Cleanup(srv.Close)
 	return &registry{st: st, addr: srv.Listener.Addr().String()}
+}
+
+// destRegistry is a real destination registry: an embedded store served
+// over the real /v2/ API, with every request recorded.
+//
+// The recording is the point. FR-028 says an already-synchronized recipe
+// transfers zero blobs, and the only way to assert that honestly is to
+// count what the destination actually received — a library that promises
+// to skip existing blobs is exactly the thing under test, so trusting it
+// would make the test agree with the bug.
+type destRegistry struct {
+	st   *store.Store
+	addr string
+
+	mu   sync.Mutex
+	reqs []string // "METHOD /path", in order
+
+	// maxDepth, when positive, makes the registry refuse repository names
+	// with more path components — the FR-035 fixture for a destination
+	// that does not accept nested repositories.
+	maxDepth int
+}
+
+// newDestRegistry serves a fresh destination.
+func newDestRegistry(t *testing.T, opts ...func(*destRegistry)) *destRegistry {
+	t.Helper()
+	d := &destRegistry{st: openStore(t)}
+	for _, o := range opts {
+		o(d)
+	}
+	inner := d.st.APIHandler()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		d.mu.Lock()
+		d.reqs = append(d.reqs, r.Method+" "+r.URL.Path)
+		d.mu.Unlock()
+		if d.maxDepth > 0 && repoDepth(r.URL.Path) > d.maxDepth {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"errors":[{"code":"NAME_INVALID","message":"repository names accept at most ` +
+				strconv.Itoa(d.maxDepth) + ` path components"}]}`))
+			return
+		}
+		inner.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	d.addr = srv.Listener.Addr().String()
+	return d
+}
+
+// refusingNestedNames caps the accepted repository depth.
+func refusingNestedNames(depth int) func(*destRegistry) {
+	return func(d *destRegistry) { d.maxDepth = depth }
+}
+
+// reset drops the recorded requests, so a second cycle is measured on its
+// own.
+func (d *destRegistry) reset() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.reqs = nil
+}
+
+// writes returns the recorded requests that could have moved content:
+// blob uploads and manifest writes. A HEAD or a GET is how the
+// differential decides, so counting those as transfers would make the
+// requirement impossible to satisfy rather than merely hard.
+func (d *destRegistry) writes() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	var out []string
+	for _, r := range d.reqs {
+		switch method, _, _ := strings.Cut(r, " "); method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// repoDepth counts the path components of the repository name in a /v2/
+// request path.
+func repoDepth(path string) int {
+	rest, ok := strings.CutPrefix(path, "/v2/")
+	if !ok {
+		return 0
+	}
+	for _, sep := range []string{"/manifests/", "/blobs/", "/tags/", "/referrers/"} {
+		if i := strings.Index(rest, sep); i >= 0 {
+			rest = rest[:i]
+			break
+		}
+	}
+	if rest == "" {
+		return 0
+	}
+	return strings.Count(rest, "/") + 1
 }
 
 // seededIndex is a pushed multi-arch image: the pinned index digest and

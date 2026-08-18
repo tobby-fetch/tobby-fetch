@@ -120,7 +120,7 @@ func (p *Publisher) PublishRecipe(ctx context.Context, ref string, doc []byte) (
 			return nil, fmt.Errorf("uploading the %s blob: %w", b.MediaType, err)
 		}
 	}
-	if err := remote.Put(tagRef, rawManifest{bytes: art.Manifest.Content}, opts...); err != nil {
+	if err := remote.Put(tagRef, rawManifest{bytes: art.Manifest.Content, mediaType: types.MediaType(art.Manifest.MediaType)}, opts...); err != nil {
 		return nil, fmt.Errorf("publishing the manifest: %w", err)
 	}
 	return &PublishResult{Reference: tagRef.String(), Digest: art.Manifest.Digest}, nil
@@ -160,13 +160,20 @@ func (p *Publisher) parseTagRef(ref string) (name.Tag, error) {
 	return tagRef, nil
 }
 
-// rawManifest is a remote.Taggable over the manifest bytes the SDK built:
-// go-containerregistry's image helpers cannot set artifactType, and §11.2
-// requires it.
-type rawManifest struct{ bytes []byte }
+// rawManifest is a remote.Taggable over manifest bytes somebody else
+// produced: go-containerregistry's image helpers cannot set artifactType,
+// which §11.2 requires, and the promotion path (FR-028) must write back
+// the exact bytes it verified rather than a re-serialization of them.
+// The media type travels alongside because a promoted manifest may be an
+// index or a Docker-schema image, not only the OCI manifest a publication
+// builds.
+type rawManifest struct {
+	bytes     []byte
+	mediaType types.MediaType
+}
 
 func (r rawManifest) RawManifest() ([]byte, error)        { return r.bytes, nil }
-func (r rawManifest) MediaType() (types.MediaType, error) { return types.OCIManifestSchema1, nil }
+func (r rawManifest) MediaType() (types.MediaType, error) { return r.mediaType, nil }
 
 // validationError wraps an SDK refusal in the taxonomy, so the CLI prints
 // the same what/cause/action shape as every other refusal. Both refusal

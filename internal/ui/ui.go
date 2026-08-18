@@ -14,6 +14,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
+	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -36,6 +37,9 @@ type UI struct {
 	retrieverSource   string
 	relaxedScopes     []string
 	anonymousFileSets []string
+	destination       string
+	cookbook          string
+	interval          *schedule.Interval
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -72,6 +76,16 @@ type Options struct {
 	// AnonymousFileSets names the FileSets served without authentication
 	// (FR-047 opt-in), surfaced like the FR-075 override.
 	AnonymousFileSets []string
+	// Destination is the promotion target host and Cookbook the path
+	// recipes are propagated to (FR-013, FR-034); both empty on an
+	// instance that promotes nothing.
+	Destination string
+	Cookbook    string
+	// Interval paces the reconciliation loop (FR-013), editable from
+	// /admin/retriever. Nil in mirror mode, where FR-014 forbids
+	// unattended synchronization: the screen then says the setting does
+	// not apply rather than offering a control that would do nothing.
+	Interval *schedule.Interval
 }
 
 // New assembles the UI.
@@ -98,6 +112,9 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		retrieverSource:   opts.RetrieverSource,
 		relaxedScopes:     opts.RelaxedTrustScopes,
 		anonymousFileSets: opts.AnonymousFileSets,
+		destination:       opts.Destination,
+		cookbook:          opts.Cookbook,
+		interval:          opts.Interval,
 	}
 }
 
@@ -158,6 +175,11 @@ func (u *UI) Mount(mux *http.ServeMux) {
 	mux.Handle("POST /admin/accounts/tokens", admin(u.adminTokenCreate))
 	mux.Handle("POST /admin/accounts/tokens/revoke", admin(u.adminTokenRevoke))
 	mux.Handle("GET /admin/retriever", admin(u.adminRetriever))
+	// The one editable setting on an otherwise read-only screen: the
+	// FR-013 cadence, which the requirement asks to be changeable without
+	// redeployment. Admin-gated and audited (FR-094), with the exact
+	// mirror at PUT/DELETE /api/v1/retriever/interval (FR-061).
+	mux.Handle("POST /admin/retriever/interval", admin(u.adminInterval))
 	mux.Handle("GET /help", app(u.helpScreen))
 	mux.Handle("GET /about", app(u.aboutScreen))
 	mux.Handle("GET /about/third-party", app(u.thirdPartyNotices))

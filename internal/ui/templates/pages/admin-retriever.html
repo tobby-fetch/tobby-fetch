@@ -22,6 +22,51 @@
   <p class="t-muted">{{.T "recipes.source_none"}}</p>
   {{end}}
 
+  <h2 class="t-kick">{{.T "retriever.destination_title"}}</h2>
+  {{/* FR-013/FR-034: where this instance promotes to. An instance with
+       no destination fetches into its own store and stops there, which
+       is a legitimate state and is said as one. */}}
+  {{if .Data.Destination}}
+  <p>
+    <span class="t-chip"><span class="t-mono" translate="no">{{.Data.Destination}}</span></span>
+    <span class="t-muted t-note">{{.T "retriever.destination_cookbook" "Cookbook" .Data.Cookbook}}</span>
+  </p>
+  {{else}}
+  <p class="t-muted">{{.T "retriever.destination_none"}}</p>
+  {{end}}
+
+  <h2 class="t-kick">{{.T "retriever.interval_title"}}</h2>
+  {{/* The one editable control on this screen (FR-013: the interval is
+       changeable without redeployment). Everything else here comes from
+       the configuration layers and cannot be edited at runtime. */}}
+  {{if .Data.Interval}}
+    {{if .Data.Interval.Enabled}}
+    <p>{{.T "retriever.interval_effective" "Interval" .Data.Interval.Effective}}</p>
+    {{else}}
+    <p class="t-muted">{{.T "retriever.interval_disabled"}}</p>
+    {{end}}
+    {{if .Data.Interval.Overridden}}
+    <p class="t-muted t-note">{{.T "retriever.interval_overridden" "Configured" .Data.Interval.Configured}}</p>
+    {{end}}
+    {{if .Data.FormError}}
+    <p class="t-form-error" role="alert">{{.T .Data.FormError}}</p>
+    {{end}}
+    {{if .Data.Interval.Persistent}}
+    <form method="post" action="/admin/retriever/interval">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label for="retriever-interval">{{.T "retriever.interval_label"}}</label>
+      <input id="retriever-interval" name="interval" type="text" inputmode="text"
+             value="{{.Data.Value}}" aria-describedby="retriever-interval-help">
+      <p id="retriever-interval-help" class="t-muted t-note">{{.T "retriever.interval_help" "Minimum" .Data.Interval.Minimum}}</p>
+      <button type="submit" class="t-btn t-btn--primary">{{.T "retriever.interval_save"}}</button>
+    </form>
+    {{else}}
+    <p class="t-muted t-note">{{.T "retriever.interval_no_state"}}</p>
+    {{end}}
+  {{else}}
+  <p class="t-muted t-note">{{.T "retriever.interval_unavailable"}}</p>
+  {{end}}
+
   <h2 class="t-kick">{{.T "retriever.scopes_title"}}</h2>
   {{if .Data.RelaxedScopes}}
   {{/* A relaxed posture is loud (FR-033): the list carries its warning

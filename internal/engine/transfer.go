@@ -194,16 +194,20 @@ func copyNestedIndex(ctx context.Context, dst Store, repo string, idx v1.ImageIn
 // is NOT the §11.2 recipe layout check — that rule belongs to the format
 // and lives in the recipe-spec SDK (cookbook.VerifyManifest).
 type artifactManifest struct {
-	ArtifactType string `json:"artifactType"`
-	Config       struct {
-		MediaType string `json:"mediaType"`
-		Digest    string `json:"digest"`
-	} `json:"config"`
-	Layers []struct {
-		MediaType string `json:"mediaType"`
-		Digest    string `json:"digest"`
-		Size      int64  `json:"size"`
-	} `json:"layers"`
+	ArtifactType string           `json:"artifactType"`
+	Config       blobDescriptor   `json:"config"`
+	Layers       []blobDescriptor `json:"layers"`
+}
+
+// blobDescriptor is the descriptor subset those paths read. Size matters
+// on the config slot too, and only on the promotion path: pushing a blob
+// means declaring its length to the destination before streaming it
+// (FR-028), where copying one into the local store only ever needed the
+// digest to verify against.
+type blobDescriptor struct {
+	MediaType string `json:"mediaType"`
+	Digest    string `json:"digest"`
+	Size      int64  `json:"size"`
 }
 
 // copyArtifact copies a small artifact manifest (a recipe, a cosign
@@ -219,28 +223,19 @@ func copyArtifact(ctx context.Context, dst Store, remotes *Remotes, nominalRepo,
 	if err != nil {
 		return err
 	}
-	blobs := []struct {
-		dgst string
-		size int64
-	}{{man.Config.Digest, 0}}
-	for _, l := range man.Layers {
-		blobs = append(blobs, struct {
-			dgst string
-			size int64
-		}{l.Digest, l.Size})
-	}
+	blobs := append([]blobDescriptor{man.Config}, man.Layers...)
 	for _, b := range blobs {
-		if b.dgst == "" {
+		if b.Digest == "" {
 			continue
 		}
-		d, err := digest.Parse(b.dgst)
+		d, err := digest.Parse(b.Digest)
 		if err != nil {
-			return fmt.Errorf("artifact blob digest %q: %w", b.dgst, err)
+			return fmt.Errorf("artifact blob digest %q: %w", b.Digest, err)
 		}
 		if dst.HasBlob(ctx, localRepo, d) {
 			continue
 		}
-		layer, err := remote.Layer(repo.Digest(b.dgst), remotes.options(ctx)...)
+		layer, err := remote.Layer(repo.Digest(b.Digest), remotes.options(ctx)...)
 		if err != nil {
 			return err
 		}

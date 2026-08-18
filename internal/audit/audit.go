@@ -82,6 +82,15 @@ const (
 	// ActionContentDelete is the admin removal of one unit-imported
 	// repository (FR-044 amendment): the target is the repository path.
 	ActionContentDelete = "content.delete"
+
+	// ActionIntervalChange is a change to the promotion cadence of
+	// FR-013 — the sensitive configuration change FR-094 asks to be
+	// recorded. How often an instance reaches into a neighbouring zone is
+	// a security-relevant setting, and unlike everything else in the
+	// configuration it can be changed on a running instance by anyone with
+	// the admin role: the trail is the only place that records who did.
+	// The target is the resulting effective interval.
+	ActionIntervalChange = "config.promotion_interval"
 )
 
 // Event is one security audit event (FR-094 schema).

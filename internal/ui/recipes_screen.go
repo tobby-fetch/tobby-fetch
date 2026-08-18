@@ -12,12 +12,16 @@
 package ui
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -150,19 +154,64 @@ type retrieverData struct {
 	// statements and must never render the same.
 	AllowlistDeclared bool
 	Allowlist         []string
+	// Destination and Cookbook report where this instance promotes to
+	// (FR-013, FR-034); empty means it promotes nothing.
+	Destination string
+	Cookbook    string
+	// Interval carries the FR-013 cadence — the one editable control on
+	// this screen. Nil in mirror mode (FR-014).
+	Interval *intervalData
+	// FormError is a localization key for a rejected interval, Value the
+	// rejected input preserved in the field.
+	FormError string
+	Value     string
 	// LastSync is the most recent sync-type task, nil when none ran yet.
 	LastSync    *taskRow
 	HasLastSync bool
 }
 
+// intervalData renders the reconciliation cadence. Configured and
+// Effective are both shown: on an overridden instance they differ, and an
+// operator reading only one of them would either mistake the file for the
+// truth or the truth for the file.
+type intervalData struct {
+	Effective  string
+	Configured string
+	Overridden bool
+	Enabled    bool
+	Minimum    string
+	// Persistent is false without a state directory: the control is then
+	// rendered inert rather than accepting a change that could not
+	// survive a restart.
+	Persistent bool
+}
+
 // adminRetriever serves GET /admin/retriever.
 func (u *UI) adminRetriever(w http.ResponseWriter, r *http.Request) {
+	u.render.Page(w, r, "admin-retriever", u.retrieverScreenData())
+}
+
+// retrieverScreenData snapshots the instance for the screen.
+func (u *UI) retrieverScreenData() *retrieverData {
 	data := &retrieverData{
 		Source:            u.retrieverSource,
 		RelaxedScopes:     u.relaxedScopes,
 		AnonymousFileSets: u.anonymousFileSets,
 		AllowlistDeclared: u.allowlist.Declared(),
 		Allowlist:         u.allowlist.Patterns(),
+		Destination:       u.destination,
+		Cookbook:          u.cookbook,
+	}
+	if u.interval != nil {
+		data.Interval = &intervalData{
+			Effective:  u.interval.Effective().String(),
+			Configured: u.interval.Configured().String(),
+			Overridden: u.interval.Overridden(),
+			Enabled:    u.interval.Effective() > 0,
+			Minimum:    schedule.MinOverride.String(),
+			Persistent: u.interval.Persistent(),
+		}
+		data.Value = data.Interval.Effective
 	}
 	if u.queue != nil {
 		if list := u.queue.List("", tasks.TypeSync, ""); len(list) > 0 {
@@ -171,5 +220,61 @@ func (u *UI) adminRetriever(w http.ResponseWriter, r *http.Request) {
 			data.HasLastSync = true
 		}
 	}
-	u.render.Page(w, r, "admin-retriever", data)
+	return data
+}
+
+// adminInterval serves POST /admin/retriever/interval (FR-013): change
+// the promotion cadence of a running instance. An empty field clears the
+// override and returns to the configured value — the same two operations
+// the API exposes as PUT and DELETE (FR-061). Audited either way
+// (FR-094): the record exists to answer who changed how often this
+// instance reaches into the next zone, and a refused attempt is as much
+// part of that answer as an accepted one.
+func (u *UI) adminInterval(w http.ResponseWriter, r *http.Request) {
+	id, _ := auth.IdentityFrom(r.Context())
+	raw := strings.TrimSpace(r.PostFormValue("interval"))
+	reject := func(key string) {
+		audit.Log(r.Context(), u.logger, &audit.Event{
+			Actor: id.Name, Action: audit.ActionIntervalChange, Target: raw,
+			Outcome: audit.OutcomeFailure, Origin: auth.ClientOrigin(r),
+		})
+		d := u.retrieverScreenData()
+		d.FormError, d.Value = key, raw
+		u.render.render(w, r, "admin-retriever", http.StatusBadRequest, u.render.view(r, d))
+	}
+	if u.interval == nil {
+		reject("retriever.interval_unavailable")
+		return
+	}
+
+	var err error
+	if raw == "" {
+		err = u.interval.Clear()
+	} else {
+		var d time.Duration
+		if d, err = time.ParseDuration(raw); err != nil {
+			reject("retriever.interval_invalid")
+			return
+		}
+		err = u.interval.Set(d, id.Name, u.now())
+	}
+	if err != nil {
+		switch {
+		case errors.Is(err, schedule.ErrTooShort):
+			reject("retriever.interval_too_short")
+		case errors.Is(err, schedule.ErrNoStateDir):
+			reject("retriever.interval_no_state")
+		default:
+			u.render.Error(w, r, taxonomy.New(taxonomy.CodeConfigInvalid,
+				taxonomy.Params{"detail": err.Error()}).WithCause(err))
+		}
+		return
+	}
+	audit.Log(r.Context(), u.logger, &audit.Event{
+		Actor: id.Name, Action: audit.ActionIntervalChange, Target: u.interval.Effective().String(),
+		Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r),
+	})
+	v := u.render.view(r, u.retrieverScreenData())
+	v.Toasts = append(v.Toasts, v.T("retriever.interval_saved", "Interval", u.interval.Effective().String()))
+	u.render.render(w, r, "admin-retriever", http.StatusOK, v)
 }

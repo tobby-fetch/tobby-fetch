@@ -116,7 +116,10 @@ func newRecipesAPI(t *testing.T, source string) (*http.ServeMux, *tasks.Queue) {
 		t.Fatal(err)
 	}
 	a := api.New(authn, slog.New(slog.DiscardHandler))
-	api.RegisterRecipes(a, st, queue, source, []string{"legacy-zone"}, []string{"drivers"})
+	api.RegisterRecipes(a, &api.RecipeOptions{
+		Store: st, Queue: queue, Source: source,
+		RelaxedScopes: []string{"legacy-zone"}, AnonymousFileSets: []string{"drivers"},
+	})
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/", a.Handler())
 	return mux, queue
