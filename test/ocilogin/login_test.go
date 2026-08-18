@@ -16,8 +16,17 @@ package ocilogin_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"log/slog"
+	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -117,6 +126,123 @@ func startTLSRegistry(t *testing.T) *registry {
 		t.Fatal(err)
 	}
 	return &registry{Host: strings.TrimPrefix(srv.URL, "https://"), CAFile: caFile}
+}
+
+// hostRoutableIP returns a non-loopback IPv4 address of this host.
+//
+// It exists for one client: the Docker daemon hardcodes 127.0.0.0/8 into
+// its insecure-registry set, and that entry cannot be removed. A TLS
+// registry on loopback is therefore reached WITHOUT certificate
+// verification — the handshake succeeds whatever the trust store says, so
+// a green test would prove nothing about the private root it claims to
+// exercise. Serving on an address Docker considers secure is what makes
+// the verification real.
+func hostRoutableIP() (net.IP, error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil, err
+	}
+	for _, a := range addrs {
+		ipnet, ok := a.(*net.IPNet)
+		if !ok || ipnet.IP.IsLoopback() || ipnet.IP.IsLinkLocalUnicast() {
+			continue
+		}
+		if v4 := ipnet.IP.To4(); v4 != nil {
+			return v4, nil
+		}
+	}
+	return nil, errors.New("no non-loopback IPv4 address on this host")
+}
+
+// startRoutableTLSRegistry serves the fixture over TLS on a non-loopback
+// address, behind a throwaway root whose leaf carries that address as an
+// IP SAN. The root is written out for the client to trust explicitly:
+// nothing here relaxes verification, which would defeat the point.
+func startRoutableTLSRegistry(t *testing.T, ip net.IP) *registry {
+	t.Helper()
+
+	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caTmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "tobby ocilogin throwaway root"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+	}
+	caDER, err := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caCert, err := x509.ParseCertificate(caDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafTmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: ip.String()},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IPAddresses:  []net.IP{ip},
+	}
+	leafDER, err := x509.CreateCertificate(rand.Reader, leafTmpl, caCert, &leafKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ln, err := net.Listen("tcp", net.JoinHostPort(ip.String(), "0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{
+		Handler:           newRegistryMux(t),
+		ReadHeaderTimeout: 30 * time.Second,
+		TLSConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{{Certificate: [][]byte{leafDER, caDER}, PrivateKey: leafKey}},
+		},
+	}
+	go func() { _ = srv.ServeTLS(ln, "", "") }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	dir := t.TempDir()
+	caFile := filepath.Join(dir, "ca.pem")
+	if err := os.WriteFile(caFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return &registry{Host: ln.Addr().String(), CAFile: caFile}
+}
+
+// dockerMustRun reports whether a docker subtest may skip.
+//
+// A skip is information only where the check genuinely cannot run. On the
+// Linux operating scope it can, so TOBBY_OCILOGIN_REQUIRE_DOCKER turns
+// every skip below into a failure — CI sets it. The whole reason this
+// test was rewritten is that its TLS half quietly skipped everywhere and
+// nobody noticed for a release.
+func dockerMustRun() bool {
+	return os.Getenv("TOBBY_OCILOGIN_REQUIRE_DOCKER") == "1"
+}
+
+// dockerSkip skips, or fails when the environment says the check was
+// supposed to run here.
+func dockerSkip(t *testing.T, format string, args ...any) {
+	t.Helper()
+	if dockerMustRun() {
+		t.Fatalf("TOBBY_OCILOGIN_REQUIRE_DOCKER=1: "+format, args...)
+	}
+	t.Skipf(format, args...)
 }
 
 // run executes one client command in dir with an isolated environment and
@@ -373,15 +499,14 @@ func helmEnv(t *testing.T, name string) []string {
 // technicality.
 // TestDockerLogin exercises the plain-HTTP door.
 //
-// Deliberately NOT a fallback chain. It used to try HTTP and only reach
-// for TLS when Docker refused, which meant the TLS door was unreachable
-// wherever the HTTP door worked — and it always works on Linux, where the
-// daemon treats 127.0.0.0/8 as insecure by default. The transport that
-// production actually uses (FR-082 serves TLS) was therefore never
-// exercised, on the one platform where it could have been. Two doors, two
-// tests, like oras.
+// Deliberately NOT a fallback chain. It used to try HTTP and reach for
+// TLS only when Docker refused, which meant the TLS door was unreachable
+// wherever the HTTP door worked — and it always works on loopback, where
+// the daemon hardcodes 127.0.0.0/8 as insecure. The transport a deployed
+// instance actually presents (FR-082 serves TLS) was therefore never
+// exercised anywhere. Two doors, two tests, like oras.
 func TestDockerLogin(t *testing.T) {
-	requireBinary(t, "docker")
+	requireDocker(t)
 
 	dir := t.TempDir()
 	reg := startRegistry(t)
@@ -390,11 +515,16 @@ func TestDockerLogin(t *testing.T) {
 	if err != nil {
 		switch {
 		case unreachable(out):
-			t.Skipf("FR-076 not verified for docker over plain HTTP: this host's Docker cannot reach a "+
-				"loopback listener on the host (VM-isolated daemon). Output:\n%s", out)
+			dockerSkip(t, "FR-076 not verified for docker over plain HTTP: this host's Docker cannot "+
+				"reach a loopback listener on the host (VM-isolated daemon). Output:\n%s", out)
+			return
 		case requiresTLS(out):
-			t.Skipf("FR-076 not verified for docker over plain HTTP: this daemon refuses HTTP to %s. "+
-				"TestDockerLoginOverTLS covers the transport that matters. Output:\n%s", reg.Host, out)
+			// A daemon that refuses HTTP even to loopback cannot exercise
+			// this door at all. That is a real environment, not a defect —
+			// and TestDockerLoginOverTLS covers the transport that ships.
+			dockerSkip(t, "FR-076 not verified for docker over plain HTTP: this daemon refuses HTTP to %s. "+
+				"Output:\n%s", reg.Host, out)
+			return
 		}
 		t.Fatalf("docker login over plain HTTP failed: %v\n%s", err, out)
 	}
@@ -402,12 +532,27 @@ func TestDockerLogin(t *testing.T) {
 }
 
 // TestDockerLoginOverTLS exercises the door a deployed instance presents
-// (FR-082). It runs unconditionally rather than as anyone's fallback.
+// (FR-082), against a private root the client must actually verify.
+//
+// It serves on a NON-LOOPBACK address on purpose. Docker cannot be told
+// to treat 127.0.0.0/8 as secure, so a loopback TLS registry is reached
+// with verification disabled: the handshake would succeed no matter what
+// the trust store held, and a green result would say nothing about the
+// private authority this test exists to check. On an address the daemon
+// considers secure, the certificate has to chain to the root we exported
+// — which is the assertion.
 func TestDockerLoginOverTLS(t *testing.T) {
-	requireBinary(t, "docker")
+	requireDocker(t)
+
+	ip, err := hostRoutableIP()
+	if err != nil {
+		dockerSkip(t, "FR-076 not verified for docker over TLS: %v. A loopback listener would be reached "+
+			"with verification disabled, which would prove nothing.", err)
+		return
+	}
 
 	dir := t.TempDir()
-	reg := startTLSRegistry(t)
+	reg := startRoutableTLSRegistry(t, ip)
 	env := []string{
 		"DOCKER_CONFIG=" + filepath.Join(dir, "docker"),
 		"SSL_CERT_FILE=" + reg.CAFile,
@@ -417,16 +562,88 @@ func TestDockerLoginOverTLS(t *testing.T) {
 	if err != nil {
 		switch {
 		case unreachable(out):
-			t.Skipf("FR-076 not verified for docker over TLS: this host's Docker cannot reach a loopback "+
-				"listener on the host (VM-isolated daemon). Output:\n%s", out)
+			dockerSkip(t, "FR-076 not verified for docker over TLS: this host's Docker cannot reach %s "+
+				"(VM-isolated daemon). Output:\n%s", reg.Host, out)
+			return
 		case untrustedRoot(out):
-			t.Skipf("FR-076 not verified for docker over TLS on this platform: TLS roots resolve through "+
-				"the platform verifier, which ignores SSL_CERT_FILE (macOS). The check runs on the Linux "+
-				"operating scope. Output:\n%s", out)
+			dockerSkip(t, "FR-076 not verified for docker over TLS on this platform: TLS roots resolve "+
+				"through the platform verifier, which ignores SSL_CERT_FILE (macOS). The check runs on "+
+				"the Linux operating scope. Output:\n%s", out)
+			return
 		}
 		t.Fatalf("docker login over TLS failed: %v\n%s", err, out)
 	}
 	assertDockerSession(t, dir, env, reg, out)
+
+	// The verification really happened: without the private root, the
+	// same login must fail. A pass here would mean Docker skipped
+	// verification and the test above was theatre.
+	bare := []string{"DOCKER_CONFIG=" + filepath.Join(dir, "docker-bare")}
+	if out, err := run(t, dir, bare, "docker", "login", reg.Host, "-u", opUser, "-p", opPass); err == nil {
+		t.Errorf("docker logged in without the private root configured: the certificate was not verified,\n"+
+			"so this test proves nothing about the private authority.\n%s", out)
+	}
+}
+
+// TestRoutableTLSRegistryFixture proves the fixture the docker TLS door
+// depends on, on every platform — including the ones where docker itself
+// cannot run here.
+//
+// Without this, a broken fixture would be indistinguishable from an
+// absent client: both produce a skip. It checks the two properties that
+// matter — the listener is NOT on loopback, which is the whole point, and
+// its certificate verifies against the exported root and against nothing
+// else.
+func TestRoutableTLSRegistryFixture(t *testing.T) {
+	ip, err := hostRoutableIP()
+	if err != nil {
+		t.Skipf("no non-loopback address on this host: %v", err)
+	}
+	reg := startRoutableTLSRegistry(t, ip)
+
+	host, _, err := net.SplitHostPort(reg.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if net.ParseIP(host).IsLoopback() {
+		t.Fatalf("the fixture served on %s: a loopback listener is reached with verification "+
+			"disabled, which is exactly what this fixture exists to avoid", reg.Host)
+	}
+
+	pemBytes, err := os.ReadFile(reg.CAFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pemBytes) {
+		t.Fatal("the exported authority is not a usable PEM certificate")
+	}
+	client := &http.Client{Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool},
+	}}
+	resp, err := client.Get("https://" + reg.Host + "/v2/")
+	if err != nil {
+		t.Fatalf("the fixture's certificate does not verify against the root it exported: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	// And it verifies against that root only: a client without it must be
+	// refused, or the door proves nothing.
+	bare := &http.Client{Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: x509.NewCertPool()},
+	}}
+	if resp, err := bare.Get("https://" + reg.Host + "/v2/"); err == nil {
+		_ = resp.Body.Close()
+		t.Error("a client trusting nothing reached the fixture: the certificate is not being verified")
+	}
+}
+
+// requireDocker is requireBinary with the skip-to-failure switch applied.
+func requireDocker(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("docker"); err != nil {
+		dockerSkip(t, "FR-076 not verified for docker: the binary is not on PATH in this environment (%v).", err)
+	}
 }
 
 // assertDockerSession checks what both doors must produce: a session, and

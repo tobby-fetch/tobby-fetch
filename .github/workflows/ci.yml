@@ -102,7 +102,16 @@ jobs:
           helm version --short
           oras version
           docker --version
+      # TOBBY_OCILOGIN_REQUIRE_DOCKER turns the docker FR-076 subtest
+      # skips into failures on the operating scope where they can actually
+      # run. Their TLS half spent a whole release skipping everywhere at
+      # once — on loopback because Docker disables verification there, and
+      # on macOS because the platform verifier ignores SSL_CERT_FILE — and
+      # a suite that reports "ok" for a check it never performed is worse
+      # than one that has no check at all.
       - name: Unit and integration tests
+        env:
+          TOBBY_OCILOGIN_REQUIRE_DOCKER: ${{ runner.os == 'Linux' && '1' || '' }}
         run: go test -race -count=2 ./...
       - name: Per-package coverage floor (NFR-016)
         run: sh tools/check-coverage.sh
