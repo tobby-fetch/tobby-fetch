@@ -340,7 +340,13 @@ func TestAdminRetrieverScreen(t *testing.T) {
 	for _, want := range []string{
 		"oci://cookbook.example/retriever:1",
 		"legacy-zone", "drivers",
-		"Nothing is editable here", // FR-003: file/env/flags only
+		// FR-003: everything but the FR-013 cadence comes from the
+		// configuration layers and cannot be edited at runtime.
+		"Everything else comes from the configuration file",
+		// FR-013: an instance with no destination and no scheduler says so
+		// rather than showing an inert control with no explanation.
+		"No destination configured",
+		"This instance runs no reconciliation loop",
 		"No synchronization has run yet.",
 		`action="/recipes/sync"`,
 	} {

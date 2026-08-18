@@ -33,6 +33,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
+	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/server"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
@@ -210,7 +211,27 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		TransferStarted: reg.SyncInflight.Inc,
 		TransferDone:    reg.SyncInflight.Dec,
 		BytesMoved:      func(n int64) { reg.SyncBytes.Add(float64(n)) },
+		PushDone:        func() { reg.PromotionPushes.WithLabelValues(metrics.ResultPushed).Inc() },
+		PushSkipped:     func() { reg.PromotionPushes.WithLabelValues(metrics.ResultSkipped).Inc() },
+		PushedBytes:     func(n int64) { reg.PromotionBytes.Add(float64(n)) },
+		PushRefused:     func(code string) { reg.PromotionRefusals.WithLabelValues(code).Inc() },
 	})
+
+	// The promotion target (milestone 4, FR-013): built from the same
+	// allowlist and the same outbound transport as every other path, and
+	// deliberately not from the substitution-aware reading side — a
+	// promotion goes exactly where destination.registry names.
+	destination, err := engine.NewDestination(cfg.Destination, cfg.Registries, allowlist, egress)
+	if err != nil {
+		return err
+	}
+	eng.SetDestination(destination)
+	if destination != nil {
+		logger.LogAttrs(ctx, slog.LevelInfo, "promotion destination configured",
+			slog.String("registry", destination.Host()),
+			slog.String("cookbook", destination.Cookbook()),
+			slog.String("requirement", "FR-013/FR-034"))
+	}
 
 	// The FileSet HTTP surface (FR-047): explicitly enabled FileSets are
 	// extracted (RECIPE-SPEC §7.4/§14.5) into a store-local cache and
@@ -236,6 +257,36 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	})
 	queue.Start(ctx)
 
+	// The reconciliation cadence (FR-013). The scheduler exists in
+	// passthrough mode only: FR-014 requires mirror-mode synchronization
+	// to be triggered manually and forbids it running unattended, so a
+	// mirror instance has no loop to disable — it has none at all.
+	interval, err := schedule.Open(cfg.State.Root, time.Duration(cfg.Sync.Interval))
+	if err != nil {
+		return err
+	}
+	if cfg.Mode == config.ModePassthrough && cfg.Retriever.Source != "" {
+		sched := schedule.NewScheduler(interval, func(context.Context) error {
+			_, cerr := queue.Create(tasks.TypeSync, cfg.Retriever.Source, audit.ActorLocal, nil)
+			return cerr
+		}, logger)
+		go sched.Run(ctx)
+		logger.LogAttrs(ctx, slog.LevelInfo, "promotion scheduler started",
+			slog.Duration("interval", interval.Effective()),
+			slog.Bool("enabled", interval.Effective() > 0),
+			slog.Bool("overridden", interval.Overridden()),
+			slog.String("requirement", "FR-013"))
+	} else {
+		// Say why rather than leave an operator to infer it from a loop
+		// that never fires: in mirror mode this is a requirement, and
+		// without a Retriever source there is nothing to reconcile.
+		interval = nil
+		logger.LogAttrs(ctx, slog.LevelInfo, "no promotion scheduler",
+			slog.String("mode", string(cfg.Mode)),
+			slog.Bool("retriever_configured", cfg.Retriever.Source != ""),
+			slog.String("requirement", "FR-013/FR-014"))
+	}
+
 	anonymous := map[string]bool{}
 	var anonymousNames []string
 	for _, f := range cfg.Files.FileSets {
@@ -253,7 +304,15 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	api.RegisterContent(restAPI, st)
 	api.RegisterTasks(restAPI, queue, st, time.Duration(cfg.Import.InspectTimeout), importPolicy)
 	api.RegisterAccounts(restAPI, accounts)
-	api.RegisterRecipes(restAPI, st, queue, cfg.Retriever.Source, eng.RelaxedScopes(), anonymousNames)
+	api.RegisterRecipes(restAPI, &api.RecipeOptions{
+		Store: st, Queue: queue,
+		Source:            cfg.Retriever.Source,
+		RelaxedScopes:     eng.RelaxedScopes(),
+		AnonymousFileSets: anonymousNames,
+		Destination:       destination.Host(),
+		Cookbook:          destination.Cookbook(),
+		Interval:          interval,
+	})
 	api.RegisterOpenAPI(restAPI)
 	srv.Handle("/api/v1/", restAPI.Handler())
 
@@ -272,6 +331,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		RetrieverSource:    cfg.Retriever.Source,
 		RelaxedTrustScopes: eng.RelaxedScopes(),
 		AnonymousFileSets:  anonymousNames,
+		Destination:        destination.Host(),
+		Cookbook:           destination.Cookbook(),
+		Interval:           interval,
 	})
 	webUI.Mount(srv.Mux())
 

@@ -360,10 +360,11 @@ paths:
       summary: >-
         The Retriever configuration in effect, read-only — the
         configuration itself comes from file, environment, and flags only
-        (FR-003). Mirror of the /admin/retriever screen: configured
-        source (FR-010), declared relaxed trust scopes (FR-033),
-        anonymously served FileSets (FR-047), and the latest sync task.
-        Role admin.
+        (FR-003), with the single exception of the reconciliation
+        interval below. Mirror of the /admin/retriever screen: configured
+        source (FR-010), promotion target (FR-013, FR-034), declared
+        relaxed trust scopes (FR-033), anonymously served FileSets
+        (FR-047), and the latest sync task. Role admin.
       responses:
         "200":
           description: The Retriever configuration and the last sync.
@@ -371,6 +372,62 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Retriever"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/retriever/interval:
+    put:
+      summary: >-
+        Set the reconciliation interval of a running instance (FR-013:
+        the interval is changeable without redeployment). The override is
+        persisted in the state directory and survives a restart; it wins
+        over sync.interval until it is cleared. Role admin, audited as a
+        sensitive configuration change (FR-094). Mirror of the interval
+        form on /admin/retriever. An instance with no reconciliation loop
+        — mirror mode, where FR-014 requires manual triggering — answers
+        TBY-CFG-001.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [interval]
+              properties:
+                interval:
+                  type: string
+                  description: >-
+                    A Go duration ("30m", "2h"), or "0" to stop the
+                    periodic reconciliation without affecting the manual
+                    trigger. Anything unparseable, or below the reported
+                    minimum without being zero, answers TBY-VAL-001.
+      responses:
+        "200":
+          description: The interval now in effect.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  interval:
+                    $ref: "#/components/schemas/Interval"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      summary: >-
+        Clear the interval override and return to the configured value
+        (FR-003 precedence). Clearing an absent override succeeds. Role
+        admin, audited (FR-094). Mirror of submitting the interval form
+        with an empty field.
+      responses:
+        "200":
+          description: The interval now in effect.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  interval:
+                    $ref: "#/components/schemas/Interval"
         default:
           $ref: "#/components/responses/Problem"
   /api/v1/account/password:
@@ -889,6 +946,61 @@ components:
                 type: string
               embedded:
                 type: boolean
+        resolutions:
+          type: array
+          description: >-
+            The resolution report of a synchronization (FR-021), one row
+            per recipe entry and per ingredient, plus one promotion row
+            per item when a destination is configured.
+          items:
+            type: object
+            properties:
+              recipe:
+                type: string
+                description: '"name@version" once resolved.'
+              ingredient:
+                type: string
+                description: Empty on the recipe entry's own row.
+              requested:
+                type: string
+                description: The version expression as written.
+              resolved:
+                type: string
+                description: The concrete tag it resolved to.
+              digest:
+                type: string
+              status:
+                type: string
+                description: The FR-026 per-digest status against the LOCAL store.
+                enum: [new, outdated, up-to-date]
+              effective:
+                type: string
+                description: >-
+                  The substituted endpoint actually contacted, when it
+                  differs from the nominal reference (FR-036).
+              trust_scope:
+                type: string
+                description: >-
+                  The declared scope that admitted the item when the
+                  strict default was relaxed (FR-033).
+              destination:
+                type: string
+                description: >-
+                  The fully qualified reference the item was promoted to
+                  (FR-035 mapping, FR-065). Absent on an instance that
+                  promotes nothing.
+              destination_status:
+                type: string
+                description: >-
+                  The FR-026 per-digest status against the DESTINATION,
+                  computed before any transfer. Deliberately distinct from
+                  "status": content can be local and not yet pushed.
+                enum: [new, outdated, up-to-date]
+              pushed_bytes:
+                type: integer
+                description: >-
+                  What actually crossed for this item. Zero on an
+                  up-to-date item is the FR-028 differential, per row.
         items_total:
           type: integer
         items_done:
@@ -1006,8 +1118,47 @@ components:
           description: FileSets served without authentication (FR-047).
           items:
             type: string
+        destination:
+          type: string
+          description: >-
+            The registry this instance promotes into (FR-013); empty when
+            it promotes nothing, which is every mirror-mode instance.
+        cookbook:
+          type: string
+          description: >-
+            The destination repository path recipes are propagated to
+            (FR-034): "<destination>/<cookbook>/<name>:<version>".
+        interval:
+          $ref: "#/components/schemas/Interval"
         last_sync:
           $ref: "#/components/schemas/Task"
+    Interval:
+      type: object
+      description: >-
+        The FR-013 reconciliation cadence. Absent entirely on an instance
+        with no reconciliation loop (mirror mode, FR-014). Durations are
+        Go duration strings, the same spelling the configuration file and
+        the request body use.
+      properties:
+        effective:
+          type: string
+          description: The interval the loop actually runs at.
+        configured:
+          type: string
+          description: >-
+            The value from the configuration layers (FR-003) — what
+            clearing the override would restore.
+        overridden:
+          type: boolean
+          description: Whether a persisted operator override is in force.
+        enabled:
+          type: boolean
+          description: >-
+            False when the effective interval is zero: periodic
+            reconciliation off, manual triggering (FR-014) unaffected.
+        minimum:
+          type: string
+          description: The floor a non-zero override may not go below.
     Account:
       type: object
       properties:

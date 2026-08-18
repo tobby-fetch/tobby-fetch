@@ -32,6 +32,7 @@ import (
 // (FR-044 reachability), implemented by the embedded store.
 type MetaStore interface {
 	Store
+	StoreReader
 	SetProvenance(repo string, p *store.Provenance) error
 	PutRecipeRecord(r *store.RecipeRecord) error
 }
@@ -43,6 +44,16 @@ type Meters struct {
 	TransferStarted func()
 	TransferDone    func()
 	BytesMoved      func(int64)
+
+	// Promotion counters (FR-013, FR-028, FR-091). PushSkipped is the one
+	// worth watching on a continuous promotion service: a healthy steady
+	// state is almost entirely skips, and a sudden run of PushDone without
+	// a matching change upstream is how a destination that keeps losing
+	// content announces itself.
+	PushDone    func()
+	PushSkipped func()
+	PushedBytes func(int64)
+	PushRefused func(code string)
 }
 
 // Engine turns a Retriever into verified content in the local store: the
@@ -52,6 +63,7 @@ type Engine struct {
 	store   MetaStore
 	remotes *Remotes
 	trust   *TrustPolicy
+	dest    *Destination
 	source  string
 	base    string
 	cfg     config.Sync
@@ -65,6 +77,21 @@ func New(st MetaStore, remotes *Remotes, trust *TrustPolicy, retrieverSource, ba
 
 // SetMeters installs the observability hooks.
 func (e *Engine) SetMeters(m Meters) { e.meters = m }
+
+// SetDestination installs the promotion target (FR-013). A nil
+// destination is the default and means this instance fetches into its own
+// store and stops there — the mirror-mode behaviour, and the passthrough
+// behaviour before a destination is configured.
+//
+// It is a setter rather than a constructor argument for the same reason
+// SetMeters is: an engine without a destination is a complete engine, and
+// every existing caller that never promotes should keep reading as one
+// that never promotes.
+func (e *Engine) SetDestination(d *Destination) { e.dest = d }
+
+// Destination reports the configured promotion target, for the surfaces
+// that show where this instance pushes to (FR-035 mapping, FR-065).
+func (e *Engine) Destination() *Destination { return e.dest }
 
 // Source reports the configured retriever source (FR-010: shown in the
 // UI and the API).
@@ -238,6 +265,13 @@ func (e *Engine) syncRecipe(ctx context.Context, t *tasks.Task, logger *slog.Log
 		item.Digest = fetched.ManifestDigest
 		save()
 	}
+
+	// Promotion (FR-013, FR-028, FR-034): the content is in the store,
+	// verified and complete, so it can now cross into the destination
+	// zone. It runs after the fetch and never during it — pushing an
+	// ingredient the local store has not finished committing would put
+	// content on the destination that this instance cannot prove it holds.
+	e.promoteRecipe(ctx, t, &mu, logger, save, fetched, rid)
 
 	// Record the graph: reachability for GC/prune (FR-044/FR-045), zone
 	// identity and resolution timestamp for the milestone-5 media manifest

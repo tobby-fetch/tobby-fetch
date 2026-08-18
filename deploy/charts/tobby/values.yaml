@@ -100,12 +100,45 @@ config:
     parallelism: 3
     # Retry attempts per ingredient on transient transfer failures.
     retries: 3
+    # How often a passthrough instance re-fetches the Retriever and
+    # reconciles the destination (FR-013). 0 stops the loop without
+    # affecting the manual trigger. An administrator can change it on a
+    # running instance from /admin/retriever or the API; that override is
+    # written to the state directory and outlives the pod, so a Helm
+    # upgrade does not silently take it back. Ignored in mirror mode,
+    # where FR-014 requires synchronization to be triggered manually.
+    interval: 15m
 
   # Where the desired-state document is fetched from (FR-010): an HTTP(S)
   # URL, an OCI reference, or a path inside the container.
   retriever:
     source: ""
     # source: https://cookbook.example.com/desired-state.yaml
+
+  # The zone registry this instance promotes into (FR-013). Empty means
+  # the instance fetches into its own store and promotes nothing — which
+  # is what a mirror-mode instance does by construction.
+  #
+  # A bare host: the scheme follows registries.insecure exactly as it does
+  # on the reading side, and the repository path is computed by the
+  # relocation convention (FR-035) rather than written by hand. Pushing
+  # authenticates through registries.credentialsFile with a write-scoped
+  # credential (FR-004).
+  #
+  # Note what this is NOT: registries.substitutions. That map redirects
+  # where content is READ from; a destination is where it is WRITTEN, and
+  # the two never share a mechanism — a substitution applied to a write
+  # would publish to a registry nobody named, every interval, forever.
+  destination:
+    registry: ""
+    # registry: registry.zone-b.example.com
+    # Optional path prefix every relocated ingredient lands under at the
+    # destination. Independent of storage.basePrefix, which shapes this
+    # instance's own store.
+    # basePath: zone-b
+    # Where recipes are re-published with their signatures (FR-034):
+    # <registry>/<cookbook>/<name>:<version>.
+    cookbook: cookbook
 
   # How the instance reaches the outside world (FR-080, FR-081). One
   # transport for every outbound path — recipe engine, unit import, Helm

@@ -29,6 +29,7 @@ const (
 	EnvStorageBasePrefix   = "TOBBY_STORAGE_BASE_PREFIX"
 	EnvSyncParallelism     = "TOBBY_SYNC_PARALLELISM"
 	EnvSyncRetries         = "TOBBY_SYNC_RETRIES"
+	EnvSyncInterval        = "TOBBY_SYNC_INTERVAL"
 	EnvLoggingLevel        = "TOBBY_LOGGING_LEVEL"
 	EnvShutdownGracePeriod = "TOBBY_SHUTDOWN_GRACE_PERIOD"
 
@@ -42,6 +43,13 @@ const (
 	EnvNetworkProxyUsername = "TOBBY_NETWORK_PROXY_USERNAME"
 	EnvNetworkProxyPassword = "TOBBY_NETWORK_PROXY_PASSWORD" //nolint:gosec // G101: the NAME of an environment variable, not a credential
 	EnvNetworkTLSCAFiles    = "TOBBY_NETWORK_TLS_CA_FILES"
+
+	// Promotion destination (FR-013, FR-034, FR-035). No credential
+	// variable belongs here: pushing authenticates through
+	// registries.credentialsFile like every read does (FR-004).
+	EnvDestinationRegistry = "TOBBY_DESTINATION_REGISTRY"
+	EnvDestinationBasePath = "TOBBY_DESTINATION_BASE_PATH"
+	EnvDestinationCookbook = "TOBBY_DESTINATION_COOKBOOK"
 
 	// Listener certificate (FR-082).
 	EnvServerTLSEnabled  = "TOBBY_SERVER_TLS_ENABLED"
@@ -172,6 +180,22 @@ func applyEnv(cfg *Config, lookup func(string) (string, bool)) error {
 			return fmt.Errorf("%s: invalid integer %q", EnvSyncRetries, v)
 		}
 		cfg.Sync.Retries = n
+	}
+	if v, ok := lookup(EnvSyncInterval); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("%s: invalid duration %q (expected e.g. \"15m\")", EnvSyncInterval, v)
+		}
+		cfg.Sync.Interval = Duration(d)
+	}
+	if v, ok := lookup(EnvDestinationRegistry); ok {
+		cfg.Destination.Registry = v
+	}
+	if v, ok := lookup(EnvDestinationBasePath); ok {
+		cfg.Destination.BasePath = v
+	}
+	if v, ok := lookup(EnvDestinationCookbook); ok {
+		cfg.Destination.Cookbook = v
 	}
 	if v, ok := lookup(EnvLoggingLevel); ok {
 		cfg.Logging.Level = v

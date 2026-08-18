@@ -109,6 +109,21 @@ type Resolution struct {
 	// TrustScope names the declared scope that admitted the item when the
 	// strict default was relaxed (FR-033: never silent).
 	TrustScope string `json:"trust_scope,omitempty"`
+	// Destination is the fully qualified reference the item was promoted
+	// to (FR-035 source→destination mapping, FR-065). Empty on an
+	// instance that promotes nothing.
+	Destination string `json:"destination,omitempty"`
+	// DestinationStatus is the FR-026 per-digest status computed against
+	// the DESTINATION registry before any push. It is deliberately a
+	// second field rather than a reuse of Status: one says what the local
+	// store was missing, the other what the next zone was missing, and on
+	// a promotion service they routinely disagree — content already local
+	// and not yet pushed is precisely the state the operator is looking
+	// for.
+	DestinationStatus string `json:"destination_status,omitempty"`
+	// PushedBytes is what actually crossed for this item. Zero on an
+	// up-to-date item is the FR-028 acceptance criterion, stated per row.
+	PushedBytes int64 `json:"pushed_bytes,omitempty"`
 }
 
 // ChartDependency is one row of the FR-024 report.

@@ -41,20 +41,21 @@ type Config struct {
 	// instance must state what it is (FR-001).
 	Mode Mode `yaml:"mode"`
 
-	Storage    Storage    `yaml:"storage"`
-	State      State      `yaml:"state"`
-	Server     Server     `yaml:"server"`
-	Auth       Auth       `yaml:"auth"`
-	Network    Network    `yaml:"network"`
-	Registries Registries `yaml:"registries"`
-	UI         UI         `yaml:"ui"`
-	Import     Import     `yaml:"import"`
-	Retriever  Retriever  `yaml:"retriever"`
-	Sync       Sync       `yaml:"sync"`
-	Trust      Trust      `yaml:"trust"`
-	Files      Files      `yaml:"files"`
-	Logging    Logging    `yaml:"logging"`
-	Shutdown   Shutdown   `yaml:"shutdown"`
+	Storage     Storage     `yaml:"storage"`
+	State       State       `yaml:"state"`
+	Server      Server      `yaml:"server"`
+	Auth        Auth        `yaml:"auth"`
+	Network     Network     `yaml:"network"`
+	Registries  Registries  `yaml:"registries"`
+	UI          UI          `yaml:"ui"`
+	Import      Import      `yaml:"import"`
+	Retriever   Retriever   `yaml:"retriever"`
+	Destination Destination `yaml:"destination"`
+	Sync        Sync        `yaml:"sync"`
+	Trust       Trust       `yaml:"trust"`
+	Files       Files       `yaml:"files"`
+	Logging     Logging     `yaml:"logging"`
+	Shutdown    Shutdown    `yaml:"shutdown"`
 }
 
 // Retriever locates the desired-state document (FR-010): an HTTP(S) URL,
@@ -64,13 +65,76 @@ type Retriever struct {
 	Source string `yaml:"source"`
 }
 
-// Sync bounds the recipe engine's transfers (NFR-008, FR-029).
+// Destination is the zone registry this instance promotes into: the
+// "continuous promotion" half of passthrough (FR-013, FR-026, FR-028,
+// FR-034, FR-035).
+//
+// It is deliberately its own section rather than an entry of Registries.
+// Registries answers "where may this instance read from, and through
+// which endpoint" — source substitution lives there (FR-036). A
+// destination answers a different question, and the two must not share a
+// mechanism: substitution rewrites the endpoint a reference is fetched
+// from, and applying it to a write would publish to a registry the
+// operator never named. The same posture the publishing path took
+// (engine.Publisher): credentials and per-host insecure opt-ins are
+// shared with the reading side, the endpoint policy is not.
+//
+// Nothing here is a credential. Pushing needs a write-scoped credential
+// on the destination host, and it comes from registries.credentialsFile
+// like every other one (FR-004) — one credential source, whichever
+// direction the bytes travel.
+type Destination struct {
+	// Registry is the destination registry host ("registry.example.com"
+	// or "registry.example.com:5000"). Empty means this instance
+	// promotes nothing: it fetches into its own store and stops there,
+	// which is what a mirror-mode instance does by construction.
+	//
+	// A bare host, never a URL and never a repository path: the scheme
+	// is decided by registries.insecure like it is on the reading side,
+	// and the path is computed by the relocation convention (FR-035),
+	// not written by hand.
+	Registry string `yaml:"registry,omitempty"`
+	// BasePath is an optional repository path prefix under which every
+	// relocated ingredient lands on the destination
+	// ("<registry>/<basePath>/<canonical-source-host>/<repo>"). It is
+	// NOT storage.basePrefix: that one shapes this instance's own store,
+	// this one shapes what the next zone sees. They are usually equal
+	// and deliberately separate — a zone that stores under one prefix
+	// may well have to publish under another.
+	BasePath string `yaml:"basePath,omitempty"`
+	// Cookbook is the repository path of the zone's own cookbook, where
+	// recipes are re-published with their signatures (FR-034):
+	// "<registry>/<cookbook>/<name>:<version>". Default "cookbook".
+	Cookbook string `yaml:"cookbook,omitempty"`
+}
+
+// Configured reports whether a destination is declared at all.
+func (d *Destination) Configured() bool { return d.Registry != "" }
+
+// Sync bounds the recipe engine's transfers (NFR-008, FR-029) and paces
+// the reconciliation loop (FR-013).
 type Sync struct {
 	// Parallelism caps concurrent ingredient transfers. Default 3.
 	Parallelism int `yaml:"parallelism"`
 	// Retries bounds per-ingredient retry attempts on transient transfer
 	// failures (bounded backoff, FR-029). Default 3.
 	Retries int `yaml:"retries"`
+	// Interval paces the periodic reconciliation of FR-013. Default 15m.
+	// Zero disables the loop, which is reported at startup rather than
+	// left to be discovered: an instance that promotes nothing on its own
+	// looks exactly like one whose interval never elapsed.
+	//
+	// It applies in passthrough mode ONLY. FR-014 requires mirror-mode
+	// synchronization to be triggered manually and forbids it running
+	// unattended, so the scheduler is not merely idle there — it is never
+	// built.
+	//
+	// This value is the configured floor, not necessarily the effective
+	// one: FR-013 requires the interval to be changeable without
+	// redeployment, so an operator override persisted in the state
+	// directory wins over it (package schedule). The override is a
+	// sensitive configuration change and is audited as one (FR-094).
+	Interval Duration `yaml:"interval"`
 }
 
 // Trust configures signature verification (FR-033, ADR-0007,
@@ -371,12 +435,13 @@ type Shutdown struct {
 // Default returns the built-in defaults, the lowest configuration layer.
 func Default() Config {
 	return Config{
-		Server:   Server{Addr: ":8080"},
-		Auth:     Auth{SessionTTL: Duration(12 * time.Hour)},
-		Import:   Import{InspectTimeout: Duration(20 * time.Second)},
-		Sync:     Sync{Parallelism: 3, Retries: 3},
-		Logging:  Logging{Level: "info"},
-		Shutdown: Shutdown{GracePeriod: Duration(30 * time.Second)},
+		Server:      Server{Addr: ":8080"},
+		Auth:        Auth{SessionTTL: Duration(12 * time.Hour)},
+		Import:      Import{InspectTimeout: Duration(20 * time.Second)},
+		Destination: Destination{Cookbook: DefaultCookbook},
+		Sync:        Sync{Parallelism: 3, Retries: 3, Interval: Duration(15 * time.Minute)},
+		Logging:     Logging{Level: "info"},
+		Shutdown:    Shutdown{GracePeriod: Duration(30 * time.Second)},
 	}
 }
 
@@ -489,11 +554,95 @@ func (c *Config) validate(scope Scope) error {
 	if c.Sync.Retries < 0 {
 		errs = append(errs, errors.New("sync.retries must not be negative"))
 	}
+	if time.Duration(c.Sync.Interval) < 0 {
+		errs = append(errs, errors.New("sync.interval must not be negative: use 0 to disable the periodic reconciliation of FR-013"))
+	}
+	errs = append(errs, c.validateDestination()...)
 	errs = append(errs, c.validateNetwork()...)
 	errs = append(errs, c.validateServerTLS()...)
 	errs = append(errs, c.validateTrust()...)
 	errs = append(errs, c.validateFiles()...)
 	return errors.Join(errs...)
+}
+
+// DefaultCookbook is the destination cookbook path used when none is
+// configured (FR-034): the zone's recipes land at
+// "<destination>/cookbook/<name>:<version>".
+const DefaultCookbook = "cookbook"
+
+// validateDestination checks the promotion target (FR-013, FR-035).
+//
+// A destination is a bare registry host and, at most, path prefixes. The
+// checks below exist because every one of them is a way to end up pushing
+// somewhere the operator did not mean: a URL would carry a scheme the
+// per-host insecure opt-in is supposed to decide, a host with a path
+// would silently prepend a repository segment the relocation convention
+// never accounted for, and a tag would be a reference where a host was
+// asked for. A promotion service pushes on a timer with nobody watching,
+// so an ambiguous destination is not a nuisance to be discovered on the
+// first run — it is a misdirection repeated forever.
+func (c *Config) validateDestination() []error {
+	var errs []error
+	d := &c.Destination
+	if d.Registry != "" {
+		switch {
+		case strings.Contains(d.Registry, "://"):
+			errs = append(errs, fmt.Errorf("destination.registry: %q must be a bare registry host, not a URL — the scheme follows registries.insecure, like on the reading side", d.Registry))
+		case strings.Contains(d.Registry, "/"):
+			errs = append(errs, fmt.Errorf("destination.registry: %q must be a bare registry host — the repository path is computed by the relocation convention (FR-035), use destination.basePath for a prefix", d.Registry))
+		case strings.Contains(d.Registry, "@"):
+			errs = append(errs, fmt.Errorf("destination.registry: %q must be a bare registry host, not a reference", d.Registry))
+		}
+	}
+	for _, f := range []struct {
+		key, value string
+	}{
+		{"destination.basePath", d.BasePath},
+		{"destination.cookbook", d.Cookbook},
+	} {
+		if err := validRepositoryPath(f.key, f.value); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if !d.Configured() {
+		// Settings that only mean something with a destination are refused
+		// rather than ignored: a cookbook path nobody pushes to reads, in a
+		// configuration dump, exactly like one that works.
+		if d.BasePath != "" {
+			errs = append(errs, errors.New("destination.basePath is set without destination.registry: there is nothing to push to, so the prefix would be silently unused"))
+		}
+		if d.Cookbook != "" && d.Cookbook != DefaultCookbook {
+			errs = append(errs, errors.New("destination.cookbook is set without destination.registry: recipes have nowhere to be propagated to (FR-034)"))
+		}
+	}
+	return errs
+}
+
+// validRepositoryPath accepts an OCI repository path prefix: lowercase
+// path components separated by single slashes, no traversal, no leading
+// or trailing separator. The registry would refuse the malformed forms
+// anyway — the point of checking here is that it refuses them at the
+// first push of the first cycle, not at startup.
+func validRepositoryPath(key, value string) error {
+	if value == "" {
+		return nil
+	}
+	if strings.HasPrefix(value, "/") || strings.HasSuffix(value, "/") || strings.Contains(value, "//") {
+		return fmt.Errorf("%s: %q must not start, end, or double up on %q", key, value, "/")
+	}
+	for _, part := range strings.Split(value, "/") {
+		if part == "." || part == ".." {
+			return fmt.Errorf("%s: %q must not contain a path traversal component", key, value)
+		}
+		for _, r := range part {
+			switch {
+			case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+			default:
+				return fmt.Errorf("%s: %q is not a valid repository path — components are lowercase alphanumeric plus [._-] (OCI name grammar)", key, value)
+			}
+		}
+	}
+	return nil
 }
 
 // validateNetwork checks the outbound network configuration (FR-080,

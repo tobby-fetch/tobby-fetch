@@ -211,7 +211,7 @@ func TestContentDeleteUIAPIParity(t *testing.T) {
 	c := login(t, uiMux, "alexis", "pw-admin")
 
 	restAPI := api.New(u.authn, slog.New(slog.DiscardHandler))
-	api.RegisterRecipes(restAPI, st, nil, "", nil, nil)
+	api.RegisterRecipes(restAPI, &api.RecipeOptions{Store: st})
 	apiMux := http.NewServeMux()
 	apiMux.Handle("/api/v1/", restAPI.Handler())
 
@@ -257,7 +257,7 @@ func TestRecipesUIAPIParity(t *testing.T) {
 	c := login(t, uiMux, "lecteur", "pw-view")
 
 	restAPI := api.New(u.authn, slog.New(slog.DiscardHandler))
-	api.RegisterRecipes(restAPI, st, nil, "", nil, nil)
+	api.RegisterRecipes(restAPI, &api.RecipeOptions{Store: st})
 	apiMux := http.NewServeMux()
 	apiMux.Handle("/api/v1/", restAPI.Handler())
 

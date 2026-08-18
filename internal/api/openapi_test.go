@@ -39,6 +39,8 @@ var registeredRoutes = []string{
 	"GET /api/v1/recipes",
 	"GET /api/v1/recipes/{recipe}/mapping",
 	"GET /api/v1/retriever",
+	"PUT /api/v1/retriever/interval",
+	"DELETE /api/v1/retriever/interval",
 	"POST /api/v1/sync",
 	"GET /api/v1/tasks",
 	"GET /api/v1/tasks/{id}",
