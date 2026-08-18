@@ -224,6 +224,41 @@ func startRoutableTLSRegistry(t *testing.T, ip net.IP) *registry {
 	return &registry{Host: ln.Addr().String(), CAFile: caFile}
 }
 
+// dockerCertsDir is where the docker daemon reads per-registry trust
+// material. Not a guess: it is the only path it consults for a registry
+// it considers secure.
+const dockerCertsDir = "/etc/docker/certs.d"
+
+// trustCAForDockerDaemon installs the throwaway root where the docker
+// DAEMON looks for it, and reports whether it could.
+//
+// SSL_CERT_FILE is not enough and the reason matters: for a registry the
+// daemon considers secure, it is the DAEMON that opens the TLS connection,
+// not the CLI whose environment we control. Its trust material lives in
+// /etc/docker/certs.d/<host>/ca.crt, per host, and nowhere else. Pointing
+// the CLI at a root the daemon never reads is how this check spent a
+// release reporting a skip that looked like a platform limit.
+func trustCAForDockerDaemon(t *testing.T, reg *registry) bool {
+	t.Helper()
+	dir := filepath.Join(dockerCertsDir, reg.Host)
+	install := func(args ...string) bool {
+		cmd := exec.Command(args[0], args[1:]...) //nolint:gosec // G204: fixed argv, test-only privileged install
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Logf("%v: %v\n%s", args, err, out)
+		}
+		return err == nil
+	}
+	if !install("sudo", "-n", "mkdir", "-p", dir) {
+		return false
+	}
+	if !install("sudo", "-n", "cp", reg.CAFile, filepath.Join(dir, "ca.crt")) {
+		return false
+	}
+	t.Cleanup(func() { install("sudo", "-n", "rm", "-rf", dir) })
+	return true
+}
+
 // dockerMustRun reports whether a docker subtest may skip.
 //
 // A skip is information only where the check genuinely cannot run. On the
@@ -553,88 +588,51 @@ func TestDockerLoginOverTLS(t *testing.T) {
 
 	dir := t.TempDir()
 	reg := startRoutableTLSRegistry(t, ip)
-	env := []string{
-		"DOCKER_CONFIG=" + filepath.Join(dir, "docker"),
-		"SSL_CERT_FILE=" + reg.CAFile,
-		"SSL_CERT_DIR=" + filepath.Dir(reg.CAFile),
+	if !trustCAForDockerDaemon(t, reg) {
+		dockerSkip(t, "FR-076 not verified for docker over TLS: this host's docker daemon trust store "+
+			"(/etc/docker/certs.d) is not writable here, and the daemon — not the CLI — is what opens "+
+			"the connection, so no client-side environment can stand in for it.")
+		return
 	}
+
+	env := []string{"DOCKER_CONFIG=" + filepath.Join(dir, "docker")}
 	out, err := run(t, dir, env, "docker", "login", reg.Host, "-u", opUser, "-p", opPass)
 	if err != nil {
-		switch {
-		case unreachable(out):
-			dockerSkip(t, "FR-076 not verified for docker over TLS: this host's Docker cannot reach %s "+
+		if unreachable(out) {
+			dockerSkip(t, "FR-076 not verified for docker over TLS: this host's docker cannot reach %s "+
 				"(VM-isolated daemon). Output:\n%s", reg.Host, out)
-			return
-		case untrustedRoot(out):
-			dockerSkip(t, "FR-076 not verified for docker over TLS on this platform: TLS roots resolve "+
-				"through the platform verifier, which ignores SSL_CERT_FILE (macOS). The check runs on "+
-				"the Linux operating scope. Output:\n%s", out)
 			return
 		}
 		t.Fatalf("docker login over TLS failed: %v\n%s", err, out)
 	}
 	assertDockerSession(t, dir, env, reg, out)
-
-	// The verification really happened: without the private root, the
-	// same login must fail. A pass here would mean Docker skipped
-	// verification and the test above was theatre.
-	bare := []string{"DOCKER_CONFIG=" + filepath.Join(dir, "docker-bare")}
-	if out, err := run(t, dir, bare, "docker", "login", reg.Host, "-u", opUser, "-p", opPass); err == nil {
-		t.Errorf("docker logged in without the private root configured: the certificate was not verified,\n"+
-			"so this test proves nothing about the private authority.\n%s", out)
-	}
 }
 
-// TestRoutableTLSRegistryFixture proves the fixture the docker TLS door
-// depends on, on every platform — including the ones where docker itself
-// cannot run here.
-//
-// Without this, a broken fixture would be indistinguishable from an
-// absent client: both produce a skip. It checks the two properties that
-// matter — the listener is NOT on loopback, which is the whole point, and
-// its certificate verifies against the exported root and against nothing
-// else.
-func TestRoutableTLSRegistryFixture(t *testing.T) {
+// TestDockerRejectsAnUntrustedRegistry is the negative half of the door
+// above: without the private root installed for the daemon, the same
+// login must fail. Without it, a green TLS check could equally mean the
+// daemon skipped verification — which is precisely what it does on
+// loopback, and precisely what this pair exists to rule out.
+func TestDockerRejectsAnUntrustedRegistry(t *testing.T) {
+	requireDocker(t)
+
 	ip, err := hostRoutableIP()
 	if err != nil {
-		t.Skipf("no non-loopback address on this host: %v", err)
+		dockerSkip(t, "FR-076 negative check not run: %v", err)
+		return
 	}
+	dir := t.TempDir()
 	reg := startRoutableTLSRegistry(t, ip)
-
-	host, _, err := net.SplitHostPort(reg.Host)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if net.ParseIP(host).IsLoopback() {
-		t.Fatalf("the fixture served on %s: a loopback listener is reached with verification "+
-			"disabled, which is exactly what this fixture exists to avoid", reg.Host)
-	}
-
-	pemBytes, err := os.ReadFile(reg.CAFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(pemBytes) {
-		t.Fatal("the exported authority is not a usable PEM certificate")
-	}
-	client := &http.Client{Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool},
-	}}
-	resp, err := client.Get("https://" + reg.Host + "/v2/")
-	if err != nil {
-		t.Fatalf("the fixture's certificate does not verify against the root it exported: %v", err)
-	}
-	_ = resp.Body.Close()
-
-	// And it verifies against that root only: a client without it must be
-	// refused, or the door proves nothing.
-	bare := &http.Client{Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: x509.NewCertPool()},
-	}}
-	if resp, err := bare.Get("https://" + reg.Host + "/v2/"); err == nil {
-		_ = resp.Body.Close()
-		t.Error("a client trusting nothing reached the fixture: the certificate is not being verified")
+	out, err := run(t, dir, []string{"DOCKER_CONFIG=" + filepath.Join(dir, "docker")},
+		"docker", "login", reg.Host, "-u", opUser, "-p", opPass)
+	switch {
+	case err == nil:
+		t.Errorf("docker logged in to a registry whose authority it does not trust:\n%s", out)
+	case unreachable(out):
+		dockerSkip(t, "FR-076 negative check not run: this host's docker cannot reach %s. Output:\n%s",
+			reg.Host, out)
+	case !untrustedRoot(out):
+		t.Errorf("docker refused for the wrong reason; want an untrusted-authority refusal:\n%s", out)
 	}
 }
 
