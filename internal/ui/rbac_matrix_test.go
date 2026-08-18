@@ -95,6 +95,8 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "POST /content/{repo...}", Floor: auth.RoleAdmin, Why: "removal of unit-imported content (FR-044 amendment)", Method: "POST", Path: "/content/no/such/repo/-/delete"},
 	{Pattern: "GET /recipes", Floor: auth.RoleViewer, Method: "GET", Path: "/recipes"},
 	{Pattern: "POST /recipes/sync", Floor: auth.RoleOperator, Why: "triggering a synchronization is an operator action (FR-014)", Method: "POST", Path: "/recipes/sync"},
+	{Pattern: "GET /recipes/publish", Floor: auth.RoleOperator, Why: "the publication form (R-40): only a role that can publish is offered one", Method: "GET", Path: "/recipes/publish"},
+	{Pattern: "POST /recipes/publish", Floor: auth.RoleOperator, Why: "publishing writes into another zone's cookbook (R-40); the write is audited (FR-094)", Method: "POST", Path: "/recipes/publish", Form: "reference=&document="},
 	{Pattern: "GET /recipes/{recipe}/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/recipes/no-such-recipe/mapping"},
 	{Pattern: "GET /account", Floor: auth.RoleViewer, Why: "self-service: every authenticated role manages its own account (R-34)", Method: "GET", Path: "/account"},
 	{Pattern: "POST /account/password", Floor: auth.RoleViewer, Method: "POST", Path: "/account/password", Form: "current=x&new=&confirm="},
@@ -106,6 +108,8 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "POST /admin/accounts/tokens/revoke", Floor: auth.RoleAdmin, Method: "POST", Path: "/admin/accounts/tokens/revoke", Form: "name=no-such-token"},
 	{Pattern: "GET /admin/retriever", Floor: auth.RoleAdmin, Why: "reveals the configured desired-state source (FR-010)", Method: "GET", Path: "/admin/retriever"},
 	{Pattern: "POST /admin/retriever/interval", Floor: auth.RoleAdmin, Why: "changes how often this instance promotes, unattended (FR-013); the change is audited as sensitive configuration (FR-094)", Method: "POST", Path: "/admin/retriever/interval"},
+	{Pattern: "GET /admin/network", Floor: auth.RoleAdmin, Why: "reveals the instance's own TLS identity and its outbound path (FR-082, FR-080)", Method: "GET", Path: "/admin/network"},
+	{Pattern: "POST /admin/network/certificate", Floor: auth.RoleAdmin, Why: "decides what every client of this instance authenticates against (FR-082); audited as sensitive configuration (FR-094)", Method: "POST", Path: "/admin/network/certificate"},
 	{Pattern: "GET /help", Floor: auth.RoleViewer, Method: "GET", Path: "/help"},
 	{Pattern: "GET /about", Floor: auth.RoleViewer, Method: "GET", Path: "/about"},
 	{Pattern: "GET /about/third-party", Floor: auth.RoleViewer, Method: "GET", Path: "/about/third-party"},
@@ -129,6 +133,9 @@ var apiMatrix = []rbacRoute{
 	{Pattern: "GET /api/v1/recipes", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/recipes"},
 	{Pattern: "GET /api/v1/recipes/{recipe}/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/recipes/no-such-recipe/mapping"},
 	{Pattern: "POST /api/v1/sync", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/sync"},
+	{Pattern: "POST /api/v1/recipes/publish", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/recipes/publish", Body: `{"reference":"","document":""}`},
+	{Pattern: "GET /api/v1/network", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/network"},
+	{Pattern: "PUT /api/v1/network/certificate", Floor: auth.RoleAdmin, Method: "PUT", Path: "/api/v1/network/certificate", Body: `{"certificate":"","key":""}`},
 	{Pattern: "GET /api/v1/retriever", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/retriever"},
 	{Pattern: "PUT /api/v1/retriever/interval", Floor: auth.RoleAdmin, Method: "PUT", Path: "/api/v1/retriever/interval"},
 	{Pattern: "DELETE /api/v1/retriever/interval", Floor: auth.RoleAdmin, Method: "DELETE", Path: "/api/v1/retriever/interval"},
@@ -228,6 +235,11 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	api.RegisterTasks(restAPI, queue, st, time.Second, nil)
 	api.RegisterAccounts(restAPI, accounts)
 	api.RegisterRecipes(restAPI, &api.RecipeOptions{Store: st, Queue: queue})
+	// R-40 and FR-082 mirrors. Both are registered without a publisher
+	// and without a certificate: the matrix probes the GATE, and every
+	// row here is decided before the handler runs.
+	api.RegisterPublish(restAPI, nil)
+	api.RegisterNetwork(restAPI, &api.NetworkOptions{})
 	api.RegisterOpenAPI(restAPI)
 	rec.mux.Handle("/api/v1/", restAPI.Handler())
 
@@ -448,6 +460,9 @@ func TestRBACMatrixMirrorsUIFloors(t *testing.T) {
 		{"GET /tasks", "GET /api/v1/tasks"},
 		{"GET /recipes", "GET /api/v1/recipes"},
 		{"POST /recipes/sync", "POST /api/v1/sync"},
+		{"POST /recipes/publish", "POST /api/v1/recipes/publish"},
+		{"GET /admin/network", "GET /api/v1/network"},
+		{"POST /admin/network/certificate", "PUT /api/v1/network/certificate"},
 		{"GET /admin/retriever", "GET /api/v1/retriever"},
 		{"POST /admin/retriever/interval", "PUT /api/v1/retriever/interval"},
 		{"POST /account/password", "POST /api/v1/account/password"},

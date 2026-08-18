@@ -10,6 +10,7 @@
 {{define "title"}}{{.T "admin.title"}}{{end}}
 {{define "main"}}
 <section class="t-admin">
+  {{template "admin-subnav" .}}
   <h1 class="t-page-title">{{.T "admin.title"}}</h1>
   <p class="t-page-sub">{{.T "admin.subtitle"}}</p>
 

@@ -8,3 +8,15 @@
   <a class="t-chip" href="/api-docs" {{if eq .Path "/api-docs"}}aria-current="page"{{end}}>{{.T "subnav.apidocs"}}</a>
 </nav>
 {{end}}
+
+{{/* Local sub-menu of the administration screens: the single /admin nav
+     entry fans out to the three admin surfaces from the page head. Without
+     it /admin/retriever and /admin/network are reachable only by typing
+     their URL, which is not a discoverable interface (FR-062). */}}
+{{define "admin-subnav"}}
+<nav class="t-row t-subnav" aria-label="{{.T "subnav.admin_label"}}">
+  <a class="t-chip" href="/admin/accounts" {{if eq .Path "/admin/accounts"}}aria-current="page"{{end}}>{{.T "subnav.accounts"}}</a>
+  <a class="t-chip" href="/admin/retriever" {{if eq .Path "/admin/retriever"}}aria-current="page"{{end}}>{{.T "subnav.retriever"}}</a>
+  <a class="t-chip" href="/admin/network" {{if eq .Path "/admin/network"}}aria-current="page"{{end}}>{{.T "subnav.network"}}</a>
+</nav>
+{{end}}

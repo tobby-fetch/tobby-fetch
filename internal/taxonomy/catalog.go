@@ -68,6 +68,12 @@ const (
 	// CodeServerTLS is an unusable listener certificate (FR-082):
 	// missing file, mismatched key, unparseable PEM.
 	CodeServerTLS Code = "TBY-NET-003"
+	// CodeServerCertReplace refuses a certificate replacement submitted
+	// from the administration surfaces (FR-082). Distinct from
+	// CodeServerTLS on purpose: that one describes an instance that
+	// cannot serve, this one an instance that is still serving —
+	// nothing was written, and the previous certificate is untouched.
+	CodeServerCertReplace Code = "TBY-NET-004"
 
 	// CodeValidation is a rejected recipe/retriever file: file, path,
 	// violated constraint (FR-011). Reserved: emitter lands at milestone 3.
@@ -160,6 +166,10 @@ var catalog = map[Code]Entry{
 	CodeProxyInvalid: {Code: CodeProxyInvalid, Class: ClassOperational, Params: []string{"setting", "proxy"}},
 	CodeTrustStore:   {Code: CodeTrustStore, Class: ClassOperational, Params: []string{"source"}},
 	CodeServerTLS:    {Code: CodeServerTLS, Class: ClassOperational, Params: []string{"source"}},
+	// 422: the submitted pair is the caller's input, and the instance is
+	// still perfectly able to serve — the refusal is about the document,
+	// not about the instance.
+	CodeServerCertReplace: {Code: CodeServerCertReplace, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"detail"}},
 
 	CodeValidation: {Code: CodeValidation, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"file", "path", "constraint"}},
 

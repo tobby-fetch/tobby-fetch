@@ -63,6 +63,10 @@
 "TBY-NET-003.cause": "{{.source}} is missing, unreadable, not a PEM certificate/key pair, or the key does not match the certificate."
 "TBY-NET-003.action": "Check server.tls.certFile and server.tls.keyFile: both must be readable PEM files forming one pair (`openssl x509 -noout -modulus` and `openssl rsa -noout -modulus` must agree). Remove both to have Tobby generate a self-signed certificate instead — its fingerprint is printed at startup. Then restart."
 
+"TBY-NET-004.what": "The submitted certificate pair was refused; the instance keeps serving the certificate it already had."
+"TBY-NET-004.cause": "{{.detail}}"
+"TBY-NET-004.action": "Submit a PEM certificate and the matching private key (`openssl x509 -noout -pubkey` and `openssl pkey -pubout` must print the same public key), still valid, on an instance whose server.tls.certFile and server.tls.keyFile are configured. Nothing was written: the listener is unaffected."
+
 "TBY-VAL-001.what": "The recipe or retriever file is invalid."
 "TBY-VAL-001.cause": "In {{.file}}, at {{.path}}: {{.constraint}}."
 "TBY-VAL-001.action": "Fix the field at {{.path}} so it satisfies the constraint, then submit the file again."

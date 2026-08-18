@@ -651,6 +651,105 @@ paths:
                     $ref: "#/components/schemas/Token"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/recipes/publish:
+    post:
+      summary: >-
+        Validate a recipe document and publish it into a cookbook as the
+        RECIPE-SPEC §11.2 artifact (R-40). Mirror of the /recipes/publish
+        screen and of `tobby recipe push`. The document is validated
+        before anything is sent: a draft, a name or version contradicting
+        the reference, or an oversized document answers TBY-VAL-001; a tag
+        already holding different content answers TBY-POL-004 (a published
+        recipe version is immutable); a destination outside the allowlist
+        answers TBY-POL-001. Publishing the same document twice is a
+        no-op, reported as unchanged. Tobby signs nothing and holds no
+        private key (ADR-0007): the returned digest is what `cosign sign`
+        takes. Audited (FR-094). Role operator.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reference, document]
+              properties:
+                reference:
+                  type: string
+                  description: >-
+                    The destination, registry/cookbook/name:version. A tag
+                    is required — the tag carries metadata.version (§11.3)
+                    — so a digest reference is refused with TBY-REG-001.
+                  examples: ["registry.example.com/cookbook/wordpress:6.8.2"]
+                document:
+                  type: string
+                  description: The recipe document (YAML), published byte for byte.
+      responses:
+        "200":
+          description: The published artifact.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Publication"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/network:
+    get:
+      summary: >-
+        The instance's network posture (FR-082, FR-080, FR-081). Mirror of
+        the /admin/network screen: the certificate the listener presents —
+        supplied or self-signed fallback, with its fingerprint, subject,
+        issuer, subject alternative names and validity — and the outbound
+        posture. The private key is never returned in any form, and proxy
+        credentials are reported as a boolean rather than a value
+        (NFR-015). Role admin.
+      responses:
+        "200":
+          description: The network posture.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Network"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/network/certificate:
+    put:
+      summary: >-
+        Replace the listener's certificate pair (FR-082). Mirror of the
+        replacement form of /admin/network. The pair is validated in full
+        before anything is written and each file is installed atomically:
+        a pair that does not hold together, an expired certificate, or an
+        instance with no configured pair to replace answers TBY-NET-004
+        and the current certificate keeps serving. The response carries
+        the new certificate's identity and nothing derived from the key.
+        Audited (FR-094). Role admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [certificate, key]
+              properties:
+                certificate:
+                  type: string
+                  description: The certificate chain, PEM.
+                key:
+                  type: string
+                  description: >-
+                    The matching private key, PEM. Consumed and written;
+                    never returned, logged, or digested (NFR-015).
+      responses:
+        "200":
+          description: The certificate now served.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  certificate:
+                    $ref: "#/components/schemas/Certificate"
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     basicAuth:
@@ -690,6 +789,107 @@ components:
           schema:
             $ref: "#/components/schemas/Problem"
   schemas:
+    Publication:
+      type: object
+      description: >-
+        The result of one recipe publication (R-40). There is deliberately
+        no signature member: Tobby holds no private key (ADR-0007).
+      properties:
+        reference:
+          type: string
+          description: The fully qualified reference that was written.
+        digest:
+          type: string
+          description: >-
+            The published manifest digest — the artifact's identity, and
+            the argument `cosign sign` takes (cosign signs digests, never
+            tags).
+        unchanged:
+          type: boolean
+          description: >-
+            The tag already pointed at this exact content: nothing was
+            written. Publishing twice is a no-op, not a conflict (§8).
+    Certificate:
+      type: object
+      description: >-
+        The public identity of the served certificate — every member is
+        something the listener already hands to any client that completes
+        a handshake. Nothing here is derived from the private key.
+      properties:
+        self_signed:
+          type: boolean
+          description: >-
+            The generated fallback rather than a supplied pair: a degraded
+            posture, reported as one (FR-082).
+        source:
+          type: string
+          description: The configured path, or the generated marker.
+        fingerprint_sha256:
+          type: string
+          description: SHA-256 of the DER, colon-separated hex — what an operator pins.
+        subject:
+          type: string
+        issuer:
+          type: string
+        dns_names:
+          type: array
+          items:
+            type: string
+        ip_addresses:
+          type: array
+          items:
+            type: string
+        not_before:
+          type: string
+          format: date-time
+        not_after:
+          type: string
+          format: date-time
+    Egress:
+      type: object
+      description: >-
+        The outbound posture (FR-080, FR-081). The proxy appears in the
+        only form it has here: without credentials.
+      properties:
+        proxy:
+          type: string
+        proxy_authenticated:
+          type: boolean
+          description: That credentials are configured — never their value (NFR-015).
+        extra_roots:
+          type: integer
+          description: Certificate authorities added on top of the host store.
+        exclusive_trust:
+          type: boolean
+          description: The public root store was dropped.
+        summary:
+          type: string
+          description: The same one-line description the startup log carries.
+    Network:
+      type: object
+      description: The instance's network posture (FR-082, FR-080, FR-081).
+      properties:
+        tls:
+          type: boolean
+          description: False on a plain-HTTP listener — stated, never implied.
+        certificate:
+          $ref: "#/components/schemas/Certificate"
+        certificate_file:
+          type: string
+          description: The configured certificate path (configuration, not a secret).
+        key_file:
+          type: string
+          description: >-
+            The configured key path. The PATH is configuration; the key
+            itself is exposed by nothing.
+        replaceable:
+          type: boolean
+          description: >-
+            Whether PUT /api/v1/network/certificate would be accepted:
+            false on the self-signed fallback, which has no configured
+            pair to write.
+        egress:
+          $ref: "#/components/schemas/Egress"
     Problem:
       type: object
       description: >-

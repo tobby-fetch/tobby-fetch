@@ -1,0 +1,144 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /admin/network — the instance's network posture (FR-082, FR-080,
+     FR-081, FR-062): the certificate the listener presents, its
+     replacement, and the outbound path every fetch takes. A self-signed
+     certificate is called out as the degraded posture it is — nothing
+     about this instance's identity is allowed to be silent (FR-075
+     spirit). The private key appears nowhere on this page, by
+     construction: it is uploaded as a file and never read back
+     (NFR-015). */}}
+{{define "title"}}{{.T "network.title"}}{{end}}
+{{define "main"}}
+<section>
+  {{template "admin-subnav" .}}
+  <h1 class="t-page-title">{{.T "network.title"}}</h1>
+  <p class="t-page-sub">{{.T "network.subtitle"}}</p>
+
+  {{if .Err}}{{template "error-block" .}}{{end}}
+
+  <h2 class="t-kick">{{.T "network.cert_title"}}</h2>
+  {{if not .Data.Serving}}
+  {{/* Plain HTTP is a posture, and this is where it is said. */}}
+  <p class="t-form-error" role="alert">{{.T "network.plain_http"}}</p>
+  {{else if .Data.Cert}}
+    {{if .Data.Cert.SelfSigned}}
+    <p class="t-form-error" role="alert">{{.T "network.selfsigned_warning"}}</p>
+    {{else}}
+    <p class="t-muted t-note">{{.T "network.supplied_note"}}</p>
+    {{end}}
+
+    {{if .Data.Cert.Expired}}
+    <p class="t-form-error" role="alert">{{.T "network.expired" "Date" (.FmtTime .Data.Cert.NotAfter)}}</p>
+    {{else if .Data.Cert.ExpiringSoon}}
+    <p class="t-form-error" role="alert">{{.T "network.expiring_soon" "Days" .Data.Cert.DaysLeft "Date" (.FmtTime .Data.Cert.NotAfter)}}</p>
+    {{end}}
+
+    <table class="t-table">
+      <caption class="t-visually-hidden">{{.T "network.cert_title"}}</caption>
+      <tbody>
+        <tr>
+          <th scope="row">{{.T "network.th_fingerprint"}}</th>
+          <td>
+            <span class="t-chip">
+              <span class="t-truncate t-mono" translate="no" title="{{.Data.Cert.Fingerprint}}">{{.Trunc .Data.Cert.Fingerprint 34}}</span>
+              <button type="button" class="t-chip-copy" data-copy="{{.Data.Cert.Fingerprint}}"
+                      aria-label="{{.T "network.copy_fingerprint"}}" title="{{.T "network.copy_fingerprint"}}">⧉</button>
+            </span>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">{{.T "network.th_origin"}}</th>
+          <td>{{if .Data.Cert.SelfSigned}}{{.T "network.origin_selfsigned"}}{{else}}<span class="t-mono" translate="no">{{.Data.Cert.Source}}</span>{{end}}</td>
+        </tr>
+        <tr><th scope="row">{{.T "network.th_subject"}}</th><td class="t-mono" translate="no">{{.Data.Cert.Subject}}</td></tr>
+        <tr><th scope="row">{{.T "network.th_issuer"}}</th><td class="t-mono" translate="no">{{.Data.Cert.Issuer}}</td></tr>
+        <tr>
+          <th scope="row">{{.T "network.th_sans"}}</th>
+          <td>
+            {{if or .Data.Cert.DNSNames .Data.Cert.IPAddresses}}
+            <ul>
+              {{range .Data.Cert.DNSNames}}<li class="t-mono" translate="no">{{.}}</li>{{end}}
+              {{range .Data.Cert.IPAddresses}}<li class="t-mono" translate="no">{{.}}</li>{{end}}
+            </ul>
+            {{else}}<span class="t-muted">{{.T "network.sans_none"}}</span>{{end}}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">{{.T "network.th_validity"}}</th>
+          <td>
+            <time datetime="{{.TimeAttr .Data.Cert.NotBefore}}">{{.FmtTime .Data.Cert.NotBefore}}</time>
+            →
+            <time datetime="{{.TimeAttr .Data.Cert.NotAfter}}">{{.FmtTime .Data.Cert.NotAfter}}</time>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  {{end}}
+
+  <h2 class="t-kick">{{.T "network.replace_title"}}</h2>
+  {{if .Data.Replaceable}}
+  <p class="t-muted t-note">{{.T "network.replace_note" "CertFile" .Data.CertFile "KeyFile" .Data.KeyFile}}</p>
+  {{/* Files, not text fields: a key typed into a field is a key the server
+       echoes back on the next render (NFR-015). Multipart for the same
+       reason the fields are files. */}}
+  <form class="t-form t-card" method="post" action="/admin/network/certificate"
+        enctype="multipart/form-data" hx-boost="false">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label for="network-cert">{{.T "network.cert_file_label"}}</label>
+    <input id="network-cert" type="file" name="certificate" required
+           accept=".crt,.pem,.cer,application/x-pem-file">
+    <label for="network-key">{{.T "network.key_file_label"}}</label>
+    <input id="network-key" type="file" name="key" required
+           accept=".key,.pem,application/x-pem-file" aria-describedby="network-key-help">
+    <p id="network-key-help" class="t-form-hint">{{.T "network.key_note"}}</p>
+    <div class="t-row" style="margin-top:0.8rem">
+      <button type="submit" class="t-btn t-btn--primary">{{.T "network.replace_submit"}}</button>
+    </div>
+  </form>
+  <p class="t-muted t-note">{{.T "network.replace_safety"}}</p>
+  {{else}}
+  {{/* Inert rather than pretending: netx re-reads the CONFIGURED pair and
+       nothing else, so an instance without one has no path a written file
+       would travel. Same choice as the interval control without a state
+       directory. */}}
+  <p class="t-muted t-note">{{.T "network.replace_inert"}}</p>
+  {{end}}
+
+  <h2 class="t-kick">{{.T "network.egress_title"}}</h2>
+  {{if .Data.Egress}}
+  <table class="t-table">
+    <caption class="t-visually-hidden">{{.T "network.egress_title"}}</caption>
+    <tbody>
+      <tr>
+        <th scope="row">{{.T "network.th_proxy"}}</th>
+        <td>
+          {{if .Data.Egress.Proxy}}
+          <span class="t-mono" translate="no">{{.Data.Egress.Proxy}}</span>
+          {{if .Data.Egress.ProxyAuthenticated}}<span class="t-muted t-note">{{.T "network.proxy_authenticated"}}</span>{{end}}
+          {{else}}<span class="t-muted">{{.T "network.proxy_none"}}</span>{{end}}
+        </td>
+      </tr>
+      <tr>
+        <th scope="row">{{.T "network.th_roots"}}</th>
+        <td>
+          {{if .Data.Egress.ExclusiveTrust}}
+          <span class="t-form-error">{{.T "network.roots_exclusive" "Count" .Data.Egress.ExtraRoots}}</span>
+          {{else if .Data.Egress.ExtraRoots}}
+          {{.T "network.roots_added" "Count" .Data.Egress.ExtraRoots}}
+          {{else}}
+          <span class="t-muted">{{.T "network.roots_host_only"}}</span>
+          {{end}}
+        </td>
+      </tr>
+      <tr>
+        <th scope="row">{{.T "network.th_summary"}}</th>
+        <td class="t-mono" translate="no" lang="en">{{.Data.Egress.Summary}}</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="t-muted t-note">{{.T "network.egress_note"}}</p>
+  {{else}}
+  <p class="t-muted t-note">{{.T "network.egress_unavailable"}}</p>
+  {{end}}
+</section>
+{{end}}

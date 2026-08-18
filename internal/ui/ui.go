@@ -18,6 +18,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
+	"github.com/tobby-fetch/tobby-fetch/internal/tlsadmin"
 )
 
 // UI is the web interface: handlers, renderer, and their wiring onto the
@@ -40,6 +41,18 @@ type UI struct {
 	destination       string
 	cookbook          string
 	interval          *schedule.Interval
+	// publisher backs the R-40 publication screen; nil on an instance
+	// wired without one, which renders the form inert.
+	publisher Publisher
+	// serverCert, serverCertFile and serverKeyFile back the FR-082
+	// network screen: what the listener presents, and the configured pair
+	// a replacement writes to. A nil serverCert means plain HTTP.
+	serverCert     tlsadmin.ServerCert
+	serverCertFile string
+	serverKeyFile  string
+	// egress is the outbound posture reported on the same screen
+	// (FR-080, FR-081).
+	egress tlsadmin.Egress
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -86,6 +99,22 @@ type Options struct {
 	// unattended synchronization: the screen then says the setting does
 	// not apply rather than offering a control that would do nothing.
 	Interval *schedule.Interval
+	// Publisher publishes recipe documents into a cookbook (R-40). Nil
+	// leaves the publication screen readable and its form inert.
+	Publisher Publisher
+	// ServerCert is the certificate the listener presents (FR-082). Nil
+	// on an instance serving plain HTTP — the screen says so rather than
+	// showing an empty certificate.
+	ServerCert tlsadmin.ServerCert
+	// ServerCertFile and ServerKeyFile are the configured pair. They are
+	// the paths a UI replacement writes to, and the only paths netx
+	// re-reads: empty means the instance runs on the self-signed
+	// fallback, where there is nothing to replace from here.
+	ServerCertFile string
+	ServerKeyFile  string
+	// Egress is the instance's outbound transport, reported as posture
+	// (FR-080, FR-081). Only its printable accessors are ever called.
+	Egress tlsadmin.Egress
 }
 
 // New assembles the UI.
@@ -115,6 +144,11 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		destination:       opts.Destination,
 		cookbook:          opts.Cookbook,
 		interval:          opts.Interval,
+		publisher:         opts.Publisher,
+		serverCert:        opts.ServerCert,
+		serverCertFile:    opts.ServerCertFile,
+		serverKeyFile:     opts.ServerKeyFile,
+		egress:            opts.Egress,
 	}
 }
 
@@ -174,6 +208,12 @@ func (u *UI) Mount(mux Router) {
 	// recipe graph, the per-recipe mapping table, and the sync trigger.
 	mux.Handle("GET /recipes", app(u.recipesList))
 	mux.Handle("POST /recipes/sync", operator(u.recipesSync))
+	// Recipe publication (R-40): the interface half of `tobby recipe
+	// push`. Operator-gated — publishing writes into a cookbook — and
+	// declared before /recipes/{recipe}/mapping only for readability:
+	// the two patterns differ in segment count and cannot collide.
+	mux.Handle("GET /recipes/publish", operator(u.recipePublishScreen))
+	mux.Handle("POST /recipes/publish", operator(u.recipePublishSubmit))
 	mux.Handle("GET /recipes/{recipe}/mapping", app(u.recipeMapping))
 
 	// Account self-service (R-34, FR-061): every authenticated role,
@@ -199,6 +239,12 @@ func (u *UI) Mount(mux Router) {
 	// redeployment. Admin-gated and audited (FR-094), with the exact
 	// mirror at PUT/DELETE /api/v1/retriever/interval (FR-061).
 	mux.Handle("POST /admin/retriever/interval", admin(u.adminInterval))
+	// Network posture and listener certificate (FR-082, FR-062). Admin:
+	// the screen reveals the instance's own identity and its outbound
+	// path, and the replacement decides what every client of this
+	// instance authenticates against.
+	mux.Handle("GET /admin/network", admin(u.adminNetwork))
+	mux.Handle("POST /admin/network/certificate", admin(u.adminNetworkCertificate))
 	mux.Handle("GET /help", app(u.helpScreen))
 	mux.Handle("GET /about", app(u.aboutScreen))
 	mux.Handle("GET /about/third-party", app(u.thirdPartyNotices))

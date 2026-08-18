@@ -120,6 +120,23 @@ const (
 	// the admin role: the trail is the only place that records who did.
 	// The target is the resulting effective interval.
 	ActionIntervalChange = "config.promotion_interval"
+
+	// ActionRecipePublish is a recipe published into a cookbook from the
+	// interface or the API (R-40, FR-036): outbound writing, which is
+	// exactly what FR-094 asks to be recorded. The target is the
+	// published reference — a refused publication carries the reference
+	// that was attempted, which is the half of the trail that answers
+	// "who tried to write into that cookbook".
+	ActionRecipePublish = "recipe.publish"
+
+	// ActionServerCertReplace is a replacement of the listener's own
+	// certificate from the administration surfaces (FR-082). The
+	// sensitive configuration change FR-094 names: it decides what every
+	// client of this instance authenticates against, and it can be made
+	// on a running instance by anyone holding the admin role. The target
+	// is the fingerprint now served — never anything derived from the
+	// private key (NFR-015).
+	ActionServerCertReplace = "config.server_certificate"
 )
 
 // Event is one security audit event (FR-094 schema).

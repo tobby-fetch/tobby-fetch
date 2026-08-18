@@ -38,6 +38,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
+	"github.com/tobby-fetch/tobby-fetch/internal/tlsadmin"
 	"github.com/tobby-fetch/tobby-fetch/internal/ui"
 )
 
@@ -108,12 +109,17 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// or a self-signed fallback whose fingerprint is logged — an
 	// operator has to be able to compare what the instance presents
 	// against what their client saw.
+	// Declared as the interface the administration surfaces take, so that
+	// a plain-HTTP instance hands them a nil one rather than a non-nil
+	// interface wrapping a nil pointer.
+	var serverCert tlsadmin.ServerCert
 	if cfg.Server.TLS.Serves() {
 		cert, cerr := netx.NewServerCert(cfg.Server.TLS, cfg.State.Root)
 		if cerr != nil {
 			return cerr
 		}
 		srv.SetTLS(cert.TLSConfig())
+		serverCert = cert
 		logger.LogAttrs(ctx, slog.LevelInfo, "serving TLS",
 			slog.String("certificate", cert.Source()),
 			slog.Bool("self_signed", cert.SelfSigned()),
@@ -225,6 +231,14 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
+	// The publishing side (R-36, R-40): the same credentials, the same
+	// allowlist and the same outbound transport as everything else, and
+	// deliberately not the substitution-aware reading side — a
+	// publication goes exactly where its reference says.
+	publisher, err := engine.NewPublisher(cfg.Registries, allowlist, egress)
+	if err != nil {
+		return err
+	}
 	eng.SetDestination(destination)
 	if destination != nil {
 		logger.LogAttrs(ctx, slog.LevelInfo, "promotion destination configured",
@@ -313,6 +327,13 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Cookbook:          destination.Cookbook(),
 		Interval:          interval,
 	})
+	api.RegisterPublish(restAPI, publisher)
+	api.RegisterNetwork(restAPI, &api.NetworkOptions{
+		Cert:     serverCert,
+		CertFile: cfg.Server.TLS.CertFile,
+		KeyFile:  cfg.Server.TLS.KeyFile,
+		Egress:   egress,
+	})
 	api.RegisterOpenAPI(restAPI)
 	srv.Handle("/api/v1/", restAPI.Handler())
 
@@ -334,6 +355,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Destination:        destination.Host(),
 		Cookbook:           destination.Cookbook(),
 		Interval:           interval,
+		Publisher:          publisher,
+		ServerCert:         serverCert,
+		ServerCertFile:     cfg.Server.TLS.CertFile,
+		ServerKeyFile:      cfg.Server.TLS.KeyFile,
+		Egress:             egress,
 	})
 	webUI.Mount(srv.Mux())
 

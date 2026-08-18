@@ -63,6 +63,10 @@
 "TBY-NET-003.cause": "{{.source}} est absent, illisible, n'est pas une paire certificat/clé au format PEM, ou la clé ne correspond pas au certificat."
 "TBY-NET-003.action": "Vérifiez server.tls.certFile et server.tls.keyFile : deux fichiers PEM lisibles formant une même paire (`openssl x509 -noout -modulus` et `openssl rsa -noout -modulus` doivent concorder). Retirez les deux pour laisser Tobby générer un certificat auto-signé — son empreinte est affichée au démarrage. Puis redémarrez."
 
+"TBY-NET-004.what": "La paire de certificat soumise a été refusée ; l'instance continue de servir le certificat qu'elle avait déjà."
+"TBY-NET-004.cause": "{{.detail}}"
+"TBY-NET-004.action": "Soumettez un certificat PEM et la clé privée correspondante (`openssl x509 -noout -pubkey` et `openssl pkey -pubout` doivent afficher la même clé publique), encore valide, sur une instance dont server.tls.certFile et server.tls.keyFile sont configurés. Rien n'a été écrit : l'écouteur n'est pas affecté."
+
 "TBY-VAL-001.what": "Le fichier recipe ou retriever est invalide."
 "TBY-VAL-001.cause": "Dans {{.file}}, à {{.path}} : {{.constraint}}."
 "TBY-VAL-001.action": "Corrigez le champ {{.path}} pour satisfaire la contrainte, puis soumettez le fichier à nouveau."

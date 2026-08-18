@@ -52,6 +52,8 @@ possible at all.
 | `POST /import` | operator | |
 | `GET /recipes`, `GET /recipes/{recipe}/mapping` | viewer | |
 | `POST /recipes/sync` | operator | Triggering a synchronization is an operator action (FR-014). |
+| `GET /recipes/publish` | operator | The recipe publication form (R-40): only a role that can publish is offered one. |
+| `POST /recipes/publish` | operator | Publishing writes into another zone's cookbook (R-40). Audited as outbound writing (FR-094). |
 | `GET /account` | viewer | Self-service: every authenticated role manages its own account (R-34). |
 | `POST /account/password` | viewer | Own password only. Administrators manage others on `/admin/accounts`. |
 | `GET /admin/accounts` | admin | |
@@ -62,6 +64,8 @@ possible at all.
 | `POST /admin/accounts/tokens/revoke` | admin | Token revocation (FR-072). |
 | `GET /admin/retriever` | admin | Reveals the configured desired-state source (FR-010). |
 | `POST /admin/retriever/interval` | admin | Changes how often this instance promotes, unattended (FR-013). The change is audited as sensitive configuration (FR-094). |
+| `GET /admin/network` | admin | Reveals this instance's own TLS identity and its outbound path (FR-082, FR-080, FR-081). |
+| `POST /admin/network/certificate` | admin | Replaces the listener's certificate — what every client of this instance authenticates against (FR-082). Audited as sensitive configuration (FR-094). |
 | `GET /help`, `GET /about`, `GET /about/third-party`, `GET /api-docs` | viewer | |
 | anything else | viewer | The taxonomized 404 renders inside the authenticated shell (UI-SPEC §5.13). |
 
@@ -88,6 +92,9 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `GET /api/v1/tasks`, `/{id}`, `/{id}/logs` | viewer | `GET /tasks…` |
 | `GET /api/v1/recipes`, `/{recipe}/mapping` | viewer | `GET /recipes…` |
 | `POST /api/v1/sync` | operator | `POST /recipes/sync` |
+| `POST /api/v1/recipes/publish` | operator | `POST /recipes/publish` |
+| `GET /api/v1/network` | admin | `GET /admin/network` |
+| `PUT /api/v1/network/certificate` | admin | `POST /admin/network/certificate` |
 | `GET /api/v1/retriever` | admin | `GET /admin/retriever` |
 | `PUT /api/v1/retriever/interval` | admin | `POST /admin/retriever/interval` |
 | `DELETE /api/v1/retriever/interval` | admin | `POST /admin/retriever/interval` |
@@ -156,6 +163,20 @@ Both would leave the instance unmanageable, and FR-005 makes an instance
 with no account refuse to start at all. Creating a second administrator
 first is the way through — from `/admin/accounts`, from
 `POST /api/v1/accounts`, or on the host with `tobby user add --role admin`.
+
+## Secret exposure on the network screens
+
+`GET /api/v1/network` and `/admin/network` report the served certificate —
+fingerprint, subject, issuer, subject alternative names, validity — because
+a certificate is public by construction: the listener hands those exact
+bytes to every client that completes a handshake. The private key is
+returned by nothing, in no form: not its bytes, not its length, not a
+digest of it (a digest would be a stable oracle against a candidate key).
+`internal/tlsadmin` has no accessor for key material at all, so neither
+surface could return it by mistake. The replacement submits the key — as a
+file upload on the screen, as a body member on the API — and the only value
+that comes back is the new certificate's fingerprint. Proxy credentials are
+reported as a boolean and never as a value (FR-080, NFR-015).
 
 Password hashes are always computed by the tool (FR-066). No field on any
 surface accepts a hash: the creation form and the API body carry a clear

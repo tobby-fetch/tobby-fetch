@@ -7,6 +7,7 @@
 {{define "title"}}{{.T "retriever.title"}}{{end}}
 {{define "main"}}
 <section>
+  {{template "admin-subnav" .}}
   <h1 class="t-page-title">{{.T "retriever.title"}}</h1>
   <p class="t-page-sub">{{.T "retriever.subtitle"}}</p>
   <p class="t-muted t-note">{{.T "retriever.readonly_note"}}</p>

@@ -1,0 +1,128 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /recipes/publish — publish a recipe document into a cookbook (R-40,
+     UI-SPEC §6): the interface half of `tobby recipe push`, and the return
+     leg of R-37 (copy the document off a manifest page, edit it offline,
+     bring it back without a terminal). The document is validated before
+     anything is sent — that validation lives in the recipe-spec SDK, never
+     here. The success state shows the published digest and the cosign line
+     that takes it: Tobby holds no private key (ADR-0007) and this screen
+     must never let anyone believe otherwise. */}}
+{{define "title"}}{{.T "publish.title"}}{{end}}
+{{define "main"}}
+<section>
+  <h1 class="t-page-title">{{.T "publish.title"}}</h1>
+  <p class="t-page-sub">{{.T "publish.subtitle"}}</p>
+
+  {{if .Err}}{{template "error-block" .}}{{end}}
+
+  {{if .Data.Result}}
+  {{/* Success. The digest is the artifact's identity and the argument a
+       signer takes; the reference is shown beside it because a tag is what
+       a human recognises and a digest is what a tool consumes. */}}
+  <div class="t-card">
+    <div class="t-row">
+      {{if .Data.Result.Unchanged}}
+      <span class="t-badge t-badge--up-to-date" translate="no" lang="en">up-to-date</span>
+      <span>{{.T "publish.unchanged" "Reference" .Data.Result.Reference}}</span>
+      {{else}}
+      <span class="t-badge t-badge--recipe" translate="no" lang="en">recipe</span>
+      <span>{{.T "publish.published" "Reference" .Data.Result.Reference}}</span>
+      {{end}}
+    </div>
+    <p>
+      <span class="t-chip">
+        <span class="t-chip-label" lang="en">digest</span>
+        <span class="t-truncate t-mono" translate="no" title="{{.Data.Result.Digest}}">{{.Trunc .Data.Result.Digest 30}}</span>
+        <button type="button" class="t-chip-copy" data-copy="{{.Data.Result.Digest}}"
+                aria-label="{{.T "publish.copy_digest"}}" title="{{.T "publish.copy_digest"}}">⧉</button>
+      </span>
+    </p>
+
+    <h2 class="t-kick">{{.T "publish.sign_title"}}</h2>
+    {{/* ADR-0007: Tobby never holds a private key. The command is handed
+         over ready to run, and the note says plainly who signs. */}}
+    <p class="t-muted t-note">{{.T "publish.sign_note"}}</p>
+    <p>
+      <span class="t-chip">
+        <span class="t-truncate t-mono" translate="no">{{.Data.Result.CosignCommand}}</span>
+        <button type="button" class="t-chip-copy" data-copy="{{.Data.Result.CosignCommand}}"
+                aria-label="{{.T "publish.copy_cosign"}}" title="{{.T "publish.copy_cosign"}}">⧉</button>
+      </span>
+    </p>
+  </div>
+  {{end}}
+
+  {{if not .Data.Configured}}
+  <p class="t-muted t-note">{{.T "publish.inert"}}</p>
+  {{end}}
+
+  <form class="t-form t-card" method="post" action="/recipes/publish"
+        hx-disabled-elt="find button[type='submit']" hx-indicator="find .htmx-indicator">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+
+    <label for="publish-ref">{{.T "publish.ref_label"}}</label>
+    <input id="publish-ref" class="t-input t-mono" type="text" name="reference"
+           value="{{.Data.Reference}}" required
+           placeholder="registry.example.com/cookbook/wordpress:6.8.2"
+           autocomplete="off" autocapitalize="off" spellcheck="false" translate="no"
+           aria-describedby="publish-ref-help">
+    <p id="publish-ref-help" class="t-form-hint">{{.T "publish.ref_help"}}</p>
+
+    <label for="publish-doc">{{.T "publish.doc_label"}}</label>
+    <textarea id="publish-doc" name="document" rows="18" required
+              autocomplete="off" autocapitalize="off" spellcheck="false" translate="no"
+              class="t-mono" aria-describedby="publish-doc-help">{{.Data.Document}}</textarea>
+    <p id="publish-doc-help" class="t-form-hint">{{.T "publish.doc_help"}}</p>
+
+    {{/* The file picker is a convenience over the textarea, never a second
+         submission path: it fills the field the form already carries, so
+         pasting keeps working with scripting off. */}}
+    <label for="publish-file">{{.T "publish.file_label"}}</label>
+    <input id="publish-file" type="file" accept=".yaml,.yml,text/yaml,application/yaml">
+
+    <div class="t-row" style="margin-top:0.8rem">
+      <button type="submit" class="t-btn t-btn--primary" {{if not .Data.Configured}}disabled{{end}}>{{.T "publish.submit"}}</button>
+      <span class="htmx-indicator t-pulse-dot" aria-hidden="true"></span>
+    </div>
+  </form>
+
+  <h2 class="t-kick">{{.T "publish.rules_title"}}</h2>
+  {{/* What will be refused, said before it is: the four refusals of
+       RECIPE-SPEC §8/§11.3 and FR-030, each with its stable code so the
+       block that appears above matches a line the operator already read. */}}
+  <ul class="t-muted t-note">
+    <li>{{.T "publish.rule_cooked"}} <span class="t-mono" translate="no">TBY-VAL-001</span></li>
+    <li>{{.T "publish.rule_location"}} <span class="t-mono" translate="no">TBY-VAL-001</span></li>
+    <li>{{.T "publish.rule_immutable"}} <span class="t-mono" translate="no">TBY-POL-004</span></li>
+    <li>{{.T "publish.rule_allowlist"}} <span class="t-mono" translate="no">TBY-POL-001</span></li>
+  </ul>
+
+  <script>
+  // Load a picked or dropped file into the textarea. Pure convenience: the
+  // form submits the textarea, so the screen works identically with the
+  // picker unused. Bound once per browser page — hx-boost re-runs this
+  // script on every navigation (B-001).
+  if (!window.__tobbyPublishWired) { window.__tobbyPublishWired = true;
+    function tobbyReadInto(file, area) {
+      if (!file || !area) { return; }
+      var reader = new FileReader();
+      reader.onload = function () { area.value = String(reader.result); };
+      reader.readAsText(file);
+    }
+    document.addEventListener("change", function (e) {
+      if (!e.target.matches || !e.target.matches("#publish-file")) { return; }
+      tobbyReadInto(e.target.files && e.target.files[0], document.getElementById("publish-doc"));
+    });
+    document.addEventListener("dragover", function (e) {
+      if (e.target.matches && e.target.matches("#publish-doc")) { e.preventDefault(); }
+    });
+    document.addEventListener("drop", function (e) {
+      if (!e.target.matches || !e.target.matches("#publish-doc")) { return; }
+      if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) { return; }
+      e.preventDefault();
+      tobbyReadInto(e.dataTransfer.files[0], e.target);
+    });
+  }
+  </script>
+</section>
+{{end}}
