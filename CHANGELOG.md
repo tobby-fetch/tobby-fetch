@@ -6,6 +6,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 starting with `v0.1.0`.
 
+## [Unreleased]
+
+### Added
+
+- Browser non-regression level (R-38): a deliberately narrow chromedp
+  suite under `test/browser`, behind the `browser` build tag with its own
+  CI job, covering the class of bug that lives in an attribute the CLIENT
+  interprets — where the rendered HTML is right and the handler is right
+  and the screen is still broken. Scenarios: the Content and Tasks filter
+  forms, all five kind badges and both selects (B-011); the copy toasts
+  and boosted navigation (B-001); the theme toggle reaching `<html>`
+  (B-004); the task detail updating itself and stopping its own polling
+  (B-002); the user-menu pop-under not growing the header (B-005); the
+  recipe document's copy and download (R-37). Chrome is taken from the
+  environment and NEVER downloaded (NFR-019): with no browser the suite
+  skips with an explicit message, and `TOBBY_E2E_REQUIRE_CHROME=1` — which
+  CI sets — turns that skip into a failure. The license gate now also
+  covers test-only dependencies, so the new tree is checked like any other
+  (ADR-0011).
+
+### Fixed
+
+- The polled zones of the task screens swapped their response INTO
+  themselves instead of replacing it (B-012). `hx-swap="morph:outerHTML"`
+  is a swap style htmx only knows once the idiomorph htmx extension is
+  registered, and the vendored asset was the bare library with no
+  `hx-ext` anywhere: htmx silently fell back to its default innerHTML
+  swap, nesting a second `#task-body` inside the first — duplicate ids,
+  and an outer zone that kept its polling attributes for ever, so the
+  auto-terminating polling never terminated. Now vendoring
+  `idiomorph-ext.min.js` 0.7.4 and enabling the extension on the shell.
+  Found by the R-38 browser scenario; no server-side test could see it,
+  the fragment being byte-for-byte correct.
+- File downloads were hijacked by `hx-boost` (B-013). A boosted anchor is
+  fetched by the client and swapped into the page, so the recipe document
+  (R-37), the raw task log and the OpenAPI document were DISPLAYED as raw
+  text instead of downloaded — htmx cancels the navigation before the
+  `download` attribute gets a say. `hx-boost="false"` on the three links,
+  the same remedy the preference forms already use (ADR-0015 §7).
+
 ## [0.3.0] - 2026-08-16
 
 Milestone 3 — the recipe engine: a signed Recipe becomes verified content

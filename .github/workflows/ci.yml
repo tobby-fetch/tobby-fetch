@@ -82,9 +82,14 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # --include_tests and the `browser` tag bring the test-only tree into
+      # the check: chromedp (R-38) is a dependency of the build like any
+      # other, and an allowlist that never saw it would be decorative.
       - name: Check every dependency against the allowlist (ADR-0011)
+        env:
+          GOFLAGS: -tags=browser
         run: >
-          go run github.com/google/go-licenses/v2@v2.0.1 check
+          go run github.com/google/go-licenses/v2@v2.0.1 check --include_tests
           --allowed_licenses=Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT,ISC,MPL-2.0,Unlicense,Zlib,GPL-3.0
           ./...
 
@@ -101,6 +106,28 @@ jobs:
       - name: Publish the raw check report
         if: always()
         run: cat /tmp/tobby-topology-m1-report.txt >> "$GITHUB_STEP_SUMMARY" || true
+
+  e2e-browser:
+    name: Browser non-regression (R-38, chromedp)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # Chrome comes with the runner image and is NEVER downloaded by the
+      # suite (NFR-019). Failing here, loudly, beats a suite that silently
+      # skips itself on a runner that lost its browser.
+      - name: Report the browser taken from the environment
+        run: google-chrome --version
+      # The scenarios live behind the `browser` build tag so `go test ./...`
+      # keeps its pace; -count=2 is the anti-flaky rule of the pyramid, and
+      # TOBBY_E2E_REQUIRE_CHROME turns "no browser" into a failure instead
+      # of a skip.
+      - name: Browser scenarios (B-001, B-002, B-005, B-011, R-37)
+        env:
+          TOBBY_E2E_REQUIRE_CHROME: "1"
+        run: go test -tags browser -count=2 -timeout 20m ./test/browser/...
 
   vulnerabilities:
     name: Vulnerability scan (Trivy)

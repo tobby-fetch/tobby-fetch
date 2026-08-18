@@ -38,6 +38,15 @@ run = "go build -trimpath -o bin/tobby ./cmd/tobby"
 description = "Unit and integration tests (race detector, anti-flaky double run)"
 run = "go test -race -count=2 ./..."
 
+# Browser non-regression (R-38): the scenarios that lock the bugs living in
+# an attribute the client interprets. Behind the `browser` build tag so it
+# never slows `mise run test` down. Chrome is taken from the environment and
+# NEVER downloaded (NFR-019) — the suite skips with an explicit message when
+# there is none; point TOBBY_E2E_CHROME at the binary if the lookup misses.
+[tasks.test-browser]
+description = "Browser scenarios (R-38, chromedp — uses the Chrome already installed)"
+run = "go test -tags browser -count=2 -timeout 20m ./test/browser/..."
+
 [tasks.lint]
 description = "Strict lint (golangci-lint, zero suppressions)"
 run = "golangci-lint run"
