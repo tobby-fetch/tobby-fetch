@@ -17,6 +17,7 @@ import (
 	"github.com/tobby-fetch/recipe-spec/cookbook"
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
@@ -35,7 +36,7 @@ func cookedIngredient() spec.Ingredient {
 // HTTP — the httptest server speaks no TLS.
 func publisherFor(t *testing.T, r *registry) *Publisher {
 	t.Helper()
-	p, err := NewPublisher([]string{r.addr}, "")
+	p, err := NewPublisher(config.Registries{Insecure: []string{r.addr}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +63,7 @@ func TestPublishRecipeLayout(t *testing.T) {
 	}
 
 	// Read it back through the consumer path, which enforces §11.2.
-	remotes, err := NewRemotes(nil, []string{r.addr}, "")
+	remotes, err := NewRemotes(config.Registries{Insecure: []string{r.addr}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,12 +211,12 @@ func TestPublishRecipeRefusals(t *testing.T) {
 func TestPublishRecipeNeverSubstitutes(t *testing.T) {
 	author := newRegistry(t)   // where the operator says to publish
 	upstream := newRegistry(t) // a substitute, configured for reads
-	if _, err := NewRemotes(map[string]string{author.addr: upstream.addr}, nil, ""); err != nil {
+	if _, err := NewRemotes(config.Registries{Substitutions: map[string]string{author.addr: upstream.addr}}, nil); err != nil {
 		t.Fatal(err)
 	}
 
 	doc := cookedRecipeYAML(t, "wordpress", "6.8.2", []spec.Ingredient{cookedIngredient()})
-	p, err := NewPublisher([]string{author.addr, upstream.addr}, "")
+	p, err := NewPublisher(config.Registries{Insecure: []string{author.addr, upstream.addr}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

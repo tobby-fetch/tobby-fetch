@@ -12,6 +12,8 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/importer"
+	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -29,7 +31,8 @@ type UI struct {
 
 	themeOverride     string
 	inspectTimeout    time.Duration
-	insecureHosts     []string
+	importPolicy      importer.Option
+	allowlist         *policy.Allowlist
 	retrieverSource   string
 	relaxedScopes     []string
 	anonymousFileSets []string
@@ -49,9 +52,13 @@ type Options struct {
 	Store *store.Store
 	// Queue backs the import and task screens (FR-023, roadmap 2.4).
 	Queue *tasks.Queue
-	// InsecureRegistries lists the per-host plain-HTTP opt-ins
+	// ImportPolicy carries the source policy unit import runs under —
+	// the allowlist (FR-030) and the per-host plain-HTTP opt-ins
 	// (registries.insecure), forwarded to the importer.
-	InsecureRegistries []string
+	ImportPolicy importer.Option
+	// Allowlist is the instance's registry policy (FR-030), reported on
+	// the administration screens.
+	Allowlist *policy.Allowlist
 	// InspectTimeout bounds one remote inspection (import.inspectTimeout);
 	// zero falls back to a safe default.
 	InspectTimeout time.Duration
@@ -86,7 +93,8 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		logger:            logger,
 		themeOverride:     opts.ThemeOverride,
 		inspectTimeout:    timeout,
-		insecureHosts:     opts.InsecureRegistries,
+		importPolicy:      opts.ImportPolicy,
+		allowlist:         opts.Allowlist,
 		retrieverSource:   opts.RetrieverSource,
 		relaxedScopes:     opts.RelaxedTrustScopes,
 		anonymousFileSets: opts.AnonymousFileSets,

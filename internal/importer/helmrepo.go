@@ -102,6 +102,13 @@ func parseChartRepoRef(reference string, o *options) (*chartRepoRef, error) {
 	if err := checkRepoScheme(u, o, reference); err != nil {
 		return nil, err
 	}
+	// An HTTPS chart repository is not an OCI registry, but it is a place
+	// this instance pulls content from, which is what FR-030 bounds.
+	// Leaving it outside the policy would be a hole no operator reading
+	// "allowlist" would expect.
+	if err := o.allowlist.Check(u.Host); err != nil {
+		return nil, err
+	}
 	trimmed := strings.Trim(u.Path, "/")
 	if trimmed == "" {
 		return nil, badRef(errors.New("expected https://<repository>/<chart>[:<version>]"))

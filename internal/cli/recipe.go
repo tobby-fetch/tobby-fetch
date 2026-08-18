@@ -12,6 +12,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
+	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 )
 
 // newRecipeCmd wires `tobby recipe` (R-36): authoring-side commands that
@@ -61,7 +62,11 @@ digest is printed on stdout, ready for cosign:
 			if err != nil {
 				return err
 			}
-			publisher, err := engine.NewPublisher(cfg.Registries.Insecure, cfg.Registries.CredentialsFile)
+			allowlist, err := policy.NewAllowlist(cfg.Registries.Allowlist)
+			if err != nil {
+				return err
+			}
+			publisher, err := engine.NewPublisher(cfg.Registries, allowlist)
 			if err != nil {
 				return err
 			}

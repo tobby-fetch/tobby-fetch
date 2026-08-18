@@ -15,6 +15,8 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 )
@@ -26,34 +28,44 @@ import (
 // (§13.2) through the keychain; trust scopes follow the nominal ref —
 // "policy follows the wire, trust follows the recipe" (ADR-0013).
 type Remotes struct {
-	subs     map[string]string
-	insecure map[string]bool
-	keychain authn.Keychain
+	subs      map[string]string
+	insecure  map[string]bool
+	keychain  authn.Keychain
+	allowlist *policy.Allowlist
 }
 
-// NewRemotes builds the substitution-aware remote access.
-// credentialsFile optionally points at a kubernetes.io/dockerconfigjson
-// payload (FR-004); the default keychain (~/.docker/config.json) applies
-// when empty.
-func NewRemotes(substitutions map[string]string, insecureHosts []string, credentialsFile string) (*Remotes, error) {
+// NewRemotes builds the substitution-aware remote access from the
+// instance's registry configuration: substitutions (FR-036), per-host
+// insecure opt-ins and credentials (FR-004, default keychain when unset).
+//
+// allow is the instance's single allowlist (FR-030), built once and
+// shared with every other outbound path, so that one object decides — and
+// one object is observed — wherever the bytes are headed. A nil allow is
+// an undeclared policy: no restriction.
+func NewRemotes(cfg config.Registries, allow *policy.Allowlist) (*Remotes, error) {
 	r := &Remotes{subs: map[string]string{}, insecure: map[string]bool{}}
-	for nominal, base := range substitutions {
-		canonical, err := canonicalHost(nominal)
+	for nominal, base := range cfg.Substitutions {
+		canonical, err := relocate.Host(nominal)
 		if err != nil {
 			return nil, fmt.Errorf("registries.substitutions: %w", err)
 		}
 		r.subs[canonical] = strings.Trim(base, "/")
 	}
-	for _, h := range insecureHosts {
+	for _, h := range cfg.Insecure {
 		r.insecure[h] = true
 	}
-	kc, err := keychainFor(credentialsFile)
+	r.allowlist = allow
+	kc, err := keychainFor(cfg.CredentialsFile)
 	if err != nil {
 		return nil, err
 	}
 	r.keychain = kc
 	return r, nil
 }
+
+// Allowlist exposes the configured policy, for the surfaces that report
+// what this instance is allowed to reach.
+func (r *Remotes) Allowlist() *policy.Allowlist { return r.allowlist }
 
 // keychainFor builds the credential keychain of a configured
 // credentialsFile (FR-004), falling back to the default keychain
@@ -168,6 +180,14 @@ func (r *Remotes) Repository(nominalRepo string) (name.Repository, string, error
 	if err != nil {
 		return name.Repository{}, "", fmt.Errorf("effective repository %q: %w", eff, err)
 	}
+	// FR-030, checked here because every read goes through this function
+	// and none of them has opened a connection yet: the registry name has
+	// been resolved, the socket has not. Evaluated on RegistryStr() — the
+	// host the client will actually dial, which under substitution is not
+	// the one the recipe names.
+	if err := r.allowlist.Check(repo.RegistryStr()); err != nil {
+		return name.Repository{}, "", err
+	}
 	return repo, eff, nil
 }
 
@@ -201,18 +221,6 @@ func parseInRepo(repo name.Repository, reference string) name.Reference {
 		return repo.Digest(reference)
 	}
 	return repo.Tag(reference)
-}
-
-// canonicalHost canonicalizes a bare substitution key ("docker.io",
-// "registry.example.com:5000") through the relocation rules, returned in
-// host form (":" restored).
-func canonicalHost(host string) (string, error) {
-	p, err := relocate.Path(host + "/x")
-	if err != nil {
-		return "", err
-	}
-	h, _, _ := strings.Cut(p, "/")
-	return strings.ReplaceAll(h, "_", ":"), nil
 }
 
 // remoteManifests adapts Remotes to sigverify.Manifests for one nominal

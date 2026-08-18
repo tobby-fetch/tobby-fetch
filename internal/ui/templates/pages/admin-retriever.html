@@ -34,6 +34,21 @@
   <p class="t-muted">{{.T "retriever.scopes_none"}}</p>
   {{end}}
 
+  <h2 class="t-kick">{{.T "retriever.allowlist_title"}}</h2>
+  {{/* FR-030. An undeclared policy is not an empty one: rendering the two
+       the same way is how "no restriction" gets read as "locked down". */}}
+  {{if .Data.AllowlistDeclared}}
+    {{if .Data.Allowlist}}
+    <ul>
+      {{range .Data.Allowlist}}<li class="t-mono" translate="no">{{.}}</li>{{end}}
+    </ul>
+    {{else}}
+    <p class="t-form-error" role="alert">{{.T "retriever.allowlist_empty"}}</p>
+    {{end}}
+  {{else}}
+  <p class="t-muted t-note">{{.T "retriever.allowlist_none"}}</p>
+  {{end}}
+
   <h2 class="t-kick">{{.T "retriever.filesets_title"}}</h2>
   {{if .Data.AnonymousFileSets}}
   <p class="t-muted t-note">{{.T "retriever.filesets_warning"}}</p>

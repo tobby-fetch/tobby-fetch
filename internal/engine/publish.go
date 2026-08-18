@@ -18,6 +18,8 @@ import (
 	"github.com/tobby-fetch/recipe-spec/cookbook"
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
@@ -29,20 +31,23 @@ import (
 // reference says. Credentials and per-host insecure opt-ins are shared with
 // the reading side, the endpoint policy is not.
 type Publisher struct {
-	keychain authn.Keychain
-	insecure map[string]bool
+	keychain  authn.Keychain
+	insecure  map[string]bool
+	allowlist *policy.Allowlist
 }
 
-// NewPublisher builds the publishing side. credentialsFile is the same
-// kubernetes.io/dockerconfigjson payload the engine reads with (FR-004);
-// pushing simply needs a credential with write scope on the destination.
-func NewPublisher(insecureHosts []string, credentialsFile string) (*Publisher, error) {
-	kc, err := keychainFor(credentialsFile)
+// NewPublisher builds the publishing side from the same registry
+// configuration the reading side uses: credentials (FR-004 — pushing
+// simply needs one with write scope on the destination), per-host
+// insecure opt-ins, and the instance's allowlist (FR-030, which covers
+// destinations as well as sources).
+func NewPublisher(cfg config.Registries, allow *policy.Allowlist) (*Publisher, error) {
+	kc, err := keychainFor(cfg.CredentialsFile)
 	if err != nil {
 		return nil, err
 	}
-	p := &Publisher{keychain: kc, insecure: map[string]bool{}}
-	for _, h := range insecureHosts {
+	p := &Publisher{keychain: kc, insecure: map[string]bool{}, allowlist: allow}
+	for _, h := range cfg.Insecure {
 		p.insecure[h] = true
 	}
 	return p, nil
@@ -137,6 +142,12 @@ func (p *Publisher) parseTagRef(ref string) (name.Tag, error) {
 	tagRef, err := name.NewTag(ref, opts...)
 	if err != nil {
 		return bad()
+	}
+	// FR-030 applies to destinations too, and applies here rather than
+	// later: a publication that is going to be refused must be refused
+	// before the document is even read, let alone uploaded.
+	if err := p.allowlist.Check(tagRef.RegistryStr()); err != nil {
+		return name.Tag{}, err
 	}
 	return tagRef, nil
 }

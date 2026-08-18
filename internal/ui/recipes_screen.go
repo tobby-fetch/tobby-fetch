@@ -144,6 +144,12 @@ type retrieverData struct {
 	Source            string
 	RelaxedScopes     []string
 	AnonymousFileSets []string
+	// Allowlist reports the registry policy (FR-030). An undeclared
+	// policy is shown as undeclared, never as an empty list of allowed
+	// registries: "nothing configured" and "nothing allowed" are opposite
+	// statements and must never render the same.
+	AllowlistDeclared bool
+	Allowlist         []string
 	// LastSync is the most recent sync-type task, nil when none ran yet.
 	LastSync    *taskRow
 	HasLastSync bool
@@ -155,6 +161,8 @@ func (u *UI) adminRetriever(w http.ResponseWriter, r *http.Request) {
 		Source:            u.retrieverSource,
 		RelaxedScopes:     u.relaxedScopes,
 		AnonymousFileSets: u.anonymousFileSets,
+		AllowlistDeclared: u.allowlist.Declared(),
+		Allowlist:         u.allowlist.Patterns(),
 	}
 	if u.queue != nil {
 		if list := u.queue.List("", tasks.TypeSync, ""); len(list) > 0 {

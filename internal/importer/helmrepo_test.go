@@ -21,6 +21,8 @@ import (
 	"testing"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/config"
 )
 
 // tfile is one file of a fabricated chart archive.
@@ -133,7 +135,7 @@ func TestChartRepoInspectAndImport(t *testing.T) {
 		},
 	})
 	u := serveChartRepo(t, files)
-	opts := WithInsecureHosts([]string{u.Host})
+	opts := mustSourcePolicy(t, config.Registries{Insecure: []string{u.Host}})
 	dst := destStore(t)
 	ref := u.String() + "/charts/gitea"
 
@@ -225,7 +227,7 @@ func TestChartRepoErrorTaxonomy(t *testing.T) {
 		"tampered": {{Version: "1.0.0", URLs: []string{"tampered-1.0.0.tgz"}, Digest: "sha256:" + sha256Hex(good)}},
 	})
 	u := serveChartRepo(t, files)
-	opts := WithInsecureHosts([]string{u.Host})
+	opts := mustSourcePolicy(t, config.Registries{Insecure: []string{u.Host}})
 
 	check := func(name, ref string, want taxonomy.Code, o ...Option) {
 		t.Helper()
@@ -241,5 +243,5 @@ func TestChartRepoErrorTaxonomy(t *testing.T) {
 	// Plain http without the per-host registries.insecure opt-in (FR-075).
 	check("http refused", u.String()+"/charts/gitea", taxonomy.CodeBadReference)
 	check("missing index", "http://127.0.0.1:1/charts/gitea", taxonomy.CodeRegistryUnreachable,
-		WithInsecureHosts([]string{"127.0.0.1:1"}))
+		mustSourcePolicy(t, config.Registries{Insecure: []string{"127.0.0.1:1"}}))
 }

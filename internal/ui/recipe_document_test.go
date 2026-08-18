@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 )
@@ -36,7 +37,7 @@ spec:
       version: 6.8.2
       digest: sha256:8acca98ed81b53b482870d6b2081e60d2aa77293895c90c97d2b0e76f469ffb1
 `)
-	p, err := engine.NewPublisher([]string{addr}, "")
+	p, err := engine.NewPublisher(config.Registries{Insecure: []string{addr}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

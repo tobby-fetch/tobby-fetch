@@ -88,7 +88,7 @@ func (u *UI) importScreen(w http.ResponseWriter, r *http.Request) {
 func (u *UI) importInspect(w http.ResponseWriter, r *http.Request, ref string, preselect []string) {
 	ctx, cancel := context.WithTimeout(r.Context(), u.inspectTimeout)
 	defer cancel()
-	rep, err := importer.Inspect(ctx, ref, u.store, importer.WithInsecureHosts(u.insecureHosts))
+	rep, err := importer.Inspect(ctx, ref, u.store, u.importPolicy)
 	if err != nil {
 		u.importError(w, r, ref, err)
 		return
@@ -144,7 +144,7 @@ func (u *UI) importSubmit(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), u.inspectTimeout)
 	defer cancel()
-	rep, err := importer.Inspect(ctx, ref, u.store, importer.WithInsecureHosts(u.insecureHosts))
+	rep, err := importer.Inspect(ctx, ref, u.store, u.importPolicy)
 	if err != nil {
 		u.importError(w, r, ref, err)
 		return

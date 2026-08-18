@@ -30,6 +30,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/metrics"
+	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/server"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -128,13 +129,37 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	queue.Register(tasks.TypeUnitImport, importer.NewRunner(st, importer.WithInsecureHosts(cfg.Registries.Insecure)))
+	// One allowlist for the whole instance (FR-030): every outbound path
+	// — unit import, the recipe engine, publication — consults the same
+	// object, and refusals are counted once, in one place.
+	allowlist, err := policy.NewAllowlist(cfg.Registries.Allowlist)
+	if err != nil {
+		return err
+	}
+	allowlist.Observe(func(string) {
+		reg.PolicyRejections.WithLabelValues(string(taxonomy.CodeNotAllowlisted)).Inc()
+	})
+	if !allowlist.Declared() {
+		logger.LogAttrs(ctx, slog.LevelInfo, "no registry allowlist configured",
+			slog.String("policy", "unrestricted"),
+			slog.String("requirement", "FR-030"))
+	} else {
+		logger.LogAttrs(ctx, slog.LevelInfo, "registry allowlist active",
+			slog.Any("registries", allowlist.Patterns()),
+			slog.String("requirement", "FR-030"))
+	}
+
+	// The source policy every surface that can start an import runs
+	// under — the runner, the API and the UI. Built here rather than at
+	// each call site: that is what makes forgetting it impossible.
+	importPolicy := importer.WithSourcePolicy(cfg.Registries, allowlist)
+	queue.Register(tasks.TypeUnitImport, importer.NewRunner(st, importPolicy))
 
 	// The recipe engine (milestone 3): substitution-aware remote access
 	// (FR-036), trust roots resolved at configuration time (FR-033,
 	// RECIPE-SPEC §12.3 — the cache lives in the state directory, never on
 	// the transportable store), and the sync task runner (FR-014).
-	remotes, err := engine.NewRemotes(cfg.Registries.Substitutions, cfg.Registries.Insecure, cfg.Registries.CredentialsFile)
+	remotes, err := engine.NewRemotes(cfg.Registries, allowlist)
 	if err != nil {
 		return err
 	}
@@ -192,7 +217,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// HTTP loopback.
 	restAPI := api.New(authn, logger)
 	api.RegisterContent(restAPI, st)
-	api.RegisterTasks(restAPI, queue, st, time.Duration(cfg.Import.InspectTimeout), cfg.Registries.Insecure)
+	api.RegisterTasks(restAPI, queue, st, time.Duration(cfg.Import.InspectTimeout), importPolicy)
 	api.RegisterAccounts(restAPI, accounts)
 	api.RegisterRecipes(restAPI, st, queue, cfg.Retriever.Source, eng.RelaxedScopes(), anonymousNames)
 	api.RegisterOpenAPI(restAPI)
@@ -208,7 +233,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Store:              st,
 		Queue:              queue,
 		InspectTimeout:     time.Duration(cfg.Import.InspectTimeout),
-		InsecureRegistries: cfg.Registries.Insecure,
+		ImportPolicy:       importPolicy,
+		Allowlist:          allowlist,
 		RetrieverSource:    cfg.Retriever.Source,
 		RelaxedTrustScopes: eng.RelaxedScopes(),
 		AnonymousFileSets:  anonymousNames,

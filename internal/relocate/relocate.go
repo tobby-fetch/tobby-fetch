@@ -57,6 +57,26 @@ func PathWithBase(base, nominalRef string) (string, error) {
 	return base + "/" + p, nil
 }
 
+// Host canonicalizes a bare registry host — lowercased, Docker Hub
+// aliases collapsed, port preserved in host form (":port", not the "_port"
+// a repository path uses).
+//
+// It is the comparison key for anything that reasons about registries
+// rather than about paths: the allowlist (FR-030), the substitution table
+// (FR-036). Both sides of a comparison must go through it, or "docker.io"
+// and "index.docker.io" read as two different registries when they are
+// one.
+//
+//	Host("index.docker.io")            → "docker.io"
+//	Host("registry.example.com:5000")  → "registry.example.com:5000"
+func Host(host string) (string, error) {
+	h, _, err := splitRef(host + "/x")
+	if err != nil {
+		return "", err
+	}
+	return strings.ReplaceAll(h, "_", ":"), nil
+}
+
 // splitRef separates and canonicalizes the host of a nominal reference and
 // validates the shape the recipe format guarantees (RECIPE-SPEC §13.1:
 // references carry an explicit host and no tag or digest).

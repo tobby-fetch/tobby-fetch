@@ -19,6 +19,8 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/config"
 )
 
 // pushChart publishes a chart tgz as its standard OCI artifact.
@@ -108,7 +110,7 @@ func TestVendorOCIChart(t *testing.T) {
 	ref := host + "/charts/wordpress:19.2.6"
 	pushChart(t, ref, parent)
 	dst := destStore(t)
-	opts := WithInsecureHosts([]string{du.Host})
+	opts := mustSourcePolicy(t, config.Registries{Insecure: []string{du.Host}})
 
 	rep, err := Inspect(ctx, ref, dst, opts)
 	if err != nil {
@@ -238,7 +240,7 @@ func TestChartRepoVendor(t *testing.T) {
 		"forge": {{Version: "2.1.0", URLs: []string{"forge-2.1.0.tgz"}, Digest: "sha256:" + sha256Hex(parent)}},
 	})
 	pu := serveChartRepo(t, parentFiles)
-	opts := WithInsecureHosts([]string{du.Host, pu.Host})
+	opts := mustSourcePolicy(t, config.Registries{Insecure: []string{du.Host, pu.Host}})
 	ref := pu.String() + "/charts/forge"
 	dst := destStore(t)
 

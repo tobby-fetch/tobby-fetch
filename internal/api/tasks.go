@@ -30,8 +30,8 @@ import (
 // RegisterTasks mounts the import and task endpoints on the API surface.
 // Triggering an import needs operator; reading tasks needs viewer
 // (ADR-0009).
-func RegisterTasks(a *API, q *tasks.Queue, st *store.Store, inspectTimeout time.Duration, insecureHosts []string) {
-	t := &tasksAPI{api: a, queue: q, store: st, timeout: inspectTimeout, insecure: insecureHosts}
+func RegisterTasks(a *API, q *tasks.Queue, st *store.Store, inspectTimeout time.Duration, importPolicy importer.Option) {
+	t := &tasksAPI{api: a, queue: q, store: st, timeout: inspectTimeout, importPolicy: importPolicy}
 	a.Handle("POST /api/v1/import", a.RequireRole(auth.RoleOperator, t.create))
 	a.Handle("GET /api/v1/import/inspect", a.RequireRole(auth.RoleOperator, t.inspect))
 	a.Handle("GET /api/v1/tasks", a.RequireRole(auth.RoleViewer, t.list))
@@ -40,11 +40,11 @@ func RegisterTasks(a *API, q *tasks.Queue, st *store.Store, inspectTimeout time.
 }
 
 type tasksAPI struct {
-	api      *API
-	queue    *tasks.Queue
-	store    *store.Store
-	timeout  time.Duration
-	insecure []string
+	api          *API
+	queue        *tasks.Queue
+	store        *store.Store
+	timeout      time.Duration
+	importPolicy importer.Option
 }
 
 // taskJSON is one task with its read-time aggregates: the persisted schema
@@ -171,7 +171,7 @@ func (t *tasksAPI) inspect(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), t.timeout)
 	defer cancel()
-	rep, err := importer.Inspect(ctx, ref, t.store, importer.WithInsecureHosts(t.insecure))
+	rep, err := importer.Inspect(ctx, ref, t.store, t.importPolicy)
 	if err != nil {
 		t.problem(w, r, err)
 		return

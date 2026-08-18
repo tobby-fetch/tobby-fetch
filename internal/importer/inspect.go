@@ -28,6 +28,8 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	recipev1 "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -110,16 +112,23 @@ type Report struct {
 type Option func(*options)
 
 type options struct {
-	insecure map[string]bool
+	insecure  map[string]bool
+	allowlist *policy.Allowlist
 }
 
-// WithInsecureHosts marks source hosts reachable over plain HTTP or
-// unverifiable TLS (registries.insecure). The opt-in is per host and
-// declared in the configuration — never a global switch (FR-075); the
-// private-PKI story replaces it at milestone 4 (roadmap 4.4).
-func WithInsecureHosts(hosts []string) Option {
+// WithSourcePolicy carries everything that decides which sources a unit
+// import may reach: the allowlist (FR-030) and the per-host plain-HTTP
+// opt-ins (registries.insecure — per host and declared, never a global
+// switch, FR-075).
+//
+// The two travel as one option on purpose. They are the same decision
+// seen twice — "may this instance talk to that host, and how" — and a
+// call site that remembered one but not the other would be a call site
+// with no allowlist at all.
+func WithSourcePolicy(cfg config.Registries, allow *policy.Allowlist) Option {
 	return func(o *options) {
-		for _, h := range hosts {
+		o.allowlist = allow
+		for _, h := range cfg.Insecure {
 			o.insecure[h] = true
 		}
 	}
@@ -128,6 +137,12 @@ func WithInsecureHosts(hosts []string) Option {
 func buildOptions(opts []Option) *options {
 	o := &options{insecure: map[string]bool{}}
 	for _, fn := range opts {
+		// A nil Option is an unset one, not a crash: callers thread the
+		// source policy through struct fields, and a zero field must
+		// behave like the undeclared policy it represents.
+		if fn == nil {
+			continue
+		}
 		fn(o)
 	}
 	return o
@@ -160,6 +175,11 @@ func (o *options) parseRef(reference string) (name.Reference, error) {
 	reference = stripOCIScheme(reference)
 	ref, err := name.ParseReference(reference, name.WithDefaultRegistry("docker.io"))
 	if err != nil {
+		return nil, err
+	}
+	// FR-030 before any connection: the reference is resolved, nothing
+	// has been dialed. Checked on the registry the client will contact.
+	if err := o.allowlist.Check(ref.Context().RegistryStr()); err != nil {
 		return nil, err
 	}
 	if o.insecure[ref.Context().RegistryStr()] {

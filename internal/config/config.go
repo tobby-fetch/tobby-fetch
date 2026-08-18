@@ -163,6 +163,21 @@ type Registries struct {
 	// the effective host, trust scopes to the nominal ref. List-valued:
 	// configuration file only.
 	Substitutions map[string]string `yaml:"substitutions,omitempty"`
+	// Allowlist bounds which registries this instance may contact at all
+	// (FR-030), evaluated on the host ACTUALLY reached — after source
+	// substitution, since that is the endpoint the bytes come from.
+	// Entries are registry hosts, optionally with a port, and may carry
+	// the same globs trust scopes use ("*" within a DNS label, "**"
+	// across labels).
+	//
+	// The key's ABSENCE and an empty list are different statements, as
+	// with a Kubernetes NetworkPolicy: absent means no restriction,
+	// "allowlist: []" means nothing is allowed. There is no safe
+	// non-empty default — an instance cannot guess its operator's
+	// registries — so an undeclared policy is reported as undeclared
+	// everywhere rather than silently passing for a satisfied one.
+	// List-valued: configuration file only.
+	Allowlist []string `yaml:"allowlist,omitempty"`
 	// CredentialsFile points at a kubernetes.io/dockerconfigjson payload
 	// (FR-004): registry credentials looked up by the effective host
 	// actually contacted (RECIPE-SPEC §13.2). Secrets never live in the

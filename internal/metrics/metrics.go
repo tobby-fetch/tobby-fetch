@@ -26,6 +26,11 @@ type Registry struct {
 	SyncInflight prometheus.Gauge
 	// SyncBytes counts the bytes the recipe engine transferred.
 	SyncBytes prometheus.Counter
+	// PolicyRejections counts refusals by policy class (FR-091). Labeled
+	// by taxonomy code rather than by host: a metric labeled with an
+	// attacker-supplied host is an unbounded cardinality hole, and the
+	// host is in the log record where it belongs.
+	PolicyRejections *prometheus.CounterVec
 }
 
 // New builds the registry with the standard process and Go collectors and
@@ -52,7 +57,16 @@ func New() *Registry {
 		Name: "tobby_sync_transferred_bytes_total",
 		Help: "Bytes transferred by recipe synchronizations (skipped up-to-date content moves nothing).",
 	})
-	reg.MustRegister(syncInflight, syncBytes)
+	policyRejections := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "tobby_policy_rejections_total",
+		Help: "Transfers refused by policy, by taxonomy code (FR-030 allowlist today).",
+	}, []string{"code"})
+	reg.MustRegister(syncInflight, syncBytes, policyRejections)
 
-	return &Registry{Registry: reg, SyncInflight: syncInflight, SyncBytes: syncBytes}
+	return &Registry{
+		Registry:         reg,
+		SyncInflight:     syncInflight,
+		SyncBytes:        syncBytes,
+		PolicyRejections: policyRejections,
+	}
 }
