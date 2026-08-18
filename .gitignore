@@ -13,3 +13,6 @@ coverage.*
 *.swp
 .idea/
 .vscode/
+
+# Topology scenario scratch (generated configs and throwaway PKI)
+/test/topology/.m4/

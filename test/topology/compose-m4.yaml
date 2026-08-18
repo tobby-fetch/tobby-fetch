@@ -1,0 +1,162 @@
+# Hermetic CI topology, milestone 4 — "passthrough between connected
+# zones" (ADR-0014 tier 1, DEVELOPMENT-PLAN §2.4).
+#
+# Two segments model the deployment reality of a promotion service:
+#
+#   - "zone-a": the production side. The source registry, the two
+#     destination registries (plain and behind a private PKI), and the
+#     outer leg of the forward proxy. Host port mappings exist so the
+#     scenario driver can seed content and check what actually landed.
+#   - "sealed": `internal: true` — Docker wires NO route out of it. The
+#     instance under test for the blocked-egress half lives here and has
+#     no other neighbour than the proxy, which is dual-homed. That is not
+#     a simulation of a segmented zone: it IS one, and the canary proves
+#     it on every run.
+#
+# Nothing in this file reaches the network at run time beyond the images
+# the topology already uses elsewhere (registry:3, curlimages/curl); the
+# forward proxy is built from this repository's own source
+# (test/topology/proxy) rather than pulled, so the topology stays
+# hermetic and the proxy can act as a witness — it logs every destination
+# it was asked to reach.
+#
+# The configuration files, the private PKI, and the retriever document are
+# generated into ./.m4 by scenario-m4.sh and bind-mounted read-only.
+
+name: tobby-topology-m4
+
+networks:
+  zone-a: {}
+  sealed:
+    internal: true
+
+volumes:
+  direct: {}
+  policy: {}
+  sealed-store: {}
+
+services:
+  # The production registry of zone A: the reference registry
+  # implementation, seeded by the scenario driver through the host
+  # mapping.
+  source-registry:
+    image: registry:3
+    networks: [zone-a]
+    ports:
+      - "127.0.0.1:5410:5000"
+
+  # The zone registry a passthrough instance promotes INTO, over plain
+  # HTTP — the direct-egress half of the scenario.
+  dest-registry:
+    image: registry:3
+    networks: [zone-a]
+    ports:
+      - "127.0.0.1:5411:5000"
+
+  # The same destination behind a certificate issued by the scenario's own
+  # private authority (FR-081). Nothing here disables verification: Tobby
+  # is given the authority, not a bypass.
+  dest-registry-tls:
+    image: registry:3
+    networks: [zone-a]
+    ports:
+      - "127.0.0.1:5412:5000"
+    environment:
+      REGISTRY_HTTP_TLS_CERTIFICATE: /certs/tls.crt
+      REGISTRY_HTTP_TLS_KEY: /certs/tls.key
+    volumes:
+      - ./.m4:/certs:ro
+
+  # The instance under test, configured by the REFERENCE CHART's own
+  # rendered output (deploy/charts/tobby): ./.m4/chart-config.yaml is
+  # extracted verbatim from the Secret `helm template` produces, and the
+  # container reproduces the chart's pod security context — non-root,
+  # read-only root filesystem, every capability dropped, no privilege
+  # escalation, /tmp as the only scratch space.
+  tobby-direct:
+    image: tobby-topology-m4:local
+    command: [serve]
+    networks: [zone-a]
+    ports:
+      - "127.0.0.1:5413:8080"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    volumes:
+      - direct:/var/lib/tobby
+      - ./.m4/chart-config.yaml:/etc/tobby/config.yaml:ro
+      - ./.m4/retriever.yaml:/etc/tobby/retriever.yaml:ro
+
+  # Same topology, one difference that matters: the allow-list names the
+  # source and NOT the destination (FR-030). Its own store, so the refusal
+  # is observed on a clean instance rather than inferred from a mutated
+  # one.
+  tobby-policy:
+    image: tobby-topology-m4:local
+    command: [serve]
+    networks: [zone-a]
+    ports:
+      - "127.0.0.1:5414:8080"
+    volumes:
+      - policy:/var/lib/tobby
+      - ./.m4/policy-config.yaml:/etc/tobby/config.yaml:ro
+      - ./.m4/retriever.yaml:/etc/tobby/retriever.yaml:ro
+
+  # The documented FR-075 override: authentication off, which is an
+  # explicit, auditable opt-in and never a default. The instance serves
+  # anonymously and every page carries the permanent danger banner.
+  tobby-open:
+    image: tobby-topology-m4:local
+    command: [serve]
+    networks: [zone-a]
+    ports:
+      - "127.0.0.1:5415:8080"
+    environment:
+      TOBBY_MODE: passthrough
+      TOBBY_STORAGE_ROOT: /var/lib/tobby/store
+      TOBBY_SERVER_ADDR: ":8080"
+      # Settable in the configuration file or here, never by flag: an
+      # override that could be typed on a command line would be one
+      # keystroke away from an accident (ADR-0009).
+      TOBBY_AUTH_DISABLED: "true"
+
+  # The only way out of the sealed segment. Authenticated: an anonymous
+  # request is answered 407 and never reaches a socket.
+  proxy:
+    image: tobby-topology-m4:local
+    entrypoint: [/usr/bin/tobby-proxy]
+    command: ["-addr", ":3128"]
+    networks: [zone-a, sealed]
+    environment:
+      PROXY_USERNAME: tobby
+      PROXY_PASSWORD: proxy-secret
+
+  # The instance under test with direct egress BLOCKED. It sits alone with
+  # the proxy on an internal network: there is no route to either registry
+  # except through the proxy, and no route out of the topology at all.
+  tobby-egress:
+    image: tobby-topology-m4:local
+    command: [serve]
+    networks: [sealed]
+    environment:
+      # The proxy credential is supplied through the environment, never
+      # the configuration file and never a flag: a flag value is readable
+      # in the process table (FR-080, NFR-015).
+      TOBBY_NETWORK_PROXY_PASSWORD: proxy-secret
+    volumes:
+      - sealed-store:/var/lib/tobby
+      - ./.m4/egress-config.yaml:/etc/tobby/config.yaml:ro
+      - ./.m4/retriever.yaml:/etc/tobby/retriever.yaml:ro
+      - ./.m4/ca.crt:/etc/tobby-ca/ca.crt:ro
+
+  # In-zone client, egress canary, and the only way the scenario driver
+  # can talk to the sealed instance — the sealed segment publishes no host
+  # port, by construction.
+  driver:
+    image: curlimages/curl:8.17.0
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["true"]
+    networks: [sealed]

@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright © 2026 infraBuilder SASU and contributors
+#
+# Values driving the REFERENCE CHART (deploy/charts/tobby) for the
+# milestone-4 topology scenario. DEVELOPMENT-PLAN §2.4 requires the
+# end-to-end passthrough scenario to run "with the instance deployed from
+# the reference chart", so the instance under test is not configured by
+# hand: scenario-m4.sh renders this file with `helm template` and mounts
+# the Secret's config.yaml verbatim, and the container reproduces the
+# rendered pod's security context.
+#
+# What that does and does not prove is stated in the scenario header: the
+# chart's rendering and the configuration it produces are exercised for
+# real, a kubelet is not.
+
+image:
+  repository: tobby-topology-m4
+  tag: local
+
+config:
+  # A long-lived service between two connected zones (FR-001).
+  mode: passthrough
+
+  logging:
+    level: debug
+
+  # The desired state is a file inside the container, mounted by the
+  # topology beside the configuration.
+  retriever:
+    source: /etc/tobby/retriever.yaml
+
+  # The zone registry this instance promotes into (FR-013). A bare host:
+  # the scheme follows registries.insecure, the repository path is
+  # computed by the relocation convention (FR-035).
+  destination:
+    registry: dest-registry:5000
+    cookbook: cookbook
+
+  sync:
+    parallelism: 3
+    retries: 2
+    # The periodic loop is parked so the scenario decides when a cycle
+    # happens: a promotion firing on its own between two assertions would
+    # make "the second cycle pushes nothing" a race rather than a check.
+    # The runtime override is exercised explicitly, later in the run.
+    interval: 0s
+
+  registries:
+    # Both registries of this topology speak plain HTTP. Per-host and
+    # explicit — there is no global switch (FR-075).
+    insecure:
+      - source-registry:5000
+      - dest-registry:5000
+    # The allow-list is DECLARED here, and it names the destination as
+    # well as the source: FR-030 covers both directions. The refusal case
+    # runs on a separate instance whose list omits the destination.
+    allowlist:
+      - source-registry:5000
+      - dest-registry:5000
+
+  # The topology publishes UNSIGNED recipes: the compatibility proof of
+  # the real cosign signing path belongs to the crucible tier, which has
+  # the tooling for it (crucible/scenarios/m3 and m4). Admitting them here
+  # therefore requires an explicitly declared, reported scope — never a
+  # global bypass — and the UI carries the relaxed-trust banner for as
+  # long as it is set (FR-033, RECIPE-SPEC §12.3).
+  trust:
+    scopes:
+      - name: topology-lab
+        repositories:
+          # Both spellings of the same repository are listed on purpose.
+          # The import side matches trust scopes on the CANONICAL nominal
+          # path (ports folded to "_" per ADR-0013, engine/sync.go), while
+          # the pre-push re-verification matches on the raw nominal
+          # reference (engine/promote.go) — so a host carrying a port
+          # needs both forms until the two agree. Drop the second line
+          # once they do; the scenario fails loudly if it is dropped too
+          # early.
+          - source-registry_5000/cookbook/*
+          - source-registry:5000/cookbook/*
+        allowUnsigned: true
