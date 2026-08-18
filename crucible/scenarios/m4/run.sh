@@ -64,6 +64,8 @@ PUSH_PASS="m4-crucible-push"
 PROXY_USER="tobby"
 PROXY_PASS="m4-crucible-proxy"
 ACL="tbc-m4-proxyonly"
+SEALED_NET="tbc-m4-sealed"
+SEALED_CIDR="10.180.30.0/24"
 INSTANCES="tbc-m4-source tbc-m4-dest tbc-m4-proxy tbc-m4-node tbc-m4-egress"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -102,12 +104,22 @@ check "tooling available (helm $(helm version --short 2>/dev/null || echo unknow
 check "built tobby and the forward proxy for linux/$ARCH"
 
 # -- Fresh instances ---------------------------------------------------------
-incus network acl delete "$ACL" >/dev/null 2>&1 || true
 for inst in $INSTANCES; do
     inc delete --force "$inst" 2>/dev/null || true
 done
+incus network unset "$SEALED_NET" security.acls >/dev/null 2>&1 || true
+incus network acl delete "$ACL" >/dev/null 2>&1 || true
+# The sealed node lives on its own bridge (see step 9): the segment, not
+# the instance, carries the policy.
+incus network show "$SEALED_NET" >/dev/null 2>&1 ||
+    incus network create "$SEALED_NET" \
+        ipv4.address="${SEALED_CIDR%.0/24}.1/24" ipv4.nat=true ipv6.address=none >/dev/null
+incus network unset "$SEALED_NET" security.acls >/dev/null 2>&1 || true
 for inst in $INSTANCES; do
-    inc launch "$IMAGE" "$inst" --profile tbc-connected-node
+    case "$inst" in
+    tbc-m4-egress) inc launch "$IMAGE" "$inst" --profile tbc-connected-node --network "$SEALED_NET" ;;
+    *) inc launch "$IMAGE" "$inst" --profile tbc-connected-node ;;
+    esac
     inc file push /tmp/tobby-crucible "$inst/usr/bin/tobby"
     inc exec "$inst" -- chmod +x /usr/bin/tobby
 done
@@ -523,18 +535,24 @@ printf '%s' "$METRICS" | awk '
 check "FR-030: off-list destination refused before transfer, audited, counted; the refused recipe never landed"
 
 # -- 9. The same promotion with direct egress blocked ------------------------
-# The gap is structural, not conventional: an ACL on the sealed node's own
-# interface permits the proxy and the bridge gateway, and rejects
-# everything else. A configuration that merely NAMED a proxy would keep
-# working if the code forgot to use it; this one does not.
+# The gap is structural, not conventional: the sealed node sits on its own
+# bridge whose ACL permits the forward proxy and nothing else. A
+# configuration that merely NAMED a proxy would keep working if the code
+# forgot to use it; this one does not — the route is absent, so a request
+# that skips the proxy does not go somewhere else, it goes nowhere.
+#
+# The ACL is applied to the NETWORK, not to the instance's NIC:
+# "security.acls" is not a valid device option on a bridged nic, and
+# crucible/setup.sh already seals the air-gapped zone the same way. One
+# mechanism, proven once.
+incus network acl delete "$ACL" >/dev/null 2>&1 || true
 incus network acl create "$ACL" >/dev/null
 incus network acl rule add "$ACL" egress destination="$PROXY_IP/32" action=allow >/dev/null
-incus network acl rule add "$ACL" egress destination=10.180.10.1/32 action=allow >/dev/null
-inc config device override tbc-m4-egress eth0 \
-    security.acls="$ACL" \
-    security.acls.default.egress.action=reject \
-    security.acls.default.ingress.action=allow >/dev/null ||
-    fail "applying the egress ACL to the sealed node"
+incus network acl rule add "$ACL" egress destination="$SEALED_CIDR" action=allow >/dev/null
+incus network acl rule add "$ACL" ingress source="$SEALED_CIDR" action=allow >/dev/null
+incus network acl rule add "$ACL" ingress source="$PROXY_IP/32" action=allow >/dev/null
+incus network set "$SEALED_NET" security.acls="$ACL" >/dev/null ||
+    fail "applying the egress ACL to the sealed segment"
 sleep 2
 if inc exec tbc-m4-egress -- wget -q -T 3 -O /dev/null "http://$SOURCE_IP:8080/v2/" >/dev/null 2>&1; then
     fail "the sealed node reached the production registry directly"
@@ -642,5 +660,8 @@ check "blocked egress, cycle 2: nothing pushed — idempotent behind the proxy t
 for inst in $INSTANCES; do
     inc delete --force "$inst"
 done
+# The ACL must go before the network that references it.
+incus network unset "$SEALED_NET" security.acls >/dev/null 2>&1 || true
 incus network acl delete "$ACL" >/dev/null 2>&1 || true
+incus network delete "$SEALED_NET" >/dev/null 2>&1 || true
 check "scenario m4 complete — report: $REPORT"

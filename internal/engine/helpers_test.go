@@ -573,3 +573,72 @@ func resolutionFor(t *testing.T, task *tasks.Task, recipe, ingredient string) *t
 // syncCfg is the default engine tuning for tests: parallel enough to
 // exercise the semaphore, zero retries so failure scenarios stay fast.
 func syncCfg() config.Sync { return config.Sync{Parallelism: 3, Retries: 0} }
+
+// signManifestBundle attaches a Sigstore BUNDLE signature to a manifest —
+// the layout cosign 3.x emits by default: an artifact that REFERS to the
+// subject, plus the "sha256-<hex>" fallback index that clients publish
+// when the registry serves no Referrers API. Tobby's embedded registry is
+// one of those, so a store holds the fallback form.
+func signManifestBundle(t *testing.T, st *store.Store, storeRepo, subjectDigest string, kp *sigtest.KeyPair) string {
+	t.Helper()
+	ctx := context.Background()
+
+	bundle, err := sigtest.SignedBundle(subjectDigest, kp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := []byte("{}")
+	cfgDigest := digest.FromBytes(cfg)
+	if err := st.WriteBlob(ctx, storeRepo, cfgDigest, bytes.NewReader(cfg)); err != nil {
+		t.Fatal(err)
+	}
+	bundleDigest := digest.FromBytes(bundle)
+	if err := st.WriteBlob(ctx, storeRepo, bundleDigest, bytes.NewReader(bundle)); err != nil {
+		t.Fatal(err)
+	}
+
+	man := map[string]any{
+		"schemaVersion": 2,
+		"mediaType":     mediaTypeOCIManifest,
+		"artifactType":  "application/vnd.dev.sigstore.bundle.v0.3+json",
+		"config": map[string]any{
+			"mediaType": "application/vnd.oci.empty.v1+json",
+			"digest":    cfgDigest.String(), "size": len(cfg),
+		},
+		"layers": []any{map[string]any{
+			"mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json",
+			"digest":    bundleDigest.String(), "size": len(bundle),
+		}},
+		"subject": map[string]any{
+			"mediaType": mediaTypeOCIManifest,
+			"digest":    subjectDigest, "size": 0,
+		},
+	}
+	raw, err := json.Marshal(man)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sigDigest, err := st.PutManifest(ctx, storeRepo, mediaTypeOCIManifest, raw, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The fallback referrers index, under "sha256-<hex>" of the subject.
+	idx, err := json.Marshal(map[string]any{
+		"schemaVersion": 2,
+		"mediaType":     "application/vnd.oci.image.index.v1+json",
+		"manifests": []any{map[string]any{
+			"mediaType": mediaTypeOCIManifest,
+			"digest":    sigDigest.String(), "size": len(raw),
+			"artifactType": "application/vnd.dev.sigstore.bundle.v0.3+json",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fallback := strings.Replace(subjectDigest, "sha256:", "sha256-", 1)
+	if _, err := st.PutManifest(ctx, storeRepo, "application/vnd.oci.image.index.v1+json", idx, fallback); err != nil {
+		t.Fatal(err)
+	}
+	return sigDigest.String()
+}

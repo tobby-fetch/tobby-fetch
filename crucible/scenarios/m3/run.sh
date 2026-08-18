@@ -190,6 +190,10 @@ spec:
 EOF
 inc exec tbc-m3-node -- mkdir -p /etc/tobby
 inc file push "$WORK/node.yaml" tbc-m3-node/etc/tobby/config.yaml
+echo "DIAG tags on the node for $COOKBOOK_REPO:" >&2
+curl -fsS -u "$CRED" "$API/content/$COOKBOOK_REPO" 2>/dev/null | jq -c '[.tags[]?.name]' >&2 || true
+echo "DIAG source tags:" >&2
+curl -fsS "http://$SOURCE_IP:8080/v2/cookbook/sample-app/tags/list" 2>/dev/null | jq -c '.tags' >&2 || true
 inc file push "$WORK/retriever.yaml" tbc-m3-node/etc/tobby/retriever.yaml
 inc exec tbc-m3-node -- sh -c "printf '%s\n' '$CRED_PASS' |
     tobby user add $CRED_USER --state-root /srv/state --password-stdin" >/dev/null ||
@@ -342,7 +346,7 @@ wait_ready tbc-m3-downstream http://127.0.0.1:8080/readyz
 DAPI="http://$DOWN_IP:8080/api/v1"
 DTASK=$(sync_and_wait "$DAPI" "$CRED") || fail "downstream synchronization never settled"
 DSTATUS=$(curl -fsS -u "$CRED" "$DAPI/tasks/$DTASK" | jq -r '.task.status')
-[ "$DSTATUS" = "done" ] || fail "downstream synchronization ended $DSTATUS"
+[ "$DSTATUS" = "done" ] || fail "downstream synchronization ended $DSTATUS: $(curl -fsS -u "$CRED" "$DAPI/tasks/$DTASK" | jq -c '[.task.items[] | select(.status == "failed") | {name, error}]')"
 DSTORED=$(curl -fsS -u "$CRED" "$DAPI/content/$RELOCATED/-/tags/2.0.0" | jq -r '.digest')
 [ "$DSTORED" = "$IMG_DIGEST" ] ||
     fail "cascade digest $DSTORED differs from pinned $IMG_DIGEST"

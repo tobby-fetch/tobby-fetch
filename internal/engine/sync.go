@@ -14,7 +14,9 @@ import (
 	"sync"
 	"time"
 
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
@@ -541,14 +543,107 @@ func (e *Engine) storeRecipeArtifact(ctx context.Context, f *FetchedRecipe) (str
 // manifest when the source carries one (§12.2: signatures travel with the
 // content). Its absence is not an error — the trust decision already ran.
 func (e *Engine) copyAttachedSignature(ctx context.Context, logger *slog.Logger, nominalRepo, localRepo, manifestDigest string) {
+	warn := func(what string, err error) {
+		logger.LogAttrs(ctx, slog.LevelWarn, "signature artifact copy failed",
+			slog.String("repository", nominalRepo), slog.String("layout", what),
+			slog.String("error", err.Error()))
+	}
+
+	// The tag-attached layout of §12.2: one artifact under
+	// "sha256-<hex>.sig".
 	tag := SignatureTag(manifestDigest)
-	desc, err := e.remotes.Get(ctx, nominalRepo, tag)
-	if err != nil {
+	if desc, err := e.remotes.Get(ctx, nominalRepo, tag); err == nil {
+		if err := copyArtifact(ctx, e.store, e.remotes, nominalRepo, localRepo, tag, desc.Manifest, string(desc.MediaType)); err != nil {
+			warn("tag", err)
+		}
+	}
+
+	// The bundle layout, which cosign 3.x emits by default: the signature
+	// is an artifact REFERRING to the subject, found through the
+	// Referrers API or through the "sha256-<hex>" fallback tag.
+	//
+	// Copying it is not optional. The verifier learned to read both
+	// layouts; if the copy only carries one, a signature verifies here and
+	// is simply absent one hop down — the zone below refuses content its
+	// upstream accepted, for a reason no operator can act on. Signatures
+	// travel with the content (§12.2), whichever shape they arrive in.
+	e.copyReferringSignatures(ctx, nominalRepo, localRepo, manifestDigest, warn)
+}
+
+// copyReferringSignatures copies the bundle-layout signature artifacts of
+// a manifest and publishes the referrers fallback tag for them.
+//
+// The fallback tag is written even when the source served the Referrers
+// API instead: the embedded registry has no Referrers API, so the tag is
+// the only way a destination — or a downstream zone reading this store —
+// will find these artifacts again. What the source used to tell us is not
+// what the next reader can use.
+func (e *Engine) copyReferringSignatures(ctx context.Context, nominalRepo, localRepo, manifestDigest string, warn func(string, error)) {
+	hex := strings.TrimPrefix(manifestDigest, "sha256:")
+	digests, err := e.remotes.Manifests(nominalRepo).(sigverify.ReferrersLister).
+		Referrers(ctx, nominalRepo, manifestDigest)
+	if err != nil && !errors.Is(err, sigverify.ErrNotFound) {
+		warn("referrers", err)
+	}
+
+	// The source may carry the fallback tag rather than the API — a store
+	// that already travelled once does.
+	fallbackTag := "sha256-" + hex
+	if desc, ferr := e.remotes.Get(ctx, nominalRepo, fallbackTag); ferr == nil {
+		var idx struct {
+			Manifests []struct {
+				Digest string `json:"digest"`
+			} `json:"manifests"`
+		}
+		if json.Unmarshal(desc.Manifest, &idx) == nil {
+			for _, m := range idx.Manifests {
+				digests = append(digests, m.Digest)
+			}
+		}
+	}
+
+	seen := map[string]bool{}
+	var copied []v1.Descriptor
+	for _, d := range digests {
+		if d == "" || seen[d] {
+			continue
+		}
+		seen[d] = true
+		desc, err := e.remotes.Get(ctx, nominalRepo, d)
+		if err != nil {
+			continue
+		}
+		// Stored by digest, with NO tag: "sha256:…" is not a legal tag
+		// name, and these artifacts are never reached by name anyway —
+		// the fallback index below points at them by digest, which is
+		// how a referring artifact is meant to be found.
+		if err := copyArtifact(ctx, e.store, e.remotes, nominalRepo, localRepo, "", desc.Manifest, string(desc.MediaType)); err != nil {
+			warn("bundle", err)
+			continue
+		}
+		copied = append(copied, v1.Descriptor{
+			MediaType:    desc.MediaType,
+			Size:         desc.Size,
+			Digest:       desc.Digest,
+			ArtifactType: artifactTypeOf(desc.Manifest),
+		})
+	}
+	if len(copied) == 0 {
 		return
 	}
-	if err := copyArtifact(ctx, e.store, e.remotes, nominalRepo, localRepo, tag, desc.Manifest, string(desc.MediaType)); err != nil {
-		logger.LogAttrs(ctx, slog.LevelWarn, "signature artifact copy failed",
-			slog.String("repository", nominalRepo), slog.String("error", err.Error()))
+
+	// Publish the index the next reader will look for.
+	idx, err := json.Marshal(v1.IndexManifest{
+		SchemaVersion: 2,
+		MediaType:     types.OCIImageIndex,
+		Manifests:     copied,
+	})
+	if err != nil {
+		warn("referrers index", err)
+		return
+	}
+	if _, err := e.store.PutManifest(ctx, localRepo, string(types.OCIImageIndex), idx, fallbackTag); err != nil {
+		warn("referrers index", err)
 	}
 }
 
