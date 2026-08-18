@@ -61,6 +61,7 @@ possible at all.
 | `POST /admin/accounts/tokens` | admin | Token creation (FR-072). |
 | `POST /admin/accounts/tokens/revoke` | admin | Token revocation (FR-072). |
 | `GET /admin/retriever` | admin | Reveals the configured desired-state source (FR-010). |
+| `POST /admin/retriever/interval` | admin | Changes how often this instance promotes, unattended (FR-013). The change is audited as sensitive configuration (FR-094). |
 | `GET /help`, `GET /about`, `GET /about/third-party`, `GET /api-docs` | viewer | |
 | anything else | viewer | The taxonomized 404 renders inside the authenticated shell (UI-SPEC §5.13). |
 
@@ -88,6 +89,8 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `GET /api/v1/recipes`, `/{recipe}/mapping` | viewer | `GET /recipes…` |
 | `POST /api/v1/sync` | operator | `POST /recipes/sync` |
 | `GET /api/v1/retriever` | admin | `GET /admin/retriever` |
+| `PUT /api/v1/retriever/interval` | admin | `POST /admin/retriever/interval` |
+| `DELETE /api/v1/retriever/interval` | admin | `POST /admin/retriever/interval` |
 | `POST /api/v1/account/password` | any authenticated role | `POST /account/password` |
 | `GET /api/v1/accounts` | admin | `GET /admin/accounts` |
 | `POST /api/v1/accounts` | admin | `POST /admin/accounts` |

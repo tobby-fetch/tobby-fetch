@@ -105,6 +105,7 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "POST /admin/accounts/tokens", Floor: auth.RoleAdmin, Method: "POST", Path: "/admin/accounts/tokens", Form: "name=&role=viewer"},
 	{Pattern: "POST /admin/accounts/tokens/revoke", Floor: auth.RoleAdmin, Method: "POST", Path: "/admin/accounts/tokens/revoke", Form: "name=no-such-token"},
 	{Pattern: "GET /admin/retriever", Floor: auth.RoleAdmin, Why: "reveals the configured desired-state source (FR-010)", Method: "GET", Path: "/admin/retriever"},
+	{Pattern: "POST /admin/retriever/interval", Floor: auth.RoleAdmin, Why: "changes how often this instance promotes, unattended (FR-013); the change is audited as sensitive configuration (FR-094)", Method: "POST", Path: "/admin/retriever/interval"},
 	{Pattern: "GET /help", Floor: auth.RoleViewer, Method: "GET", Path: "/help"},
 	{Pattern: "GET /about", Floor: auth.RoleViewer, Method: "GET", Path: "/about"},
 	{Pattern: "GET /about/third-party", Floor: auth.RoleViewer, Method: "GET", Path: "/about/third-party"},
@@ -129,6 +130,8 @@ var apiMatrix = []rbacRoute{
 	{Pattern: "GET /api/v1/recipes/{recipe}/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/recipes/no-such-recipe/mapping"},
 	{Pattern: "POST /api/v1/sync", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/sync"},
 	{Pattern: "GET /api/v1/retriever", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/retriever"},
+	{Pattern: "PUT /api/v1/retriever/interval", Floor: auth.RoleAdmin, Method: "PUT", Path: "/api/v1/retriever/interval"},
+	{Pattern: "DELETE /api/v1/retriever/interval", Floor: auth.RoleAdmin, Method: "DELETE", Path: "/api/v1/retriever/interval"},
 	{Pattern: "POST /api/v1/account/password", Floor: auth.RoleViewer, Why: "self-service mirror of /account (R-34): no floor beyond authentication", Method: "POST", Path: "/api/v1/account/password", Body: `{"current":"x","new":""}`},
 	{Pattern: "GET /api/v1/accounts", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/accounts"},
 	{Pattern: "POST /api/v1/accounts", Floor: auth.RoleAdmin, Method: "POST", Path: "/api/v1/accounts", Body: `{"name":"","role":"viewer","password":""}`},
@@ -224,7 +227,7 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	api.RegisterContent(restAPI, st)
 	api.RegisterTasks(restAPI, queue, st, time.Second, nil)
 	api.RegisterAccounts(restAPI, accounts)
-	api.RegisterRecipes(restAPI, st, queue, "", nil, nil)
+	api.RegisterRecipes(restAPI, &api.RecipeOptions{Store: st, Queue: queue})
 	api.RegisterOpenAPI(restAPI)
 	rec.mux.Handle("/api/v1/", restAPI.Handler())
 
@@ -446,6 +449,7 @@ func TestRBACMatrixMirrorsUIFloors(t *testing.T) {
 		{"GET /recipes", "GET /api/v1/recipes"},
 		{"POST /recipes/sync", "POST /api/v1/sync"},
 		{"GET /admin/retriever", "GET /api/v1/retriever"},
+		{"POST /admin/retriever/interval", "PUT /api/v1/retriever/interval"},
 		{"POST /account/password", "POST /api/v1/account/password"},
 		{"GET /admin/accounts", "GET /api/v1/accounts"},
 		{"POST /admin/accounts", "POST /api/v1/accounts"},
