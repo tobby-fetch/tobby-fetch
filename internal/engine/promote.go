@@ -240,7 +240,13 @@ func (e *Engine) completeIndex(ctx context.Context, ing *spec.Ingredient, localR
 		// destination's own refusal, which says more than a guess would.
 		return 0, nil
 	}
-	return copyIndexChildren(ctx, e.store, localRepo, ing.Version, desc, nil)
+	// No task item watches this repair, so it carries no progress sink —
+	// the transfer is still resumable, it is simply not narrated.
+	bl, err := e.blobsFor(ing.Ref, nil)
+	if err != nil {
+		return 0, err
+	}
+	return copyIndexChildren(ctx, e.store, localRepo, ing.Version, desc, nil, bl)
 }
 
 // propagateRecipe re-publishes the recipe artifact in the zone's own

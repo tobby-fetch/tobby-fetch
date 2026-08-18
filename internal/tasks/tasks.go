@@ -152,6 +152,75 @@ type Item struct {
 
 	Status Status     `json:"status"`
 	Error  *ItemError `json:"error,omitempty"`
+
+	// Blobs is the per-blob progress of the item's large transfers
+	// (FR-029, R-29). Only blobs that took the resumable path appear
+	// here — the ones big enough that "running" is not an answer an
+	// operator can act on. A 6 GB layer that moved 5.4 GB and got cut
+	// shows as exactly that, and shows that the next attempt picked up
+	// where it stopped instead of at zero.
+	//
+	// Deliberately bounded: small blobs are not tracked, so the persisted
+	// task stays a few lines rather than one entry per layer per
+	// platform.
+	Blobs []BlobProgress `json:"blobs,omitempty"`
+}
+
+// BlobProgress is one large blob's advance within an item (FR-029).
+type BlobProgress struct {
+	// Digest is the blob's pinned digest.
+	Digest string `json:"digest"`
+	// SizeBytes is what the manifest declares for it.
+	SizeBytes int64 `json:"size_bytes,omitempty"`
+	// ReceivedBytes is what has durably landed in the partial-download
+	// area of the state directory. It survives an instance restart,
+	// because the bytes it counts do.
+	ReceivedBytes int64 `json:"received_bytes,omitempty"`
+	// Resumed marks a blob whose transfer picked up bytes an earlier
+	// attempt had already received — the point of the whole mechanism,
+	// and the thing an operator watching a stalled link wants confirmed.
+	Resumed bool `json:"resumed,omitempty"`
+	// Done marks a blob fully received and verified against its digest.
+	Done bool `json:"done,omitempty"`
+}
+
+// TrackBlob records or updates one blob's progress on an item, keyed by
+// digest so a resumed transfer updates its own row instead of appending a
+// second one.
+func (it *Item) TrackBlob(dgst string, received, size int64, resumed, done bool) {
+	for i := range it.Blobs {
+		if it.Blobs[i].Digest != dgst {
+			continue
+		}
+		b := &it.Blobs[i]
+		b.ReceivedBytes, b.Done = received, done
+		if size > 0 {
+			b.SizeBytes = size
+		}
+		// Once true, it stays true: the row records that this blob was
+		// resumed at some point, not what the last chunk did.
+		b.Resumed = b.Resumed || resumed
+		return
+	}
+	it.Blobs = append(it.Blobs, BlobProgress{
+		Digest: dgst, SizeBytes: size, ReceivedBytes: received, Resumed: resumed, Done: done,
+	})
+}
+
+// TrackBlobDone closes one tracked blob's row once it has landed in the
+// store, verified. Blobs that never took the resumable path are not
+// tracked and are silently ignored here: the row exists to explain a long
+// transfer, not to inventory every layer.
+func (it *Item) TrackBlobDone(dgst string) {
+	for i := range it.Blobs {
+		if it.Blobs[i].Digest == dgst {
+			it.Blobs[i].Done = true
+			if it.Blobs[i].SizeBytes > 0 {
+				it.Blobs[i].ReceivedBytes = it.Blobs[i].SizeBytes
+			}
+			return
+		}
+	}
 }
 
 // ItemError is a persisted failure: taxonomy code + typed parameters,

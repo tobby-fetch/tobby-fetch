@@ -114,6 +114,12 @@
 "task.item_done": "terminé"
 "task.item_failed": "échoué"
 "task.item_skipped": "ignoré (up-to-date)"
+"task.blobs_title": "Gros blobs"
+"task.blob_progress_label": "Avancement du transfert du blob {{.Digest}}"
+"task.blob_resumed": "reprise"
+"task.blob_resumed_title": "Reparti là où la tentative interrompue s'était arrêtée, au lieu de repartir de zéro"
+"task.blob_verified": "vérifié"
+
 "task.reports_title": "Rapports"
 "task.deps_title": "Dépendances du chart"
 "task.th_dep": "Dépendance"

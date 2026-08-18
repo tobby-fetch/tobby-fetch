@@ -87,6 +87,10 @@
 "TBY-REG-006.cause": "For {{.reference}}, the expression {{.constraint}} matches none of the available tags: {{.detail}}."
 "TBY-REG-006.action": "Check the version expression against the tags actually published (semver constraints only consider semver-parseable tags). Tobby never falls back silently to another version."
 
+"TBY-REG-007.what": "The source served an unusable partial response while a large transfer was being resumed."
+"TBY-REG-007.cause": "For {{.reference}}: {{.detail}}. The source registry, or a cache in front of it, does not honor byte ranges consistently."
+"TBY-REG-007.action": "Retry the task: the transfer restarts from the last verified position, or from the beginning if the source content changed. If it recurs on the same source, set transfer.resumeThreshold to 0 to disable in-blob resumption for this instance, and check any caching proxy on the path to that registry."
+
 "TBY-REG-005.what": "The reference does not exist on the source registry."
 "TBY-REG-005.cause": "{{.reference}} was not found — wrong name or tag, or it was deleted upstream."
 "TBY-REG-005.action": "Check the repository name and the tag on the source registry, then correct the reference."
@@ -130,6 +134,10 @@
 "TBY-STO-001.what": "The local store could not be read."
 "TBY-STO-001.cause": "{{.detail}}"
 "TBY-STO-001.action": "Check that the storage root exists, is mounted, and is readable by the instance, then retry."
+
+"TBY-STO-003.what": "Writing the partial download to the state directory failed."
+"TBY-STO-003.cause": "{{.path}} could not be written: {{.detail}} — most often no free space, or permissions the instance user does not hold on the state root."
+"TBY-STO-003.action": "Free space on the state directory (it temporarily holds one copy of each resumable blob) or fix its permissions, then retry the task. Lower transfer.resumeThreshold to make fewer blobs resumable, or set it to 0 to stream every blob straight to the store without spooling."
 
 "TBY-STO-002.what": "Writing to the local store failed."
 "TBY-STO-002.cause": "{{.detail}}"

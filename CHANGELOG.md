@@ -10,6 +10,29 @@ starting with `v0.1.0`.
 
 ### Added
 
+- Fine-grained resume of large downloads (R-29, completing FR-029). A blob
+  interrupted at 90 % now restarts at 90 %, not at zero: above
+  `transfer.resumeThreshold` (default 64MiB) the bytes are spooled in the
+  state directory with their offset and the source's validator, and the
+  next attempt asks for the rest with an HTTP `Range` request. It survives
+  a killed process, not just a dropped connection. Integrity stays
+  blocking — the digest is computed over the whole spool, resumed prefix
+  included, before a byte reaches the store — and a source that ignores
+  `Range` and answers `200` with the full body is detected and restarted
+  rather than concatenated. Per-blob progress appears on the task detail,
+  including whether the transfer resumed or restarted. The measurement
+  behind the design is recorded in
+  `docs/spikes/blob-resume-range-vs-gcr.md`: go-containerregistry cannot
+  do partial reads (×10 the useful bytes on a 90 % interruption), so the
+  blob GET is issued directly — over the same shared transport, the same
+  proxy, the same private authorities and the same keychain as every other
+  outbound path, and proved so by `internal/netx`'s wiring test. New
+  configuration section `transfer`, new environment variable
+  `TOBBY_TRANSFER_RESUME_THRESHOLD`, new error codes `TBY-REG-007` and
+  `TBY-STO-003`. **Operational note:** the state volume now temporarily
+  holds one copy of each resumable blob — the deployment defaults raise it
+  from 1Gi to 20Gi, and `transfer.resumeThreshold: 0` restores the previous
+  streaming behavior byte for byte.
 - Browser non-regression level (R-38): a deliberately narrow chromedp
   suite under `test/browser`, behind the `browser` build tag with its own
   CI job, covering the class of bug that lives in an attribute the CLIENT

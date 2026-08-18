@@ -114,6 +114,12 @@
 "task.item_done": "done"
 "task.item_failed": "failed"
 "task.item_skipped": "skipped (up-to-date)"
+"task.blobs_title": "Large blobs"
+"task.blob_progress_label": "Transfer progress of blob {{.Digest}}"
+"task.blob_resumed": "resumed"
+"task.blob_resumed_title": "Picked up where the interrupted attempt stopped instead of restarting from zero"
+"task.blob_verified": "verified"
+
 "task.reports_title": "Reports"
 "task.deps_title": "Chart dependencies"
 "task.th_dep": "Dependency"

@@ -141,6 +141,47 @@ type taskItemView struct {
 	// State is the item status as a plain string for template comparisons.
 	State string
 	Err   *ErrView
+	// LargeBlobs renders the per-blob progress of the item's resumable
+	// transfers (FR-029, R-29). Only blobs above the configured threshold
+	// are tracked, so this is empty on ordinary items and carries a
+	// handful of rows on the multi-gigabyte ones — which is exactly when
+	// "running" stops being an answer an operator can act on.
+	LargeBlobs []taskBlobView
+}
+
+// taskBlobView is one large blob's progress row.
+type taskBlobView struct {
+	Digest   string
+	Received int64
+	Size     int64
+	// Percent is computed server side rather than in the template: the
+	// zero-size case has to be decided somewhere, and a template is the
+	// wrong place to decide it.
+	Percent int
+	Resumed bool
+	Done    bool
+}
+
+// blobViews renders an item's tracked blobs.
+func blobViews(it *tasks.Item) []taskBlobView {
+	if len(it.Blobs) == 0 {
+		return nil
+	}
+	out := make([]taskBlobView, 0, len(it.Blobs))
+	for _, b := range it.Blobs {
+		v := taskBlobView{
+			Digest: b.Digest, Received: b.ReceivedBytes, Size: b.SizeBytes,
+			Resumed: b.Resumed, Done: b.Done,
+		}
+		switch {
+		case b.Done:
+			v.Percent = 100
+		case b.SizeBytes > 0:
+			v.Percent = int(b.ReceivedBytes * 100 / b.SizeBytes)
+		}
+		out = append(out, v)
+	}
+	return out
 }
 
 // taskDetailData feeds the /tasks/{id} page.
@@ -194,7 +235,7 @@ func (u *UI) taskDetail(w http.ResponseWriter, r *http.Request) {
 		data.TaskErr = errView(lang, t.Error.Taxonomy(t.RunID))
 	}
 	for _, it := range t.Items {
-		iv := taskItemView{Item: it, State: string(it.Status)}
+		iv := taskItemView{Item: it, State: string(it.Status), LargeBlobs: blobViews(&it)}
 		if it.Error != nil {
 			iv.Err = errView(lang, it.Error.Taxonomy(t.RunID))
 		}

@@ -28,6 +28,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	recipev1 "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/blobfetch"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
@@ -116,6 +117,10 @@ type options struct {
 	insecure  map[string]bool
 	allowlist *policy.Allowlist
 	egress    *netx.Egress
+	// resumer opens large blobs on the resumable path (FR-029). Nil is
+	// the plain streaming behavior, which is also what a zero threshold
+	// or an instance without a state directory gets.
+	resumer *blobfetch.Resumer
 }
 
 // WithSourcePolicy carries everything that decides which sources a unit
@@ -139,6 +144,19 @@ func WithSourcePolicy(cfg config.Registries, allow *policy.Allowlist, eg *netx.E
 			o.insecure[h] = true
 		}
 	}
+}
+
+// WithResume gives a unit import the instance's blob resumer, so a
+// multi-gigabyte layer cut at 90 % restarts at 90 % (FR-029, R-29).
+//
+// It is a separate option from WithSourcePolicy on purpose: the policy
+// answers "may this instance reach that host, over what, and by which
+// route", and it must be threaded through every call site including the
+// ones in tests. Resumption answers "what happens when the link drops
+// halfway", it is instance-wide state, and a call site that omits it
+// degrades to today's behavior rather than losing its proxy.
+func WithResume(r *blobfetch.Resumer) Option {
+	return func(o *options) { o.resumer = r }
 }
 
 func buildOptions(opts []Option) *options {

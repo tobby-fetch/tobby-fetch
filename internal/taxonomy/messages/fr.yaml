@@ -87,6 +87,10 @@
 "TBY-REG-006.cause": "Pour {{.reference}}, l'expression {{.constraint}} ne correspond à aucun des tags disponibles : {{.detail}}."
 "TBY-REG-006.action": "Confrontez l'expression de version aux tags réellement publiés (les contraintes semver ne considèrent que les tags interprétables en semver). Tobby ne se replie jamais silencieusement sur une autre version."
 
+"TBY-REG-007.what": "La source a renvoyé une réponse partielle inexploitable pendant la reprise d'un gros transfert."
+"TBY-REG-007.cause": "Pour {{.reference}} : {{.detail}}. Le registre source, ou un cache placé devant lui, n'honore pas les plages d'octets de manière cohérente."
+"TBY-REG-007.action": "Relancez la tâche : le transfert repart de la dernière position vérifiée, ou de zéro si le contenu de la source a changé. Si cela se reproduit sur la même source, mettez transfer.resumeThreshold à 0 pour désactiver la reprise intra-blob sur cette instance, et vérifiez le proxy cache éventuel sur le chemin vers ce registre."
+
 "TBY-REG-005.what": "La référence n'existe pas sur le registre source."
 "TBY-REG-005.cause": "{{.reference}} est introuvable — nom ou tag erroné, ou supprimée en amont."
 "TBY-REG-005.action": "Vérifiez le nom du dépôt et le tag sur le registre source, puis corrigez la référence."
@@ -130,6 +134,10 @@
 "TBY-STO-001.what": "Le store local n'a pas pu être lu."
 "TBY-STO-001.cause": "{{.detail}}"
 "TBY-STO-001.action": "Vérifiez que le répertoire de stockage existe, est monté et lisible par l'instance, puis réessayez."
+
+"TBY-STO-003.what": "L'écriture du téléchargement partiel dans le répertoire d'état a échoué."
+"TBY-STO-003.cause": "{{.path}} n'a pas pu être écrit : {{.detail}} — le plus souvent un manque d'espace libre, ou des permissions que l'utilisateur de l'instance n'a pas sur la racine d'état."
+"TBY-STO-003.action": "Libérez de l'espace sur le répertoire d'état (il héberge temporairement une copie de chaque blob reprenable) ou corrigez ses permissions, puis relancez la tâche. Abaissez transfer.resumeThreshold pour rendre moins de blobs reprenables, ou mettez-le à 0 pour transférer chaque blob directement vers le store sans fichier temporaire."
 
 "TBY-STO-002.what": "L'écriture dans le store local a échoué."
 "TBY-STO-002.cause": "{{.detail}}"

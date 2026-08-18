@@ -49,6 +49,7 @@ type Config struct {
 	Registries  Registries  `yaml:"registries"`
 	UI          UI          `yaml:"ui"`
 	Import      Import      `yaml:"import"`
+	Transfer    Transfer    `yaml:"transfer"`
 	Retriever   Retriever   `yaml:"retriever"`
 	Destination Destination `yaml:"destination"`
 	Sync        Sync        `yaml:"sync"`
@@ -204,6 +205,33 @@ type FileSetServe struct {
 	// Anonymous opts this FileSet into unauthenticated reads (bare-host
 	// bootstrap) — reported like the FR-075 override, never silent.
 	Anonymous bool `yaml:"anonymous,omitempty"`
+}
+
+// Transfer bounds how blobs cross the wire, whichever operation asks for
+// them — a unit import (FR-023) and a recipe synchronization (FR-014) hit
+// the same registries over the same link, so the knob belongs to neither.
+type Transfer struct {
+	// ResumeThreshold is the declared blob size from which a download
+	// becomes resumable inside the blob itself (FR-029): the bytes are
+	// spooled in the state directory with their offset, and an
+	// interruption — a cut connection, a failed attempt, a killed
+	// process — restarts at the offset through an HTTP Range request
+	// instead of at zero. Default 64MiB.
+	//
+	// There is a threshold rather than "always" because resumability is
+	// not free: a resumable blob transits the state directory before
+	// reaching the store, so it costs its own size in temporary disk
+	// space and one extra pass of local I/O. Below the threshold a blob
+	// streams straight from the registry into the store as it always
+	// has, and re-fetching it after a cut costs less than the bookkeeping
+	// would.
+	//
+	// Zero disables the resumable path entirely and restores that
+	// streaming behavior for every blob — the escape hatch for an
+	// instance whose state directory cannot absorb the traffic. It is
+	// reported at startup rather than left to be discovered: an instance
+	// that never resumes looks exactly like one that never had to.
+	ResumeThreshold Size `yaml:"resumeThreshold"`
 }
 
 // Import configures the unit-import screens and endpoints (FR-023).
@@ -438,6 +466,7 @@ func Default() Config {
 		Server:      Server{Addr: ":8080"},
 		Auth:        Auth{SessionTTL: Duration(12 * time.Hour)},
 		Import:      Import{InspectTimeout: Duration(20 * time.Second)},
+		Transfer:    Transfer{ResumeThreshold: 64 * MiB},
 		Destination: Destination{Cookbook: DefaultCookbook},
 		Sync:        Sync{Parallelism: 3, Retries: 3, Interval: Duration(15 * time.Minute)},
 		Logging:     Logging{Level: "info"},
@@ -547,6 +576,9 @@ func (c *Config) validate(scope Scope) error {
 	}
 	if err := disjointRoots(c.State.Root, c.Storage.Root); err != nil {
 		errs = append(errs, err)
+	}
+	if c.Transfer.ResumeThreshold < 0 {
+		errs = append(errs, errors.New("transfer.resumeThreshold must not be negative: use 0 to disable the in-blob resume of FR-029"))
 	}
 	if c.Sync.Parallelism <= 0 {
 		errs = append(errs, errors.New("sync.parallelism must be positive"))
