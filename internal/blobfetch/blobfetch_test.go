@@ -758,12 +758,23 @@ func TestAWaitingFetchIsCancellable(t *testing.T) {
 	dgst, size, _ := origin.seed(t)
 	r := newResumer(t, t.TempDir())
 
+	holderCtx, stopHolder := context.WithCancel(t.Context())
 	holding := make(chan struct{})
+	holderDone := make(chan struct{})
 	go func() {
+		defer close(holderDone)
 		close(holding)
-		_, _ = r.Open(t.Context(), origin.repository(t), dgst, size, nil)
+		_, _ = r.Open(holderCtx, origin.repository(t), dgst, size, nil)
 	}()
 	<-holding
+	// The holder has to be gone before the test returns: it is still
+	// writing into the spool, and t.TempDir's cleanup races it otherwise.
+	// That is how this test failed in CI — on "directory not empty"
+	// during cleanup rather than on anything it asserts.
+	defer func() {
+		stopHolder()
+		<-holderDone
+	}()
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
