@@ -218,12 +218,18 @@ jobs:
         env:
           SOURCE_DATE_EPOCH: ${{ needs.build.outputs.source_date_epoch }}
         run: |
+          # --out-dir lives OUTSIDE --source-dir on purpose. Nested, the
+          # first architecture's output lands inside the very tree the
+          # second architecture copies into its workspace, and melange
+          # walks a directory that is changing under it — which fails as
+          # "open <transient>: no such file or directory", intermittently
+          # and only ever on the second arch.
           melange keygen
           melange build melange.yaml \
             --arch x86_64,aarch64 \
             --signing-key melange.rsa \
             --source-dir . \
-            --out-dir packages \
+            --out-dir "${RUNNER_TEMP}/packages" \
             --runner docker
       - name: Log in to ghcr.io
         run: apko login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
@@ -235,7 +241,7 @@ jobs:
           image="ghcr.io/${{ github.repository }}"
           mkdir -p image-sboms
           ref="$(apko publish apko.yaml "${image}:${{ needs.build.outputs.version }}" \
-            --repository-append packages \
+            --repository-append "${RUNNER_TEMP}/packages" \
             --keyring-append melange.rsa.pub \
             --sbom-path image-sboms)"
           echo "published: ${ref}"
