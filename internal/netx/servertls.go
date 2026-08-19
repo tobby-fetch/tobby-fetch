@@ -39,6 +39,12 @@ const (
 	selfSignedDir  = "tls"
 	selfSignedCert = "self-signed.crt"
 	selfSignedKey  = "self-signed.key"
+	// An adopted pair is written beside the generated one under its own
+	// names, never over it: the fallback's fingerprint is what an
+	// operator pinned before the replacement, and losing it would make an
+	// adoption impossible to audit after the fact.
+	adoptedCert = "server.crt"
+	adoptedKey  = "server.key"
 )
 
 // ServerCert is the certificate the listener presents (FR-082).
@@ -59,6 +65,11 @@ type ServerCert struct {
 	digest  string
 
 	certFile, keyFile string
+
+	// stateRoot is where an adopted pair is written on an instance that
+	// started on the generated fallback. Empty when the instance keeps no
+	// state, which is the one case adoption cannot serve.
+	stateRoot string
 
 	// selfSigned records which of the two sources produced the current
 	// certificate, for the startup log and the reported configuration.
@@ -82,7 +93,7 @@ type fileStamp struct {
 // operator has pinned.
 func NewServerCert(cfg config.ServerTLS, stateRoot string) (*ServerCert, error) {
 	if cfg.CertFile != "" {
-		s := &ServerCert{certFile: cfg.CertFile, keyFile: cfg.KeyFile}
+		s := &ServerCert{certFile: cfg.CertFile, keyFile: cfg.KeyFile, stateRoot: stateRoot}
 		if err := s.reload(); err != nil {
 			return nil, err
 		}
@@ -219,7 +230,7 @@ func newSelfSigned(hosts []string, stateRoot string) (*ServerCert, error) {
 	}
 	if dir != "" {
 		if pair, err := loadPersistedSelfSigned(dir); err == nil {
-			return newSelfSignedFrom(pair), nil
+			return newSelfSignedFrom(pair, stateRoot), nil
 		}
 	}
 	certPEM, keyPEM, err := generateSelfSigned(hosts)
@@ -235,15 +246,65 @@ func newSelfSigned(hosts []string, stateRoot string) (*ServerCert, error) {
 			return nil, err
 		}
 	}
-	return newSelfSignedFrom(&pair), nil
+	return newSelfSignedFrom(&pair, stateRoot), nil
 }
 
-func newSelfSignedFrom(pair *tls.Certificate) *ServerCert {
+func newSelfSignedFrom(pair *tls.Certificate, stateRoot string) *ServerCert {
 	return &ServerCert{
 		current:    pair,
 		digest:     Fingerprint(pair.Certificate[0]),
 		selfSigned: true,
+		stateRoot:  stateRoot,
 	}
+}
+
+// Destination reports where a replacement pair must be written for this
+// instance to serve it, and whether replacement is possible at all.
+//
+// On an instance configured with server.tls.certFile, that is the
+// configured path: an administrator replacing the file expects the file
+// they named to be the one that changes. On an instance running the
+// generated fallback there is no such path, so one is offered inside the
+// state directory — which is also the only place a private key may live
+// (R-16). An instance with neither a configured pair nor a state
+// directory cannot adopt anything, and says so rather than writing a key
+// somewhere it would not survive.
+func (s *ServerCert) Destination() (certPath, keyPath string, ok bool) {
+	if s.certFile != "" {
+		return s.certFile, s.keyFile, true
+	}
+	if s.stateRoot == "" {
+		return "", "", false
+	}
+	dir := filepath.Join(s.stateRoot, selfSignedDir)
+	return filepath.Join(dir, adoptedCert), filepath.Join(dir, adoptedKey), true
+}
+
+// Adopt makes the pair now at the destination paths the one this listener
+// presents, from the next handshake on.
+//
+// It is what closes the second half of FR-082 on an instance that started
+// self-signed: until the reader is pointed at a path it never re-reads
+// anything, so a replacement written beside it would sit there unused
+// while the fallback kept being served — a silent no-op where an operator
+// saw a success. Writing the files is the caller's business; this is the
+// step that makes them take effect.
+func (s *ServerCert) Adopt() error {
+	certPath, keyPath, ok := s.Destination()
+	if !ok {
+		return taxonomy.New(taxonomy.CodeServerTLS, taxonomy.Params{"source": "the state directory"}).
+			WithCause(errors.New("this instance keeps no state directory, so it has nowhere to hold a replacement pair"))
+	}
+	s.mu.Lock()
+	s.certFile, s.keyFile = certPath, keyPath
+	s.mu.Unlock()
+	if err := s.reload(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.selfSigned = false
+	s.mu.Unlock()
+	return nil
 }
 
 // loadPersistedSelfSigned reuses a previously generated pair, so that a

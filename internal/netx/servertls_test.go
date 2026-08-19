@@ -395,3 +395,88 @@ func touchLater(t *testing.T, paths ...string) {
 		}
 	}
 }
+
+// TestSelfSignedInstanceAdoptsAReplacement closes the second half of
+// FR-082 on the instance that most needs it.
+//
+// A listener started on the generated fallback has no configured path, so
+// it never re-read anything: a replacement written beside it sat there
+// unused while the fallback kept being served. That is worse than a
+// refusal — the operator saw a success and the instance had not changed.
+func TestSelfSignedInstanceAdoptsAReplacement(t *testing.T) {
+	state := t.TempDir()
+	sc, err := NewServerCert(config.ServerTLS{Enabled: true}, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sc.SelfSigned() {
+		t.Fatal("want the generated fallback as the starting point")
+	}
+	fallback := sc.Fingerprint()
+
+	certPath, keyPath, ok := sc.Destination()
+	if !ok {
+		t.Fatal("an instance with a state directory must offer somewhere to put a replacement")
+	}
+	// The generated pair keeps its own names: its fingerprint is what an
+	// operator pinned before the replacement.
+	if filepath.Base(certPath) == selfSignedCert || filepath.Base(keyPath) == selfSignedKey {
+		t.Errorf("the replacement would overwrite the generated pair (%s, %s)", certPath, keyPath)
+	}
+
+	// An administrator pair, written where the instance said to write it.
+	_, srcCert, srcKey, want := writeServerPair(t, t.TempDir())
+	copyFile(t, srcCert, certPath)
+	copyFile(t, srcKey, keyPath)
+	if err := sc.Adopt(); err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+
+	if sc.SelfSigned() {
+		t.Error("still reported as self-signed after adopting an administrator pair")
+	}
+	if sc.Fingerprint() == fallback {
+		t.Error("the fingerprint did not change: the fallback is still being served")
+	}
+	if sc.Fingerprint() != want {
+		t.Errorf("fingerprint = %s, want the adopted pair's %s", sc.Fingerprint(), want)
+	}
+	// What the listener hands a client is the assertion that counts.
+	served, err := sc.TLSConfig().GetCertificate(&tls.ClientHelloInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Fingerprint(served.Certificate[0]); got != sc.Fingerprint() {
+		t.Errorf("the listener serves %s, the screen reports %s", got, sc.Fingerprint())
+	}
+}
+
+// TestAdoptRefusesWithoutAStateDirectory: nowhere to hold a private key
+// means no adoption, said rather than faked (R-16).
+func TestAdoptRefusesWithoutAStateDirectory(t *testing.T) {
+	sc, err := NewServerCert(config.ServerTLS{Enabled: true}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := sc.Destination(); ok {
+		t.Error("offered a destination with no state directory")
+	}
+	if err := sc.Adopt(); err == nil {
+		t.Error("adopted a pair with nowhere to keep it")
+	}
+}
+
+// copyFile puts a fixture file where the instance asked for it.
+func copyFile(t *testing.T, src, dst string) {
+	t.Helper()
+	raw, err := os.ReadFile(src) //nolint:gosec // G304: both paths come from t.TempDir and the instance itself
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -86,16 +86,38 @@ func (u *UI) adminNetwork(w http.ResponseWriter, r *http.Request) {
 	u.render.Page(w, r, "admin-network", d)
 }
 
+// certDestination reports where a replacement pair goes and whether this
+// instance can take one at all.
+//
+// The question is not "is a certificate configured" but "is there a path
+// this listener will read back", and those differ precisely on the
+// instance running the generated fallback — the case the screen used to
+// refuse. A listener over plain HTTP, or one with nowhere to keep a
+// private key, still cannot.
+func (u *UI) certDestination() (certPath, keyPath string, ok bool) {
+	if u.serverCert == nil {
+		return "", "", false
+	}
+	return u.serverCert.Destination()
+}
+
+// errNoCertDestination refuses a replacement an instance could not serve,
+// rather than writing a private key somewhere it would not be read.
+var errNoCertDestination = taxonomy.New(taxonomy.CodeServerCertReplace, taxonomy.Params{
+	"detail": "this instance keeps no state directory and has no configured certificate path, so it has nowhere to hold a replacement pair",
+})
+
 // networkScreenData snapshots the instance's network edges. A certificate
 // that cannot be read is reported as an error over an otherwise complete
 // screen: the outbound posture is still worth showing.
 func (u *UI) networkScreenData() (*networkData, *taxonomy.Error) {
+	certPath, keyPath, replaceable := u.certDestination()
 	d := &networkData{
 		Serving:     u.serverCert != nil,
 		Egress:      tlsadmin.DescribeEgress(u.egress),
-		Replaceable: u.serverCert != nil && u.serverCertFile != "" && u.serverKeyFile != "",
-		CertFile:    u.serverCertFile,
-		KeyFile:     u.serverKeyFile,
+		Replaceable: replaceable,
+		CertFile:    certPath,
+		KeyFile:     keyPath,
 	}
 	cert, err := tlsadmin.Describe(u.serverCert)
 	if err != nil {
@@ -137,12 +159,25 @@ func (u *UI) adminNetworkCertificate(w http.ResponseWriter, r *http.Request) {
 	id, _ := auth.IdentityFrom(r.Context())
 	certPEM, keyPEM, err := readCertPair(r)
 	if err != nil {
-		u.networkRefusal(w, r, id.Name, "", err)
+		u.networkRefusal(w, r, id.Name, err)
 		return
 	}
-	newCert, err := tlsadmin.Replace(u.serverCertFile, u.serverKeyFile, certPEM, keyPEM, u.now())
+	certPath, keyPath, ok := u.certDestination()
+	if !ok {
+		u.networkRefusal(w, r, id.Name, errNoCertDestination)
+		return
+	}
+	newCert, err := tlsadmin.Replace(certPath, keyPath, certPEM, keyPEM, u.now())
 	if err != nil {
-		u.networkRefusal(w, r, id.Name, "", err)
+		u.networkRefusal(w, r, id.Name, err)
+		return
+	}
+	// Pointing the listener at the pair is a separate step from writing
+	// it, and skipping it is how "replaced" becomes a lie on an instance
+	// that started self-signed: the files would be on disk and the
+	// fallback still served.
+	if err := u.serverCert.Adopt(); err != nil {
+		u.networkRefusal(w, r, id.Name, err)
 		return
 	}
 	// The target is the fingerprint now served: the one identifier that
@@ -168,7 +203,15 @@ func (u *UI) adminNetworkCertificate(w http.ResponseWriter, r *http.Request) {
 // networkRefusal audits the refusal and re-renders the screen with the
 // taxonomized block. Nothing was written, so the screen still describes a
 // serving instance.
-func (u *UI) networkRefusal(w http.ResponseWriter, r *http.Request, actor, target string, err error) {
+//
+// The target is the certificate STILL being served. On a refusal there is
+// no new fingerprint to name, and an empty target would leave the trail
+// unable to say which listener the attempt was aimed at.
+func (u *UI) networkRefusal(w http.ResponseWriter, r *http.Request, actor string, err error) {
+	target := ""
+	if u.serverCert != nil {
+		target = u.serverCert.Fingerprint()
+	}
 	audit.Log(r.Context(), u.logger, &audit.Event{
 		Actor: actor, Action: audit.ActionServerCertReplace, Target: target,
 		Outcome: audit.OutcomeFailure, Origin: auth.ClientOrigin(r),

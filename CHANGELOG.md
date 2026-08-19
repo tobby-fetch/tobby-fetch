@@ -8,6 +8,25 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-18
+
+### Fixed
+
+- An instance serving the generated fallback certificate could not adopt a
+  replacement from the administration screen (FR-082). The certificate
+  reader only ever re-read a CONFIGURED path, so an instance that started
+  self-signed had none and would have kept serving the fallback while the
+  operator saw a success. It refused instead, which was the honest half of
+  the answer and not the useful one.
+
+  It now offers a destination inside the state directory — the only place
+  a private key may live (R-16) — beside the generated pair rather than
+  over it, since the fallback's fingerprint is what an operator pinned
+  before the replacement. Adopting is a separate step from writing,
+  because skipping it is exactly how "replaced" becomes a lie. An instance
+  with neither a configured path nor a state directory still refuses, and
+  names the reason.
+
 ## [0.4.0] - 2026-08-18
 
 Milestone 4 — use case one: Tobby as a long-lived service between two
@@ -373,7 +392,8 @@ import, track, browse, pull) behind authentication that is on by default.
 - Release chain groundwork for SLSA Build L3 provenance and signed
   artifacts.
 
-[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.1.0...v0.2.0

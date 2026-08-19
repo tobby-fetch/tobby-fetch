@@ -64,6 +64,7 @@ type fileCert struct {
 	certFile   string
 	keyFile    string
 	selfSigned bool
+	adopted    bool
 }
 
 func (f *fileCert) load() *tls.Certificate {
@@ -83,7 +84,22 @@ func (f *fileCert) Fingerprint() string {
 	return strings.ToUpper(hex.EncodeToString(sum[:]))
 }
 func (f *fileCert) SelfSigned() bool { return f.selfSigned }
-func (f *fileCert) Source() string   { return f.certFile }
+func (f *fileCert) Destination() (certPath, keyPath string, ok bool) {
+	if f.certFile == "" {
+		return "", "", false
+	}
+	return f.certFile, f.keyFile, true
+}
+
+// Adopt records that the listener was pointed at the pair. The real
+// implementation re-reads it; this stub reads on every call anyway, so
+// the assertion that matters is simply that the handler asked.
+func (f *fileCert) Adopt() error {
+	f.adopted = true
+	f.selfSigned = false
+	return nil
+}
+func (f *fileCert) Source() string { return f.certFile }
 func (f *fileCert) TLSConfig() *tls.Config {
 	return &tls.Config{ //nolint:gosec // G402: a stub for the reload accessor; no handshake happens in these tests
 		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
@@ -168,10 +184,8 @@ func TestNetworkScreenReportsTheServedCertificate(t *testing.T) {
 	certPEM, keyPEM := certPair(t, "tobby.example.com", t0.Add(365*24*time.Hour))
 	certFile, keyFile := writePair(t, certPEM, keyPEM)
 	u := newTestUIWithOptions(t, &Options{
-		ServerCert:     &fileCert{certFile: certFile, keyFile: keyFile},
-		ServerCertFile: certFile,
-		ServerKeyFile:  keyFile,
-		Egress:         stubEgress{proxy: "http://proxy.example.com:3128", auth: true, roots: 2},
+		ServerCert: &fileCert{certFile: certFile, keyFile: keyFile},
+		Egress:     stubEgress{proxy: "http://proxy.example.com:3128", auth: true, roots: 2},
 	}, nil)
 	u.Now = func() time.Time { return t0 }
 	mux := mount(u)
@@ -219,13 +233,30 @@ func TestNetworkScreenCallsOutTheSelfSignedPosture(t *testing.T) {
 	if !strings.Contains(body, "self-signed") {
 		t.Error("a self-signed certificate is not called out as one")
 	}
-	// No configured pair: the replacement control is inert, with the two
-	// settings to configure named.
-	if strings.Contains(body, `action="/admin/network/certificate"`) {
-		t.Error("the replacement form is live on an instance with no configured pair")
+	// And it can be replaced from here. FR-082 asks for replacement
+	// through configuration AND the interface, and the instance that most
+	// needs the second is precisely this one: it is serving a generated
+	// certificate and has no configured path to swap a file at.
+	if !strings.Contains(body, `action="/admin/network/certificate"`) {
+		t.Error("the replacement form is inert on the very instance that most needs it")
 	}
-	if !strings.Contains(body, "server.tls.certFile") {
-		t.Error("the inert state does not name the setting that would enable replacement")
+}
+
+// TestNetworkScreenRefusesWhenThereIsNowhereToPutAKey: an instance with
+// neither a configured pair nor a state directory has nowhere a private
+// key may live (R-16), so the form stays inert rather than accepting a
+// replacement it could not serve.
+func TestNetworkScreenRefusesWhenThereIsNowhereToPutAKey(t *testing.T) {
+	u := newTestUIWithOptions(t, &Options{
+		ServerCert: &fileCert{selfSigned: true},
+	}, nil)
+	u.Now = func() time.Time { return t0 }
+	mux := mount(u)
+	c := login(t, mux, "alexis", "pw-admin")
+
+	body := get(t, mux, c, "/admin/network", nil).Body.String()
+	if strings.Contains(body, `action="/admin/network/certificate"`) {
+		t.Error("the form is live on an instance with nowhere to hold a key")
 	}
 }
 
@@ -275,9 +306,7 @@ func TestNetworkCertificateReplaced(t *testing.T) {
 	certFile, keyFile := writePair(t, oldCert, oldKey)
 	logs := &strings.Builder{}
 	u := newTestUIWithOptions(t, &Options{
-		ServerCert:     &fileCert{certFile: certFile, keyFile: keyFile},
-		ServerCertFile: certFile,
-		ServerKeyFile:  keyFile,
+		ServerCert: &fileCert{certFile: certFile, keyFile: keyFile},
 	}, logs)
 	u.Now = func() time.Time { return t0 }
 	mux := mount(u)
@@ -321,9 +350,7 @@ func TestNetworkCertificateRefusalKeepsServing(t *testing.T) {
 	certFile, keyFile := writePair(t, goodCert, goodKey)
 	logs := &strings.Builder{}
 	u := newTestUIWithOptions(t, &Options{
-		ServerCert:     &fileCert{certFile: certFile, keyFile: keyFile},
-		ServerCertFile: certFile,
-		ServerKeyFile:  keyFile,
+		ServerCert: &fileCert{certFile: certFile, keyFile: keyFile},
 	}, logs)
 	u.Now = func() time.Time { return t0 }
 	mux := mount(u)
@@ -362,9 +389,7 @@ func TestNetworkCertificateRefusedWithoutFiles(t *testing.T) {
 	certPEM, keyPEM := certPair(t, "good.example.com", t0.Add(24*time.Hour))
 	certFile, keyFile := writePair(t, certPEM, keyPEM)
 	u := newTestUIWithOptions(t, &Options{
-		ServerCert:     &fileCert{certFile: certFile, keyFile: keyFile},
-		ServerCertFile: certFile,
-		ServerKeyFile:  keyFile,
+		ServerCert: &fileCert{certFile: certFile, keyFile: keyFile},
 	}, nil)
 	u.Now = func() time.Time { return t0 }
 	mux := mount(u)

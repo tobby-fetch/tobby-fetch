@@ -44,12 +44,12 @@ type UI struct {
 	// publisher backs the R-40 publication screen; nil on an instance
 	// wired without one, which renders the form inert.
 	publisher Publisher
-	// serverCert, serverCertFile and serverKeyFile back the FR-082
-	// network screen: what the listener presents, and the configured pair
-	// a replacement writes to. A nil serverCert means plain HTTP.
-	serverCert     tlsadmin.ServerCert
-	serverCertFile string
-	serverKeyFile  string
+	// serverCert backs the FR-082 network screen: what the listener
+	// presents, and — through its own Destination — where a replacement
+	// goes. Asking the certificate rather than carrying the configured
+	// paths alongside it is what lets an instance on the generated
+	// fallback accept one at all. A nil serverCert means plain HTTP.
+	serverCert tlsadmin.ServerCert
 	// egress is the outbound posture reported on the same screen
 	// (FR-080, FR-081).
 	egress tlsadmin.Egress
@@ -106,12 +106,6 @@ type Options struct {
 	// on an instance serving plain HTTP — the screen says so rather than
 	// showing an empty certificate.
 	ServerCert tlsadmin.ServerCert
-	// ServerCertFile and ServerKeyFile are the configured pair. They are
-	// the paths a UI replacement writes to, and the only paths netx
-	// re-reads: empty means the instance runs on the self-signed
-	// fallback, where there is nothing to replace from here.
-	ServerCertFile string
-	ServerKeyFile  string
 	// Egress is the instance's outbound transport, reported as posture
 	// (FR-080, FR-081). Only its printable accessors are ever called.
 	Egress tlsadmin.Egress
@@ -146,8 +140,6 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		interval:          opts.Interval,
 		publisher:         opts.Publisher,
 		serverCert:        opts.ServerCert,
-		serverCertFile:    opts.ServerCertFile,
-		serverKeyFile:     opts.ServerKeyFile,
 		egress:            opts.Egress,
 	}
 }

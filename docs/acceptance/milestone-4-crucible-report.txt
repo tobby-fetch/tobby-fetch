@@ -56,3 +56,12 @@ ok   scenario m4 complete — report: crucible-report-m4.txt
 # chart" means the chart is rendered and its configuration and security context
 # are what the instance runs. No kubelet is involved at this tier; a real
 # cluster run belongs to the RKE2 crucible node of a later milestone.
+#
+# One FR-082 gap was open when this run was made and is closed in v0.4.1: an
+# instance serving the generated fallback certificate could not adopt a
+# replacement from the administration screen, because the certificate reader
+# only ever re-read a CONFIGURED path. The screen refused rather than pretending
+# to succeed, which was the right refusal and the wrong behavior. It now offers
+# a destination inside the state directory — the only place a private key may
+# live — and points the listener at the pair once written. An instance with
+# neither a configured path nor a state directory still refuses, and says why.

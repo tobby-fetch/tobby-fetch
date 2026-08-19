@@ -57,6 +57,16 @@ type ServerCert interface {
 	// TLSConfig is the listener configuration; its GetCertificate is the
 	// only way to reach the pair currently served.
 	TLSConfig() *tls.Config
+	// Destination reports where a replacement pair must be written for
+	// this listener to serve it, and whether replacement is possible at
+	// all. An instance running the generated fallback has no configured
+	// path, so it offers one in its state directory; an instance with no
+	// state directory can offer nothing.
+	Destination() (certPath, keyPath string, ok bool)
+	// Adopt makes the pair now at those paths the one presented, from the
+	// next handshake on. Without it a replacement written beside a
+	// listener that never re-reads anything would be a silent no-op.
+	Adopt() error
 }
 
 // Egress is the outbound posture. *netx.Egress satisfies it. Every method

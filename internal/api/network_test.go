@@ -67,6 +67,8 @@ func apiPair(t *testing.T, cn string, notAfter time.Time) (certPEM, keyPEM []byt
 // diskCert is a tlsadmin.ServerCert over a pair on disk, reloaded on every
 // read — the netx behaviour, reduced to what these tests observe.
 type diskCert struct {
+	destCert, destKey string
+	adopted           bool
 	certFile, keyFile string
 	selfSigned        bool
 }
@@ -372,3 +374,8 @@ func TestPublishAPIWithoutAPublisher(t *testing.T) {
 		t.Errorf("= %d, want 500", w.Code)
 	}
 }
+
+func (d *diskCert) Destination() (certPath, keyPath string, ok bool) {
+	return d.destCert, d.destKey, d.destCert != ""
+}
+func (d *diskCert) Adopt() error { d.adopted = true; return nil }

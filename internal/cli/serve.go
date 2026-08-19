@@ -381,8 +381,6 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Interval:           interval,
 		Publisher:          publisher,
 		ServerCert:         serverCert,
-		ServerCertFile:     cfg.Server.TLS.CertFile,
-		ServerKeyFile:      cfg.Server.TLS.KeyFile,
 		Egress:             egress,
 	})
 	webUI.Mount(srv.Mux())

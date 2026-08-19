@@ -60,10 +60,12 @@ func pair(t *testing.T, cn string, notAfter time.Time) (certPEM, keyPEM []byte) 
 // fakeCert is a ServerCert over a fixed pair — the seam that lets these
 // tests run without a listener.
 type fakeCert struct {
-	pair       *tls.Certificate
-	err        error
-	selfSigned bool
-	source     string
+	destCert, destKey string
+	adopted           bool
+	pair              *tls.Certificate
+	err               error
+	selfSigned        bool
+	source            string
 }
 
 func (f *fakeCert) Fingerprint() string { return "AA:BB" }
@@ -314,3 +316,8 @@ func errAs(t *testing.T, err error) *taxonomy.Error {
 	}
 	return te
 }
+
+func (f *fakeCert) Destination() (certPath, keyPath string, ok bool) {
+	return f.destCert, f.destKey, f.destCert != ""
+}
+func (f *fakeCert) Adopt() error { f.adopted = true; return nil }
