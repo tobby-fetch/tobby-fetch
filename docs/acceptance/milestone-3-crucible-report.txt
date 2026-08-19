@@ -1,9 +1,9 @@
-ok   scenario m3 started 2026-08-18T14:36:22Z
+ok   scenario m3 started 2026-08-19T22:28:45Z
 ok   cosign available (  ______   ______        _______. __    _______ .__   __.)
 ok   built tobby for linux/amd64
 ok   instances launched (source + node + downstream)
-ok   upstream registry serving (10.180.10.127:8080)
-ok   fixtures seeded (image sha256:a3ac0afb7e062e223146e002e14abb45a5e8bc99d6e3bb1dabe45ba2c82e873e, fileset sha256:d31fbf61ced08e0e149de8c70431f719d20dffa8f1481e6c7eaa157c1ed3053e), key pairs generated
+ok   upstream registry serving (10.180.10.246:8080)
+ok   fixtures seeded (image sha256:478c49331c0df121c0e36ced842a1324713a0c499692ed0f2846922bb453ff7e, fileset sha256:d31fbf61ced08e0e149de8c70431f719d20dffa8f1481e6c7eaa157c1ed3053e), key pairs generated
 ok   cooked recipe signed (trusted 2.0.0, foreign-signed 2.0.1)
 ok   secure node configured (trust root, retriever, fileset) and serving
 ok   signed recipe synchronized: pinned digests intact, sparse index (2/3), signature copied
