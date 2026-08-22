@@ -265,9 +265,10 @@ func (s *spool) actual() string {
 	return fmt.Sprintf("%d bytes that do not hash to it", s.meta.Offset)
 }
 
-// reader hands the verified bytes to the store and takes the spool with
-// it: closing the reader removes the partial file and its sidecar, so a
-// completed transfer leaves nothing behind in the state directory.
+// reader hands the verified bytes to the store: closing the reader after
+// a COMPLETE read removes the partial file and its sidecar, so a
+// completed transfer leaves nothing behind in the state directory; a
+// reader abandoned early keeps them (see Close).
 func (s *spool) reader(release func()) (io.ReadCloser, error) {
 	if _, err := s.f.Seek(0, io.SeekStart); err != nil {
 		return nil, spoolErr(s.partPath, err)
@@ -278,15 +279,46 @@ func (s *spool) reader(release func()) (io.ReadCloser, error) {
 type spoolReader struct {
 	s       *spool
 	release func()
+	// drained records that the consumer read through EOF — the signal
+	// that separates "the store write completed its copy" from "the
+	// store write failed mid-blob and abandoned the reader".
+	drained bool
 }
 
-func (r *spoolReader) Read(p []byte) (int, error) { return r.s.f.Read(p) }
+func (r *spoolReader) Read(p []byte) (int, error) {
+	n, err := r.s.f.Read(p)
+	if errors.Is(err, io.EOF) {
+		r.drained = true
+	}
+	return n, err
+}
 
-// Close removes the spool and only then releases the per-digest lock: a
-// caller waiting on the same blob must never observe the file between
-// "another reader still has it" and "it is gone".
+// Close finishes the hand-off, and only then releases the per-digest
+// lock: a caller waiting on the same blob must never observe the file
+// between "another reader still has it" and "it is gone".
+//
+// The spool is destroyed only when the consumer drained it (v0.4.2 fix):
+// the store's io.Copy reads through EOF exactly when its own writes all
+// succeeded, while a write failure — disk full, store fault — abandons
+// the reader mid-blob. These VERIFIED bytes used to be discarded on that
+// failure, which forced a full re-download for a store-side problem; in
+// the constrained zones this tool exists for, re-downloadable never
+// means cheap (FR-029 is the same argument one layer down). Kept, the
+// spool makes the retry free: the next Open finds it complete, verifies
+// it, and offers it again without one network byte.
+//
+// The one corner this signal cannot see: a store that drains the reader
+// and THEN fails to commit (a rename error) still costs a re-download.
+// Accepted — telling those apart needs an explicit keep/discard contract
+// on every call site, for a failure mode where the state disk is usually
+// in trouble too.
 func (r *spoolReader) Close() error {
-	err := r.s.discard()
+	var err error
+	if r.drained {
+		err = r.s.discard()
+	} else {
+		err = r.s.close()
+	}
 	if r.release != nil {
 		r.release()
 		r.release = nil

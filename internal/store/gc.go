@@ -34,19 +34,26 @@ import (
 // covers the commit-to-reference window.
 //
 // Consequence of the grace period, reported rather than hidden: blobs
-// unlinked while still younger than sweepGrace survive this run and are
-// reclaimed by the next one. Every removal logs how many it deferred, so
-// disk that has not come back is visible instead of mysterious; the
-// on-demand integrity-and-cleanup command of R-31 (milestone 6) gives the
-// operator a way to reclaim them without deleting something else.
+// and repository links unlinked while still younger than sweepGrace
+// survive this run and are reclaimed by the next one. Every removal logs
+// how many it deferred, so disk that has not come back is visible
+// instead of mysterious; the on-demand integrity-and-cleanup command of
+// R-31 (milestone 6) gives the operator a way to reclaim them without
+// deleting something else.
 
-// sweepGrace is the FR-044 minimum age of an unreferenced blob before the
-// sweep may reclaim it: freshly committed blobs whose manifest is still on
-// its way are never collected. Variable for white-box tests.
+// sweepGrace is the FR-044 minimum age of unreferenced content — blob
+// data AND repository links (B-017) — before the sweep may reclaim it:
+// freshly committed pieces whose manifest is still on its way are never
+// collected. Variable for white-box tests.
 var sweepGrace = 5 * time.Minute
 
-// sweepResult counts one sweep: blobs reclaimed, and blobs left behind
-// only because the grace period still protects them.
+// sweepResult counts one sweep in pieces of content — blob data files
+// and repository links alike (B-017: both sides of a reference age
+// under the same grace): pieces reclaimed, and pieces left behind only
+// because the grace period still protects them. Counting both kinds
+// keeps the ledger symmetric: what one sweep defers, a later sweep
+// removes, and the two numbers must be comparable for that story to be
+// checkable.
 type sweepResult struct {
 	Removed  int
 	Deferred int
@@ -79,8 +86,8 @@ func (s *Store) DeleteRepository(ctx context.Context, name string, logger *slog.
 	}
 	logger.LogAttrs(ctx, slog.LevelInfo, "repository removed",
 		slog.String("repository", name),
-		slog.Int("blobs_swept", res.Removed),
-		slog.Int("blobs_deferred", res.Deferred))
+		slog.Int("content_swept", res.Removed),
+		slog.Int("content_deferred", res.Deferred))
 	return nil
 }
 
@@ -124,8 +131,8 @@ func (s *Store) Sweep(ctx context.Context, logger *slog.Logger) error {
 		return err
 	}
 	logger.LogAttrs(ctx, slog.LevelInfo, "store swept",
-		slog.Int("blobs_swept", res.Removed),
-		slog.Int("blobs_deferred", res.Deferred))
+		slog.Int("content_swept", res.Removed),
+		slog.Int("content_deferred", res.Deferred))
 	return nil
 }
 
@@ -136,6 +143,12 @@ func (s *Store) sweep(ctx context.Context) (sweepResult, error) {
 	if err != nil {
 		return res, err
 	}
+
+	// One cutoff for the whole sweep: blobs and repository links age
+	// against the same instant (B-017 — the grace protects the interstice
+	// between a link being laid and the manifest that makes it reachable
+	// being tagged, on both sides of the reference).
+	cutoff := time.Now().Add(-sweepGrace)
 
 	// Mark: per-repository reachable digests (manifest revisions and layer
 	// links are repository-scoped), and the global blob set.
@@ -148,9 +161,12 @@ func (s *Store) sweep(ctx context.Context) (sweepResult, error) {
 		for d := range reach {
 			global[d] = true
 		}
-		if err := s.pruneRepositoryLinks(name, reach); err != nil {
+		pruned, err := s.pruneRepositoryLinks(name, reach, cutoff)
+		if err != nil {
 			return res, err
 		}
+		res.Removed += pruned.Removed
+		res.Deferred += pruned.Deferred
 	}
 
 	// Sweep: unreferenced blobs older than the grace period.
@@ -162,7 +178,6 @@ func (s *Store) sweep(ctx context.Context) (sweepResult, error) {
 	if err != nil {
 		return res, fmt.Errorf("store: reading blob directory: %w", err)
 	}
-	cutoff := time.Now().Add(-sweepGrace)
 	for _, prefix := range entries {
 		if !prefix.IsDir() {
 			continue
@@ -254,8 +269,20 @@ func (s *Store) markManifest(ctx context.Context, ms distribution.ManifestServic
 }
 
 // pruneRepositoryLinks removes manifest revisions and layer links of one
-// repository that are no longer reachable from its tags.
-func (s *Store) pruneRepositoryLinks(name string, reach map[digest.Digest]bool) error {
+// repository that are no longer reachable from its tags — except links
+// younger than the grace cutoff, which are deferred to a later sweep and
+// counted, like deferred blobs, instead of hidden.
+//
+// The grace on links mirrors the grace on blob data and covers the same
+// window from the other side (B-017): the direct-to-storage import
+// commits blobs — links first — before the manifest that will make them
+// reachable is tagged. A removal sweeping an UNRELATED repository during
+// that window used to collect the fresh links unconditionally (only
+// blob data enjoyed the grace), leaving the in-flight transfer's
+// repository unable to serve content it had just committed. Age is
+// judged on the link file itself: the library writes it at commit time,
+// so its mtime is the instant the grace protects.
+func (s *Store) pruneRepositoryLinks(name string, reach map[digest.Digest]bool, cutoff time.Time) (res sweepResult, err error) {
 	base := filepath.Join(s.root, "docker", "registry", "v2", "repositories", filepath.FromSlash(name))
 	for _, sub := range []string{
 		filepath.Join("_manifests", "revisions", "sha256"),
@@ -267,17 +294,39 @@ func (s *Store) pruneRepositoryLinks(name string, reach map[digest.Digest]bool) 
 			continue
 		}
 		if err != nil {
-			return fmt.Errorf("store: reading %s: %w", dir, err)
+			return res, fmt.Errorf("store: reading %s: %w", dir, err)
 		}
 		for _, e := range entries {
 			d := digest.NewDigestFromEncoded(digest.SHA256, e.Name())
 			if reach[d] {
 				continue
 			}
-			if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
-				return fmt.Errorf("store: pruning link %s of %s: %w", d, name, err)
+			linkDir := filepath.Join(dir, e.Name())
+			if linkFresh(linkDir, cutoff) {
+				res.Deferred++
+				continue
 			}
+			if err := os.RemoveAll(linkDir); err != nil {
+				return res, fmt.Errorf("store: pruning link %s of %s: %w", d, name, err)
+			}
+			res.Removed++
 		}
 	}
-	return nil
+	return res, nil
+}
+
+// linkFresh reports whether the link under dir was laid after the
+// cutoff. The "link" file is what the library writes at commit; when it
+// is missing, the directory's own mtime answers — and an unreadable
+// entry counts as fresh, because deferring a stray directory to the
+// next sweep is harmless while deleting an in-flight one is not.
+func linkFresh(dir string, cutoff time.Time) bool {
+	info, err := os.Stat(filepath.Join(dir, "link"))
+	if err != nil {
+		info, err = os.Stat(dir)
+		if err != nil {
+			return true
+		}
+	}
+	return info.ModTime().After(cutoff)
 }

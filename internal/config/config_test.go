@@ -44,6 +44,9 @@ func TestDefaultsAlone(t *testing.T) {
 	if time.Duration(cfg.Import.InspectTimeout) != 20*time.Second {
 		t.Errorf("default import.inspectTimeout = %v, want 20s", cfg.Import.InspectTimeout)
 	}
+	if cfg.Tasks.KeepFinished != 500 {
+		t.Errorf("default tasks.keepFinished = %d, want 500 (finished-task retention, 2026-08 audit)", cfg.Tasks.KeepFinished)
+	}
 }
 
 // TestLayerPrecedence exercises the FR-003 acceptance criterion: for a
@@ -104,6 +107,8 @@ func TestLoadEveryEnvVariable(t *testing.T) {
 	t.Setenv(EnvStorageBasePrefix, "zone-b")
 	t.Setenv(EnvSyncParallelism, "8")
 	t.Setenv(EnvSyncRetries, "0")
+	t.Setenv(EnvTasksKeepFinished, "1000")
+	t.Setenv(EnvServerSecureCookies, "true")
 
 	cfg, err := Load(path, true)
 	if err != nil {
@@ -120,6 +125,9 @@ func TestLoadEveryEnvVariable(t *testing.T) {
 	}
 	if cfg.Server.Addr != ":9090" {
 		t.Errorf("server.addr = %q, want :9090", cfg.Server.Addr)
+	}
+	if !cfg.Server.SecureCookies {
+		t.Error("server.secureCookies = false, want true (settable by environment for proxy-terminated TLS)")
 	}
 	if !cfg.Auth.Disabled {
 		t.Error("auth.disabled = false, want true (FR-075 opt-out is settable by environment, never by flag)")
@@ -156,6 +164,9 @@ func TestLoadEveryEnvVariable(t *testing.T) {
 	}
 	if cfg.Sync.Retries != 0 {
 		t.Errorf("sync.retries = %d, want 0 (zero retries is a legitimate setting)", cfg.Sync.Retries)
+	}
+	if cfg.Tasks.KeepFinished != 1000 {
+		t.Errorf("tasks.keepFinished = %d, want 1000", cfg.Tasks.KeepFinished)
 	}
 }
 
@@ -587,6 +598,27 @@ func TestValidateSyncBounds(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := validating(func(c *Config) {
 				c.Sync = Sync{Parallelism: tc.parallelism, Retries: tc.retries}
+			})
+			checkErr(t, err, tc.want)
+		})
+	}
+}
+
+// TestValidateTasksRetention: the finished-task retention refuses a
+// negative count and accepts 0 as "keep the whole history".
+func TestValidateTasksRetention(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		keep int
+		want []string
+	}{
+		{"default", 500, nil},
+		{"unbounded history is legitimate", 0, nil},
+		{"negative retention", -1, []string{"tasks.keepFinished must not be negative"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validating(func(c *Config) {
+				c.Tasks = Tasks{KeepFinished: tc.keep}
 			})
 			checkErr(t, err, tc.want)
 		})

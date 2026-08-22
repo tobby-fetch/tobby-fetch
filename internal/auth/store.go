@@ -39,6 +39,62 @@ type Store struct {
 
 	mu   sync.Mutex
 	data fileSchema
+	// verified is the short-lived cache of successful password checks
+	// (v0.4.2 hardening; see VerifyPassword). Guarded by mu.
+	verified []verifiedCred
+}
+
+// Success caching for password verification.
+//
+// WHY: the machine surfaces are stateless — docker, helm, oras and any
+// API client re-present the same Basic credential on EVERY request, and
+// a single `docker pull` of a multi-layer image is dozens of them. Each
+// used to cost a full argon2id computation (64 MiB, tens of ms): the
+// legitimate client was paying the price designed for the attacker. The
+// cache remembers a successful verification for a short TTL, keyed by
+// SHA-256(account NUL password) — the password itself is never stored
+// (NFR-015), and a preimage of the digest is exactly the credential, so
+// the cache leaks nothing the accounts file does not.
+//
+// What a hit returns is looked up FRESH from the account table: the
+// cache answers only "this exact pair verified moments ago", never what
+// the account's role is — so a role change applies immediately, without
+// invalidation. Password changes and account removals DO invalidate
+// (SetPassword, DeleteAccount): a replaced password must stop working
+// the moment the change lands, TTL or not.
+const (
+	// verifyCacheTTL is deliberately short: one minute converts "one
+	// argon2id per request" into "one per client per minute" — the whole
+	// win — while keeping the window in which a revoked password still
+	// answers (already closed by explicit invalidation) as the only
+	// residual exposure for out-of-band edits of the accounts file.
+	verifyCacheTTL = time.Minute
+	// verifyCacheCap bounds the cache. It only fills through SUCCESSFUL
+	// verifications, so unlike the failure tables it is not
+	// attacker-growable, but a bound costs nothing and removes the
+	// reasoning burden.
+	verifyCacheCap = 1024
+)
+
+// verifiedCred is one cached success: the credential digest, the account
+// it verified for, and when the entry lapses.
+type verifiedCred struct {
+	sum     [sha256.Size]byte
+	name    string
+	expires time.Time
+}
+
+// credSum fingerprints an account/password pair. The NUL separator makes
+// the encoding injective ("ab"+"c" and "a"+"bc" must not collide);
+// account names cannot contain NUL.
+func credSum(name, password string) [sha256.Size]byte {
+	h := sha256.New()
+	h.Write([]byte(name))
+	h.Write([]byte{0})
+	h.Write([]byte(password))
+	var sum [sha256.Size]byte
+	copy(sum[:], h.Sum(nil))
+	return sum
 }
 
 // ErrNotFound reports an unknown account or token name.
@@ -196,6 +252,9 @@ func (s *Store) DeleteAccount(name string) error {
 			return fmt.Errorf("auth: account %q: %w", name, ErrLastAdmin)
 		}
 		s.data.Accounts = append(s.data.Accounts[:i], s.data.Accounts[i+1:]...)
+		// A removed account's cached verifications must die with it
+		// (v0.4.2: the success cache above must not outlive the account).
+		s.forgetVerifiedLocked(name)
 		return s.save()
 	}
 	return fmt.Errorf("auth: account %q: %w", name, ErrNotFound)
@@ -237,6 +296,11 @@ func (s *Store) SetPassword(name, password string, _ time.Time) error {
 	for i := range s.data.Accounts {
 		if s.data.Accounts[i].Name == name {
 			s.data.Accounts[i].Hash = hash
+			// The replaced password must stop verifying NOW, not at the
+			// cache TTL (v0.4.2): sessions opened with it are already
+			// closed by the caller (Sessions.DeleteOthers), and a cached
+			// machine-surface success must not outlive them.
+			s.forgetVerifiedLocked(name)
 			return s.save()
 		}
 	}
@@ -245,9 +309,21 @@ func (s *Store) SetPassword(name, password string, _ time.Time) error {
 
 // VerifyPassword checks name/password. On success it records the login
 // time (best effort) and returns the account.
+//
+// A pair that verified within verifyCacheTTL answers from the cache
+// without recomputing argon2id (see the cache commentary above): the
+// stateless machine surfaces re-present the credential per request, and
+// the hash cost belongs to attackers, not to a `docker pull`. On a
+// cache hit the LastLogin timestamp is not rewritten — within the TTL
+// it is at most a minute stale, and skipping the disk write per request
+// is part of the point.
 func (s *Store) VerifyPassword(name, password string, now time.Time) (Account, bool) {
+	sum := credSum(name, password)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if acct, ok := s.cachedLocked(sum, name, now); ok {
+		return acct, true
+	}
 	for i := range s.data.Accounts {
 		if s.data.Accounts[i].Name != name {
 			continue
@@ -257,12 +333,72 @@ func (s *Store) VerifyPassword(name, password string, now time.Time) (Account, b
 		}
 		s.data.Accounts[i].LastLogin = now.UTC()
 		_ = s.save() // best effort: a failed timestamp write must not fail the login
+		s.rememberLocked(sum, name, now)
 		return s.data.Accounts[i], true
 	}
 	// Unknown account: burn comparable time so name probing reads the same
 	// as a wrong password (NFR-015).
 	verifyPassword(password, burnHash)
 	return Account{}, false
+}
+
+// cachedLocked answers a verification from the cache. The scan compares
+// digests with subtle.ConstantTimeCompare — same discipline as
+// VerifyToken: nothing on this path may leak through timing how close a
+// guess came (NFR-015). The account is re-read from the live table so a
+// hit always carries the current role. Callers hold s.mu.
+func (s *Store) cachedLocked(sum [sha256.Size]byte, name string, now time.Time) (Account, bool) {
+	for i := range s.verified {
+		e := &s.verified[i]
+		if now.After(e.expires) {
+			continue
+		}
+		if subtle.ConstantTimeCompare(e.sum[:], sum[:]) != 1 {
+			continue
+		}
+		if e.name != name {
+			continue // digest-collision paranoia: the digest already binds the name
+		}
+		for j := range s.data.Accounts {
+			if s.data.Accounts[j].Name == e.name {
+				return s.data.Accounts[j], true
+			}
+		}
+		return Account{}, false // account vanished; the entry is inert and will expire
+	}
+	return Account{}, false
+}
+
+// rememberLocked records a successful verification, sweeping expired
+// entries and enforcing the cap. Callers hold s.mu.
+func (s *Store) rememberLocked(sum [sha256.Size]byte, name string, now time.Time) {
+	live := s.verified[:0]
+	for _, e := range s.verified {
+		if !now.After(e.expires) {
+			live = append(live, e)
+		}
+	}
+	s.verified = live
+	if len(s.verified) >= verifyCacheCap {
+		// Still full after the sweep: drop everything rather than pick
+		// victims — the cache is a cost optimization, not state, and the
+		// worst case of a reset is one argon2id per live client.
+		s.verified = s.verified[:0]
+	}
+	s.verified = append(s.verified, verifiedCred{sum: sum, name: name, expires: now.Add(verifyCacheTTL)})
+}
+
+// forgetVerifiedLocked drops every cached verification of name — called
+// on password change and account removal, where waiting out the TTL
+// would let a replaced credential keep answering. Callers hold s.mu.
+func (s *Store) forgetVerifiedLocked(name string) {
+	live := s.verified[:0]
+	for _, e := range s.verified {
+		if e.name != name {
+			live = append(live, e)
+		}
+	}
+	s.verified = live
 }
 
 // burnHash is a throwaway argon2id hash used to equalize timing for

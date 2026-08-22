@@ -348,6 +348,56 @@ func TestTasksEndpoints(t *testing.T) {
 	}
 }
 
+// TestTasksListPagination: GET /api/v1/tasks paginates exactly like
+// /api/v1/content (FR-061) — same page parameter, same 25-entry pages,
+// same page/totalPages/total metadata — and an out-of-range page answers
+// an empty window, never an error.
+func TestTasksListPagination(t *testing.T) {
+	mux, q, _ := newTasksAPI(t)
+	for range 27 { // worker not started: everything stays pending
+		if _, err := q.Create(tasks.TypeUnitImport, "docker.io/library/redis:7.2", "op", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var resp struct {
+		Tasks      []struct{ ID string }
+		Page       int `json:"page"`
+		TotalPages int `json:"totalPages"`
+		Total      int `json:"total"`
+	}
+	w := call(t, mux, http.MethodGet, "/api/v1/tasks", "lecteur", "pw-view", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("list = %d: %s", w.Code, w.Body.String())
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Tasks) != 25 || resp.Page != 1 || resp.TotalPages != 2 || resp.Total != 27 {
+		t.Errorf("page 1 = %d tasks, page=%d totalPages=%d total=%d",
+			len(resp.Tasks), resp.Page, resp.TotalPages, resp.Total)
+	}
+
+	w = call(t, mux, http.MethodGet, "/api/v1/tasks?page=2", "lecteur", "pw-view", "")
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Tasks) != 2 || resp.Page != 2 || resp.Total != 27 {
+		t.Errorf("page 2 = %d tasks, page=%d total=%d", len(resp.Tasks), resp.Page, resp.Total)
+	}
+
+	w = call(t, mux, http.MethodGet, "/api/v1/tasks?page=9", "lecteur", "pw-view", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("out-of-range page = %d, want 200 with an empty window", w.Code)
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Tasks) != 0 || resp.TotalPages != 2 {
+		t.Errorf("page 9 = %d tasks, totalPages=%d", len(resp.Tasks), resp.TotalPages)
+	}
+}
+
 // TestTaskLogsEndpoint runs a real import end to end through the API and
 // locks the two log contracts: raw download with its attachment name, and
 // the incremental {chunk, next} cursor (UI-SPEC §8).

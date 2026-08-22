@@ -31,7 +31,10 @@ type UI struct {
 	queue  *tasks.Queue
 	logger *slog.Logger
 
-	themeOverride     string
+	themeOverride string
+	// secureCookies forces the Secure attribute on every cookie when TLS
+	// terminates in front of the listener (server.secureCookies, NFR-015).
+	secureCookies     bool
 	inspectTimeout    time.Duration
 	importPolicy      importer.Option
 	allowlist         *policy.Allowlist
@@ -63,6 +66,10 @@ type Options struct {
 	Mode          string
 	ThemeOverride string
 	ShowUpcoming  bool
+	// SecureCookies mirrors server.secureCookies (NFR-015): the operator
+	// states that TLS terminates in front of the plain-HTTP listener, so
+	// every cookie must carry Secure even though r.TLS is nil.
+	SecureCookies bool
 	// Store backs the content browsing screens and the dashboard counters
 	// (FR-062) through the accessors of internal/store — never the HTTP
 	// loopback.
@@ -129,6 +136,7 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		queue:             opts.Queue,
 		logger:            logger,
 		themeOverride:     opts.ThemeOverride,
+		secureCookies:     opts.SecureCookies,
 		inspectTimeout:    timeout,
 		importPolicy:      opts.ImportPolicy,
 		allowlist:         opts.Allowlist,
@@ -165,7 +173,12 @@ type Router interface {
 // kept apart by the ADR-0015 collision test; the role floor of each route
 // is the wrapper it is declared with here, and docs/rbac-matrix.md is its
 // documented form (FR-074).
-func (u *UI) Mount(mux Router) {
+func (u *UI) Mount(rt Router) {
+	// Every UI response — pages, fragments, errors, redirects, static
+	// assets — carries the browser security headers (v0.4.2 hardening,
+	// headers.go). Wrapping at mount time is what makes a route added
+	// later unable to forget them.
+	mux := securedRouter{r: rt}
 	mux.Handle("GET /static/", StaticHandler(u.themeOverride))
 
 	// Session endpoints (outside the session gate).
@@ -352,12 +365,28 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	name := r.PostFormValue("username")
 	next := sanitizeNext(r.PostFormValue("next"))
+	origin := auth.ClientOrigin(r)
+
+	// An origin over its failure budget is refused BEFORE the password
+	// check (v0.4.2 hardening): the throttle exists to stop the argon2id
+	// spend, and the browser surface must not stay open as the cheap way
+	// to brute-force what the machine surfaces now bound. Same taxonomy
+	// entry as the 429 the API serves (FR-061 parity).
+	if !u.authn.FailureAllowed(origin) {
+		v := u.render.view(r, loginData{
+			Next:   next,
+			Failed: errView(requestLang(r), taxonomy.New(taxonomy.CodeAuthRateLimited, nil)),
+		})
+		u.render.render(w, r, "login", http.StatusTooManyRequests, v)
+		return
+	}
 
 	acct, ok := u.authn.Store.VerifyPassword(name, r.PostFormValue("password"), u.now())
 	if !ok {
+		u.authn.RecordFailure(origin)
 		audit.Log(r.Context(), u.logger, &audit.Event{
 			Actor: name, Action: audit.ActionLogin, Target: "ui",
-			Outcome: audit.OutcomeDenied, Origin: auth.ClientOrigin(r),
+			Outcome: audit.OutcomeDenied, Origin: origin,
 		})
 		v := u.render.view(r, loginData{
 			Next:   next,
@@ -368,7 +397,7 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess := u.authn.Sessions.Create(acct.Name, acct.Role, u.now())
-	setSessionCookie(w, r, sess.ID, sess.Expires)
+	u.setSessionCookie(w, r, sess.ID, sess.Expires)
 	audit.Log(r.Context(), u.logger, &audit.Event{
 		Actor: acct.Name, Action: audit.ActionLogin, Target: "ui",
 		Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r),
@@ -386,7 +415,7 @@ func (u *UI) logout(w http.ResponseWriter, r *http.Request) {
 			Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r),
 		})
 	}
-	clearSessionCookie(w, r)
+	u.clearSessionCookie(w, r)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -405,7 +434,7 @@ func (u *UI) switchLang(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: langCookie, Value: lang, Path: "/",
-		MaxAge: 365 * 24 * 3600, SameSite: http.SameSiteLaxMode, Secure: r.TLS != nil,
+		MaxAge: 365 * 24 * 3600, SameSite: http.SameSiteLaxMode, Secure: u.cookieSecure(r),
 	})
 	u.redirectBack(w, r)
 }
@@ -423,7 +452,7 @@ func (u *UI) switchTheme(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: themeCookie, Value: theme, Path: "/",
-		MaxAge: 365 * 24 * 3600, SameSite: http.SameSiteLaxMode, Secure: r.TLS != nil,
+		MaxAge: 365 * 24 * 3600, SameSite: http.SameSiteLaxMode, Secure: u.cookieSecure(r),
 	})
 	u.redirectBack(w, r)
 }

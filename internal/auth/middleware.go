@@ -59,6 +59,14 @@ type Authenticator struct {
 	// seen maps a credential fingerprint to the instant its success was
 	// last reported.
 	seen map[string]time.Time
+
+	// failures budgets failed verifications per client origin (v0.4.2
+	// hardening, ratelimit.go): each failure costs an argon2id
+	// computation, so unbounded failures are a DoS lever. One limiter
+	// per Authenticator — the instance has one — so the /v2/, /api/v1,
+	// /files/ and UI login surfaces share each origin's budget: a brute
+	// force does not get a fresh allowance per surface.
+	failures failureLimiter
 }
 
 // defaultAuthWindow is the deduplication window for successful
@@ -113,15 +121,79 @@ func (a *Authenticator) Authenticate(r *http.Request) (Identity, bool) {
 	return Identity{}, false
 }
 
+// verdict is the outcome of one audited authentication attempt: it
+// exists so the surfaces can tell a throttled origin (429, Retry-After)
+// from a wrong credential (401, challenge) — collapsing both into a
+// boolean is exactly what let the throttle-free path ship.
+type verdict int
+
+const (
+	// verdictOK: a valid credential; the identity is usable.
+	verdictOK verdict = iota
+	// verdictNone: no credential was presented at all.
+	verdictNone
+	// verdictFailed: a credential was presented and refused.
+	verdictFailed
+	// verdictThrottled: the origin exhausted its failure budget; the
+	// credential was NOT verified (that is the point — no argon2id ran).
+	verdictThrottled
+)
+
+// FailureAllowed reports whether origin still has failed-authentication
+// budget (ratelimit.go). Surfaces that verify credentials outside
+// authenticateAudited — the UI login form, the /files/ gate — call it
+// BEFORE the verification, because the whole point is to skip the
+// argon2id computation for an origin that keeps failing.
+func (a *Authenticator) FailureAllowed(origin string) bool {
+	return a.failures.allowed(origin, a.now())
+}
+
+// RecordFailure spends one unit of origin's failure budget after a
+// verification those same surfaces performed and saw fail. Logged once
+// at the transition into throttling — not per throttled request, which
+// would hand the attacker a log-flooding lever.
+func (a *Authenticator) RecordFailure(origin string) {
+	if a.failures.record(origin, a.now()) {
+		a.logThrottled(origin)
+	}
+}
+
+// logThrottled emits the one operational log line (FR-090) marking an
+// origin's transition into throttling. Not an audit record: the failed
+// attempts that led here are each audited already (FR-094), and the
+// throttle verifies nothing.
+func (a *Authenticator) logThrottled(origin string) {
+	if a.Logger == nil {
+		return
+	}
+	a.Logger.LogAttrs(context.Background(), slog.LevelWarn,
+		"authentication failures throttled",
+		slog.String("origin", origin),
+		slog.String("retry_after", RetryAfter+"s"))
+}
+
+// throttled answers a request from an exhausted origin on the plain-text
+// surfaces (registry, files): 429 with the Retry-After the refill period
+// justifies. The API surface answers its RFC 9457 form instead.
+func throttled(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", RetryAfter)
+	http.Error(w, "too many failed authentication attempts", http.StatusTooManyRequests)
+}
+
 // Registry protects the embedded OCI registry (/v2/): reads need viewer,
 // writes need operator (ADR-0009). Authentication and refusals are audited
 // (FR-094); a missing or wrong credential answers 401 with a Basic
-// challenge so standard clients prompt for credentials (FR-076).
+// challenge so standard clients prompt for credentials (FR-076); an
+// origin over its failure budget answers 429 before anything is verified.
 func (a *Authenticator) Registry(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id, ok := a.authenticateAudited(r, audit.SurfaceRegistry)
-		if !ok {
-			if !credentialPresented(r) {
+		id, v := a.authenticateAudited(r, audit.SurfaceRegistry)
+		if v == verdictThrottled {
+			throttled(w)
+			return
+		}
+		if v != verdictOK {
+			if v == verdictNone {
 				// Nothing was verified, so nothing was audited above: the
 				// refused access is the record. A wrong credential already
 				// has its own auth.authenticate failure — one refusal must
@@ -176,23 +248,35 @@ func (a *Authenticator) Registry(next http.Handler) http.Handler {
 // The FR-075 override emits nothing here: with authentication disabled
 // there is no credential to verify, and the override is already audited
 // once at startup and shown by a permanent banner.
-func (a *Authenticator) authenticateAudited(r *http.Request, surface string) (Identity, bool) {
+//
+// The failure budget is consulted BEFORE the verification (v0.4.2
+// hardening): the throttle exists to stop the argon2id spend, so an
+// exhausted origin must not reach Authenticate at all. Throttled
+// requests are not audited individually — the failures that exhausted
+// the budget each were, and per-request records would let the attacker
+// keep writing the trail; the transition is logged once (logThrottled).
+func (a *Authenticator) authenticateAudited(r *http.Request, surface string) (Identity, verdict) {
 	if a.Disabled {
-		return AnonymousIdentity, true
+		return AnonymousIdentity, verdictOK
 	}
 	if !credentialPresented(r) {
-		return Identity{}, false
+		return Identity{}, verdictNone
+	}
+	origin := ClientOrigin(r)
+	if !a.failures.allowed(origin, a.now()) {
+		return Identity{}, verdictThrottled
 	}
 	id, ok := a.Authenticate(r)
 	if !ok {
+		a.RecordFailure(origin)
 		audit.Log(r.Context(), a.Logger, &audit.Event{
 			Actor:   presentedName(r),
 			Action:  audit.ActionAuthenticate,
 			Target:  surface,
 			Outcome: audit.OutcomeFailure,
-			Origin:  ClientOrigin(r),
+			Origin:  origin,
 		})
-		return id, false
+		return id, verdictFailed
 	}
 	if a.recordSuccess(surface, r) {
 		audit.Log(r.Context(), a.Logger, &audit.Event{
@@ -200,10 +284,10 @@ func (a *Authenticator) authenticateAudited(r *http.Request, surface string) (Id
 			Action:  audit.ActionAuthenticate,
 			Target:  surface,
 			Outcome: audit.OutcomeSuccess,
-			Origin:  ClientOrigin(r),
+			Origin:  origin,
 		})
 	}
-	return id, true
+	return id, verdictOK
 }
 
 // recordSuccess reports whether this success is a new event rather than
@@ -298,7 +382,17 @@ func ClientOrigin(r *http.Request) string {
 // per-endpoint, in the api package.
 func (a *Authenticator) API(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id, ok := a.authenticateAudited(r, audit.SurfaceAPI)
+		id, v := a.authenticateAudited(r, audit.SurfaceAPI)
+		if v == verdictThrottled {
+			// Same taxonomy entry the UI renders for the same condition
+			// (FR-061 parity), in the RFC 9457 form of this surface. No
+			// session fallback: a throttled origin presented a credential.
+			w.Header().Set("Retry-After", RetryAfter)
+			taxonomy.WriteProblem(w, r.Header.Get("Accept-Language"),
+				taxonomy.New(taxonomy.CodeAuthRateLimited, nil))
+			return
+		}
+		ok := v == verdictOK
 		if !ok && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
 			// A UI session reaching a read-only API path is not a new
 			// authentication: session.login already recorded it, and the
@@ -306,7 +400,7 @@ func (a *Authenticator) API(next http.Handler) http.Handler {
 			id, ok = a.sessionIdentity(r)
 		}
 		if !ok {
-			if !credentialPresented(r) {
+			if v == verdictNone {
 				a.deny(r, audit.ActionAPIAccess, audit.OutcomeDenied, "")
 			}
 			w.Header().Set("WWW-Authenticate", `Basic realm="tobby", Bearer`)

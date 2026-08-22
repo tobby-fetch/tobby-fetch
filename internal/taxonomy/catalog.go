@@ -54,6 +54,15 @@ const (
 	// unmanageable, and FR-005 makes it refuse to start with no account at
 	// all. A policy refusal, like every other secure-by-default barrier.
 	CodeLastAdmin Code = "TBY-AUTH-011"
+	// CodeAuthRateLimited throttles a network origin that keeps failing
+	// authentication (v0.4.2 hardening): every failed password check
+	// costs a deliberately expensive argon2id computation, so unbounded
+	// failures are a denial-of-service lever against the instance
+	// itself, not just a brute-force risk. Operational, not policy: the
+	// client broke no rule — it has to wait. Deliberately parameter-free,
+	// like CodeAuthFailed: the message must reveal nothing about
+	// accounts or thresholds (NFR-015).
+	CodeAuthRateLimited Code = "TBY-AUTH-012"
 
 	// CodeConfigInvalid is a rejected configuration (FR-003 validation).
 	CodeConfigInvalid Code = "TBY-CFG-001"
@@ -174,6 +183,7 @@ var catalog = map[Code]Entry{
 	CodeAccountExists:   {Code: CodeAccountExists, Class: ClassOperational, HTTPStatus: http.StatusConflict, Params: []string{"name"}},
 	CodeAccountUnknown:  {Code: CodeAccountUnknown, Class: ClassOperational, HTTPStatus: http.StatusNotFound, Params: []string{"name"}},
 	CodeLastAdmin:       {Code: CodeLastAdmin, Class: ClassPolicy, HTTPStatus: http.StatusConflict, Params: []string{"name"}},
+	CodeAuthRateLimited: {Code: CodeAuthRateLimited, Class: ClassOperational, HTTPStatus: http.StatusTooManyRequests},
 
 	CodeConfigInvalid: {Code: CodeConfigInvalid, Class: ClassOperational, Params: []string{"detail"}},
 

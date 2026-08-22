@@ -10,9 +10,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +42,9 @@ type Runner func(ctx context.Context, t *Task, logger *slog.Logger, save func())
 type Queue struct {
 	dir    string
 	logger *slog.Logger
+	// keepFinished bounds how many finished tasks the queue retains
+	// (WithRetention); 0 keeps everything.
+	keepFinished int
 
 	mu      sync.Mutex
 	tasks   map[string]*Task
@@ -48,11 +54,29 @@ type Queue struct {
 	Now func() time.Time
 }
 
+// QueueOption adjusts the queue at Open time.
+type QueueOption func(*Queue)
+
+// WithRetention keeps only the `keep` most recent FINISHED tasks (done or
+// failed — a task failed by the runProtected panic barrier ages out like
+// any other). Older ones are removed from memory and their .json and .log
+// files deleted. Pending and running tasks are NEVER purged: FR-029's
+// resume contract owns them. 0 disables the purge and keeps the full
+// history — the pre-retention behavior.
+//
+// Why this exists (2026-08 audit): every task lived forever — one map
+// entry in RAM plus two files on disk — and a passthrough instance on a
+// 10-minute cycle mints ~52 000 sync tasks a year, all reloaded by every
+// Open.
+func WithRetention(keep int) QueueOption {
+	return func(q *Queue) { q.keepFinished = keep }
+}
+
 // Open loads the queue from the store root, re-queuing interrupted tasks
 // (FR-029): a task found pending or running is marked Resumed and runs
 // again — the import pipeline is incremental by digest, so a re-run only
 // transfers what is missing. No task is ever left orphaned.
-func Open(storeRoot string, logger *slog.Logger) (*Queue, error) {
+func Open(storeRoot string, logger *slog.Logger, opts ...QueueOption) (*Queue, error) {
 	dir := filepath.Join(storeRoot, tasksDir)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("tasks: creating %s: %w", dir, err)
@@ -64,6 +88,9 @@ func Open(storeRoot string, logger *slog.Logger) (*Queue, error) {
 		runners: map[string]Runner{},
 		pending: make(chan string, 256),
 		Now:     time.Now,
+	}
+	for _, opt := range opts {
+		opt(q)
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -101,6 +128,10 @@ func Open(storeRoot string, logger *slog.Logger) (*Queue, error) {
 		logger.LogAttrs(context.Background(), slog.LevelInfo, "task resumed after interruption",
 			slog.String("task_id", id), slog.String("run_id", q.tasks[id].RunID))
 	}
+	// Retention applies to what was just reloaded too: an instance that
+	// accumulated history before the policy existed (or with a larger
+	// keep) trims it on the next start, not only as new tasks arrive.
+	q.purgeFinished()
 	return q, nil
 }
 
@@ -137,14 +168,83 @@ func (q *Queue) Create(taskType, reference, actor string, items []Item, opts ...
 	for _, opt := range opts {
 		opt(t)
 	}
-	q.tasks[t.ID] = t
-	q.persist(t)
+	// Reserve the worker slot BEFORE anything is persisted (2026-08
+	// audit): the old order persisted first and only then discovered the
+	// full channel, leaving an orphaned pending task — in the map, on
+	// disk, and re-queued by the next Open (FR-029) although its creator
+	// was told "queue is full". Refusing first leaves no trace. The
+	// worker cannot observe the id before the map insert below: execute
+	// takes q.mu, which this function holds until it returns.
 	select {
 	case q.pending <- t.ID:
 	default:
 		return nil, errors.New("tasks: queue is full")
 	}
+	q.tasks[t.ID] = t
+	q.persist(t)
+	// Amortized retention: one purge per creation keeps the finished
+	// history bounded without a background sweeper.
+	q.purgeFinished()
 	return t, nil
+}
+
+// purgeFinished enforces the WithRetention policy: keep the keepFinished
+// most recent finished tasks (by creation time — the listing order) and
+// delete the rest, memory and files alike. Active tasks never count and
+// are never touched. Callers hold q.mu (Open runs single-threaded before
+// the queue is shared).
+func (q *Queue) purgeFinished() {
+	if q.keepFinished <= 0 {
+		return
+	}
+	finished := make([]*Task, 0, len(q.tasks))
+	for _, t := range q.tasks {
+		if !t.Active() {
+			finished = append(finished, t)
+		}
+	}
+	if len(finished) <= q.keepFinished {
+		return
+	}
+	sort.Slice(finished, func(i, j int) bool { return finished[i].Created.After(finished[j].Created) })
+	for _, t := range finished[q.keepFinished:] {
+		delete(q.tasks, t.ID)
+		for _, path := range []string{
+			filepath.Join(q.dir, t.ID+".json"),
+			filepath.Join(q.dir, t.ID+".log"),
+		} {
+			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+				// A file that resists deletion is worth a line, not a
+				// failure: the map entry is gone either way, and the next
+				// purge retries the file.
+				q.logger.LogAttrs(context.Background(), slog.LevelWarn, "purging task file",
+					slog.String("task_id", t.ID), slog.String("file", path),
+					slog.String("error", err.Error()))
+			}
+		}
+	}
+	q.logger.LogAttrs(context.Background(), slog.LevelDebug, "purged finished tasks",
+		slog.Int("purged", len(finished)-q.keepFinished),
+		slog.Int("kept", q.keepFinished))
+}
+
+// HasPending reports whether a task of taskType is already waiting to
+// run — the scheduler's coalescence guard (2026-08 audit). The worker is
+// serial, so once one sync cycle outlasts the interval, an unconditional
+// Create per tick piles identical tasks onto the queue; a pending sync
+// already reads the latest desired state when it finally runs, so a
+// second one adds nothing. Running tasks deliberately do not count: the
+// state THEY read may already be stale, and one queued follow-up is
+// exactly what reconciles it.
+func (q *Queue) HasPending(taskType string) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, t := range q.tasks {
+		if t.Type == taskType && t.Status == StatusPending {
+			return true
+		}
+	}
+	return false
 }
 
 // Start runs the worker until ctx is canceled. A task interrupted by
@@ -195,7 +295,7 @@ func (q *Queue) execute(ctx context.Context, id string) {
 			WithCause(fmt.Errorf("no runner for task type %q", t.Type)))
 		return
 	}
-	err := runner(ctx, work, taskLogger, save)
+	err := runProtected(ctx, runner, work, taskLogger, save)
 	if errors.Is(err, context.Canceled) {
 		// Graceful shutdown caught the task mid-run: leave it running on
 		// disk — the next start resumes it (FR-029). Never mark it failed
@@ -212,13 +312,37 @@ func (q *Queue) execute(ctx context.Context, id string) {
 	q.finish(t, work, taskLogger, te)
 }
 
+// runProtected invokes the runner behind a panic barrier (2026-08
+// robustness audit). A runner panic — a third-party parser choking on a
+// pathological manifest is enough — must fail the TASK, never the
+// process: this queue runs inside a long-lived service, and no single
+// operation may take the instance down with it. The failure must also
+// be terminal: a task left active on disk is re-queued at the next
+// start (FR-029), and a re-queued panic replays forever — a permanent
+// crash loop with no operator escape. Converting the panic to the
+// internal taxonomy code settles the task as failed (finish persists
+// it), which keeps it out of the resume set; the stack goes to the task
+// log, where the FR-090 correlation makes it findable.
+func runProtected(ctx context.Context, runner Runner, work *Task, logger *slog.Logger, save func()) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.LogAttrs(context.Background(), slog.LevelError, "task runner panicked",
+				slog.String("panic", fmt.Sprint(r)),
+				slog.String("stack", string(debug.Stack())))
+			err = taxonomy.New(taxonomy.CodeInternal, nil).
+				WithCause(fmt.Errorf("task runner panicked: %v", r))
+		}
+	}()
+	return runner(ctx, work, logger, save)
+}
+
 // clone deep-copies the task for the runner's exclusive use (items and
 // reports are the runner-mutated parts; persisted errors are never
 // mutated in place). Every runner-mutated slice belongs here: a report
 // the runner fills but clone and publish ignore is silently lost.
 func (t *Task) clone() *Task {
 	cp := *t
-	cp.Items = append([]Item(nil), t.Items...)
+	cp.Items = cloneItems(t.Items)
 	cp.ChartDependencies = append([]ChartDependency(nil), t.ChartDependencies...)
 	cp.Resolutions = append([]Resolution(nil), t.Resolutions...)
 	return &cp
@@ -226,11 +350,19 @@ func (t *Task) clone() *Task {
 
 // publish copies the runner's progress into the canonical task and
 // persists it. Callers hold q.mu.
+//
+// The item copy must be DEEP (B-016): the runner keeps mutating its
+// clone's per-blob progress rows after this snapshot, and a shallow
+// copy would leave the canonical task sharing those rows' memory with
+// it — every later reader (Get, List, persist's marshalling) would
+// race with the runner. cloneItems allocates fresh rows the canonical
+// side alone owns; they are never written again after this call, so
+// readers under q.mu can hand them out safely.
 func (q *Queue) publish(dst, src *Task) {
 	dst.Status = src.Status
 	dst.Error = src.Error
 	dst.Finished = src.Finished
-	dst.Items = append([]Item(nil), src.Items...)
+	dst.Items = cloneItems(src.Items)
 	dst.ChartDependencies = append([]ChartDependency(nil), src.ChartDependencies...)
 	dst.Resolutions = append([]Resolution(nil), src.Resolutions...)
 	q.persist(dst)
@@ -328,7 +460,8 @@ func (h teeHandler) WithGroup(name string) slog.Handler {
 	return teeHandler{a: h.a.WithGroup(name), b: h.b.WithGroup(name)}
 }
 
-// Get returns a task by id.
+// Get returns a task by id. The copy is deep on the runner-mutated
+// slices (B-016): the caller reads it outside q.mu.
 func (q *Queue) Get(id string) (*Task, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -337,7 +470,7 @@ func (q *Queue) Get(id string) (*Task, bool) {
 		return nil, false
 	}
 	cp := *t
-	cp.Items = append([]Item(nil), t.Items...)
+	cp.Items = cloneItems(t.Items)
 	return &cp, true
 }
 
@@ -358,11 +491,108 @@ func (q *Queue) List(status Status, taskType, query string) []*Task {
 			continue
 		}
 		cp := *t
-		cp.Items = append([]Item(nil), t.Items...)
+		cp.Items = cloneItems(t.Items)
 		out = append(out, &cp)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Created.After(out[j].Created) })
 	return out
+}
+
+// ListPageSize is the server-side page size of the task listing — the
+// same size as the /content listing (store.BrowsePageSize): FR-061 wants
+// the screens and their API mirrors to paginate identically, and the two
+// listings should not feel different either.
+const ListPageSize = 25
+
+// ListQuery is the filter set of the task listing. Its parameter names
+// (q, status, type, page) are the shared UI/API contract (FR-061): both
+// surfaces parse them with ParseListQuery, so parity holds by
+// construction — the same pattern as store.ParseBrowseQuery.
+type ListQuery struct {
+	// Q filters by substring on the task reference (R-06 parity).
+	Q string
+	// Status keeps only tasks in this status.
+	Status Status
+	// Type keeps only tasks of this type (TypeUnitImport, TypeSync).
+	Type string
+	// Page is the 1-based page of ListPageSize entries.
+	Page int
+}
+
+// ParseListQuery reads a ListQuery from URL parameters — the single
+// parser behind the /tasks screen and /api/v1/tasks (FR-061).
+func ParseListQuery(v url.Values) ListQuery {
+	lq := ListQuery{Q: v.Get("q"), Status: Status(v.Get("status")), Type: v.Get("type"), Page: 1}
+	if p, err := strconv.Atoi(v.Get("page")); err == nil && p > 1 {
+		lq.Page = p
+	}
+	return lq
+}
+
+// Values renders the query back to URL parameters (pagination links).
+func (lq ListQuery) Values() url.Values {
+	v := url.Values{}
+	if lq.Q != "" {
+		v.Set("q", lq.Q)
+	}
+	if lq.Status != "" {
+		v.Set("status", string(lq.Status))
+	}
+	if lq.Type != "" {
+		v.Set("type", lq.Type)
+	}
+	if lq.Page > 1 {
+		v.Set("page", strconv.Itoa(lq.Page))
+	}
+	return v
+}
+
+// HasFilter reports whether any filter narrows the listing — it separates
+// the "no task yet" state from "no result for these filters" (UI-SPEC).
+func (lq ListQuery) HasFilter() bool {
+	return lq.Q != "" || lq.Status != "" || lq.Type != ""
+}
+
+// TaskPage is one page of the filtered task listing, newest first.
+type TaskPage struct {
+	Tasks      []*Task
+	Total      int
+	Page       int
+	TotalPages int
+}
+
+// ListPage returns one page of tasks filtered by lq — the single
+// implementation behind the /tasks screen and its API mirror (FR-061),
+// shaped like store.Browse. An out-of-range page yields an empty window,
+// never an error: the screen shows its no-result state and the API
+// mirrors it.
+func (q *Queue) ListPage(lq ListQuery) *TaskPage {
+	matched := q.List(lq.Status, lq.Type, lq.Q)
+	page := &TaskPage{Total: len(matched), Page: lq.Page}
+	start, end, totalPages := paginate(len(matched), lq.Page, ListPageSize)
+	page.TotalPages = totalPages
+	page.Tasks = matched[start:end]
+	return page
+}
+
+// paginate computes the half-open [start, end) window of the 1-based page
+// over total entries, and the page count (at least 1). A local twin of
+// the store package's helper: importing the store from here would point
+// the dependency at one of this queue's own consumers.
+func paginate(total, page, size int) (start, end, totalPages int) {
+	totalPages = (total + size - 1) / size
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	if page < 1 {
+		page = 1
+	}
+	start = (page - 1) * size
+	if start > total {
+		return total, total, totalPages
+	}
+	end = min(start+size, total)
+	return start, end, totalPages
 }
 
 // ActiveCount reports how many tasks still move (the nav badge).
@@ -381,6 +611,16 @@ func (q *Queue) ActiveCount() int {
 // LogPath returns the task's log file path.
 func (q *Queue) LogPath(id string) string {
 	return filepath.Join(q.dir, id+".log")
+}
+
+// OpenLog opens the task's raw log for streaming — the download endpoint
+// copies from it instead of buffering the whole file (2026-08 audit: a
+// verbose sync log is easily tens of megabytes, and the old ReadLog path
+// held all of it in memory per download). The caller closes the reader.
+// A task that never logged returns an os.ErrNotExist the caller maps to
+// an empty download.
+func (q *Queue) OpenLog(id string) (io.ReadCloser, error) {
+	return os.Open(q.LogPath(id))
 }
 
 // ReadLog reads the task log from a byte cursor, returning the new cursor —

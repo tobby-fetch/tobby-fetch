@@ -53,8 +53,8 @@ type Store struct {
 	browse distribution.Namespace
 	// metaMu serializes the meta/ ledgers (meta.go).
 	metaMu sync.Mutex
-	// gcMu is the FR-044 exclusive lock: content writes hold it shared,
-	// garbage collection holds it exclusively (gc.go).
+	// gcMu is the FR-044 exclusive lock: content writes hold it shared
+	// (write.go, B-017), garbage collection holds it exclusively (gc.go).
 	gcMu sync.RWMutex
 }
 

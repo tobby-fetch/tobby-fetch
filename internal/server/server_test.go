@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -88,8 +89,10 @@ func TestProbeLifecycle(t *testing.T) {
 // request in flight when shutdown starts completes inside the grace period.
 func TestGracefulDrainLetsInflightFinish(t *testing.T) {
 	srv := New("127.0.0.1:0", 3*time.Second, metrics.New(), logging.New(io.Discard, slog.LevelError))
+	entered := make(chan struct{}, 1)
 	release := make(chan struct{})
 	srv.Handle("GET /slow", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		entered <- struct{}{}
 		<-release
 		_, _ = fmt.Fprint(w, "finished")
 	}))
@@ -120,11 +123,31 @@ func TestGracefulDrainLetsInflightFinish(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		inflight <- result{resp.StatusCode, string(body)}
 	}()
-	time.Sleep(100 * time.Millisecond) // request is now blocked in the handler
+	// Wait for the request to actually be blocked inside the handler —
+	// a bounded condition, not a sleep-as-barrier: on a loaded CI host a
+	// fixed pause can elapse before the request even reaches the server.
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the in-flight request never reached the handler")
+	}
 
-	cancel()                           // shutdown starts, drain begins
-	time.Sleep(100 * time.Millisecond) // give Shutdown time to stop the listener
-	close(release)                     // let the in-flight request finish
+	cancel() // shutdown starts, drain begins
+	// Shutdown closes the listener before draining; wait until new
+	// connections are actually refused instead of guessing a delay.
+	refusedBy := time.Now().Add(5 * time.Second)
+	for {
+		conn, err := net.Dial("tcp", srv.Addr())
+		if err != nil {
+			break
+		}
+		_ = conn.Close()
+		if time.Now().After(refusedBy) {
+			t.Fatal("the listener never stopped accepting connections")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	close(release) // let the in-flight request finish
 
 	got := <-inflight
 	if got.code != http.StatusOK || got.body != "finished" {

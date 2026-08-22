@@ -79,49 +79,59 @@ type tasksData struct {
 	// Q, Status, Type mirror the /api/v1/tasks parameters (FR-061).
 	Q, Status, Type string
 	HasFilter       bool
+	// Total, Page, TotalPages and the two hrefs are the /content
+	// pagination model applied to the task history (FR-061): the same
+	// page parameter, the same 25-entry pages, the same nav.
+	Total, Page, TotalPages int
+	PrevHref, NextHref      string
 	// AnyActive re-arms the polling attributes: the server re-emits them
-	// only while a listed task still moves (auto-terminating load-polling,
-	// UI-SPEC §8).
+	// only while a task listed ON THIS PAGE still moves (auto-terminating
+	// load-polling, UI-SPEC §8) — a page of settled history has nothing
+	// to poll for.
 	AnyActive bool
-	// PollURL is the canonical listing URL the row fragment polls.
+	// PollURL is the canonical listing URL the row fragment polls — page
+	// included, so the poll refreshes the page being looked at.
 	PollURL string
 }
 
-// tasksHref rebuilds the canonical listing URL — the same parameter set
-// the API mirror accepts (FR-061).
-func tasksHref(d *tasksData) string {
-	v := url.Values{}
-	if d.Q != "" {
-		v.Set("q", d.Q)
-	}
-	if d.Status != "" {
-		v.Set("status", d.Status)
-	}
-	if d.Type != "" {
-		v.Set("type", d.Type)
-	}
-	if enc := v.Encode(); enc != "" {
+// tasksHref rebuilds the canonical listing URL for a page — the same
+// parameter set the API mirror accepts (FR-061), rendered by the shared
+// tasks.ListQuery like /content renders its BrowseQuery.
+func tasksHref(lq tasks.ListQuery, page int) string {
+	lq.Page = page
+	if enc := lq.Values().Encode(); enc != "" {
 		return "/tasks?" + enc
 	}
 	return "/tasks"
 }
 
 // tasksList serves GET /tasks: search and filters server-side, newest
-// first. The polled row fragment and the filter form swap on the same
-// canonical URL (ADR-0015 §1), told apart by the HX-Target header.
+// first, paginated like /content. The polled row fragment and the filter
+// form swap on the same canonical URL (ADR-0015 §1), told apart by the
+// HX-Target header.
 func (u *UI) tasksList(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	data := &tasksData{Q: q.Get("q"), Status: q.Get("status"), Type: q.Get("type")}
-	data.HasFilter = data.Q != "" || data.Status != "" || data.Type != ""
+	lq := tasks.ParseListQuery(r.URL.Query())
+	data := &tasksData{
+		Q: lq.Q, Status: string(lq.Status), Type: lq.Type,
+		HasFilter: lq.HasFilter(), Page: lq.Page, TotalPages: 1,
+	}
 	if u.queue != nil {
-		for _, t := range u.queue.List(tasks.Status(data.Status), data.Type, data.Q) {
+		page := u.queue.ListPage(lq)
+		data.Total, data.Page, data.TotalPages = page.Total, page.Page, page.TotalPages
+		for _, t := range page.Tasks {
 			if t.Active() {
 				data.AnyActive = true
 			}
 			data.Rows = append(data.Rows, newTaskRow(t, u.now()))
 		}
+		if page.Page > 1 {
+			data.PrevHref = tasksHref(lq, page.Page-1)
+		}
+		if page.Page < page.TotalPages {
+			data.NextHref = tasksHref(lq, page.Page+1)
+		}
 	}
-	data.PollURL = tasksHref(data)
+	data.PollURL = tasksHref(lq, lq.Page)
 
 	if isFragment(r) {
 		if r.Header.Get("HX-Target") == "task-rows" {

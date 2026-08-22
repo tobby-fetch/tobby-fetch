@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -102,11 +103,12 @@ func (e *Engine) Source() string { return e.source }
 // RelaxedScopes surfaces the declared allowUnsigned scopes (banner).
 func (e *Engine) RelaxedScopes() []string { return e.trust.RelaxedScopes() }
 
-// Runner returns the task runner for tasks.TypeSync. The runner works on
-// its own task clone; save() persists and publishes progress.
+// Runner returns the task runner for tasks.TypeSync. The runner works
+// on its own task clone, wrapped in a taskSink so every mutation and
+// its save() run under one lock (B-016).
 func (e *Engine) Runner() tasks.Runner {
 	return func(ctx context.Context, t *tasks.Task, logger *slog.Logger, save func()) error {
-		return e.run(ctx, t, logger, save)
+		return e.run(ctx, newTaskSink(t, save), logger)
 	}
 }
 
@@ -114,7 +116,7 @@ func (e *Engine) Runner() tasks.Runner {
 // every entry from its cookbook, verify, fetch, record. Failures are
 // isolated per item (§12.3 point 4: fail closed, per item, reported);
 // only a Retriever that cannot be loaded fails the task as a whole.
-func (e *Engine) run(ctx context.Context, t *tasks.Task, logger *slog.Logger, save func()) error {
+func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) error {
 	retr, err := LoadRetriever(ctx, e.remotes, e.source)
 	if err != nil {
 		return e.mapError(err, e.source)
@@ -123,7 +125,12 @@ func (e *Engine) run(ctx context.Context, t *tasks.Task, logger *slog.Logger, sa
 	logger.LogAttrs(ctx, slog.LevelInfo, "retriever loaded",
 		slog.String("source", e.source), slog.String("zone", zone),
 		slog.Int("recipes", len(retr.Spec.Recipes)))
-	t.Resolutions = nil
+	sink.update(func(t *tasks.Task) bool {
+		// A resumed task's resolution report is rebuilt from scratch: the
+		// rows describe THIS run's decisions.
+		t.Resolutions = nil
+		return true
+	})
 
 	for i := range retr.Spec.Recipes {
 		entry := &retr.Spec.Recipes[i]
@@ -131,25 +138,27 @@ func (e *Engine) run(ctx context.Context, t *tasks.Task, logger *slog.Logger, sa
 		if cookbookRef == "" {
 			cookbookRef = retr.Spec.Cookbook
 		}
-		e.syncRecipe(ctx, t, logger, save, cookbookRef, entry, zone)
-		save()
+		e.syncRecipe(ctx, sink, logger, cookbookRef, entry, zone)
 	}
 	return nil
 }
 
 // syncRecipe resolves, verifies and fetches one Retriever entry. Failures
 // land on the entry's items; other entries continue.
-func (e *Engine) syncRecipe(ctx context.Context, t *tasks.Task, logger *slog.Logger, save func(), cookbookRef string, entry *spec.RecipeSelector, zone string) {
+func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, cookbookRef string, entry *spec.RecipeSelector, zone string) {
 	logger = logger.With(slog.String("recipe", entry.Name))
 	cb := NewCookbook(e.remotes, cookbookRef)
 
 	fail := func(itemName string, err error) {
-		item := itemFor(t, itemName)
-		item.Status = tasks.StatusFailed
-		item.Error = tasks.FromTaxonomy(e.mapError(err, entry.Name))
+		te := tasks.FromTaxonomy(e.mapError(err, entry.Name))
+		sink.update(func(t *tasks.Task) bool {
+			item := itemFor(t, itemName)
+			item.Status = tasks.StatusFailed
+			item.Error = te
+			return true
+		})
 		logger.LogAttrs(ctx, slog.LevelWarn, "recipe entry failed",
 			slog.String("item", itemName), slog.String("error", err.Error()))
-		save()
 	}
 
 	// FR-021: resolve the entry's version expression against the cookbook.
@@ -194,9 +203,12 @@ func (e *Engine) syncRecipe(ctx context.Context, t *tasks.Task, logger *slog.Log
 	}
 	recipe := fetched.Recipe
 
-	t.Resolutions = append(t.Resolutions, tasks.Resolution{
-		Recipe: rid, Requested: entry.Version, Resolved: tag,
-		Digest: fetched.ManifestDigest, TrustScope: scopeName,
+	sink.update(func(t *tasks.Task) bool {
+		t.Resolutions = append(t.Resolutions, tasks.Resolution{
+			Recipe: rid, Requested: entry.Version, Resolved: tag,
+			Digest: fetched.ManifestDigest, TrustScope: scopeName,
+		})
+		return true
 	})
 	logger.LogAttrs(ctx, slog.LevelInfo, "recipe verified",
 		slog.String("digest", fetched.ManifestDigest),
@@ -204,44 +216,71 @@ func (e *Engine) syncRecipe(ctx context.Context, t *tasks.Task, logger *slog.Log
 		slog.String("trust_scope", scopeName))
 
 	// Ingredients: bounded parallelism (NFR-008), per-item isolation.
-	var mu sync.Mutex
 	sem := make(chan struct{}, max(1, e.cfg.Parallelism))
 	var wg sync.WaitGroup
 	records := make([]store.IngredientRecord, len(recipe.Spec.Ingredients))
 	for i := range recipe.Spec.Ingredients {
 		ing := &recipe.Spec.Ingredients[i]
 		itemName := rid + "/" + ing.Name
-		mu.Lock()
-		item := itemFor(t, itemName)
-		if item.Status == tasks.StatusDone || item.Status == tasks.StatusSkipped {
-			// Resumed task: settled items stay settled (FR-029) — still
-			// recompute the record row for the recipe graph.
+		settled := false
+		sink.update(func(t *tasks.Task) bool {
+			item := itemFor(t, itemName)
+			if item.Status == tasks.StatusDone || item.Status == tasks.StatusSkipped {
+				// Resumed task: settled items stay settled (FR-029).
+				settled = true
+				return false
+			}
+			item.Status = tasks.StatusRunning
+			item.Digest = ing.Digest
+			return true
+		})
+		if settled {
+			// Still recompute the record row for the recipe graph.
 			records[i] = e.ingredientRecord(ing)
-			mu.Unlock()
 			continue
 		}
-		item.Status = tasks.StatusRunning
-		item.Digest = ing.Digest
-		mu.Unlock()
-		save()
 
 		wg.Add(1)
 		sem <- struct{}{}
 		go func(i int, ing *spec.Ingredient, itemName string) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			rec, res, err := e.syncIngredient(ctx, t, &mu, logger, save, ing, rid)
-			mu.Lock()
-			item := itemFor(t, itemName)
-			if err != nil {
-				item.Status = tasks.StatusFailed
-				item.Error = tasks.FromTaxonomy(e.mapError(err, ing.Ref))
-			} else {
+			// Panic barrier (2026-08 robustness audit): the queue's own
+			// recover covers the runner goroutine only — a panic here, in a
+			// goroutine the engine spawned, would still kill the whole
+			// long-lived process. Per-item isolation (§12.3 point 4)
+			// extends to panics: the item fails with the internal code, the
+			// stack goes to the task log, the other ingredients finish.
+			defer func() {
+				if r := recover(); r != nil {
+					logger.LogAttrs(ctx, slog.LevelError, "ingredient synchronization panicked",
+						slog.String("item", itemName),
+						slog.String("panic", fmt.Sprint(r)),
+						slog.String("stack", string(debug.Stack())))
+					sink.update(func(t *tasks.Task) bool {
+						item := itemFor(t, itemName)
+						item.Status = tasks.StatusFailed
+						item.Error = tasks.FromTaxonomy(taxonomy.New(taxonomy.CodeInternal, nil))
+						return true
+					})
+				}
+			}()
+			rec, res, err := e.syncIngredient(ctx, sink, logger, ing, rid)
+			if err == nil {
+				// records is written index-per-goroutine: no two goroutines
+				// share a slot, so the slice needs no lock of its own.
 				records[i] = rec
-				t.Resolutions = append(t.Resolutions, res)
 			}
-			mu.Unlock()
-			save()
+			sink.update(func(t *tasks.Task) bool {
+				item := itemFor(t, itemName)
+				if err != nil {
+					item.Status = tasks.StatusFailed
+					item.Error = tasks.FromTaxonomy(e.mapError(err, ing.Ref))
+				} else {
+					t.Resolutions = append(t.Resolutions, res)
+				}
+				return true
+			})
 		}(i, ing, itemName)
 	}
 	wg.Wait()
@@ -249,23 +288,37 @@ func (e *Engine) syncRecipe(ctx context.Context, t *tasks.Task, logger *slog.Log
 	// The recipe artifact itself: stored with its signature so the local
 	// store is a cookbook for the zone below (cascade; FR-034 groundwork).
 	recipeItemName := rid + "/recipe"
-	item := itemFor(t, recipeItemName)
-	if item.Status != tasks.StatusDone && item.Status != tasks.StatusSkipped {
+	recipeSettled := false
+	sink.update(func(t *tasks.Task) bool {
+		item := itemFor(t, recipeItemName)
+		if item.Status == tasks.StatusDone || item.Status == tasks.StatusSkipped {
+			recipeSettled = true
+			return false
+		}
 		item.Status = tasks.StatusRunning
-		save()
+		return true
+	})
+	if !recipeSettled {
 		status, err := e.storeRecipeArtifact(ctx, fetched)
 		if err != nil {
-			item.Status = tasks.StatusFailed
-			item.Error = tasks.FromTaxonomy(e.mapError(err, rid))
-			save()
+			te := tasks.FromTaxonomy(e.mapError(err, rid))
+			sink.update(func(t *tasks.Task) bool {
+				item := itemFor(t, recipeItemName)
+				item.Status = tasks.StatusFailed
+				item.Error = te
+				return true
+			})
 			return
 		}
-		item.Status = tasks.StatusDone
-		if status == string(importer.StatusUpToDate) {
-			item.Status = tasks.StatusSkipped
-		}
-		item.Digest = fetched.ManifestDigest
-		save()
+		sink.update(func(t *tasks.Task) bool {
+			item := itemFor(t, recipeItemName)
+			item.Status = tasks.StatusDone
+			if status == string(importer.StatusUpToDate) {
+				item.Status = tasks.StatusSkipped
+			}
+			item.Digest = fetched.ManifestDigest
+			return true
+		})
 	}
 
 	// Promotion (FR-013, FR-028, FR-034): the content is in the store,
@@ -273,7 +326,7 @@ func (e *Engine) syncRecipe(ctx context.Context, t *tasks.Task, logger *slog.Log
 	// zone. It runs after the fetch and never during it — pushing an
 	// ingredient the local store has not finished committing would put
 	// content on the destination that this instance cannot prove it holds.
-	e.promoteRecipe(ctx, t, &mu, logger, save, fetched, rid)
+	e.promoteRecipe(ctx, sink, logger, fetched, rid)
 
 	// Record the graph: reachability for GC/prune (FR-044/FR-045), zone
 	// identity and resolution timestamp for the milestone-5 media manifest
@@ -287,7 +340,7 @@ func (e *Engine) syncRecipe(ctx context.Context, t *tasks.Task, logger *slog.Log
 	if err := e.store.PutRecipeRecord(&store.RecipeRecord{
 		Name: recipe.Metadata.Name, Version: recipe.Metadata.Version,
 		CookbookRepo: nominalRepo, Digest: fetched.ManifestDigest,
-		RunID: t.RunID, Zone: zone, ResolvedAt: time.Now().UTC(),
+		RunID: sink.runID(), Zone: zone, ResolvedAt: time.Now().UTC(),
 		Verified: verified, TrustScope: scopeName, Ingredients: kept,
 	}); err != nil {
 		fail(rid, err)
@@ -321,7 +374,7 @@ func (e *Engine) verifyRecipe(ctx context.Context, f *FetchedRecipe, d Decision)
 // relocated repository (FR-035), with source substitution (FR-036),
 // platform selection (FR-022), artifactType enforcement (§7.3), chart
 // dependency verification (FR-024), and bounded retries (FR-029).
-func (e *Engine) syncIngredient(ctx context.Context, t *tasks.Task, mu *sync.Mutex, logger *slog.Logger, save func(), ing *spec.Ingredient, rid string) (store.IngredientRecord, tasks.Resolution, error) {
+func (e *Engine) syncIngredient(ctx context.Context, sink *taskSink, logger *slog.Logger, ing *spec.Ingredient, rid string) (store.IngredientRecord, tasks.Resolution, error) {
 	logger = logger.With(slog.String("ingredient", ing.Name), slog.String("digest", ing.Digest))
 	rec := e.ingredientRecord(ing)
 	res := tasks.Resolution{
@@ -347,10 +400,11 @@ func (e *Engine) syncIngredient(ctx context.Context, t *tasks.Task, mu *sync.Mut
 	default:
 		if d, ok := e.store.ResolveTag(ctx, repo, ing.Version); ok && d == ing.Digest {
 			res.Status = string(importer.StatusUpToDate)
-			mu.Lock()
-			itemFor(t, rid+"/"+ing.Name).Status = tasks.StatusSkipped
-			mu.Unlock()
-			e.recordProvenance(repo, rid, t.RunID)
+			sink.update(func(t *tasks.Task) bool {
+				itemFor(t, rid+"/"+ing.Name).Status = tasks.StatusSkipped
+				return true
+			})
+			e.recordProvenance(repo, rid, sink.runID())
 			return rec, res, nil
 		}
 		res.Status = string(importer.StatusOutdated)
@@ -362,7 +416,7 @@ func (e *Engine) syncIngredient(ctx context.Context, t *tasks.Task, mu *sync.Mut
 	}
 	var transferred int64
 	err = withRetries(ctx, e.cfg.Retries, func() error {
-		n, err := e.transferIngredient(ctx, t, mu, save, ing, repo, rid)
+		n, err := e.transferIngredient(ctx, sink, ing, repo, rid)
 		transferred += n
 		return err
 	})
@@ -375,13 +429,14 @@ func (e *Engine) syncIngredient(ctx context.Context, t *tasks.Task, mu *sync.Mut
 	// Best effort: an ingredient may carry its own attached signature —
 	// transfer tools MUST copy signature artifacts along (§12.2).
 	e.copyAttachedSignature(ctx, logger, ing.Ref, repo, ing.Digest)
-	e.recordProvenance(repo, rid, t.RunID)
+	e.recordProvenance(repo, rid, sink.runID())
 
-	mu.Lock()
-	item := itemFor(t, rid+"/"+ing.Name)
-	item.Status = tasks.StatusDone
-	item.SizeBytes = transferred
-	mu.Unlock()
+	sink.update(func(t *tasks.Task) bool {
+		item := itemFor(t, rid+"/"+ing.Name)
+		item.Status = tasks.StatusDone
+		item.SizeBytes = transferred
+		return true
+	})
 	logger.LogAttrs(ctx, slog.LevelInfo, "ingredient synchronized",
 		slog.String("repository", repo), slog.String("status", res.Status),
 		slog.Int64("transferred_bytes", transferred))
@@ -389,12 +444,12 @@ func (e *Engine) syncIngredient(ctx context.Context, t *tasks.Task, mu *sync.Mut
 }
 
 // transferIngredient performs the bit-exact copy of one ingredient.
-func (e *Engine) transferIngredient(ctx context.Context, t *tasks.Task, mu *sync.Mutex, save func(), ing *spec.Ingredient, repo, rid string) (int64, error) {
+func (e *Engine) transferIngredient(ctx context.Context, sink *taskSink, ing *spec.Ingredient, repo, rid string) (int64, error) {
 	desc, err := e.remotes.Get(ctx, ing.Ref, ing.Digest)
 	if err != nil {
 		return 0, err
 	}
-	bl, err := e.blobsFor(ing.Ref, e.itemTracker(t, mu, save, rid+"/"+ing.Name))
+	bl, err := e.blobsFor(ing.Ref, e.itemTracker(sink, rid+"/"+ing.Name))
 	if err != nil {
 		return 0, err
 	}
@@ -426,9 +481,12 @@ func (e *Engine) transferIngredient(ctx context.Context, t *tasks.Task, mu *sync
 	}
 	if ing.Kind == spec.IngredientHelmChart {
 		rows, err := importer.VerifyChart(img)
-		mu.Lock()
-		t.ChartDependencies = append(t.ChartDependencies, rows...)
-		mu.Unlock()
+		if len(rows) > 0 {
+			sink.update(func(t *tasks.Task) bool {
+				t.ChartDependencies = append(t.ChartDependencies, rows...)
+				return true
+			})
+		}
 		if err != nil {
 			return 0, err
 		}
@@ -450,20 +508,18 @@ func (e *Engine) blobsFor(nominalRef string, track func(string, int64, int64, bo
 
 // itemTracker records per-blob progress on one task item and persists it.
 // Ingredients are transferred concurrently (NFR-008), so every write goes
-// through the task mutex the rest of the run already uses.
-func (e *Engine) itemTracker(t *tasks.Task, mu *sync.Mutex, save func(), itemName string) func(string, int64, int64, bool, bool) {
+// through the task sink the rest of the run already uses (B-016).
+func (e *Engine) itemTracker(sink *taskSink, itemName string) func(string, int64, int64, bool, bool) {
 	return func(dgst string, received, total int64, resumed, done bool) {
-		mu.Lock()
-		item := itemFor(t, itemName)
-		if done {
-			item.TrackBlobDone(dgst)
-		} else {
-			item.TrackBlob(dgst, received, total, resumed, false)
-		}
-		mu.Unlock()
-		if save != nil {
-			save()
-		}
+		sink.update(func(t *tasks.Task) bool {
+			item := itemFor(t, itemName)
+			if done {
+				item.TrackBlobDone(dgst)
+			} else {
+				item.TrackBlob(dgst, received, total, resumed, false)
+			}
+			return true
+		})
 	}
 }
 
@@ -580,10 +636,24 @@ func (e *Engine) copyAttachedSignature(ctx context.Context, logger *slog.Logger,
 // what the next reader can use.
 func (e *Engine) copyReferringSignatures(ctx context.Context, nominalRepo, localRepo, manifestDigest string, warn func(string, error)) {
 	hex := strings.TrimPrefix(manifestDigest, "sha256:")
-	digests, err := e.remotes.Manifests(nominalRepo).(sigverify.ReferrersLister).
-		Referrers(ctx, nominalRepo, manifestDigest)
-	if err != nil && !errors.Is(err, sigverify.ErrNotFound) {
-		warn("referrers", err)
+	var digests []string
+	// Checked assertion (2026-08 robustness audit): the one-value form
+	// would panic the whole sync the day a Manifests implementation stops
+	// carrying Referrers — a compile-time guard in remote.go keeps the
+	// current one honest. The degradation is deliberately NOT silent:
+	// signatures travel as referring artifacts in the cosign 3.x bundle
+	// layout (§12.2, B-015), so a source without the lookup means those
+	// signatures can only be found through the fallback tag below, and an
+	// operator must be able to see why one hop down suddenly refuses
+	// content its upstream accepted.
+	if lister, ok := e.remotes.Manifests(nominalRepo).(sigverify.ReferrersLister); ok {
+		var err error
+		digests, err = lister.Referrers(ctx, nominalRepo, manifestDigest)
+		if err != nil && !errors.Is(err, sigverify.ErrNotFound) {
+			warn("referrers", err)
+		}
+	} else {
+		warn("referrers", errors.New("manifest source implements no referrers lookup; bundle-layout signatures are only found through the fallback tag"))
 	}
 
 	// The source may carry the fallback tag rather than the API — a store

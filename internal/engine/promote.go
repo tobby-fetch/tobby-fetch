@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
@@ -47,7 +46,7 @@ const pushItemPrefix = "push/"
 // Failures are isolated per item, like the fetch side: one ingredient
 // that cannot cross does not stop the others, and the recipe artifact is
 // simply not published — which is the point of publishing it last.
-func (e *Engine) promoteRecipe(ctx context.Context, t *tasks.Task, mu *sync.Mutex, logger *slog.Logger, save func(), f *FetchedRecipe, rid string) {
+func (e *Engine) promoteRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, f *FetchedRecipe, rid string) {
 	if e.dest == nil {
 		return
 	}
@@ -61,18 +60,18 @@ func (e *Engine) promoteRecipe(ctx context.Context, t *tasks.Task, mu *sync.Mute
 	// writable, backed up, restored, and possibly transported.
 	local, err := relocate.PathWithBase(e.base, f.NominalRepo)
 	if err != nil {
-		_ = e.pushFailed(t, mu, logger, save, rid, "recipe", err, rid)
+		_ = e.pushFailed(sink, logger, rid, "recipe", err, rid)
 		return
 	}
 	if err := e.verifyStored(ctx, local, f.NominalRepo, f.ManifestDigest, f.NominalRepo+":"+f.Tag); err != nil {
-		_ = e.pushFailed(t, mu, logger, save, rid, "recipe", err, rid)
+		_ = e.pushFailed(sink, logger, rid, "recipe", err, rid)
 		return
 	}
 
 	allPushed := true
 	for i := range f.Recipe.Spec.Ingredients {
 		ing := &f.Recipe.Spec.Ingredients[i]
-		if err := e.promoteIngredient(ctx, t, mu, logger, save, ing, rid); err != nil {
+		if err := e.promoteIngredient(ctx, sink, logger, ing, rid); err != nil {
 			allPushed = false
 		}
 	}
@@ -86,7 +85,7 @@ func (e *Engine) promoteRecipe(ctx context.Context, t *tasks.Task, mu *sync.Mute
 			slog.String("recipe", rid), slog.String("requirement", "FR-034"))
 		return
 	}
-	e.propagateRecipe(ctx, t, mu, logger, save, f, local, rid)
+	e.propagateRecipe(ctx, sink, logger, f, local, rid)
 }
 
 // promoteIngredient pushes one ingredient to its relocated destination
@@ -100,56 +99,56 @@ func (e *Engine) promoteRecipe(ctx context.Context, t *tasks.Task, mu *sync.Mute
 // registry it does not own, and one HEAD replaces that belief with the
 // current truth. Re-asking costs a request and can only ever prevent a
 // missing push; believing the record can only ever hide one.
-func (e *Engine) promoteIngredient(ctx context.Context, t *tasks.Task, mu *sync.Mutex, logger *slog.Logger, save func(), ing *spec.Ingredient, rid string) error {
+func (e *Engine) promoteIngredient(ctx context.Context, sink *taskSink, logger *slog.Logger, ing *spec.Ingredient, rid string) error {
 	logger = logger.With(slog.String("ingredient", ing.Name), slog.String("digest", ing.Digest))
 	itemName := pushItemPrefix + rid + "/" + ing.Name
 
 	local, err := relocate.PathWithBase(e.base, ing.Ref)
 	if err != nil {
-		return e.pushFailed(t, mu, logger, save, rid, ing.Name, err, ing.Ref)
+		return e.pushFailed(sink, logger, rid, ing.Name, err, ing.Ref)
 	}
 	dst, err := e.dest.Repository(local)
 	if err != nil {
-		return e.pushFailed(t, mu, logger, save, rid, ing.Name, err, ing.Ref)
+		return e.pushFailed(sink, logger, rid, ing.Name, err, ing.Ref)
 	}
 	if err := e.dest.Accepts(ctx, dst); err != nil {
-		return e.pushFailed(t, mu, logger, save, rid, ing.Name, err, ing.Ref)
+		return e.pushFailed(sink, logger, rid, ing.Name, err, ing.Ref)
 	}
 	// An ingredient that carries a signature locally must still verify
 	// before it crosses. One that carries none rides on the recipe's own
 	// signature, which pins this exact digest (§12.2): that chain was
 	// established at import and re-established above, on this same cycle.
 	if err := e.verifySignedStored(ctx, local, ing.Ref, ing.Digest, ing.Ref+"@"+ing.Digest); err != nil {
-		return e.pushFailed(t, mu, logger, save, rid, ing.Name, err, ing.Ref)
+		return e.pushFailed(sink, logger, rid, ing.Name, err, ing.Ref)
 	}
 
 	// FR-026, against the destination and before any transfer.
 	status, err := e.dest.Status(ctx, dst, ing.Version, ing.Digest)
 	if err != nil {
-		return e.pushFailed(t, mu, logger, save, rid, ing.Name, err, ing.Ref)
+		return e.pushFailed(sink, logger, rid, ing.Name, err, ing.Ref)
 	}
 	res := tasks.Resolution{
 		Recipe: rid, Ingredient: ing.Name, Requested: ing.Version, Resolved: ing.Version,
 		Digest: ing.Digest, Destination: dst.String(), DestinationStatus: string(status),
 	}
 	if status == importer.StatusUpToDate {
-		mu.Lock()
-		itemFor(t, itemName).Status = tasks.StatusSkipped
-		t.Resolutions = append(t.Resolutions, res)
-		mu.Unlock()
-		save()
+		sink.update(func(t *tasks.Task) bool {
+			itemFor(t, itemName).Status = tasks.StatusSkipped
+			t.Resolutions = append(t.Resolutions, res)
+			return true
+		})
 		e.meter(e.meters.PushSkipped)
 		logger.LogAttrs(ctx, slog.LevelDebug, "ingredient already up to date on the destination",
 			slog.String("repository", dst.String()), slog.String("requirement", "FR-026"))
 		return nil
 	}
 
-	mu.Lock()
-	item := itemFor(t, itemName)
-	item.Status = tasks.StatusRunning
-	item.Digest = ing.Digest
-	mu.Unlock()
-	save()
+	sink.update(func(t *tasks.Task) bool {
+		item := itemFor(t, itemName)
+		item.Status = tasks.StatusRunning
+		item.Digest = ing.Digest
+		return true
+	})
 
 	var moved int64
 	push := func() error {
@@ -167,7 +166,7 @@ func (e *Engine) promoteIngredient(ctx context.Context, t *tasks.Task, mu *sync.
 		// actually said no, and never pre-emptively.
 		n, ferr := e.completeIndex(ctx, ing, local)
 		if ferr != nil {
-			return e.pushFailed(t, mu, logger, save, rid, ing.Name, ferr, ing.Ref)
+			return e.pushFailed(sink, logger, rid, ing.Name, ferr, ing.Ref)
 		}
 		logger.LogAttrs(ctx, slog.LevelInfo, "destination rejects sparse indexes: transferring every platform",
 			slog.String("repository", dst.String()), slog.Any("selected", ing.Platforms),
@@ -178,19 +177,19 @@ func (e *Engine) promoteIngredient(ctx context.Context, t *tasks.Task, mu *sync.
 		err = withRetries(ctx, e.cfg.Retries, push)
 	}
 	if err != nil {
-		return e.pushFailed(t, mu, logger, save, rid, ing.Name, err, ing.Ref)
+		return e.pushFailed(sink, logger, rid, ing.Name, err, ing.Ref)
 	}
 	// §12.2: signature artifacts travel with the content they attest.
 	moved += e.pushAttachedSignatures(ctx, logger, local, dst, ing.Digest)
 
 	res.PushedBytes = moved
-	mu.Lock()
-	item = itemFor(t, itemName)
-	item.Status = tasks.StatusDone
-	item.SizeBytes = moved
-	t.Resolutions = append(t.Resolutions, res)
-	mu.Unlock()
-	save()
+	sink.update(func(t *tasks.Task) bool {
+		item := itemFor(t, itemName)
+		item.Status = tasks.StatusDone
+		item.SizeBytes = moved
+		t.Resolutions = append(t.Resolutions, res)
+		return true
+	})
 	e.meter(e.meters.PushDone)
 	if e.meters.PushedBytes != nil && moved > 0 {
 		e.meters.PushedBytes(moved)
@@ -260,26 +259,26 @@ func (e *Engine) completeIndex(ctx context.Context, ing *spec.Ingredient, localR
 // (§8): the same digest is a no-op, a different one is a conflict that
 // requires a new metadata.version, and inventing a third answer here
 // would make this implementation disagree with every other.
-func (e *Engine) propagateRecipe(ctx context.Context, t *tasks.Task, mu *sync.Mutex, logger *slog.Logger, save func(), f *FetchedRecipe, local, rid string) {
+func (e *Engine) propagateRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, f *FetchedRecipe, local, rid string) {
 	itemName := pushItemPrefix + rid + "/recipe"
 	tag, err := e.dest.CookbookTag(f.Recipe.Metadata.Name, f.Recipe.Metadata.Version)
 	if err != nil {
-		_ = e.pushFailed(t, mu, logger, save, rid, "recipe", err, rid)
+		_ = e.pushFailed(sink, logger, rid, "recipe", err, rid)
 		return
 	}
 	dst := tag.Context()
 	if err := e.dest.Accepts(ctx, dst); err != nil {
-		_ = e.pushFailed(t, mu, logger, save, rid, "recipe", err, rid)
+		_ = e.pushFailed(sink, logger, rid, "recipe", err, rid)
 		return
 	}
 
 	payload, _, dgst, err := e.store.RawManifest(ctx, local, f.Tag)
 	if err != nil {
-		_ = e.pushFailed(t, mu, logger, save, rid, "recipe", err, rid)
+		_ = e.pushFailed(sink, logger, rid, "recipe", err, rid)
 		return
 	}
 	if _, err := cookbook.VerifyManifest(payload); err != nil {
-		_ = e.pushFailed(t, mu, logger, save, rid, "recipe", validationError(tag.String(), err), rid)
+		_ = e.pushFailed(sink, logger, rid, "recipe", validationError(tag.String(), err), rid)
 		return
 	}
 
@@ -291,36 +290,36 @@ func (e *Engine) propagateRecipe(ctx context.Context, t *tasks.Task, mu *sync.Mu
 	case headErr == nil:
 		if cookbook.DecideRepublication(existing.Digest.String(), dgst) == cookbook.RepublicationIdentical {
 			res.DestinationStatus = string(importer.StatusUpToDate)
-			mu.Lock()
-			itemFor(t, itemName).Status = tasks.StatusSkipped
-			t.Resolutions = append(t.Resolutions, res)
-			mu.Unlock()
-			save()
+			sink.update(func(t *tasks.Task) bool {
+				itemFor(t, itemName).Status = tasks.StatusSkipped
+				t.Resolutions = append(t.Resolutions, res)
+				return true
+			})
 			e.meter(e.meters.PushSkipped)
 			return
 		}
-		_ = e.pushFailed(t, mu, logger, save, rid, "recipe", taxonomy.New(taxonomy.CodeTagImmutable, taxonomy.Params{
+		_ = e.pushFailed(sink, logger, rid, "recipe", taxonomy.New(taxonomy.CodeTagImmutable, taxonomy.Params{
 			"reference": tag.String(),
 			"published": existing.Digest.String(),
 			"candidate": dgst,
 		}), rid)
 		return
 	case !isNotFound(headErr):
-		_ = e.pushFailed(t, mu, logger, save, rid, "recipe", headErr, rid)
+		_ = e.pushFailed(sink, logger, rid, "recipe", headErr, rid)
 		return
 	}
 	res.DestinationStatus = string(importer.StatusNew)
 
-	mu.Lock()
-	item := itemFor(t, itemName)
-	item.Status = tasks.StatusRunning
-	item.Digest = dgst
-	mu.Unlock()
-	save()
+	sink.update(func(t *tasks.Task) bool {
+		item := itemFor(t, itemName)
+		item.Status = tasks.StatusRunning
+		item.Digest = dgst
+		return true
+	})
 
 	moved, err := e.dest.PushManifest(ctx, e.store, local, dst, f.Tag, f.Tag)
 	if err != nil {
-		_ = e.pushFailed(t, mu, logger, save, rid, "recipe", err, rid)
+		_ = e.pushFailed(sink, logger, rid, "recipe", err, rid)
 		return
 	}
 	// FR-034 acceptance: the propagated recipe is verifiable with cosign
@@ -328,13 +327,13 @@ func (e *Engine) propagateRecipe(ctx context.Context, t *tasks.Task, mu *sync.Mu
 	moved += e.pushAttachedSignatures(ctx, logger, local, dst, dgst)
 
 	res.PushedBytes = moved
-	mu.Lock()
-	item = itemFor(t, itemName)
-	item.Status = tasks.StatusDone
-	item.SizeBytes = moved
-	t.Resolutions = append(t.Resolutions, res)
-	mu.Unlock()
-	save()
+	sink.update(func(t *tasks.Task) bool {
+		item := itemFor(t, itemName)
+		item.Status = tasks.StatusDone
+		item.SizeBytes = moved
+		t.Resolutions = append(t.Resolutions, res)
+		return true
+	})
 	e.meter(e.meters.PushDone)
 	if e.meters.PushedBytes != nil && moved > 0 {
 		e.meters.PushedBytes(moved)
@@ -444,14 +443,14 @@ func (e *Engine) verifySignedStored(ctx context.Context, localRepo, nominalRepo,
 
 // pushFailed records one promotion failure on its task item and returns
 // the error, so callers can both report and propagate in one statement.
-func (e *Engine) pushFailed(t *tasks.Task, mu *sync.Mutex, logger *slog.Logger, save func(), rid, itemSuffix string, err error, subject string) error {
+func (e *Engine) pushFailed(sink *taskSink, logger *slog.Logger, rid, itemSuffix string, err error, subject string) error {
 	te := e.mapError(err, subject)
-	mu.Lock()
-	item := itemFor(t, pushItemPrefix+rid+"/"+itemSuffix)
-	item.Status = tasks.StatusFailed
-	item.Error = tasks.FromTaxonomy(te)
-	mu.Unlock()
-	save()
+	sink.update(func(t *tasks.Task) bool {
+		item := itemFor(t, pushItemPrefix+rid+"/"+itemSuffix)
+		item.Status = tasks.StatusFailed
+		item.Error = tasks.FromTaxonomy(te)
+		return true
+	})
 	if e.meters.PushRefused != nil {
 		e.meters.PushRefused(string(te.Code()))
 	}

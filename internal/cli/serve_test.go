@@ -17,6 +17,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/server"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
@@ -52,9 +53,9 @@ func TestRunServeLifecycle(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- runServe(ctx, &cfg) }()
 
-	// The listener address is dynamic; poll the storage root as the signal
-	// that startup reached the serving phase, then probe via the registry
-	// base endpoint on a fixed port is impossible — so use a fixed port.
+	// This test asserts the lifecycle, not the endpoints (that is
+	// TestRunServeServesRegistry): a short grace period plus the storage
+	// probe below is enough to know startup reached the serving phase.
 	select {
 	case err := <-done:
 		t.Fatalf("runServe exited early: %v", err)
@@ -76,27 +77,49 @@ func TestRunServeLifecycle(t *testing.T) {
 	}
 }
 
-// TestRunServeServesRegistry starts serve on a fixed loopback port and
-// checks the mounted endpoints end to end.
+// TestRunServeServesRegistry starts serve on an ephemeral loopback port
+// — ":0" like every other network test in the repository; a fixed port
+// collides with parallel test runs and with whatever already listens on
+// the host — and checks the mounted endpoints end to end. The effective
+// address comes through serveHook, the test-only seam runServe exposes
+// for exactly this.
 func TestRunServeServesRegistry(t *testing.T) {
 	cfg := serveConfig(t)
 	cfg.Mode = config.ModePassthrough
-	cfg.Server.Addr = "127.0.0.1:18099"
+	cfg.Server.Addr = "127.0.0.1:0"
 	cfg.Shutdown.GracePeriod = config.Duration(2 * time.Second)
+
+	srvCh := make(chan *server.Server, 1)
+	serveHook = func(s *server.Server) { srvCh <- s }
+	defer func() { serveHook = nil }()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- runServe(ctx, &cfg) }()
 
-	base := "http://127.0.0.1:18099"
+	var srv *server.Server
+	select {
+	case srv = <-srvCh:
+	case err := <-done:
+		t.Fatalf("runServe exited before serving: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("runServe never built its server")
+	}
+
+	base := ""
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		resp, err := http.Get(base + "/readyz")
-		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				break
+		if addr := srv.Addr(); addr != "" && base == "" {
+			base = "http://" + addr
+		}
+		if base != "" {
+			resp, err := http.Get(base + "/readyz")
+			if err == nil {
+				_ = resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					break
+				}
 			}
 		}
 		if time.Now().After(deadline) {

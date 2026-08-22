@@ -155,7 +155,7 @@ func (d *Destination) pushBlobs(ctx context.Context, src StoreReader, srcRepo st
 			return fmt.Errorf("blob digest %q of %s: %w", b.Digest, srcRepo, err)
 		}
 		layer := &storeLayer{
-			src: src, repo: srcRepo, hash: h, size: b.Size,
+			ctx: ctx, src: src, repo: srcRepo, hash: h, size: b.Size,
 			mediaType: types.MediaType(b.MediaType), moved: moved,
 		}
 		if err := remote.WriteLayer(dst, layer, d.options(ctx)...); err != nil {
@@ -175,6 +175,13 @@ func (d *Destination) pushBlobs(ctx context.Context, src StoreReader, srcRepo st
 // asked for either, this type says so rather than inventing a
 // transformation the pinned digest would not survive.
 type storeLayer struct {
+	// ctx is the pushing task's context (2026-08 robustness audit).
+	// v1.Layer's Compressed cannot receive one — the interface is fixed
+	// by go-containerregistry — so the layer carries the context of the
+	// push that created it: a canceled task (shutdown, FR-093) must stop
+	// the blob stream it feeds, not leave it reading the store on a
+	// context.Background() nothing ever cancels.
+	ctx       context.Context
 	src       StoreReader
 	repo      string
 	hash      v1.Hash
@@ -201,7 +208,7 @@ func (l *storeLayer) Uncompressed() (io.ReadCloser, error) {
 }
 
 func (l *storeLayer) Compressed() (io.ReadCloser, error) {
-	rc, err := l.src.BlobReader(context.Background(), l.repo, l.hash.String())
+	rc, err := l.src.BlobReader(l.ctx, l.repo, l.hash.String())
 	if err != nil {
 		return nil, err
 	}

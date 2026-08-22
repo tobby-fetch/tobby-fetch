@@ -53,6 +53,7 @@ type Config struct {
 	Retriever   Retriever   `yaml:"retriever"`
 	Destination Destination `yaml:"destination"`
 	Sync        Sync        `yaml:"sync"`
+	Tasks       Tasks       `yaml:"tasks"`
 	Trust       Trust       `yaml:"trust"`
 	Files       Files       `yaml:"files"`
 	Logging     Logging     `yaml:"logging"`
@@ -218,6 +219,18 @@ type FileSetServe struct {
 	Anonymous bool `yaml:"anonymous,omitempty"`
 }
 
+// Tasks bounds the persistent task history (2026-08 audit). Without a
+// bound every task lives forever — in memory, and as a .json plus a .log
+// file inside the store — and a passthrough instance on a 10-minute cycle
+// mints ~52 000 sync tasks a year, all reloaded at every start.
+type Tasks struct {
+	// KeepFinished is how many finished tasks (done or failed) the queue
+	// retains, newest first; older ones are purged together with their
+	// log files. Pending and running tasks are never purged — the FR-029
+	// resume contract owns them. 0 keeps the whole history. Default 500.
+	KeepFinished int `yaml:"keepFinished"`
+}
+
 // Transfer bounds how blobs cross the wire, whichever operation asks for
 // them — a unit import (FR-023) and a recipe synchronization (FR-014) hit
 // the same registries over the same link, so the knob belongs to neither.
@@ -349,6 +362,18 @@ type Server struct {
 	Addr string `yaml:"addr"`
 	// TLS configures the certificate the listener presents (FR-082).
 	TLS ServerTLS `yaml:"tls"`
+	// SecureCookies marks every UI cookie Secure even though the listener
+	// itself serves plain HTTP. In the documented deployment a reverse
+	// proxy or an ingress terminates TLS in front of the instance
+	// (deploy/), so the listener sees no TLS on any request and the
+	// session cookie would otherwise be minted without the Secure
+	// attribute (NFR-015). The topology is stated explicitly by the
+	// operator rather than inferred from X-Forwarded-Proto: forwarding
+	// headers are client-supplied, and Tobby already refuses to trust
+	// them for audit origins (FR-094) — a spoofable header must not
+	// decide a security attribute either. When the listener serves TLS
+	// itself (server.tls), cookies are Secure regardless of this setting.
+	SecureCookies bool `yaml:"secureCookies,omitempty"`
 }
 
 // ServerTLS configures the listener's own certificate (FR-082). One
@@ -480,6 +505,7 @@ func Default() Config {
 		Transfer:    Transfer{ResumeThreshold: 64 * MiB},
 		Destination: Destination{Cookbook: DefaultCookbook},
 		Sync:        Sync{Parallelism: 3, Retries: 3, Interval: Duration(15 * time.Minute)},
+		Tasks:       Tasks{KeepFinished: 500},
 		Logging:     Logging{Level: "info"},
 		Shutdown:    Shutdown{GracePeriod: Duration(30 * time.Second)},
 	}
@@ -599,6 +625,9 @@ func (c *Config) validate(scope Scope) error {
 	}
 	if time.Duration(c.Sync.Interval) < 0 {
 		errs = append(errs, errors.New("sync.interval must not be negative: use 0 to disable the periodic reconciliation of FR-013"))
+	}
+	if c.Tasks.KeepFinished < 0 {
+		errs = append(errs, errors.New("tasks.keepFinished must not be negative: use 0 to keep the whole task history"))
 	}
 	errs = append(errs, c.validateDestination()...)
 	errs = append(errs, c.validateNetwork()...)

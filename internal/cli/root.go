@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -111,6 +112,22 @@ func (f *commonFlags) loadFor(cmd *cobra.Command, scope config.Scope) (config.Co
 	return config.LoadFor(scope, path, explicit, overrides...)
 }
 
+// usageError marks a command-line parsing failure — a bad flag, an
+// unknown command. FR-066 reserves exit code 2 for usage errors, and the
+// package documentation above promised it, but every non-taxonomy error
+// used to exit 1: cobra reports parse failures as plain errors,
+// indistinguishable from operational ones. The marker restores the
+// distinction, and carries the help hint that SilenceUsage removed from
+// the output — a dry "unknown flag: --typo" with no pointer to --help is
+// exactly the terse failure the trilingual taxonomy exists to avoid.
+type usageError struct {
+	err  error
+	hint string
+}
+
+func (u *usageError) Error() string { return u.err.Error() }
+func (u *usageError) Unwrap() error { return u.err }
+
 // New builds the root command.
 func New() *cobra.Command {
 	root := &cobra.Command{
@@ -120,6 +137,13 @@ func New() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	// Flag parse failures flow through this hook, which is the one place
+	// cobra lets them be told apart from a RunE failure (FR-066: usage
+	// errors exit 2). The hint names the command that misparsed, so
+	// `tobby serve --typo` points at `tobby serve --help`, not the root.
+	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		return &usageError{err: err, hint: "see '" + cmd.CommandPath() + " --help'"}
+	})
 	root.AddCommand(newServeCmd(), newVersionCmd(), newConfigCmd(), newUserCmd(), newQuickstartCmd(), newRecipeCmd())
 	return root
 }
@@ -127,23 +151,53 @@ func New() *cobra.Command {
 // Execute runs the CLI and returns the process exit code (FR-066: the
 // taxonomy class of the error decides the code).
 func Execute() int {
-	err := New().Execute()
+	err := classifyUsage(New().Execute())
 	if err != nil {
 		var te *taxonomy.Error
-		if errors.As(err, &te) {
+		var ue *usageError
+		switch {
+		case errors.As(err, &te):
 			fmt.Fprint(os.Stderr, taxonomy.Text(cliLang(), te))
-		} else {
+		case errors.As(err, &ue):
+			fmt.Fprintln(os.Stderr, "tobby:", ue.err)
+			fmt.Fprintln(os.Stderr, ue.hint)
+		default:
 			fmt.Fprintln(os.Stderr, "tobby:", err)
 		}
 	}
 	return exitCodeFor(err)
 }
 
+// classifyUsage tags the parse failures the flag-error hook cannot see.
+// An unknown subcommand never reaches any command's flag parsing, so
+// cobra returns it as a plain error; the message prefix is the only
+// stable handle cobra offers ("unknown command %q for %q"), and matching
+// it here is narrower than the alternative — exiting 1 on a usage error
+// and breaking the FR-066 contract for scripts that branch on the code.
+func classifyUsage(err error) error {
+	if err == nil {
+		return nil
+	}
+	var ue *usageError
+	if errors.As(err, &ue) {
+		return err
+	}
+	if strings.HasPrefix(err.Error(), "unknown command ") {
+		return &usageError{err: err, hint: "see 'tobby --help'"}
+	}
+	return err
+}
+
 // exitCodeFor maps an Execute error onto the FR-066 exit-code classes:
-// nil → 0, taxonomy errors → their class, anything else → 1.
+// nil → 0, usage errors → 2, taxonomy errors → their class, anything
+// else → 1.
 func exitCodeFor(err error) int {
 	if err == nil {
 		return taxonomy.ExitOK
+	}
+	var ue *usageError
+	if errors.As(err, &ue) {
+		return taxonomy.ExitUsage
 	}
 	var te *taxonomy.Error
 	if errors.As(err, &te) {

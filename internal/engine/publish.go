@@ -110,18 +110,24 @@ func (p *Publisher) PublishRecipe(ctx context.Context, ref string, doc []byte) (
 			"candidate": art.Manifest.Digest,
 		})
 	case !isNotFound(headErr):
-		return nil, headErr
+		// Through the same mapping as the reading side (R-03): an
+		// unreachable registry or a refused credential must answer with
+		// its TBY-REG block here too, not with a raw transport error the
+		// CLI prints dry while the UI taxonomizes the same failure.
+		return nil, mapEngineError(headErr, tagRef.Context().RegistryStr())
 	}
 
 	repo := tagRef.Context()
 	for _, b := range []cookbook.Blob{art.Config, art.Document} {
 		layer := static.NewLayer(b.Content, types.MediaType(b.MediaType))
 		if err := remote.WriteLayer(repo, layer, opts...); err != nil {
-			return nil, fmt.Errorf("uploading the %s blob: %w", b.MediaType, err)
+			// The wrap names the step for logs; the mapping decides the
+			// user-visible code, with the destination host as parameter.
+			return nil, mapEngineError(fmt.Errorf("uploading the %s blob: %w", b.MediaType, err), repo.RegistryStr())
 		}
 	}
 	if err := remote.Put(tagRef, rawManifest{bytes: art.Manifest.Content, mediaType: types.MediaType(art.Manifest.MediaType)}, opts...); err != nil {
-		return nil, fmt.Errorf("publishing the manifest: %w", err)
+		return nil, mapEngineError(fmt.Errorf("publishing the manifest: %w", err), repo.RegistryStr())
 	}
 	return &PublishResult{Reference: tagRef.String(), Digest: art.Manifest.Digest}, nil
 }

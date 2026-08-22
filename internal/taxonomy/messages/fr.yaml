@@ -47,6 +47,10 @@
 "TBY-AUTH-011.cause": "Le supprimer, ou lui retirer le rôle admin, ne laisserait plus personne pour administrer l'instance — et une instance sans aucun compte refuse purement et simplement de démarrer."
 "TBY-AUTH-011.action": "Créez d'abord un second compte admin, puis réessayez. Sur l'hôte de l'instance, `tobby user add --role admin <nom>` donne le même résultat."
 
+"TBY-AUTH-012.what": "Trop de tentatives d'authentification échouées depuis votre adresse réseau ; les tentatives suivantes sont temporairement refusées."
+"TBY-AUTH-012.cause": "Des identifiants erronés ont été présentés à répétition depuis la même origine. Chaque vérification échouée est volontairement coûteuse, l'instance limite donc les origines qui échouent en boucle plutôt que de brûler CPU et mémoire pour elles."
+"TBY-AUTH-012.action": "Patientez un instant, vérifiez l'identifiant (mot de passe du compte ou secret du jeton), puis réessayez. Si cette adresse est une sortie partagée, un autre client derrière elle est peut-être mal configuré — le journal d'audit liste les tentatives échouées et les noms de compte revendiqués."
+
 "TBY-CFG-001.what": "La configuration est invalide."
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Corrigez le réglage indiqué (précédence : drapeaux, puis variables d'environnement TOBBY_*, puis fichier YAML), vérifiez le résultat avec `tobby config dump`, puis redémarrez."

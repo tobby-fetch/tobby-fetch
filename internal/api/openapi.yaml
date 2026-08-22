@@ -187,8 +187,9 @@ paths:
   /api/v1/tasks:
     get:
       summary: >-
-        List the tasks of the persistent queue, newest first. Mirror of
-        the /tasks screen (same q, status, type parameters). Role viewer.
+        List the tasks of the persistent queue, newest first, paginated
+        like the content listing. Mirror of the /tasks screen (same q,
+        status, type, page parameters). Role viewer.
       parameters:
         - name: q
           in: query
@@ -208,9 +209,16 @@ paths:
           description: Keep only tasks of this type ("unit-import").
           schema:
             type: string
+        - name: page
+          in: query
+          required: false
+          description: 1-based page number.
+          schema:
+            type: integer
+            default: 1
       responses:
         "200":
-          description: The matching tasks.
+          description: One page of matching tasks.
           content:
             application/json:
               schema:
@@ -220,6 +228,12 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Task"
+                  page:
+                    type: integer
+                  totalPages:
+                    type: integer
+                  total:
+                    type: integer
         default:
           $ref: "#/components/responses/Problem"
   /api/v1/tasks/{id}:
@@ -784,6 +798,20 @@ components:
       description: >-
         Any error, as an RFC 9457 problem document carrying the taxonomy
         entry (application/problem+json) with its entry's HTTP status.
+        This includes the transversal 429 (TBY-AUTH-012): every
+        credential-verifying surface answers it BEFORE any credential is
+        checked once an origin exceeds its failure budget (v0.4.2
+        hardening — each failed check costs an argon2id computation), so
+        any operation can return it. The Retry-After header says when to
+        try again, in seconds.
+      headers:
+        Retry-After:
+          description: >-
+            Seconds to wait before retrying — present on the 429
+            rate-limiting answer (TBY-AUTH-012) only.
+          required: false
+          schema:
+            type: string
       content:
         application/problem+json:
           schema:

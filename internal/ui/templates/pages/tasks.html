@@ -43,11 +43,13 @@
 {{end}}
 
 {{/* Results region: swap target of the filter form. States: no task yet
-     (CTA gated by role), no result for these filters (+ reset), listing. */}}
+     (CTA gated by role), no result for these filters or an out-of-range
+     page (+ reset), listing with server pagination (the /content model,
+     FR-061). */}}
 {{define "tasks-results"}}
 <div id="tasks-results">
   {{if not .Data.Rows}}
-  {{if .Data.HasFilter}}
+  {{if or .Data.HasFilter (gt .Data.Total 0)}}
   <div class="t-empty">
     <p class="t-empty-title">{{.T "tasks.no_results"}}</p>
     <a class="t-btn t-btn--secondary" href="/tasks">{{.T "tasks.reset_filters"}}</a>
@@ -77,6 +79,13 @@
     </thead>
     {{template "task-rows" .}}
   </table>
+  {{if gt .Data.TotalPages 1}}
+  <nav class="t-pagination" aria-label="{{.T "tasks.pagination_label"}}">
+    {{if .Data.PrevHref}}<a href="{{.Data.PrevHref}}">← {{.T "tasks.prev_page"}}</a>{{end}}
+    <span>{{.T "tasks.page_of" "Page" .Data.Page "Total" .Data.TotalPages}}</span>
+    {{if .Data.NextHref}}<a href="{{.Data.NextHref}}">{{.T "tasks.next_page"}} →</a>{{end}}
+  </nav>
+  {{end}}
   {{end}}
 </div>
 {{end}}

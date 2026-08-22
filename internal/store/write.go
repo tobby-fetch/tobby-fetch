@@ -66,6 +66,20 @@ func (s *Store) HasBlob(ctx context.Context, name string, dgst digest.Digest) bo
 // digest: a stream that does not hash to dgst is rejected and leaves no
 // trace (crash-safe by the library's upload transaction).
 func (s *Store) WriteBlob(ctx context.Context, name string, dgst digest.Digest, r io.Reader) error {
+	// B-017: this is the shared half of the FR-044 lock contract that
+	// store.go documented and nothing implemented — content writes hold
+	// gcMu shared, removal and sweep hold it exclusively (gc.go), so the
+	// GC never interleaves with a write in progress. A multi-gigabyte
+	// blob keeps the read lock for its whole stream, and a concurrent
+	// removal waits that long: that wait IS the FR-044 behaviour — a
+	// sweep must not run over a half-committed write — not a latency bug
+	// to optimize away. No exclusive-side path (gc.go) calls back into a
+	// writer, so the lock cannot self-deadlock. Standard-client pushes
+	// through /v2/ still bypass this process-level lock; the sweep grace
+	// period remains their only cover, exactly as documented in gc.go.
+	s.gcMu.RLock()
+	defer s.gcMu.RUnlock()
+
 	repo, err := s.repository(ctx, name)
 	if err != nil {
 		return err
@@ -94,6 +108,12 @@ func (s *Store) WriteBlob(ctx context.Context, name string, dgst digest.Digest, 
 // indexes keep their pinned digest (FR-022), so dependency verification is
 // skipped: presence per platform is the browsing accessors' concern.
 func (s *Store) PutManifest(ctx context.Context, name, mediaType string, payload []byte, tag string) (digest.Digest, error) {
+	// B-017: shared half of the FR-044 lock, same contract as WriteBlob —
+	// the revision links and the tag this writes must never interleave
+	// with a sweep.
+	s.gcMu.RLock()
+	defer s.gcMu.RUnlock()
+
 	repo, err := s.repository(ctx, name)
 	if err != nil {
 		return "", err

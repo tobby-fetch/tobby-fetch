@@ -54,6 +54,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -90,6 +91,18 @@ const (
 	// errorBodyLimit caps how much of an error response is read before
 	// go-containerregistry's error decoder sees it.
 	errorBodyLimit = 64 << 10
+	// stallTimeout is how long a response BODY may deliver nothing
+	// before the attempt is abandoned (v0.4.2 hardening). The egress
+	// transport's ResponseHeaderTimeout covers the headers; nothing
+	// covered a body that stops progressing — a failing enterprise proxy
+	// that holds the connection open delivers exactly that, the read
+	// blocks forever, and withRetries never fires because the call never
+	// returns: with a single sync worker that is a global famine, not a
+	// slow transfer. Two minutes tells a stall from a slow link — any
+	// link that delivers NO byte for two minutes is not slow, it is dead
+	// — and abandoning is nearly free here: the spool keeps every
+	// received byte, so the retry resumes from the checkpoint (FR-029).
+	stallTimeout = 2 * time.Minute
 )
 
 // Progress reports one blob's advance to the caller, which persists it on
@@ -127,6 +140,19 @@ type Resumer struct {
 	// threshold is the declared blob size from which the resumable path
 	// applies. Zero disables it.
 	threshold int64
+	// stall overrides stallTimeout; zero means the constant. Unexported
+	// on purpose: tests inject milliseconds instead of sleeping minutes,
+	// operators get one less knob two zones can disagree about (same
+	// argument as the tunables block above).
+	stall time.Duration
+}
+
+// stallAfter is the effective no-progress bound of one body read.
+func (r *Resumer) stallAfter() time.Duration {
+	if r.stall > 0 {
+		return r.stall
+	}
+	return stallTimeout
 }
 
 // New builds the instance's resumer.
@@ -298,9 +324,17 @@ func (r *Resumer) lock(ctx context.Context, dgst digest.Digest) (release func(),
 
 // pull performs one attempt: one request, from the spool's current offset
 // to the end of the blob.
+//
+// The whole attempt runs under a derived context that a progress watchdog
+// cancels when the body delivers nothing for stallTimeout (v0.4.2, see
+// the constant): cancelling the request context is the only reliable way
+// to unblock a Read that is sitting on a dead connection.
 func (r *Resumer) pull(ctx context.Context, client *http.Client, blobURL string, sp *spool, size int64, report Progress) error {
+	bodyCtx, cancelBody := context.WithCancel(ctx)
+	defer cancelBody()
+
 	off := sp.offset()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, blobURL, http.NoBody)
+	req, err := http.NewRequestWithContext(bodyCtx, http.MethodGet, blobURL, http.NoBody)
 	if err != nil {
 		return taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err)
 	}
@@ -361,7 +395,24 @@ func (r *Resumer) pull(ctx context.Context, client *http.Client, blobURL string,
 	if off == 0 {
 		sp.setValidator(responseValidator(resp))
 	}
-	if err := sp.append(ctx, resp.Body, size, report); err != nil {
+
+	// Progress watchdog: every byte read arms the deadline again, and a
+	// body that delivers nothing for the whole window gets its context
+	// cancelled — which fails the blocked Read. The abandoned bytes are
+	// already checkpointed in the spool, so the retry asks for the rest.
+	watch := newStallWatch(cancelBody, r.stallAfter())
+	defer watch.stop()
+	err = sp.append(bodyCtx, watch.reader(resp.Body), size, report)
+	if watch.stalled() && ctx.Err() == nil {
+		// Reported as its own operational error rather than the
+		// cancellation it was implemented with: a context.Canceled leaking
+		// out of here would read as "the caller gave up" to retryable(),
+		// and the point of abandoning a frozen body is precisely to retry.
+		return taxonomy.New(taxonomy.CodeRegistryUnreachable, taxonomy.Params{
+			"host": hostOf(blobURL),
+		}).WithCause(fmt.Errorf("the response body delivered no byte for %s; the connection was abandoned to retry from the checkpointed offset", r.stallAfter()))
+	}
+	if err != nil {
 		return err
 	}
 	if size > 0 && sp.offset() != size {
@@ -369,6 +420,58 @@ func (r *Resumer) pull(ctx context.Context, client *http.Client, blobURL string,
 	}
 	return nil
 }
+
+// stallWatch cancels a request whose body stops delivering. One goroutine
+// per attempt, stopped with the attempt; no timer is reset per read —
+// reads are hot — the goroutine polls at a quarter of the window and
+// compares against the atomically stored instant of the last byte.
+type stallWatch struct {
+	last    atomic.Int64 // unix nanos of the last received byte
+	fired   atomic.Bool
+	stopped chan struct{}
+	once    sync.Once
+}
+
+func newStallWatch(cancel context.CancelFunc, window time.Duration) *stallWatch {
+	w := &stallWatch{stopped: make(chan struct{})}
+	w.last.Store(time.Now().UnixNano())
+	poll := max(window/4, 10*time.Millisecond)
+	go func() {
+		for {
+			select {
+			case <-w.stopped:
+				return
+			case <-time.After(poll):
+				if time.Since(time.Unix(0, w.last.Load())) > window {
+					w.fired.Store(true)
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	return w
+}
+
+// reader wraps the response body so every received byte re-arms the
+// watchdog.
+func (w *stallWatch) reader(body io.Reader) io.Reader {
+	return readerFunc(func(p []byte) (int, error) {
+		n, err := body.Read(p)
+		if n > 0 {
+			w.last.Store(time.Now().UnixNano())
+		}
+		return n, err
+	})
+}
+
+func (w *stallWatch) stop()         { w.once.Do(func() { close(w.stopped) }) }
+func (w *stallWatch) stalled() bool { return w.fired.Load() }
+
+// readerFunc adapts a function to io.Reader.
+type readerFunc func(p []byte) (int, error)
+
+func (f readerFunc) Read(p []byte) (int, error) { return f(p) }
 
 // client builds the authenticated HTTP client and the blob URL.
 //

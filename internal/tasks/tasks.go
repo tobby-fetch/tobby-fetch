@@ -166,6 +166,25 @@ type Item struct {
 	Blobs []BlobProgress `json:"blobs,omitempty"`
 }
 
+// cloneItems deep-copies a task's items, per-blob progress rows
+// included (B-016). Item carries a Blobs slice the runner keeps
+// mutating through TrackBlob; a shallow item copy would share those
+// rows' backing array between the runner's working clone and the
+// published task, and every reader of the published side — persist's
+// marshalling, Get, List — would race with the runner's next progress
+// tick. Error pointers are shared deliberately: persisted errors are
+// never mutated in place (see Task.clone).
+func cloneItems(items []Item) []Item {
+	if items == nil {
+		return nil
+	}
+	out := append([]Item(nil), items...)
+	for i := range out {
+		out[i].Blobs = append([]BlobProgress(nil), out[i].Blobs...)
+	}
+	return out
+}
+
 // BlobProgress is one large blob's advance within an item (FR-029).
 type BlobProgress struct {
 	// Digest is the blob's pinned digest.

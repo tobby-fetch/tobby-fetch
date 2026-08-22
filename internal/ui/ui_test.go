@@ -424,3 +424,36 @@ func TestThemeAndLangCookies(t *testing.T) {
 		t.Error("server does not stamp data-theme from the cookie")
 	}
 }
+
+// TestLoginThrottledAfterRepeatedFailures covers the browser half of the
+// v0.4.2 failure limiter: the login form shares the per-origin budget of
+// the machine surfaces, so the UI cannot remain the cheap way to
+// brute-force what /v2/ and /api/v1 now bound. Over budget, the page
+// answers 429 with the TBY-AUTH-012 block (FR-061: same taxonomy entry
+// as the API's problem document).
+func TestLoginThrottledAfterRepeatedFailures(t *testing.T) {
+	u := newTestUI(t, false)
+	mux := mount(u)
+
+	attempt := func() *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/login",
+			strings.NewReader("username=alexis&password=wrong&next=%2F"))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		return w
+	}
+	// Exhaust the budget: every attempt in budget is a plain 401. The
+	// bound is a safety net — the budget is an auth-package constant this
+	// package deliberately does not read.
+	last := attempt()
+	for i := 0; last.Code == http.StatusUnauthorized && i < 100; i++ {
+		last = attempt()
+	}
+	if last.Code != http.StatusTooManyRequests {
+		t.Fatalf("post-budget login = %d, want 429", last.Code)
+	}
+	if !strings.Contains(last.Body.String(), "TBY-AUTH-012") {
+		t.Error("throttled login page misses the TBY-AUTH-012 block")
+	}
+}

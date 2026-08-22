@@ -8,6 +8,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -311,4 +314,60 @@ func TestSDKManifestIsByteIdenticalToTheLibraryLayout(t *testing.T) {
 		t.Errorf("manifest digest = %s, want %s — already-published recipes would conflict",
 			art.Manifest.Digest, manHash.String())
 	}
+}
+
+// TestPublishTransportFailuresAreTaxonomized pins the R-03 contract on
+// the publishing path: a registry that is down or refusing the
+// credential answers with the same TBY-REG-002/003 block `tobby recipe
+// push` prints for any other operation — never a raw "dial tcp" or a
+// bare HTTP status. The failure fires on the pre-flight Head, which is
+// the first network exchange of a publication and therefore the shape
+// every transport failure of this path takes first.
+func TestPublishTransportFailuresAreTaxonomized(t *testing.T) {
+	doc := cookedRecipeYAML(t, "wordpress", "6.8.2", []spec.Ingredient{cookedIngredient()})
+
+	t.Run("unreachable registry is TBY-REG-002 naming the host", func(t *testing.T) {
+		// Reserve a loopback port, then close it: nothing listens there.
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		addr := ln.Addr().String()
+		_ = ln.Close()
+
+		p, err := NewPublisher(config.Registries{Insecure: []string{addr}}, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = p.PublishRecipe(t.Context(), addr+"/cookbook/wordpress:6.8.2", doc)
+		var te *taxonomy.Error
+		if !errors.As(err, &te) || te.Code() != taxonomy.CodeRegistryUnreachable {
+			t.Fatalf("publishing to a dead port = %v, want %s", err, taxonomy.CodeRegistryUnreachable)
+		}
+		if got := te.ParamsMap()["host"]; got != addr {
+			t.Errorf("host parameter = %v, want %s", got, addr)
+		}
+	})
+
+	t.Run("refused credential is TBY-REG-003 naming the host", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("WWW-Authenticate", `Basic realm="test"`)
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+		defer srv.Close()
+		addr := strings.TrimPrefix(srv.URL, "http://")
+
+		p, err := NewPublisher(config.Registries{Insecure: []string{addr}}, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = p.PublishRecipe(t.Context(), addr+"/cookbook/wordpress:6.8.2", doc)
+		var te *taxonomy.Error
+		if !errors.As(err, &te) || te.Code() != taxonomy.CodeRegistryAuth {
+			t.Fatalf("publishing with a refused credential = %v, want %s", err, taxonomy.CodeRegistryAuth)
+		}
+		if got := te.ParamsMap()["host"]; got != addr {
+			t.Errorf("host parameter = %v, want %s", got, addr)
+		}
+	})
 }

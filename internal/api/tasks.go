@@ -3,10 +3,11 @@
 
 // Import and task endpoints (FR-060): the strict mirror of the /import
 // and /tasks screens (FR-061, R-06). GET /api/v1/tasks accepts exactly the
-// ?q=&status=&type= parameters of the screen; aggregates and the principal
-// R-03 code are computed by the tasks and taxonomy packages — never
-// re-derived here (ADR-0015 §4). Payloads carry raw bytes and RFC 3339
-// timestamps exclusively (ADR-0015 §7).
+// ?q=&status=&type=&page= parameters of the screen — both surfaces parse
+// them with tasks.ParseListQuery; aggregates and the principal R-03 code
+// are computed by the tasks and taxonomy packages — never re-derived here
+// (ADR-0015 §4). Payloads carry raw bytes and RFC 3339 timestamps
+// exclusively (ADR-0015 §7).
 
 package api
 
@@ -14,7 +15,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -196,16 +199,30 @@ func (t *tasksAPI) inspect(w http.ResponseWriter, r *http.Request) {
 	t.api.JSON(w, http.StatusOK, resp)
 }
 
-// list serves GET /api/v1/tasks?q=&status=&type= (FR-061: the exact
-// parameters of the /tasks screen), newest first.
+// tasksListResponse mirrors the /tasks listing page: one page of tasks
+// with the same pagination metadata as the /content mirror (FR-061).
+type tasksListResponse struct {
+	Tasks      []taskJSON `json:"tasks"`
+	Page       int        `json:"page"`
+	TotalPages int        `json:"totalPages"`
+	Total      int        `json:"total"`
+}
+
+// list serves GET /api/v1/tasks?q=&status=&type=&page= (FR-061: the exact
+// parameters of the /tasks screen), newest first, one page of
+// tasks.ListPageSize entries — the /content pagination model.
 func (t *tasksAPI) list(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	out := t.queue.List(tasks.Status(q.Get("status")), q.Get("type"), q.Get("q"))
-	resp := make([]taskJSON, 0, len(out))
-	for _, task := range out {
-		resp = append(resp, newTaskJSON(task))
+	page := t.queue.ListPage(tasks.ParseListQuery(r.URL.Query()))
+	resp := tasksListResponse{
+		Tasks:      make([]taskJSON, 0, len(page.Tasks)),
+		Page:       page.Page,
+		TotalPages: page.TotalPages,
+		Total:      page.Total,
 	}
-	t.api.JSON(w, http.StatusOK, map[string]any{"tasks": resp})
+	for _, task := range page.Tasks {
+		resp.Tasks = append(resp.Tasks, newTaskJSON(task))
+	}
+	t.api.JSON(w, http.StatusOK, resp)
 }
 
 // get serves GET /api/v1/tasks/{id}; unknown identifiers answer the
@@ -232,8 +249,11 @@ func (t *tasksAPI) logs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Query().Get("format") == "raw" {
-		chunk, _, err := t.queue.ReadLog(id, 0)
-		if err != nil {
+		// Stream from the file rather than buffering it (2026-08 audit):
+		// a verbose sync log is easily tens of megabytes, and the whole
+		// point of the raw download is the big ones.
+		f, err := t.queue.OpenLog(id)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			t.api.Problem(w, r, taxonomy.New(taxonomy.CodeStoreRead,
 				taxonomy.Params{"detail": err.Error()}).WithCause(err))
 			return
@@ -241,7 +261,13 @@ func (t *tasksAPI) logs(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("Content-Disposition",
 			`attachment; filename="tobby-`+task.ID+`-`+task.RunID+`.log"`)
-		_, _ = w.Write(chunk)
+		if err != nil {
+			// A task that never logged downloads as an empty file — the
+			// same answer the buffered path gave.
+			return
+		}
+		defer f.Close() //nolint:errcheck // read-only file
+		_, _ = io.Copy(w, f)
 		return
 	}
 	after, err := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)

@@ -47,6 +47,10 @@
 "TBY-AUTH-011.cause": "Removing it, or taking its admin role away, would leave nobody able to manage the instance — and an instance without an account refuses to start at all."
 "TBY-AUTH-011.action": "Create a second admin account first, then retry. On the instance host the same result comes from `tobby user add --role admin <name>`."
 
+"TBY-AUTH-012.what": "Too many failed authentication attempts from your network address; further attempts are temporarily refused."
+"TBY-AUTH-012.cause": "Repeated wrong credentials were presented from the same origin. Each failed check is deliberately expensive to verify, so the instance throttles origins that keep failing rather than burn CPU and memory for them."
+"TBY-AUTH-012.action": "Wait a moment, check the credential (account password or token secret), then try again. If this is a shared egress address, another client behind it may be misconfigured — the audit trail lists the failed attempts and the account names they claimed."
+
 "TBY-CFG-001.what": "The configuration is invalid."
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Fix the reported setting (precedence: flags, then TOBBY_* environment variables, then the YAML file), check the result with `tobby config dump`, then restart."

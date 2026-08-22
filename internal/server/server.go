@@ -73,9 +73,24 @@ func New(addr string, gracePeriod time.Duration, reg *metrics.Registry, logger *
 	}))
 
 	s.httpSrv = &http.Server{
-		Addr:              addr,
-		Handler:           s.mux,
+		Addr:    addr,
+		Handler: s.mux,
+		// ReadHeaderTimeout bounds the slow-header (slowloris) window;
+		// IdleTimeout reclaims kept-alive connections that stopped
+		// talking, so an exhausted-but-idle client population cannot pin
+		// file descriptors forever (v0.4.2 hardening). Two minutes:
+		// longer than any polling interval the UI uses (30 s task badge),
+		// so live browsers keep their connections warm.
+		//
+		// ReadTimeout and WriteTimeout stay deliberately unset. This one
+		// listener streams multi-gigabyte blobs both ways — docker push
+		// onto /v2/ (FR-040), pulls and FileSet downloads off /files/
+		// (FR-047) — and their legitimate duration is unbounded: a global
+		// write deadline would cut a slow client's pull mid-blob and a
+		// read deadline would kill a large upload. Per-connection abuse
+		// is covered by the two timeouts above plus the FR-093 drain.
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
 	}
 	return s
 }

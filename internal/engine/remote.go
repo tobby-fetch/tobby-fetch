@@ -275,6 +275,13 @@ type remoteManifests struct {
 	nominal string
 }
 
+// Compile-time guard (2026-08 robustness audit): copyReferringSignatures
+// downgrades gracefully — with a logged warning — when the manifest
+// source has no referrers lookup, so losing this method would not break
+// a build on its own; it would silently stop bundle-layout signatures
+// (§12.2, B-015) from travelling. Pin the capability here instead.
+var _ sigverify.ReferrersLister = (*remoteManifests)(nil)
+
 // Manifests returns the sigverify read surface over a nominal repository.
 func (r *Remotes) Manifests(nominal string) sigverify.Manifests {
 	return &remoteManifests{r: r, nominal: nominal}

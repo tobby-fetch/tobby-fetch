@@ -26,30 +26,47 @@ func sessionFrom(ctx context.Context) (*auth.Session, bool) {
 	return s, ok
 }
 
+// cookieSecure reports whether cookies must carry the Secure attribute:
+// TLS on this listener, or TLS terminated by the proxy in front of it,
+// which the operator declares with server.secureCookies — the listener
+// cannot see that hop, and X-Forwarded-Proto is deliberately not trusted
+// (spoofable, like every forwarding header; same stance as FR-094
+// origins). NFR-015: a session cookie must never travel in the clear.
+//
+// The __Host- name prefix was considered and set aside: it would make
+// the cookie name vary with the deployment (the prefix requires Secure,
+// which a plain-HTTP lab instance cannot honor), and auth.SessionCookie
+// is a cross-package constant the API's session fallback reads too. The
+// attributes the prefix enforces — Secure, Path=/, no Domain — are all
+// set explicitly below, so the prefix would add its name constraint
+// without adding protection.
+func (u *UI) cookieSecure(r *http.Request) bool {
+	return r.TLS != nil || u.secureCookies
+}
+
 // setSessionCookie writes the session cookie: HttpOnly, SameSite=Lax,
-// Secure when the connection is TLS (NFR-015; server TLS lands at
-// milestone 4 with 4.4).
-func setSessionCookie(w http.ResponseWriter, r *http.Request, id string, expires time.Time) {
+// Secure per cookieSecure (NFR-015).
+func (u *UI) setSessionCookie(w http.ResponseWriter, r *http.Request, id string, expires time.Time) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     auth.SessionCookie,
 		Value:    id,
 		Path:     "/",
 		Expires:  expires,
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   u.cookieSecure(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
 // clearSessionCookie expires the session cookie.
-func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+func (u *UI) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     auth.SessionCookie,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   u.cookieSecure(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 }

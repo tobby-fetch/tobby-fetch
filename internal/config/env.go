@@ -31,6 +31,7 @@ const (
 	EnvSyncParallelism     = "TOBBY_SYNC_PARALLELISM"
 	EnvSyncRetries         = "TOBBY_SYNC_RETRIES"
 	EnvSyncInterval        = "TOBBY_SYNC_INTERVAL"
+	EnvTasksKeepFinished   = "TOBBY_TASKS_KEEP_FINISHED"
 	EnvLoggingLevel        = "TOBBY_LOGGING_LEVEL"
 	EnvShutdownGracePeriod = "TOBBY_SHUTDOWN_GRACE_PERIOD"
 
@@ -56,6 +57,10 @@ const (
 	EnvServerTLSEnabled  = "TOBBY_SERVER_TLS_ENABLED"
 	EnvServerTLSCertFile = "TOBBY_SERVER_TLS_CERT_FILE"
 	EnvServerTLSKeyFile  = "TOBBY_SERVER_TLS_KEY_FILE"
+
+	// Secure attribute on UI cookies behind a TLS-terminating proxy
+	// (NFR-015; see config.Server.SecureCookies for the why).
+	EnvServerSecureCookies = "TOBBY_SERVER_SECURE_COOKIES"
 )
 
 // splitList parses a comma-separated environment list, dropping empty
@@ -145,6 +150,13 @@ func applyEnv(cfg *Config, lookup func(string) (string, bool)) error {
 	if v, ok := lookup(EnvServerTLSKeyFile); ok {
 		cfg.Server.TLS.KeyFile = v
 	}
+	if v, ok := lookup(EnvServerSecureCookies); ok {
+		b, err := parseBool(EnvServerSecureCookies, v)
+		if err != nil {
+			return err
+		}
+		cfg.Server.SecureCookies = b
+	}
 	if v, ok := lookup(EnvUIThemeOverride); ok {
 		cfg.UI.ThemeOverride = v
 	}
@@ -195,6 +207,13 @@ func applyEnv(cfg *Config, lookup func(string) (string, bool)) error {
 			return fmt.Errorf("%s: invalid duration %q (expected e.g. \"15m\")", EnvSyncInterval, v)
 		}
 		cfg.Sync.Interval = Duration(d)
+	}
+	if v, ok := lookup(EnvTasksKeepFinished); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("%s: invalid integer %q", EnvTasksKeepFinished, v)
+		}
+		cfg.Tasks.KeepFinished = n
 	}
 	if v, ok := lookup(EnvDestinationRegistry); ok {
 		cfg.Destination.Registry = v

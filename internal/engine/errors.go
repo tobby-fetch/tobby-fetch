@@ -25,6 +25,17 @@ import (
 // failures carry the fingerprints tried (FR-033), registry failures their
 // stable transport codes. subject names the file/reference for messages.
 func (e *Engine) mapError(err error, subject string) *taxonomy.Error {
+	return mapEngineError(err, subject)
+}
+
+// mapEngineError is the package-level form of the mapping, for the paths
+// that run without an Engine: the Publisher (R-36/R-40) is deliberately
+// not built on the reading side, but an unreachable or refusing registry
+// must produce the same TBY-REG code with the same what/cause/action
+// block there as everywhere else (R-03) — `tobby recipe push` used to
+// print a raw "dial tcp: connection refused" for the exact failure the
+// UI taxonomizes.
+func mapEngineError(err error, subject string) *taxonomy.Error {
 	var te *taxonomy.Error
 	if errors.As(err, &te) {
 		return te

@@ -61,6 +61,14 @@ func newServeCmd() *cobra.Command {
 	return cmd
 }
 
+// serveHook, when non-nil, receives the listener the instance is about
+// to run. It exists for the serve tests only: they bind "127.0.0.1:0" —
+// a fixed port collides with parallel `go test` runs and with whatever
+// already listens on a developer host — and the effective address is
+// only knowable from the running server (server.Addr). No production
+// caller sets it.
+var serveHook func(*server.Server)
+
 func runServe(ctx context.Context, cfg *config.Config) error {
 	level, err := logging.ParseLevel(cfg.Logging.Level)
 	if err != nil {
@@ -105,6 +113,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 
 	reg := metrics.New()
 	srv := server.New(cfg.Server.Addr, time.Duration(cfg.Shutdown.GracePeriod), reg, logger)
+	if serveHook != nil {
+		serveHook(srv)
+	}
 
 	// The listener's own certificate (FR-082): the administrator's pair,
 	// or a self-signed fallback whose fingerprint is logged — an
@@ -150,8 +161,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 
 	// The persistent task queue lives inside the store (FR-050) and
 	// re-queues interrupted tasks at startup (FR-029). The unit-import
-	// runner writes direct-to-storage (ADR-0005).
-	queue, err := tasks.Open(cfg.Storage.Root, logger)
+	// runner writes direct-to-storage (ADR-0005). Finished-task retention
+	// (tasks.keepFinished) bounds the history a long-lived instance
+	// accumulates — without it, every cycle leaves a task in RAM and two
+	// files in the store, forever (2026-08 audit).
+	queue, err := tasks.Open(cfg.Storage.Root, logger, tasks.WithRetention(cfg.Tasks.KeepFinished))
 	if err != nil {
 		return err
 	}
@@ -304,10 +318,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	if cfg.Mode == config.ModePassthrough && cfg.Retriever.Source != "" {
-		sched := schedule.NewScheduler(interval, func(context.Context) error {
-			_, cerr := queue.Create(tasks.TypeSync, cfg.Retriever.Source, audit.ActorLocal, nil)
-			return cerr
-		}, logger)
+		sched := schedule.NewScheduler(interval, syncTrigger(queue, cfg.Retriever.Source, logger), logger)
 		go sched.Run(ctx)
 		logger.LogAttrs(ctx, slog.LevelInfo, "promotion scheduler started",
 			slog.Duration("interval", interval.Effective()),
@@ -368,6 +379,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Mode:               string(cfg.Mode),
 		ThemeOverride:      cfg.UI.ThemeOverride,
 		ShowUpcoming:       cfg.UI.ShowUpcoming,
+		SecureCookies:      cfg.Server.SecureCookies,
 		Store:              st,
 		Queue:              queue,
 		InspectTimeout:     time.Duration(cfg.Import.InspectTimeout),
@@ -425,6 +437,28 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	return runErr
 }
 
+// syncTrigger builds the scheduler's cycle trigger: enqueue one sync of
+// the configured source — unless one is already pending. The queue's
+// worker is serial, so once a cycle outlasts the interval the old
+// unconditional Create piled an identical task onto the queue at every
+// tick (2026-08 audit), a backlog that only ever grew. Skipping loses
+// nothing: the pending task reads the latest desired state when it
+// finally runs. The skip is logged so an operator watching cycle times
+// drift past sync.interval sees the coalescence happen (FR-013).
+func syncTrigger(queue *tasks.Queue, source string, logger *slog.Logger) schedule.Trigger {
+	return func(ctx context.Context) error {
+		if queue.HasPending(tasks.TypeSync) {
+			logger.LogAttrs(ctx, slog.LevelInfo,
+				"promotion cycle skipped: a synchronization is already pending",
+				slog.String("source", source),
+				slog.String("requirement", "FR-013"))
+			return nil
+		}
+		_, err := queue.Create(tasks.TypeSync, source, audit.ActorLocal, nil)
+		return err
+	}
+}
+
 // storeBlobs adapts the embedded store to the fileserve read surface.
 type storeBlobs struct{ st *store.Store }
 
@@ -440,7 +474,11 @@ func (b storeBlobs) Blob(ctx context.Context, repo, dgst string) (io.ReadCloser,
 // filesAuth gates the /files/ surface (FR-047): reads need viewer, except
 // FileSets explicitly opted into anonymous access (bare-host bootstrap,
 // reported like the FR-075 override). Basic auth so apt/dnf URL
-// credentials work; the surface is read-only by construction.
+// credentials work; the surface is read-only by construction. Like every
+// credential-verifying surface, an origin over its failure budget is
+// answered 429 BEFORE anything is verified (v0.4.2 hardening): apt and
+// dnf re-present the credential per file, and each failed check costs an
+// argon2id computation.
 func filesAuth(a *auth.Authenticator, anonymous map[string]bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rest := strings.TrimPrefix(r.URL.Path, fileserve.RoutePrefix)
@@ -449,8 +487,18 @@ func filesAuth(a *auth.Authenticator, anonymous map[string]bool, next http.Handl
 			next.ServeHTTP(w, r)
 			return
 		}
+		presented := r.Header.Get("Authorization") != ""
+		origin := auth.ClientOrigin(r)
+		if presented && !a.FailureAllowed(origin) {
+			w.Header().Set("Retry-After", auth.RetryAfter)
+			http.Error(w, "too many failed authentication attempts", http.StatusTooManyRequests)
+			return
+		}
 		id, ok := a.Authenticate(r)
 		if !ok {
+			if presented {
+				a.RecordFailure(origin)
+			}
 			w.Header().Set("WWW-Authenticate", `Basic realm="tobby"`)
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return

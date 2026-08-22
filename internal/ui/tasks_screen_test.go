@@ -389,6 +389,72 @@ func TestTasksUIAPIParity(t *testing.T) {
 	}
 }
 
+// TestTasksListPagination: the /tasks screen paginates exactly like
+// /content (FR-061) — same page parameter, same 25-entry pages, same nav
+// — and the polled row fragment keeps polling the page being looked at.
+func TestTasksListPagination(t *testing.T) {
+	u, q, _ := newTestUIWithQueue(t)
+	mux := mount(u)
+	c := login(t, mux, "alexis", "pw-admin")
+
+	// Worker not started: 27 pending tasks, newest first.
+	for range 27 {
+		if _, err := q.Create(tasks.TypeUnitImport, "docker.io/library/redis:7.2", "alexis", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	w := get(t, mux, c, "/tasks", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("/tasks = %d", w.Code)
+	}
+	body := w.Body.String()
+	if got := strings.Count(body, `id="task-tsk_`); got != 25 {
+		t.Errorf("page 1 renders %d rows, want 25", got)
+	}
+	for _, want := range []string{
+		"Page 1 / 2",
+		`href="/tasks?page=2"`,
+		`hx-get="/tasks"`, // the poll stays on the canonical page-1 URL
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page 1 misses %q", want)
+		}
+	}
+
+	w = get(t, mux, c, "/tasks?page=2", nil)
+	body = w.Body.String()
+	if got := strings.Count(body, `id="task-tsk_`); got != 2 {
+		t.Errorf("page 2 renders %d rows, want 2", got)
+	}
+	for _, want := range []string{
+		"Page 2 / 2",
+		`href="/tasks"`,          // previous-page link, page 1 is canonical
+		`hx-get="/tasks?page=2"`, // the poll refreshes the CURRENT page
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page 2 misses %q", want)
+		}
+	}
+
+	// Filters ride along on the pagination links (FR-061 parameter set).
+	w = get(t, mux, c, "/tasks?status=pending&page=2", nil)
+	if body = w.Body.String(); !strings.Contains(body, "page=2") || !strings.Contains(body, "status=pending") {
+		t.Error("filtered page 2 loses its parameters")
+	}
+
+	// An out-of-range page shows the no-result state with a reset link,
+	// never the "no task yet" onboarding state.
+	w = get(t, mux, c, "/tasks?page=9", nil)
+	body = w.Body.String()
+	if !strings.Contains(body, `href="/tasks"`) || strings.Contains(body, `id="task-tsk_`) {
+		t.Error("out-of-range page misses the reset link or leaks rows")
+	}
+	if strings.Contains(body, "No task yet.") {
+		t.Error("out-of-range page shows the empty-queue onboarding state")
+	}
+}
+
 // TestDashboardRecentTasks: the dashboard tile lists the latest real
 // tasks with their badges once the queue is non-empty.
 func TestDashboardRecentTasks(t *testing.T) {
