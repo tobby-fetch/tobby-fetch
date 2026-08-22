@@ -130,11 +130,12 @@ const carries = ["Container images", "Helm charts", "AI models", "Files"];
         </ul>
 
         <div class="btnrow" style="justify-content: center;">
-          <a class="btn solid" href={`${repo}/blob/main/docs/SRS.md`} rel="noopener">Read the spec</a>
-          <a class="btn" href={`${base}/quality/`}>Quality model</a>
+          <a class="btn solid" href={`${repo}/releases/latest`} rel="noopener">Install Tobby</a>
+          <a class="btn" href={`${repo}#quick-start`} rel="noopener">Quick start</a>
+          <a class="btn" href={`${repo}/blob/main/docs/SRS.md`} rel="noopener">Read the spec</a>
         </div>
 
-        <div><span class="badge"><span class="pulse"></span>Under active development — design first, code by milestone</span></div>
+        <div><span class="badge"><span class="pulse"></span>v0.4 released — milestones 1–4 delivered, under active development</span></div>
       </div>
     </header>
 
@@ -212,10 +213,11 @@ const carries = ["Container images", "Helm charts", "AI models", "Files"];
     <section class="band">
       <div class="wrap">
         <div class="kicker">Design in the open</div>
-        <h2>Read it before it's built</h2>
+        <h2>The design leads the code</h2>
         <p class="intro">
-          The complete design is public before the first line of product code.
-          Review it, file issues, disagree with an ADR.
+          The complete design was public before the first line of product code
+          — and every milestone since is built against it. Review it, file
+          issues, disagree with an ADR.
         </p>
         <div class="cards">
           <div class="card"><h3>Requirements (SRS)</h3>

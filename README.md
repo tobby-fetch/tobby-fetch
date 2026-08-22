@@ -48,23 +48,68 @@ commit, and every milestone ships its own crucible scenarios — the suite of
 completed milestones stays replayable, in whole or per milestone, at any time
 ([ADR-0014](docs/adr/ADR-0014-crucible-test-infrastructure-incus.md)).
 
-> 🐕 **Under active development.** Milestone 1 (foundations) is in progress:
-> the application skeleton — layered configuration, structured JSON logging
-> with run correlation, security audit log, health probes, OpenMetrics,
-> graceful shutdown — and the embedded OCI registry with the relocation
-> layout are in the tree, gated by the strict quality pipeline. The design
-> documents above remain the source of truth for what comes next.
+> 🐕 **Released and under active development.** The current release line is
+> **v0.4.x**, with the first four milestones delivered:
+>
+> 1. **Foundations** — the application skeleton (layered configuration,
+>    structured JSON logging with run correlation, security audit log,
+>    health probes, OpenMetrics, graceful shutdown) and the embedded OCI
+>    registry with the relocation layout.
+> 2. **Web UI** — a bilingual (English/French) server-rendered interface:
+>    local accounts and sessions, content browsing, unit imports with
+>    platform selection, live task tracking.
+> 3. **Recipe engine** — signed-recipe synchronization: cosign
+>    verification, digest-pinned ingredients, FileSets, cascade between
+>    zones through source substitution.
+> 4. **Passthrough** — the long-lived promotion service between connected
+>    zones: allow-list policy, authenticated forward proxy, private PKI
+>    trust, and the reference Helm chart.
+>
+> The design documents above remain the source of truth for what comes
+> next — see the [roadmap](https://tobby-fetch.github.io/tobby-fetch/roadmap.html).
+
+## Installing
+
+Every release ships static binaries for linux, windows, and darwin
+(amd64/arm64) with SLSA Build L3 provenance, plus `.deb`/`.rpm`/`.apk`
+packages and a signed container image:
+
+- **GitHub releases** — binaries, Linux packages, SBOMs, provenance:
+  [github.com/tobby-fetch/tobby-fetch/releases](https://github.com/tobby-fetch/tobby-fetch/releases)
+- **Homebrew** (macOS): `brew install tobby-fetch/tap/tobby`
+- **Container image**: `ghcr.io/tobby-fetch/tobby-fetch`
+
+### Quick start
+
+`tobby quickstart` walks through the first start interactively — store and
+state directories, operating mode, first admin account — writes the
+configuration file, and can hand over to `serve` directly:
+
+```sh
+tobby quickstart
+```
+
+The same setup, non-interactive (the password is one line on stdin):
+
+```sh
+echo 'choose-a-password' | tobby quickstart --mode mirror --password-stdin
+tobby serve --config ./tobby.yaml
+```
+
+The instance serves the web UI and the API on `http://localhost:8080`, and
+refuses anonymous access by default — sign in with the account quickstart
+created.
 
 ### Building and running from source
 
 ```sh
 mise install          # toolchain (Go, golangci-lint, hooks)
 mise run build        # → bin/tobby
-bin/tobby serve --mode mirror --storage-root ./store
+bin/tobby quickstart
 ```
 
-`mise run test`, `mise run lint`, and `mise run coverage` run the same
-gates CI enforces.
+`mise run test`, `mise run lint`, `mise run coverage`, and `mise run vuln`
+run the same gates CI enforces.
 
 Landing page: **https://tobby-fetch.github.io/tobby-fetch/**
 
