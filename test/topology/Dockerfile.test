@@ -2,8 +2,13 @@
 # binary on a minimal base. The production image is built with melange+apko
 # (ADR-0011); this one only exists so the topology can run the binary under
 # test inside the network segments.
+# /media and /m2 serve the m1/m2 scenarios; /var/lib/tobby (store + state)
+# serves the m3 one — pre-created and owned by the runtime user so the
+# named volumes the topologies mount there initialize writable.
 FROM alpine:3.22
-RUN adduser -D -u 65532 tobby && mkdir -p /media /m2 && chown tobby /media /m2
+RUN adduser -D -u 65532 tobby \
+    && mkdir -p /media /m2 /var/lib/tobby/store /var/lib/tobby/state \
+    && chown -R tobby /media /m2 /var/lib/tobby
 COPY tobby /usr/bin/tobby
 USER 65532
 ENTRYPOINT ["/usr/bin/tobby"]

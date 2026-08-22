@@ -46,6 +46,14 @@
       "matchStrings": [
         "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\n\\s*[A-Z_]+_VERSION: \"?(?<currentValue>v?[0-9][^\"\\s]*)\"?"
       ]
+    },
+    {
+      "customType": "regex",
+      "description": "Track tool versions pinned as `go run <module>@<version>` in mise tasks (e.g. govulncheck) via the same `# renovate:` hint comments",
+      "managerFilePatterns": ["/^mise\\.toml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\nrun = \"go run [^@\"]+@(?<currentValue>v?[0-9][^\"\\s]*)"
+      ]
     }
   ]
 }

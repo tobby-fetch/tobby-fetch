@@ -1,7 +1,7 @@
 # Tool versions for Tobby (portable across machines / CI via mise).
 # Matches the versions the project is developed and built with.
 [tools]
-go = "1.25.6"
+go = "1.25.13"
 "aqua:golangci/golangci-lint" = "2.6.1"
 node = "24.18.0"
 pnpm = "10.33.2"
@@ -54,3 +54,12 @@ run = "golangci-lint run"
 [tasks.coverage]
 description = "Per-package coverage floor (NFR-016, >= 70% per internal package)"
 run = "sh tools/check-coverage.sh"
+
+# Known-vulnerability gate (ADR-0011): govulncheck reports only the
+# vulnerable SYMBOLS the binary actually reaches, so a finding here is a
+# call path, not noise. The version is pinned (sumdb-verified by `go run`)
+# and tracked by renovate — same policy as every other pinned tool.
+[tasks.vuln]
+description = "Reachable known vulnerabilities (govulncheck, stdlib included)"
+# renovate: datasource=go depName=golang.org/x/vuln
+run = "go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./..."

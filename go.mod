@@ -1,6 +1,6 @@
 module github.com/tobby-fetch/tobby-fetch
 
-go 1.25.6
+go 1.25.13
 
 require (
 	github.com/chromedp/cdproto v0.0.0-20250724212937-08a3db8b4327

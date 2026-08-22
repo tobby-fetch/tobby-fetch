@@ -191,6 +191,25 @@ jobs:
       - name: Publish the raw check report (m1)
         if: always()
         run: cat /tmp/tobby-topology-m1-report.txt >> "$GITHUB_STEP_SUMMARY" || true
+      # Milestone 2: the secure user-experience slice — the R-01 refusal
+      # to start without an account, RFC 9457 + Basic challenge on every
+      # surface, a unit import driven through /api/v1, bit-exact digests,
+      # a standard third-party client pull, idempotence.
+      - name: Milestone-2 scenario — secure posture, API import, standard-client pull
+        run: sh test/topology/scenario-m2.sh
+      - name: Publish the raw check report (m2)
+        if: always()
+        run: cat /tmp/tobby-topology-m2-report.txt >> "$GITHUB_STEP_SUMMARY" || true
+      # Milestone 3: the signed recipe engine — Retriever synchronization
+      # with REAL cosign signatures (the runner image's cosign, or the
+      # pinned build when absent), the foreign-signature refusal, and the
+      # FR-036 cascade through source substitution on a segment that has
+      # no route to the source registry.
+      - name: Milestone-3 scenario — signed recipes, cosign verification, cascade
+        run: sh test/topology/scenario-m3.sh
+      - name: Publish the raw check report (m3)
+        if: always()
+        run: cat /tmp/tobby-topology-m3-report.txt >> "$GITHUB_STEP_SUMMARY" || true
       # Milestone 4: continuous promotion between two connected zones, the
       # allow-list refusal, the secure-by-default posture and its documented
       # override, and the same passthrough with direct egress blocked —
@@ -223,6 +242,64 @@ jobs:
         env:
           TOBBY_E2E_REQUIRE_CHROME: "1"
         run: go test -tags browser -count=2 -timeout 20m ./test/browser/...
+
+  govulncheck:
+    name: Known vulnerabilities (govulncheck, reachability)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # Trivy (below) matches versions; govulncheck adds what Trivy cannot:
+      # symbol-level reachability, stdlib included — a finding here is a
+      # call path into a vulnerable function, not a manifest match. The
+      # version is pinned and sumdb-verified by `go install` (ADR-0011),
+      # and tracked by renovate through the hint comment.
+      - name: Install govulncheck (version pinned, sumdb-verified)
+        env:
+          # renovate: datasource=go depName=golang.org/x/vuln
+          GOVULNCHECK_VERSION: v1.7.0
+        run: |
+          go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Reachable known vulnerabilities (stdlib included)
+        run: govulncheck ./...
+
+  secrets:
+    name: Secret scan (gitleaks, full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The scan covers every commit ever pushed, not the checkout tip:
+          # a secret is leaked the moment it enters the history, and a fix
+          # commit does not un-leak it.
+          fetch-depth: 0
+      # The same gitleaks the local pre-commit hook runs (.githooks,
+      # mise.toml), at the same version — but as a blocking gate: the hook
+      # is a per-clone opt-in (`mise run setup`), and an opt-in is not a
+      # guarantee. Fetched by direct download and verified against a
+      # pinned SHA-256, like helm and oras above (ADR-0011). The version
+      # deliberately carries no renovate hint: a bump must come with the
+      # new checksum, so it stays a reviewed edit alongside mise.toml's
+      # gitleaks entry rather than an automated one.
+      - name: Install gitleaks (version pinned, checksum-verified)
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          set -eu
+          tmp="$(mktemp -d)"
+          curl -fsSL -o "$tmp/gitleaks.tgz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  ${tmp}/gitleaks.tgz" |
+            sha256sum -c -
+          tar -xzf "$tmp/gitleaks.tgz" -C "$tmp" gitleaks
+          sudo install -m 0755 "$tmp/gitleaks" /usr/local/bin/gitleaks
+          rm -rf "$tmp"
+          gitleaks version
+      - name: Scan the full history (rules from .gitleaks.toml)
+        run: gitleaks git --redact --no-banner .
 
   vulnerabilities:
     name: Vulnerability scan (Trivy)

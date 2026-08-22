@@ -1,0 +1,77 @@
+# Hermetic CI topology, milestone 3 — "signed recipe engine" (ADR-0014
+# tier 1, DEVELOPMENT-PLAN §2.3).
+#
+# Two segments model the cascade reality of a recipe-driven mirror chain:
+#
+#   - "zone-a": the upstream side. The source registry (image + cookbook)
+#     and the first Tobby node, with host port mappings so the scenario
+#     driver can seed content, sign it with the real cosign, and check
+#     what landed.
+#   - "zone-b": the downstream side. The second Tobby node lives here and
+#     its ONLY neighbour is the first node: no route to the source
+#     registry exists, so the FR-036 cascade — consuming the upstream
+#     node's store through source substitution, recipe unmodified — is
+#     structural, not simulated. The canary proves the isolation on every
+#     run.
+#
+# The configuration files, the retriever documents, and the downstream
+# credentials are generated into ./.m3 by scenario-m3.sh and bind-mounted
+# read-only as each node's /etc/tobby. The directory (not the files) is
+# mounted on the first node: the tamper step rewrites the retriever
+# between synchronizations, and a single-file bind mount would keep
+# serving the original inode.
+
+name: tobby-topology-m3
+
+networks:
+  zone-a: {}
+  zone-b: {}
+
+volumes:
+  node-data: {}
+  down-data: {}
+
+services:
+  # The upstream registry holding the ingredients and the cookbook: the
+  # reference registry implementation, seeded and cosign-signed by the
+  # scenario driver through the host mapping.
+  source-registry:
+    image: registry:3
+    networks: [zone-a]
+    ports:
+      - "127.0.0.1:5310:5000"
+
+  # The first node under test: secure mirror instance, key-based trust
+  # root (FR-033), retriever-driven synchronization from the source
+  # cookbook.
+  tobby-node:
+    image: tobby-topology:local
+    command: [serve, --config, /etc/tobby/node-config.yaml]
+    networks: [zone-a, zone-b]
+    ports:
+      - "127.0.0.1:5311:8080"
+    volumes:
+      - node-data:/var/lib/tobby
+      - ./.m3:/etc/tobby:ro
+
+  # The downstream node: same binary, same trust root, but its retriever
+  # points at the FIRST node's relocated cookbook and its registries are
+  # substituted (FR-036) — the recipe document itself still names the
+  # source registry it was signed against.
+  tobby-downstream:
+    image: tobby-topology:local
+    command: [serve, --config, /etc/tobby/down-config.yaml]
+    networks: [zone-b]
+    ports:
+      - "127.0.0.1:5312:8080"
+    volumes:
+      - down-data:/var/lib/tobby
+      - ./.m3:/etc/tobby:ro
+
+  # In-zone client and isolation canary for the downstream segment,
+  # driven by `docker compose run`.
+  canary:
+    image: curlimages/curl:8.17.0
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["true"]
+    networks: [zone-b]
