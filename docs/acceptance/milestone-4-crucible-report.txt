@@ -1,11 +1,11 @@
-ok   scenario m4 started 2026-08-19T22:30:46Z
+ok   scenario m4 started 2026-08-22T11:59:58Z
 ok   tooling available (helm v4.2.3+g43e8b7f, cosign present, openssl, jq)
 ok   built tobby and the forward proxy for linux/amd64
 ok   instances launched (source, destination, proxy, node, sealed node)
-ok   addresses assigned (source 10.180.10.173, dest 10.180.10.75, proxy 10.180.10.250, node 10.180.10.95, sealed 10.180.30.214)
-ok   private PKI issued (root + leaf for 10.180.10.75)
+ok   addresses assigned (source 10.180.10.230, dest 10.180.10.214, proxy 10.180.10.113, node 10.180.10.212, sealed 10.180.30.114)
+ok   private PKI issued (root + leaf for 10.180.10.214)
 ok   fixtures serving: production registry, TLS zone registry (private CA), forward proxy
-ok   cookbook published and signed by the real cosign (1.0.0 → sha256:8e4353f94ee7e09819855f05a517076a54d7689f88be25fb407543608463f2e2, 1.0.1 → sha256:d929b6c0550cabe314e3d64d23a6963c99ea5ee34b34caecd780f132f3105772)
+ok   cookbook published and signed by the real cosign (1.0.0 → sha256:c503c9c301b323f389a04fbf19a9aad621ba028ea7683591d15f25b08f28edfb, 1.0.1 → sha256:cb1bfad9195ccfdc0f42c92ceca93428b25748ea018a280b3fa52a746aa2262d)
 ok   node deployed from the reference chart (rendered config, chart-managed roots, hardening asserted)
 ok   secure by default (401 RFC 9457 + Basic challenge); the override opens access with its permanent banner
 ok   cycle 1: recipe verified and promoted, zone cookbook published, pinned digest intact at the destination
@@ -17,9 +17,11 @@ ok   blocked egress: fetched and promoted entirely through the authenticated pro
 ok   blocked egress, cycle 2: nothing pushed — idempotent behind the proxy too
 ok   scenario m4 complete — report: crucible-report-m4.txt
 
-# Re-accepted for v0.4.1 on 2026-08-19: the FR-082 fix touches the listener's
-# certificate, and the flake fix touches the transfer package, so the whole
-# suite was replayed rather than reasoned about. Second disposable host
-# (EM-A115X-SSD, Intel Xeon E3-1240 v3, 8 cores, fr-par-2, Ubuntu 24.04),
-# created 22:14 UTC, destroyed 22:33 UTC. The four reports above are that run,
-# unedited, from the tagged commit.
+# Re-accepted for v0.4.2 on 2026-08-22: the release carries the
+# milestone-4 quality-audit fixes — two concurrency defects on the store
+# and task paths, a recovering runner, and the republication contract
+# moved to document-layer digests — so the whole suite was replayed
+# rather than reasoned about. Third disposable host (EM-A116X-SSD,
+# fr-par-2, Ubuntu 24.04), created 11:32 UTC, destroyed 12:04 UTC
+# (destruction verified). The four reports above are that run, unedited,
+# from the tagged commit (377dfa6, v0.4.2).
