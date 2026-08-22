@@ -78,9 +78,12 @@ step "== milestone-3 topology scenario $(date -u +%Y-%m-%dT%H:%M:%SZ) =="
 # there is one, the pinned sumdb-verified build otherwise.
 COSIGN="${COSIGN:-cosign}"
 if ! command -v "$COSIGN" >/dev/null 2>&1; then
-    GOBIN="$(pwd)/$GEN/bin" go install github.com/sigstore/cosign/v3/cmd/cosign@v3.0.4 ||
+    # An absolute path outside $GEN: the scenario wipes $GEN before it
+    # starts and cds into it to sign, so a tool installed under it would
+    # be deleted first and mis-resolved after.
+    GOBIN="$(pwd)/$TOPO_DIR/.tools/bin" go install github.com/sigstore/cosign/v3/cmd/cosign@v3.0.4 ||
         fail "cosign unavailable and go install failed"
-    COSIGN="$GEN/bin/cosign"
+    COSIGN="$(pwd)/$TOPO_DIR/.tools/bin/cosign"
 fi
 
 # -- Build the binary under test and the topology image -----------------------
