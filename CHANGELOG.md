@@ -8,6 +8,119 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-22
+
+Hardening release. A point-in-time quality audit was run between
+milestone 4 and milestone 5 — method and findings are recorded in
+`docs/acceptance/milestone-4-quality-audit.md` — and this release carries
+its fixes: two confirmed concurrency defects in the long-lived service
+path, an unbounded task history, and a batch of surface and toolchain
+hardening. No new features; milestone 5 starts from this baseline.
+
+### Fixed
+
+- Data race between task persistence and the parallel ingredient sync
+  (B-016). Ingredient goroutines mutated the task under `syncRecipe`'s
+  local mutex while the queue's `save()` marshalled the same fields under
+  `q.mu` — two disjoint locks, no happens-before, reproduced with the race
+  detector. Mutation and persistence now happen under the same lock by
+  construction (`taskSink`), and every published copy of a task deep-copies
+  the item slices the runner still owns. Both regression tests were played
+  against the original code first and failed there.
+- The GC could sweep blobs of an in-flight transfer (B-017). The store
+  documented `gcMu` as "content writes hold it shared" but no shared
+  acquisition existed anywhere: `WriteBlob` and `PutManifest` now actually
+  take the read side — a multi-gigabyte stream holding off the sweeper for
+  its whole duration is the FR-044 behaviour, not a regression — and the
+  sweep grace period now covers repository links too, closing the window
+  where committed layers of a not-yet-tagged manifest were collectable.
+  The grace period itself gained the positive test it never had: a fresh
+  orphan must survive a sweep and be counted as deferred.
+- A panic in a task runner killed the whole service — registry, UI and
+  all — and the interrupted task was re-queued at the next start, replaying
+  the panic forever. The runner and each ingredient goroutine now recover:
+  the task fails with `TBY-SRV-001` and the stack in its log, the process
+  survives, and a failed task is terminal, not re-queued.
+- `tobby recipe push` surfaced raw transport errors ("dial tcp: connection
+  refused") instead of the taxonomy blocks the UI shows for the same
+  failure; unreachable registries and rejected credentials now come back
+  as `TBY-REG-002`/`TBY-REG-003` with the host named.
+- Usage errors (unknown flag, unknown command) exited 1 like operational
+  failures instead of the documented 2, and gave no pointer to `--help`.
+  Scripts can now tell a mistyped invocation from a failed operation.
+- The verified spool was destroyed even when handing the blob to the store
+  failed, forcing a re-download of bytes that were already on disk and
+  verified. An undrained spool now survives its reader.
+- Creating a task while the queue channel was full persisted the task and
+  then reported failure, leaving an orphan that the next start re-queued.
+  The slot is reserved before anything is written.
+- The type assertion on the referrers listing in the sync path was
+  unchecked; a `Manifests` implementation without `Referrers` support now
+  degrades with an explicit warning — signatures travel by referrers in
+  the bundle layout (§12.2), so silence would strand the downstream
+  zone — instead of panicking.
+- Blob reads on the promotion path ran under a background context and
+  could not be interrupted by shutdown; they now carry the task context.
+
+### Added
+
+- Task retention and pagination. Finished tasks are kept to the most
+  recent `tasks.keepFinished` (default 500, `0` keeps everything);
+  entries, their JSON and their logs are purged together, and pending or
+  running tasks are never touched. `/tasks` and `GET /api/v1/tasks` are
+  paginated exactly like `/content` (FR-061: same parameter, same page
+  size, same navigation), and the tasks screen keeps polling the page the
+  operator is looking at. The scheduler no longer enqueues a sync when one
+  is already pending — a queued follow-up is what reconciles a stale read,
+  a pile of them is not — and the raw task log downloads stream from disk.
+- Failed-authentication rate limiting per client origin, applied before
+  the password hash is computed: every rejected Basic attempt used to cost
+  an argon2id at 64 MiB, an amplification an unauthenticated caller could
+  drive at will. Exhausted budgets answer 429 (`TBY-AUTH-012`,
+  `Retry-After`) on every surface, and successful machine-surface
+  verifications are cached for one minute — keyed by credential hash,
+  never the password, invalidated on password change and account removal —
+  so a registry client no longer pays argon2id per request.
+- Security headers on every UI response, including a Content-Security-
+  Policy that allows the vendored inline scripts by SHA-256 hash rather
+  than `unsafe-inline` — hashed from the *rendered* output, because
+  html/template rewrites scripts on the way through, and a hash of the
+  source matches nothing a browser ever sees. The browser suite failed on
+  the first attempt and passes on the final one, which is the order those
+  two facts are useful in.
+- `server.secureCookies` for deployments where TLS terminates at a
+  reverse proxy: the session cookie's `Secure` flag was keyed on `r.TLS`
+  and silently absent in exactly the deployment the charts document. The
+  operator declares the topology; a spoofable forwarding header does not.
+- A progress watchdog on blob downloads: a connection that stops
+  delivering bytes for two minutes is cancelled and retried — header
+  timeouts never covered a frozen body, and the serial worker turned one
+  stalled stream into an instance-wide famine. Resume makes the
+  cancellation nearly free.
+- An idle timeout on the shared listener. Read and write deadlines are
+  deliberately still absent: the same listener streams multi-gigabyte
+  blobs both ways, and a global deadline would cut a slow pull mid-blob.
+- `govulncheck` joins the quality gates (`mise run vuln` and a CI job,
+  version pinned and renovate-tracked), and a gitleaks job scans the full
+  history in CI — the pre-commit hook only ever protected clones that had
+  opted in. The Go toolchain moves to 1.25.13, which clears every
+  reachable stdlib finding the audit's scan reported.
+- The milestone-3 recipe-engine journey is now an e2e gate: a new hermetic
+  topology scenario exercises real cosign verification, foreign-key
+  refusal, idempotence and the cascade in CI, and the milestone-2 scenario
+  that existed but was wired to nothing runs alongside it.
+
+### Changed
+
+- The README and the landing page caught up with reality: the project had
+  shipped four milestones while both still described a design-first
+  repository with an example that no longer started. The quick start now
+  documents `tobby quickstart` — interactive and non-interactive — and
+  every documented command was run before being written down.
+- `deploy-pages.yml` was the one workflow still referencing actions by
+  mutable tag while holding `pages: write`; it is pinned by full SHA like
+  everything else (ADR-0011).
+
 ## [0.4.1] - 2026-08-18
 
 ### Fixed
