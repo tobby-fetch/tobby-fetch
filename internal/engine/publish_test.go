@@ -16,6 +16,9 @@ import (
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/types"
+	godigest "github.com/opencontainers/go-digest"
+	ocispecs "github.com/opencontainers/image-spec/specs-go"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/tobby-fetch/recipe-spec/cookbook"
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
@@ -250,22 +253,16 @@ func assertTaxonomy(t *testing.T, err error, want taxonomy.Code) {
 	}
 }
 
-// TestSDKManifestIsByteIdenticalToTheLibraryLayout pins the one thing the
-// R-39 extraction could silently break.
-//
-// Publishing moved from a go-containerregistry v1.Manifest to bytes the
-// recipe-spec SDK builds, because the layout belongs to the format. But
-// the manifest digest IS the artifact's identity: JSON that differs only
-// in field order or in an omitted empty field hashes differently, and a
-// recipe already published by an earlier version would then look like
-// different content under the same tag — an immutability conflict (§8)
-// where nothing changed, and a signature over a digest nobody can
-// reproduce.
-//
-// So the two encodings must agree byte for byte. This test builds the
-// same artifact both ways and compares. It lives here, not in the SDK,
-// because this is the only side that has the library to compare against.
-func TestSDKManifestIsByteIdenticalToTheLibraryLayout(t *testing.T) {
+// TestSDKManifestIsByteIdenticalToTheOCILayout is B-018's guard on the
+// producing side: the manifest the SDK assembles must be byte-identical
+// to what the OCI reference structs — the ones oras-go and crane
+// marshal — produce for the same content. The SDK used to match
+// go-containerregistry's field order instead, which is neither the
+// §11.2 example nor what any other publisher writes, and the digest
+// identity DecideRepublication once relied on was false the moment a
+// second tool published (the spec now compares document layers; this
+// keeps the wrappers from diverging when they don't have to).
+func TestSDKManifestIsByteIdenticalToTheOCILayout(t *testing.T) {
 	doc := cookedRecipeYAML(t, "wordpress", "6.8.2", []spec.Ingredient{cookedIngredient()})
 
 	art, err := cookbook.Build(doc, "wordpress", "6.8.2")
@@ -282,36 +279,36 @@ func TestSDKManifestIsByteIdenticalToTheLibraryLayout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hashing the empty config: %v", err)
 	}
-	fromLibrary, err := json.Marshal(v1.Manifest{
-		SchemaVersion: 2,
-		MediaType:     types.OCIManifestSchema1,
-		ArtifactType:  MediaTypeRecipe,
-		Config: v1.Descriptor{
+	fromLibrary, err := json.Marshal(ocispec.Manifest{
+		Versioned:    ocispecs.Versioned{SchemaVersion: 2},
+		MediaType:    string(types.OCIManifestSchema1),
+		ArtifactType: MediaTypeRecipe,
+		Config: ocispec.Descriptor{
 			MediaType: mediaTypeEmptyConfig,
-			Digest:    cfgHash,
+			Digest:    godigest.Digest(cfgHash.String()),
 			Size:      cfgSize,
 		},
-		Layers: []v1.Descriptor{{
+		Layers: []ocispec.Descriptor{{
 			MediaType:   MediaTypeRecipe,
-			Digest:      docHash,
+			Digest:      godigest.Digest(docHash.String()),
 			Size:        docSize,
 			Annotations: map[string]string{"org.opencontainers.image.title": cookbook.LayerTitle},
 		}},
 	})
 	if err != nil {
-		t.Fatalf("marshaling the library manifest: %v", err)
+		t.Fatalf("marshaling the reference manifest: %v", err)
 	}
 
 	if !bytes.Equal(art.Manifest.Content, fromLibrary) {
-		t.Errorf("the SDK and the library disagree on the manifest bytes.\nSDK:     %s\nlibrary: %s",
+		t.Errorf("the SDK and the OCI reference structs disagree on the manifest bytes.\nSDK:       %s\nreference: %s",
 			art.Manifest.Content, fromLibrary)
 	}
 	manHash, _, err := v1.SHA256(bytes.NewReader(fromLibrary))
 	if err != nil {
-		t.Fatalf("hashing the library manifest: %v", err)
+		t.Fatalf("hashing the reference manifest: %v", err)
 	}
 	if art.Manifest.Digest != manHash.String() {
-		t.Errorf("manifest digest = %s, want %s — already-published recipes would conflict",
+		t.Errorf("manifest digest = %s, want %s — a recipe published by oras or crane would wrap differently for nothing",
 			art.Manifest.Digest, manHash.String())
 	}
 }
@@ -370,4 +367,59 @@ func TestPublishTransportFailuresAreTaxonomized(t *testing.T) {
 			t.Errorf("host parameter = %v, want %s", got, addr)
 		}
 	})
+}
+
+// TestPublishRecipeUnchangedAcrossManifestWrappers is B-018's guard on the
+// publishing side. Manifest bytes are not stable across tools — oras adds
+// an org.opencontainers.image.created annotation, and an annotation is all
+// it takes — so a tag holding the same document under a foreign wrapper
+// must read as already published, and the tag, with whatever signature its
+// manifest carries, must stay exactly as it is (§11.2, §8).
+func TestPublishRecipeUnchangedAcrossManifestWrappers(t *testing.T) {
+	r := newRegistry(t)
+	doc := cookedRecipeYAML(t, "wordpress", "6.8.2", []spec.Ingredient{cookedIngredient()})
+	ref := r.addr + "/cookbook/wordpress:6.8.2"
+	p := publisherFor(t, r)
+
+	first, err := p.PublishRecipe(t.Context(), ref, doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Re-wrap the published manifest the way another tool would: same
+	// layers, one added annotation, different bytes, different digest.
+	payload, mediaType, _, err := r.st.RawManifest(t.Context(), "cookbook/wordpress", "6.8.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wrapped map[string]any
+	if err := json.Unmarshal(payload, &wrapped); err != nil {
+		t.Fatal(err)
+	}
+	wrapped["annotations"] = map[string]string{"org.opencontainers.image.created": "2026-08-22T00:00:00Z"}
+	foreign, err := json.Marshal(wrapped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignDigest, err := r.st.PutManifest(t.Context(), "cookbook/wordpress", mediaType, foreign, "6.8.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if foreignDigest.String() == first.Digest {
+		t.Fatal("the rewrap did not change the manifest digest; the fixture proves nothing")
+	}
+
+	res, err := p.PublishRecipe(t.Context(), ref, doc)
+	if err != nil {
+		t.Fatalf("republishing the same document under a foreign wrapper: %v", err)
+	}
+	if !res.Unchanged {
+		t.Error("the same document under a foreign wrapper was not reported unchanged")
+	}
+	if res.Digest != foreignDigest.String() {
+		t.Errorf("reported digest %s; want the published manifest's %s — the tag must not be re-pointed", res.Digest, foreignDigest)
+	}
+	if _, _, dgst, err := r.st.RawManifest(t.Context(), "cookbook/wordpress", "6.8.2"); err != nil || dgst != foreignDigest.String() {
+		t.Errorf("tag moved to %s (err %v); the foreign manifest and its signatures had to stay", dgst, err)
+	}
 }

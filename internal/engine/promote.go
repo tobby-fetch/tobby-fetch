@@ -277,7 +277,8 @@ func (e *Engine) propagateRecipe(ctx context.Context, sink *taskSink, logger *sl
 		_ = e.pushFailed(sink, logger, rid, "recipe", err, rid)
 		return
 	}
-	if _, err := cookbook.VerifyManifest(payload); err != nil {
+	layout, err := cookbook.VerifyManifest(payload)
+	if err != nil {
 		_ = e.pushFailed(sink, logger, rid, "recipe", validationError(tag.String(), err), rid)
 		return
 	}
@@ -288,21 +289,46 @@ func (e *Engine) propagateRecipe(ctx context.Context, sink *taskSink, logger *sl
 	}
 	switch existing, headErr := remote.Head(tag, e.dest.options(ctx)...); {
 	case headErr == nil:
-		if cookbook.DecideRepublication(existing.Digest.String(), dgst) == cookbook.RepublicationIdentical {
-			res.DestinationStatus = string(importer.StatusUpToDate)
-			sink.update(func(t *tasks.Task) bool {
-				itemFor(t, itemName).Status = tasks.StatusSkipped
-				t.Resolutions = append(t.Resolutions, res)
-				return true
-			})
-			e.meter(e.meters.PushSkipped)
-			return
+		// An equal manifest digest — the steady state, since this engine
+		// published the tag on an earlier cycle — settles it for one HEAD.
+		// An unequal one is not yet a conflict: manifest bytes are not
+		// stable across publishing tools (§11.2, B-018), so the format's
+		// comparison is on the document layer, read back with one GET.
+		identical := existing.Digest.String() == dgst
+		if !identical {
+			published, getErr := remote.Get(tag, e.dest.options(ctx)...)
+			if getErr != nil {
+				_ = e.pushFailed(sink, logger, rid, "recipe", getErr, rid)
+				return
+			}
+			remoteLayout, layoutErr := cookbook.VerifyManifest(published.Manifest)
+			if layoutErr != nil {
+				// The tag is held by something that is not a recipe
+				// artifact; §8 forbids re-pointing it all the same.
+				_ = e.pushFailed(sink, logger, rid, "recipe", taxonomy.New(taxonomy.CodeTagImmutable, taxonomy.Params{
+					"reference": tag.String(),
+					"published": existing.Digest.String(),
+					"candidate": dgst,
+				}), rid)
+				return
+			}
+			identical = cookbook.DecideRepublication(remoteLayout.Document.Digest, layout.Document.Digest) == cookbook.RepublicationIdentical
+			if !identical {
+				_ = e.pushFailed(sink, logger, rid, "recipe", taxonomy.New(taxonomy.CodeTagImmutable, taxonomy.Params{
+					"reference": tag.String(),
+					"published": remoteLayout.Document.Digest,
+					"candidate": layout.Document.Digest,
+				}), rid)
+				return
+			}
 		}
-		_ = e.pushFailed(sink, logger, rid, "recipe", taxonomy.New(taxonomy.CodeTagImmutable, taxonomy.Params{
-			"reference": tag.String(),
-			"published": existing.Digest.String(),
-			"candidate": dgst,
-		}), rid)
+		res.DestinationStatus = string(importer.StatusUpToDate)
+		sink.update(func(t *tasks.Task) bool {
+			itemFor(t, itemName).Status = tasks.StatusSkipped
+			t.Resolutions = append(t.Resolutions, res)
+			return true
+		})
+		e.meter(e.meters.PushSkipped)
 		return
 	case !isNotFound(headErr):
 		_ = e.pushFailed(sink, logger, rid, "recipe", headErr, rid)

@@ -100,14 +100,39 @@ func (p *Publisher) PublishRecipe(ctx context.Context, ref string, doc []byte) (
 	}
 	switch existing, headErr := remote.Head(tagRef, opts...); {
 	case headErr == nil:
-		// The tag exists: §8 says what writing to it would mean.
-		if cookbook.DecideRepublication(existing.Digest.String(), art.Manifest.Digest) == cookbook.RepublicationIdentical {
+		// The tag exists: §8 says what writing to it would mean. An equal
+		// manifest digest is a cheap certainty, but an unequal one is not
+		// yet a verdict — manifest bytes are not stable across publishing
+		// tools (§11.2, B-018) — so the comparison the format defines is
+		// on the document layer, which costs one GET of the tiny manifest.
+		if existing.Digest.String() == art.Manifest.Digest {
 			return &PublishResult{Reference: tagRef.String(), Digest: art.Manifest.Digest, Unchanged: true}, nil
+		}
+		published, getErr := remote.Get(tagRef, opts...)
+		if getErr != nil {
+			return nil, mapEngineError(getErr, tagRef.Context().RegistryStr())
+		}
+		layout, layoutErr := cookbook.VerifyManifest(published.Manifest)
+		if layoutErr != nil {
+			// Whatever holds the tag is not a recipe artifact; §8 forbids
+			// re-pointing it all the same, and the manifest digests are
+			// the only identities the two sides share.
+			return nil, taxonomy.New(taxonomy.CodeTagImmutable, taxonomy.Params{
+				"reference": tagRef.String(),
+				"published": existing.Digest.String(),
+				"candidate": art.Manifest.Digest,
+			})
+		}
+		if cookbook.DecideRepublication(layout.Document.Digest, art.Document.Digest) == cookbook.RepublicationIdentical {
+			// Same document, differently wrapped. The published manifest —
+			// and any signature attached to its digest — stays as it is;
+			// that digest, not ours, is what the tag means.
+			return &PublishResult{Reference: tagRef.String(), Digest: existing.Digest.String(), Unchanged: true}, nil
 		}
 		return nil, taxonomy.New(taxonomy.CodeTagImmutable, taxonomy.Params{
 			"reference": tagRef.String(),
-			"published": existing.Digest.String(),
-			"candidate": art.Manifest.Digest,
+			"published": layout.Document.Digest,
+			"candidate": art.Document.Digest,
 		})
 	case !isNotFound(headErr):
 		// Through the same mapping as the reading side (R-03): an
