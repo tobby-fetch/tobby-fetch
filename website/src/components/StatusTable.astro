@@ -1,0 +1,124 @@
+---
+/**
+ * Renders the feature → status → milestone table from src/data/status.yaml,
+ * the single source of truth for every status badge on the site.
+ *
+ * Props:
+ *   lang         "en" (default) or "fr"
+ *   securityOnly when true, only rows flagged `security: true`
+ */
+import { parse } from "yaml";
+import raw from "../data/status.yaml?raw";
+
+interface Props {
+  lang?: "en" | "fr";
+  securityOnly?: boolean;
+}
+
+const { lang = "en", securityOnly = false } = Astro.props;
+
+const data = parse(raw);
+
+const rows = (data.features ?? []).filter(
+  (f: any) => !securityOnly || f.security === true,
+);
+
+const labels = {
+  en: {
+    feature: "Feature",
+    status: "Status",
+    milestone: "Milestone",
+    available: "Available",
+    partial: "Partial",
+    upcoming: "Upcoming",
+    updated: `Status as of ${data.version} (${data.updated})`,
+  },
+  fr: {
+    feature: "Fonction",
+    status: "Statut",
+    milestone: "Jalon",
+    available: "Disponible",
+    partial: "Partiel",
+    upcoming: "À venir",
+    updated: `État au ${data.version} (${data.updated})`,
+  },
+}[lang];
+---
+
+<p class="status-updated">{labels.updated}</p>
+<div class="status-table-wrap">
+  <table class="status-table">
+    <thead>
+      <tr>
+        <th>{labels.feature}</th>
+        <th>{labels.status}</th>
+        <th>{labels.milestone}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        rows.map((f: any) => (
+          <tr>
+            <td>
+              <span class="status-id">{f.id}</span> {f[lang] ?? f.en}
+              {f.note?.[lang] && <span class="status-note">{f.note[lang]}</span>}
+            </td>
+            <td>
+              <span class={`status-chip status-${f.status}`}>{labels[f.status as "available" | "partial" | "upcoming"]}</span>
+            </td>
+            <td class="status-milestone">{f.milestone ? `J${f.milestone}` : "—"}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+</div>
+
+<style>
+  .status-updated {
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+  }
+  .status-table-wrap {
+    overflow-x: auto;
+  }
+  .status-table {
+    width: 100%;
+    font-size: var(--sl-text-sm);
+  }
+  .status-id {
+    font-family: var(--sl-font-mono);
+    font-size: 0.85em;
+    color: var(--sl-color-gray-3);
+    margin-right: 0.35em;
+  }
+  .status-note {
+    display: block;
+    color: var(--sl-color-gray-3);
+    font-size: 0.85em;
+  }
+  .status-chip {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 0.05rem 0.6rem;
+    font-size: 0.8em;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .status-available {
+    background: rgb(111 206 147 / 0.15);
+    color: var(--sl-color-green-high, #6fce93);
+  }
+  .status-partial {
+    background: rgb(232 180 90 / 0.15);
+    color: var(--sl-color-orange-high, #e8b45a);
+  }
+  .status-upcoming {
+    background: rgb(138 176 224 / 0.15);
+    color: var(--sl-color-blue-high, #8ab0e0);
+  }
+  .status-milestone {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+</style>

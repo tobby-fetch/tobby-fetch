@@ -1,0 +1,51 @@
+/* Starlight theme mapping — same dark-amber identity as site.css.
+ * Starlight always stamps data-theme, so the two blocks below cover
+ * both themes; the marketing pages keep their own site.css. */
+
+:root {
+  --sl-font:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+
+  /* dark (default) — matches site.css */
+  --sl-color-accent-low: #3a2b0a;
+  --sl-color-accent: #c97e12;
+  --sl-color-accent-high: #ffc25c;
+  --sl-color-white: #e8eaf0;
+  --sl-color-gray-1: #d5d8e0;
+  --sl-color-gray-2: #b3b8c4;
+  --sl-color-gray-3: #949aab;
+  --sl-color-gray-4: #5c6270;
+  --sl-color-gray-5: #2a2e38;
+  --sl-color-gray-6: #12151d;
+  --sl-color-black: #0b0d12;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #f6e5c4;
+  --sl-color-accent: #c97e12;
+  --sl-color-accent-high: #6f4a09;
+  --sl-color-white: #1a1d24;
+  --sl-color-gray-1: #2a2e38;
+  --sl-color-gray-2: #3f4450;
+  --sl-color-gray-3: #5f6472;
+  --sl-color-gray-4: #949aab;
+  --sl-color-gray-5: #d9d6cf;
+  --sl-color-gray-6: #ffffff;
+  --sl-color-gray-7: #f3f1ec;
+  --sl-color-black: #faf9f6;
+}
+
+/* Status badges in the sidebar and inline keep the roadmap palette:
+ * available = default/success, partial = caution, upcoming = note. */
+.sl-badge.caution {
+  font-variant-numeric: tabular-nums;
+}
+
+/* External links inside docs get a visible marker — the embedded/offline
+ * build relies on it (readers copy the URL on a connected machine). */
+.sl-markdown-content a[href^="http"]:not([href*="tobby-fetch.github.io"])::after {
+  content: " ↗";
+  font-size: 0.75em;
+  opacity: 0.7;
+}

@@ -1,0 +1,64 @@
+---
+title: Documentation
+description: Tobby transfère des contenus logiciels vérifiés entre zones réseau — y compris isolées — sans jamais les réécrire ni les signer.
+template: splash
+banner:
+  content: |
+    v0.4.x — jalons 1 à 4 livrés. <a href="discover/status/">État du projet →</a>
+hero:
+  title: Documentation Tobby
+  tagline: Tobby transfère des contenus logiciels vérifiés entre zones réseau — y compris isolées — sans jamais les réécrire ni les signer.
+  actions:
+    - text: Essayer en 10 minutes
+      link: try/install-and-start/
+      icon: rocket
+      variant: primary
+    - text: Pourquoi Tobby
+      link: discover/why-tobby/
+      icon: right-arrow
+      variant: minimal
+---
+
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+## Entrez par votre métier
+
+<CardGrid>
+  <LinkCard
+    title="Évaluer"
+    href="discover/why-tobby/"
+    description="Le problème résolu, une comparaison honnête, la gouvernance et les limites — ce qu'un décisionnaire attend."
+  />
+  <LinkCard
+    title="Essayer"
+    href="try/install-and-start/"
+    description="Un binaire, un quickstart guidé, une promotion de bout en bout. Dix minutes."
+  />
+  <LinkCard
+    title="Zones isolées (air-gap)"
+    href="air-gap/media-workflow/"
+    description="Le parcours média, son modèle de sécurité, et ce que livrera le jalon 5."
+  />
+  <LinkCard
+    title="Sécurité"
+    href="security/one-pager/"
+    description="Le modèle de sécurité en une page à transmettre à votre RSSI, et chaque contrôle derrière."
+  />
+  <LinkCard
+    title="Auditer le projet"
+    href="project/verify-a-release/"
+    description="Vérifier une release vous-même, rejouer le banc de test, lire les rapports d'acceptation bruts."
+  />
+  <LinkCard
+    title="Écrire des recipes"
+    href="recipes/understand/"
+    description="Recipes, cookbooks et retrievers — les concepts ici, le format normatif sur recipe-spec."
+  />
+</CardGrid>
+
+<p style="color: var(--sl-color-gray-3); font-size: var(--sl-text-sm); margin-top: 2rem;">
+  Cette documentation est embarquée dans le binaire Tobby et fonctionne
+  entièrement hors-ligne. Les pages qui décrivent des fonctions à venir portent
+  un badge explicite — la source unique de vérité est le tableau
+  <a href="discover/status/">État du projet</a>.
+</p>

@@ -1,0 +1,63 @@
+---
+title: Documentation
+description: Tobby moves verified software content between network zones — including isolated ones — without ever rewriting or signing it.
+template: splash
+banner:
+  content: |
+    v0.4.x — milestones 1–4 delivered. <a href="discover/status/">Project status →</a>
+hero:
+  title: Tobby documentation
+  tagline: Tobby moves verified software content between network zones — including isolated ones — without ever rewriting or signing it.
+  actions:
+    - text: Try it in 10 minutes
+      link: try/install-and-start/
+      icon: rocket
+      variant: primary
+    - text: Why Tobby
+      link: discover/why-tobby/
+      icon: right-arrow
+      variant: minimal
+---
+
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+## Start where your job starts
+
+<CardGrid>
+  <LinkCard
+    title="Evaluate"
+    href="discover/why-tobby/"
+    description="The problem it solves, an honest comparison, governance and limits — what a decision-maker needs."
+  />
+  <LinkCard
+    title="Try"
+    href="try/install-and-start/"
+    description="One binary, one guided quickstart, one end-to-end promotion. Ten minutes."
+  />
+  <LinkCard
+    title="Isolated zones (air-gap)"
+    href="air-gap/media-workflow/"
+    description="The removable-media journey, its security model, and what milestone 5 will deliver."
+  />
+  <LinkCard
+    title="Security"
+    href="security/one-pager/"
+    description="The one-page security model you can send to your CISO, and every control behind it."
+  />
+  <LinkCard
+    title="Audit the project"
+    href="project/verify-a-release/"
+    description="Verify a release yourself, replay the test bench, read the raw acceptance reports."
+  />
+  <LinkCard
+    title="Write recipes"
+    href="recipes/understand/"
+    description="Recipes, cookbooks and retrievers — concepts here, the normative format at recipe-spec."
+  />
+</CardGrid>
+
+<p style="color: var(--sl-color-gray-3); font-size: var(--sl-text-sm); margin-top: 2rem;">
+  This documentation ships inside the Tobby binary and works fully offline.
+  Pages that describe upcoming features carry an explicit badge — the single
+  source of truth is the <a href="discover/status/">project status</a> table.
+</p>

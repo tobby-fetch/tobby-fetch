@@ -35,7 +35,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
         <a href={`${base}/#how`}>How it works</a>
         <a href={`${base}/quality/`} aria-current="page">Quality</a>
         <a href={`${base}/roadmap.html`}>Roadmap (FR)</a>
-        <a href={`${repo}/tree/main/docs`} rel="noopener">Docs</a>
+        <a href={`${base}/docs/`}>Docs</a>
         <a href={repo} rel="noopener">GitHub</a>
       </div>
     </nav>
@@ -136,12 +136,12 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
         <h2>Raw results, published per milestone</h2>
         <p class="intro">
           Each milestone ships its acceptance report — every check listed,
-          including skips and detected defects. Reports will appear here as
-          milestones complete.
+          including skips and detected defects.
         </p>
         <div class="btnrow">
+          <a class="btn solid" href={`${base}/docs/project/acceptance-reports/`}>Read the reports →</a>
+          <a class="btn" href={`${base}/docs/project/verify-a-release/`}>Verify a release yourself →</a>
           <a class="btn" href={`${base}/roadmap.html`}>The milestones →</a>
-          <a class="btn" href={`${repo}/tree/main/docs`} rel="noopener">Design documents</a>
         </div>
       </div>
     </section>

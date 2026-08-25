@@ -1,0 +1,19 @@
+---
+// Starlight links the site title to the locale root on French pages;
+// the French tree starts at /fr/docs/ — redirect there.
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const target = `${base}/fr/docs/`;
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content={`0; url=${target}`} />
+    <link rel="canonical" href={target} />
+    <title>Documentation Tobby</title>
+  </head>
+  <body>
+    <p><a href={target}>Documentation Tobby</a></p>
+  </body>
+</html>
