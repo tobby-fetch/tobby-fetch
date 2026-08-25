@@ -101,6 +101,9 @@ jobs:
             echo "image=${image}"
             echo "digest=${ref#*@}"
           } >> "$GITHUB_OUTPUT"
+      # No ignore mechanism of any kind lives here. The day a finding must
+      # be waived, it comes as an OpenVEX statement (.vex/README.md) wired
+      # into this step via TRIVY_VEX — never a .trivyignore.
       - name: Trivy gate — critical and high fail the rebuild
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:

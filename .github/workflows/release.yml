@@ -171,6 +171,19 @@ jobs:
           for f in sboms/*.cdx.json; do
             cosign sign-blob --yes --bundle "$f.bundle" "$f"
           done
+      - name: Sign and stage the OpenVEX document, when one exists (ADR-0011)
+        run: |
+          # A scanner finding that does not apply to Tobby ships as a signed
+          # OpenVEX statement attached to the release — never a silent ignore
+          # rule (.vex/README.md). No document means nothing is waived; this
+          # step is then a no-op by design, not an oversight.
+          if [ -f .vex/tobby.openvex.json ]; then
+            cp .vex/tobby.openvex.json sboms/tobby.openvex.json
+            cosign sign-blob --yes --bundle sboms/tobby.openvex.json.bundle \
+              sboms/tobby.openvex.json
+          else
+            echo "No OpenVEX statements: no scanner finding is waived."
+          fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sboms
@@ -263,6 +276,9 @@ jobs:
       contents: read
       packages: read
     steps:
+      # No ignore mechanism of any kind lives here. The day a finding must
+      # be waived, it comes as an OpenVEX statement (.vex/README.md) wired
+      # into this step via TRIVY_VEX — never a .trivyignore.
       - name: Scan the published image — critical and high block the release
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:

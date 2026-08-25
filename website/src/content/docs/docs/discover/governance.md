@@ -89,12 +89,15 @@ The essentials:
 - **Scope:** the application repository (CLI, service, registry, UI, API).
   The format and SDK have their own policy in the `recipe-spec` repository.
 
-On the outbound side, Tobby's own releases carry an **OpenVEX statement**:
-when a scanner flags a dependency CVE that does not apply to Tobby, the VEX
-document says so, machine-readably, instead of leaving you to triage the
-noise. Release images are rebuilt weekly against the current Wolfi base so
-that the zero-known-CVE claim is maintained between releases, and the VEX
-statement is regenerated with the quality gates.
+On the outbound side, the **OpenVEX rule** applies to Tobby's own
+releases: if a scanner flags a finding that does not apply to Tobby, the
+justification ships as a signed `tobby.openvex.json` attached to the
+release — never a silent ignore rule (the policy and its mechanics live in
+[`.vex/README.md`](https://github.com/tobby-fetch/tobby-fetch/blob/main/.vex/README.md)).
+To date no finding has been waived, so no release carries the document:
+its absence means the CRITICAL/HIGH gates passed with nothing excluded.
+Release images are also rebuilt weekly against the current Wolfi base so
+the zero-known-CVE claim is maintained between releases.
 
 ## Sustainability: auditable without the vendor
 

@@ -142,8 +142,14 @@ Release gates keep known critical and high findings out of every release
 (Trivy on the image, govulncheck with symbol-level reachability on the
 code). ADR-0011's standing policy for the remainder: a scanner finding that
 does not apply to Tobby is answered with a published OpenVEX statement
-attached to the release — never a silent ignore rule. Consume such a
-statement by feeding it to your scanner alongside the SBOM.
+attached to the release — never a silent ignore rule. Concretely: when any
+finding is waived, the release assets include `tobby.openvex.json` with a
+keyless signature in `tobby.openvex.json.bundle`, verifiable with the same
+`cosign verify-blob` command as the SBOMs; feed the document to your
+scanner alongside the SBOM. **No release carries the document today**,
+because no finding has been waived — its absence is itself verifiable
+information: the gates passed with zero exclusions (the mechanics are in
+[`.vex/README.md`](https://github.com/tobby-fetch/tobby-fetch/blob/main/.vex/README.md)).
 
 Next: [tests and proofs](../tests-and-proofs/) shows the gates every commit
 passes before it can become a release at all.
