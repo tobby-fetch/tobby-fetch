@@ -161,7 +161,7 @@ Before applying, edit two files:
    external-secrets manage it.
 
 The `30-persistentvolumeclaims.yaml` claims use the cluster's default
-StorageClass and request 100Gi for the store and 1Gi for the state.
+StorageClass and request 100Gi for the store and 20Gi for the state.
 Adjust both before the first synchronization.
 
 The namespace manifest enforces the **restricted** Pod Security Standard.
