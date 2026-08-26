@@ -32,6 +32,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
+	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
 	"github.com/tobby-fetch/tobby-fetch/internal/medialog"
 	"github.com/tobby-fetch/tobby-fetch/internal/metrics"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
@@ -221,12 +222,28 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			slog.String("requirement", "FR-045"))
 	}
 
+	// The FR-054 serving gate. Built here, immediately after the store is
+	// open and BEFORE the first content surface is mounted: an instance
+	// that opened a transported medium serves nothing off it until a
+	// verification has cleared it, and a gate installed later would leave
+	// /v2/ unguarded for the length of a startup. It is inert on anything
+	// that is not a destination side holding a medium, and its
+	// verification is wired in once the engine exists.
+	mediaGate := mediagate.Open(ctx, cfg.Storage.Root, cfg.Zone, logger)
+	if mediaGate.Guarded() {
+		logger.LogAttrs(ctx, slog.LevelWarn, "transported medium not verified: the registry and the file surfaces are closed",
+			slog.String("zone", cfg.Zone), slog.String("store", cfg.Storage.Root),
+			slog.String("action", "verify the medium on "+mediagate.Screen+", with `tobby media verify`, or through POST /api/v1/media/verify"),
+			slog.String("requirement", "FR-054"))
+	}
+	srv.SetReadyDetail(mediaGate.ReadyDetail)
+
 	// The embedded registry serves the standard OCI Distribution API on the
 	// shared listener (FR-040); nested relocated repository names are
 	// first-class (ADR-0013). Reads need viewer, writes need operator
 	// (ADR-0009) — docker/helm/oras authenticate with the same accounts and
 	// tokens as the UI and the API (FR-076).
-	srv.Handle("/v2/", authn.Registry(st.APIHandler()))
+	srv.Handle("/v2/", mediaGate.Guard("/v2/", mediagate.RegistryRefusal, authn.Registry(st.APIHandler())))
 
 	// The persistent task queue lives inside the store (FR-050) and
 	// re-queues interrupted tasks at startup (FR-029). The unit-import
@@ -420,6 +437,18 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	eng.SetMediaImport(cfg.Zone, imports)
+	// FR-054: every verification this engine performs reaches the serving
+	// gate, and the gate's own Verify step is this engine. One funnel in
+	// each direction, so no surface can reach a verdict the gate does not
+	// hear, and no screen can open the gate by any other means.
+	eng.SetMediaVerdicts(mediaGate.Observe)
+	mediaGate.SetVerify(func(vctx context.Context, opts mediagate.Options, progress func(media.Progress)) (*media.Report, error) {
+		return eng.VerifyMedia(vctx, logger, engine.MediaOptions{
+			AllowZoneMismatch: opts.AllowZoneMismatch,
+			AllowStale:        opts.AllowStale,
+			Progress:          progress,
+		})
+	})
 	switch {
 	case cfg.Zone == "":
 		logger.LogAttrs(ctx, slog.LevelInfo, "no zone identity configured: this instance imports no medium",
@@ -500,7 +529,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			anonymousNames = append(anonymousNames, f.Name)
 		}
 	}
-	srv.Handle(fileserve.RoutePrefix, filesAuth(authn, anonymous, fsrv.Handler()))
+	srv.Handle(fileserve.RoutePrefix, mediaGate.Guard(fileserve.RoutePrefix, mediagate.FilesRefusal,
+		filesAuth(authn, anonymous, fsrv.Handler())))
 
 	// The FileSets surface (FR-047 inventory, FR-048 packing), shared by
 	// the screen and the endpoints so the two give one answer (FR-061).
@@ -546,7 +576,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	api.RegisterPublish(restAPI, publisher)
 	api.RegisterPlan(restAPI, &api.PlanOptions{Planner: eng.Planner()})
 	api.RegisterMedia(restAPI, &api.MediaOptions{
-		Engine: eng, Queue: queue, StorageRoot: cfg.Storage.Root,
+		Engine: eng, Queue: queue, StorageRoot: cfg.Storage.Root, Gate: mediaGate,
 	})
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{
 		Cert:     serverCert,
@@ -587,6 +617,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Occupancy:          occupancy,
 		PrunesToRetriever:  eng.PrunesByDefault(),
 		Projector:          eng,
+		MediaZone:          eng,
+		MediaGate:          mediaGate,
 	})
 	webUI.Mount(srv.Mux())
 

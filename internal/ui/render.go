@@ -56,6 +56,7 @@ var pageFiles = []string{
 	"help-page",
 	"import",
 	"login",
+	"media",
 	"recipe-mapping",
 	"recipe-plan",
 	"recipe-publish",

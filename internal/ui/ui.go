@@ -15,6 +15,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
+	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -80,6 +81,17 @@ type UI struct {
 	// projector computes the trigger-time confirmation (FR-045). Nil on
 	// an instance wired without an engine.
 	projector PruneProjector
+	// mediaZone is the destination-side context of the Media screen
+	// (FR-062 amendment R-02): the zone this instance serves and the
+	// freshness record it holds for it. Nil leaves the screen in its
+	// source-side shape — a summary of the medium this store is, and no
+	// verification sequence.
+	mediaZone MediaZone
+	// mediaGate is the FR-054 serving gate: whether /v2/ and /files/
+	// answer, the verification currently walking the medium, and the
+	// verdict the last one reached. Nil on an instance that guards
+	// nothing, which renders the sequence unavailable rather than broken.
+	mediaGate *mediagate.Gate
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -165,6 +177,11 @@ type Options struct {
 	// the confirmation fragment saying it cannot project, which is what
 	// an instance with no Retriever source should say.
 	Projector PruneProjector
+	// MediaZone and MediaGate back the Media screen (FR-062 amendment
+	// R-02) — the same objects the /api/v1/media endpoints read, so the
+	// screen and its mirror cannot answer differently (FR-061).
+	MediaZone MediaZone
+	MediaGate *mediagate.Gate
 }
 
 // New assembles the UI.
@@ -207,6 +224,8 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		occupancy:         opts.Occupancy,
 		prunesByDefault:   opts.PrunesToRetriever,
 		projector:         opts.Projector,
+		mediaZone:         opts.MediaZone,
+		mediaGate:         opts.MediaGate,
 	}
 }
 
@@ -292,6 +311,16 @@ func (u *UI) Mount(rt Router) {
 	mux.Handle("GET /recipes/plan", operator(u.planScreen))
 	mux.Handle("POST /recipes/plan", operator(u.planSubmit))
 	mux.Handle("GET /recipes/{recipe}/mapping", app(u.recipeMapping))
+
+	// The Media screen (FR-062 amendment R-02, FR-052): the physical
+	// transfer, on both sides of it. Reading the medium's inventory is a
+	// listing like any other; verifying it re-hashes the whole disk and
+	// importing it writes into the zone registry, so both are operator
+	// actions — with the two FR-054 waivers reserved to an administrator
+	// in the handler, exactly as the API mirror enforces them.
+	mux.Handle("GET /media", app(u.mediaScreen))
+	mux.Handle("POST /media/verify", operator(u.mediaVerify))
+	mux.Handle("POST /media/import", operator(u.mediaImport))
 
 	// Account self-service (R-34, FR-061): every authenticated role,
 	// viewer included — the admin gate stays on /admin/accounts.

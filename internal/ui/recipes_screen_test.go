@@ -410,9 +410,9 @@ func TestSecurityBanners(t *testing.T) {
 	}
 }
 
-// TestRecipesNavEntry: the shell carries a real /recipes entry for every
-// role — the milestone-3 placeholder is gone, the media one stays under
-// ShowUpcoming.
+// TestRecipesNavEntry: the shell carries a real /recipes entry and a real
+// /media entry for every role — both milestone placeholders are gone, the
+// media one since the R-02 screen shipped.
 func TestRecipesNavEntry(t *testing.T) {
 	u := newTestUIWithOptions(t, &Options{ShowUpcoming: true}, nil)
 	mux := mount(u)
@@ -425,8 +425,11 @@ func TestRecipesNavEntry(t *testing.T) {
 	if strings.Contains(body, "Recipes — milestone") {
 		t.Error("nav still carries the recipes placeholder")
 	}
-	if !strings.Contains(body, "Media — milestone 5") {
-		t.Error("nav lost the media placeholder (ShowUpcoming)")
+	if !strings.Contains(body, `href="/media"`) {
+		t.Error("nav misses the real /media entry (R-02)")
+	}
+	if strings.Contains(body, "Media — milestone") {
+		t.Error("nav still carries the media placeholder")
 	}
 }
 

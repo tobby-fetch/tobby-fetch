@@ -147,6 +147,53 @@ starting with `v0.1.0`.
   and its ledgers go; the operation history and task logs stay, because a
   trail a destructive action erases is not a trail.
 
+- **The Media screen** (FR-062 amendment R-02), on both sides of a
+  physical transfer. On the source it is the packing list read before the
+  disk is unmounted: which zone the medium is addressed to, when it was
+  resolved, what it delivers, what it weighs. On the destination it is the
+  guided sequence FR-054 already made normative — Verify, Report, Push —
+  with the Push control absent from the document, not merely disabled,
+  until a verdict has cleared a delivery. Verification runs in the
+  background with live progress, because a full medium is minutes of I/O
+  and a frozen page is not a progress display. The report names the three
+  stages separately (manifest completeness and checksums, ingredient
+  digests, recipe signatures) and, for every blocked delivery, the file
+  that failed. A zone mismatch and a stale medium are stated in words with
+  the course of action and the administrator waiver that takes it; an
+  integrity or signature verdict has none, and the screen says so. The
+  screen introduces no engine behaviour: every route mirrors one under
+  `/api/v1/media`, and `GET /api/v1/media/verification` serves a machine
+  the state the screen polls.
+
+### Fixed
+
+- **An unverified medium was served** (FR-054). "Destination-side
+  verification SHALL precede any push, any **serving**, and any local
+  write" has three verbs; the push and the local write were enforced and
+  the serving was not, so `tobby serve` pointed at a transported store
+  mounted `/v2/` and `/files/` at startup and handed out its blobs before
+  a single digest had been recomputed. A destination instance holding a
+  medium now withholds both surfaces until a verification clears it, and
+  says so: `403` with the taxonomy's what/cause/action in the shape each
+  surface's clients understand — the OCI error envelope for `docker` and
+  `helm`, plain text for `apt` and `dnf` — naming the medium and the
+  screen that opens the gate, never a `404` and never a silent `503`. The
+  instance stays live and ready, because its interface is what an operator
+  needs in order to verify, and `/readyz` states in its body which
+  surfaces are closed. The gate opens on a whole medium and on nothing
+  else: R-19 made the *push* decision per recipe, but `/v2/` hands out
+  blobs and a blob a blocked recipe reaches is exactly the content that
+  failed. A passthrough instance and a source-side mirror — whose store
+  carries a manifest because it wrote one — are unaffected. There is no
+  setting that serves an unverified medium, and no verdict is cached
+  across a restart. Locked at both levels, each played fallible first: the
+  middleware against the real registry and file handlers, and the wiring
+  against the instance `runServe` actually starts — plus the counter-test
+  a guard needs in order not to be too wide, which pins the shape crucible
+  scenario m1 relies on: a store filled through `/v2/` and carried across
+  the gap serves normally, because it never went through a mirror
+  synchronization and carries no media manifest.
+
 ### Security
 
 - An imported layout is treated as untrusted data (NFR-011): archive
@@ -155,6 +202,10 @@ starting with `v0.1.0`.
   naming the offending entry, blobs are addressed by the digest they must
   hash to rather than by any name the archive supplied, and compressed
   archives are refused rather than inflated.
+- Three error-taxonomy entries for the serving gate above: `TBY-MED-030`
+  (not verified yet), `TBY-MED-031` (a verification is already walking the
+  medium) and `TBY-MED-032` (verified and not whole), documented in both
+  languages in the published error reference.
 
 ## [0.4.2] - 2026-08-22
 

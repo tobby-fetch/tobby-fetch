@@ -1033,3 +1033,74 @@ button.t-lang:hover { color: var(--tobby-accent-text); }
 .t-help-cta:hover { color: var(--tobby-accent-text); }
 .t-help-cta-icon { color: var(--tobby-accent); }
 .t-page-guide { margin: -0.4rem 0 var(--tobby-space-4); }
+
+/* ---------------------------------------------------------------------
+   /media — the physical transfer (R-02). The screen is a sequence, so it
+   is laid out as one: a numbered rail down the left of three steps, each
+   dimmed until it is reached. Reaching a step is the ONLY thing that
+   opacity carries here — every verdict on this page is a badge with a
+   glyph and a word, never a colour alone (NFR-017).
+   --------------------------------------------------------------------- */
+.t-media-summary dl,
+.t-deflist {
+  display: grid; grid-template-columns: minmax(9rem, auto) 1fr;
+  gap: var(--tobby-space-2) var(--tobby-space-4); margin: 0;
+  font-size: var(--tobby-text-sm);
+}
+.t-deflist dt { color: var(--tobby-muted); }
+.t-deflist dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--tobby-space-2); }
+
+.t-media-gate { margin-top: var(--tobby-space-4); }
+.t-media-gate p { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--tobby-space-2); }
+
+.t-media-steps {
+  list-style: none; margin: var(--tobby-space-6) 0 0; padding: 0;
+  border-left: 1px solid var(--tobby-border-hairline);
+}
+.t-media-step {
+  padding: 0 0 var(--tobby-space-5) var(--tobby-space-5);
+  position: relative;
+  /* Not reached yet: quieter, never hidden — an operator has to see the
+     whole sequence to know where they are in it. */
+  opacity: 0.55;
+}
+.t-media-step--active { opacity: 1; }
+.t-media-step h2 { display: flex; align-items: center; gap: var(--tobby-space-2); margin-top: 0; }
+.t-media-stepno {
+  position: absolute; left: calc(-1 * var(--tobby-space-3)); top: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.5rem; height: 1.5rem; border-radius: 50%;
+  background: var(--tobby-bg-raise); border: 1px solid var(--tobby-border-hairline);
+  color: var(--tobby-muted); font-size: var(--tobby-text-2xs);
+}
+.t-media-step--active .t-media-stepno {
+  border-color: var(--tobby-accent); color: var(--tobby-accent-text);
+}
+
+.t-media-progress { margin: var(--tobby-space-3) 0; }
+.t-media-progress progress { width: 100%; max-width: 32rem; height: 0.5rem; }
+.t-media-progress p { margin: var(--tobby-space-2) 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--tobby-space-2); font-size: var(--tobby-text-sm); }
+
+.t-media-verify, .t-media-push { display: flex; flex-direction: column; align-items: flex-start; gap: var(--tobby-space-3); }
+.t-media-waivers {
+  border: 1px solid var(--tobby-border-hairline); border-radius: var(--tobby-radius-sm);
+  padding: var(--tobby-space-3) var(--tobby-space-4); margin: 0;
+  font-size: var(--tobby-text-sm);
+}
+.t-media-waivers legend { color: var(--tobby-muted); font-size: var(--tobby-text-2xs); text-transform: uppercase; letter-spacing: 0.06em; }
+.t-media-waivers .t-row { gap: var(--tobby-space-2); margin-bottom: var(--tobby-space-1); }
+
+.t-media-verdictrow { align-items: center; gap: var(--tobby-space-3); margin-bottom: var(--tobby-space-3); }
+.t-media-stages { list-style: none; margin: 0 0 var(--tobby-space-4); padding: 0; font-size: var(--tobby-text-sm); }
+.t-media-stages li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--tobby-space-2); margin-bottom: var(--tobby-space-2); }
+.t-media-block { margin-bottom: var(--tobby-space-3); }
+.t-media-block .t-note { margin: var(--tobby-space-2) 0 0; }
+
+.t-media-deliveries td { vertical-align: top; }
+.t-media-findings { margin-top: var(--tobby-space-5); font-size: var(--tobby-text-sm); }
+.t-media-findings ul { margin: var(--tobby-space-2) 0 0; padding-left: 1.1rem; }
+.t-media-findings li { margin-bottom: var(--tobby-space-1); display: flex; flex-wrap: wrap; align-items: center; gap: var(--tobby-space-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .t-media-progress progress { transition: none; }
+}

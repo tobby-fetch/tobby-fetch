@@ -664,6 +664,50 @@ a partially damaged medium still hands over its intact recipes.
   did not alter it deliberately. Nothing is pushed out of these files.
 - **Fixable offline:** yes · **Blocks:** nothing (reported only)
 
+### TBY-MED-030
+
+- **What happened:** the medium has not been verified yet, so this instance
+  serves none of its content.
+- **Probable cause:** the store this instance was pointed at arrived from
+  another zone on a physical medium, and nothing has yet re-hashed it or
+  checked the signatures of what it delivers. FR-054 requires verification
+  to precede any push, any serving and any local write, so `/v2/` and
+  `/files/` are closed until it has run. The instance itself is alive,
+  ready, and serving its interface and its API normally.
+- **Corrective action:** open the **Media** screen and run *Verify* — on a
+  full disk it takes minutes — or run `tobby media verify`, or call
+  `POST /api/v1/media/verify`. The content surfaces open by themselves as
+  soon as the medium clears. There is deliberately no setting that serves a
+  medium without verifying it.
+- **Fixable offline:** yes · **Blocks:** the embedded registry and the file
+  surface, for this medium
+
+### TBY-MED-031
+
+- **What happened:** a verification of this medium is already running.
+- **Probable cause:** a second verification was asked for while one was
+  walking the medium. Two walks over the same disk halve each other and
+  answer nothing new.
+- **Corrective action:** wait for the run in progress. Its verdict lands on
+  the Media screen and on `GET /api/v1/media/verification`.
+- **Fixable offline:** yes · **Blocks:** the second verification only
+
+### TBY-MED-032
+
+- **What happened:** the medium was verified and did not come out whole, so
+  this instance serves none of its content.
+- **Probable cause:** the verdict is *partial* or *blocked*: at least one
+  delivery failed its signature or one of its ingredient digests. Unlike the
+  push decision, which R-19 takes recipe by recipe, serving is a property of
+  the store as a whole — `/v2/` and `/files/` hand out blobs, and a blob a
+  blocked delivery reaches is exactly the content that failed.
+- **Corrective action:** read the report on the Media screen: it names each
+  blocked delivery and the file that failed. Re-copy the medium from the
+  source instance and verify it again. The intact deliveries can still be
+  pushed into the zone registry, which then serves them.
+- **Fixable offline:** yes · **Blocks:** the embedded registry and the file
+  surface, for this medium
+
 ## OCI image layout export and import (TBY-LAY)
 
 The interoperability exit (FR-051): the store written out in the standard

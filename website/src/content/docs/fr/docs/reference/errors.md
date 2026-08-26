@@ -694,6 +694,53 @@ remet quand même ses recipes intactes.
   ne l'avez pas modifié délibérément. Rien n'est poussé depuis ces fichiers.
 - **Corrigeable hors ligne :** oui · **Bloque :** rien (signalé seulement)
 
+### TBY-MED-030
+
+- **Quoi :** le support n'a pas encore été vérifié : cette instance n'en sert
+  aucun contenu.
+- **Cause probable :** le store sur lequel cette instance a été pointée est
+  arrivé d'une autre zone sur un support physique, et rien n'en a encore
+  recalculé les empreintes ni vérifié les signatures de ce qu'il livre.
+  FR-054 exige que la vérification précède toute poussée, tout service et
+  toute écriture locale : `/v2/` et `/files/` restent donc fermés tant
+  qu'elle n'a pas eu lieu. L'instance, elle, est vivante, prête, et sert
+  normalement son interface et son API.
+- **Action corrective :** ouvrez l'écran **Média** et lancez *Vérifier* — sur
+  un disque plein cela prend plusieurs minutes — ou lancez
+  `tobby media verify`, ou appelez `POST /api/v1/media/verify`. Les surfaces
+  de contenu s'ouvrent d'elles-mêmes dès que le support est validé. Aucun
+  réglage ne permet délibérément de servir un support sans le vérifier.
+- **Corrigeable hors ligne :** oui · **Bloque :** la registry embarquée et la
+  surface de fichiers, pour ce support
+
+### TBY-MED-031
+
+- **Quoi :** une vérification de ce support est déjà en cours.
+- **Cause probable :** une seconde vérification a été demandée alors qu'une
+  première parcourait le support. Deux parcours du même disque se ralentissent
+  mutuellement sans rien apprendre de plus.
+- **Action corrective :** attendez la fin de l'exécution en cours. Son verdict
+  s'affiche sur l'écran Média et sur `GET /api/v1/media/verification`.
+- **Corrigeable hors ligne :** oui · **Bloque :** la seconde vérification
+  seulement
+
+### TBY-MED-032
+
+- **Quoi :** le support a été vérifié et n'en est pas ressorti intact : cette
+  instance n'en sert aucun contenu.
+- **Cause probable :** le verdict est *partiel* ou *bloqué* : au moins une
+  livraison a échoué sur sa signature ou sur l'une des empreintes de ses
+  ingrédients. Contrairement à la décision de poussée, que R-19 prend recipe
+  par recipe, servir engage le store entier — `/v2/` et `/files/` distribuent
+  des blobs, et un blob atteint par une livraison bloquée est exactement le
+  contenu qui a échoué.
+- **Action corrective :** lisez le rapport sur l'écran Média : il nomme chaque
+  livraison bloquée et le fichier fautif. Recopiez le support depuis
+  l'instance source et vérifiez de nouveau. Les livraisons intactes restent
+  poussables vers la registry de zone, qui les sert ensuite.
+- **Corrigeable hors ligne :** oui · **Bloque :** la registry embarquée et la
+  surface de fichiers, pour ce support
+
 ## Export et import OCI image layout (TBY-LAY)
 
 La sortie d'interopérabilité (FR-051) : le store écrit dans le format

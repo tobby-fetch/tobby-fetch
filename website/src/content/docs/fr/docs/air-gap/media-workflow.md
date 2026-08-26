@@ -214,12 +214,54 @@ Checklist :
 - Le push est terminé ; le média de retour porte les journaux de la
   destination.
 
-:::note[À venir — jalon 5]
-L'écran Média côté destination, ses verdicts par recipe et l'enchaînement
-guidé Vérifier → Rapport → Pousser arrivent avec le jalon 5 (SRS FR-052,
-FR-054). L'ordre de vérification, lui, est déjà normatif — voir le
-[modèle de sécurité du média](../../air-gap/media-security/).
-:::
+#### L'écran Média
+
+Tout ce qui précède a un écran : **Média**, dans la navigation principale, des
+deux côtés du transfert. À la source, c'est la liste de colisage — à quelle
+zone le support est adressé, quand il a été résolu, ce qu'il livre, ce qu'il
+pèse — à lire avant de démonter le disque. À la destination, il ouvre
+l'enchaînement guidé :
+
+1. **Vérifier.** Relit et recalcule l'empreinte de chaque fichier couvert,
+   puis vérifie la signature de chaque recipe contre les trust roots de *cette*
+   instance. Sur un disque plein cela prend plusieurs minutes : la vérification
+   tourne en arrière-plan avec une progression en direct, vous pouvez quitter
+   la page et y revenir.
+2. **Rapport.** Les trois étapes nommées séparément — complétude et sommes du
+   manifeste, empreintes des ingrédients, signatures des recipes — et un
+   verdict par livraison. Une livraison bloquée nomme le fichier fautif, ce qui
+   fait la différence entre « recopier le disque » et « appeler la zone
+   source ». Le rapport brut se télécharge en JSON.
+3. **Pousser.** Le bouton n'existe pas tant qu'un verdict n'a pas validé au
+   moins une livraison. Pas grisé : absent.
+
+Un désaccord de zone et un support plus ancien que le dernier importé ici sont
+les deux seuls refus qu'un administrateur peut lever, depuis l'étape Vérifier,
+avec consignation au journal d'audit. Les verdicts d'intégrité et de signature
+n'admettent aucune dérogation, pour personne.
+
+#### Un support non vérifié ne sert rien
+
+Une instance de destination démarrée sur un store transporté n'en sert pas le
+contenu tant que la vérification ne l'a pas validé — le « tout service » de la
+règle ci-dessus, appliqué et pas seulement écrit. `/v2/` et `/files/` répondent
+`403` avec [TBY-MED-030](../../reference/errors/#tby-med-030) et la marche à
+suivre ; l'interface, l'API et les sondes restent disponibles, puisque ce sont
+elles qu'il faut pour vérifier. L'instance est **vivante et prête** : `/readyz`
+répond `200` et indique dans son corps quelles surfaces sont fermées.
+
+Le verrou s'ouvre sur un support intact et sur rien d'autre. Un support
+partiellement endommagé livre quand même ses recipes intactes dans la registry
+de zone — c'est tout l'intérêt de porter plusieurs livraisons sur un disque —
+mais cette instance ne servira pas depuis le disque, parce que `/v2/` distribue
+des blobs et qu'un blob atteint par une recipe bloquée est exactement le
+contenu qui a échoué. Aucun réglage ne permet de servir un support non
+vérifié ; le verdict n'est pas non plus conservé d'un redémarrage à l'autre.
+
+Une instance miroir **côté source** n'est pas concernée : son store porte un
+manifeste de média parce qu'elle en a écrit un, et elle sert normalement. Les
+deux côtés se distinguent par l'identité de zone, que seule une instance de
+destination configure.
 
 ## Après l'import
 

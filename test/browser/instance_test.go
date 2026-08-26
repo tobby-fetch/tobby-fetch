@@ -7,6 +7,7 @@ package browser
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -27,6 +28,8 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
+	"github.com/tobby-fetch/tobby-fetch/internal/media"
+	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/ui"
@@ -58,6 +61,59 @@ type instance struct {
 
 	// RecipeDoc is the published recipe document, when one was seeded.
 	RecipeDoc []byte
+
+	// Gate is the FR-054 serving gate, when the instance holds a medium.
+	Gate *mediagate.Gate
+}
+
+// mediumZone is the zone the fixture medium is addressed to, and the one
+// the instance serves — so the screen renders a matching pair rather than
+// a refusal the scenario is not about.
+const mediumZone = "zone-destination"
+
+// mediaZone is the destination-side context of the Media screen.
+type mediaZone struct{}
+
+func (mediaZone) Zone() string { return mediumZone }
+
+func (mediaZone) LastMediaImport() (media.ImportRecord, bool) {
+	return media.ImportRecord{}, false
+}
+
+// mediumDigest builds a well-formed digest: the media manifest validates
+// what it carries before anything looks at it (R-19), so an abbreviated
+// fixture would make the screen render a refusal instead of a summary.
+func mediumDigest(seed byte) string {
+	b := make([]byte, 32)
+	for i := range b {
+		b[i] = seed
+	}
+	return "sha256:" + hex.EncodeToString(b)
+}
+
+// seedMedium records one delivery in the store's recipe graph and writes
+// the media manifest over it — the two things that make a directory a
+// transported medium (FR-050, FR-054).
+func seedMedium(t *testing.T, st *store.Store) {
+	t.Helper()
+	rec := store.RecipeRecord{
+		Name: "wordpress", Version: "6.8.2",
+		CookbookRepo: "cookbook.example/recipes/wordpress",
+		ArtifactRepo: "cookbook.example/recipes/wordpress", ArtifactTag: "6.8.2",
+		Digest: mediumDigest(0xa1), Zone: mediumZone, ResolvedAt: t0, Verified: true,
+		Ingredients: []store.IngredientRecord{{
+			Name: "wordpress", Kind: "ContainerImage",
+			Repo: "docker.io/bitnami/wordpress", Tag: "6.8.2", Digest: mediumDigest(0x01),
+		}},
+	}
+	if err := st.PutRecipeRecord(&rec); err != nil {
+		t.Fatalf("recording the fixture delivery: %v", err)
+	}
+	if _, err := media.Write(context.Background(), st, media.WriteOptions{
+		Zone: mediumZone, RunID: "run_e2e", ResolvedAt: t0,
+	}); err != nil {
+		t.Fatalf("writing the media manifest: %v", err)
+	}
 }
 
 // spec is what newInstance was asked to provide.
@@ -66,6 +122,10 @@ type spec struct {
 	recipe  bool
 	queue   bool
 	runner  tasks.Runner
+	// medium turns the store into a transported medium and wires the
+	// destination-side Media screen over it (R-02, FR-054).
+	medium bool
+	verify mediagate.Verify
 }
 
 type option func(*spec)
@@ -83,6 +143,14 @@ func withRecipe() option { return func(s *spec) { s.recipe = true } }
 // one that races the browser.
 func withQueue(runner tasks.Runner) option {
 	return func(s *spec) { s.queue, s.runner = true, runner }
+}
+
+// withMedium makes the store a transported medium addressed to this
+// instance's zone and wires the Media screen over it, with the given
+// verification standing in for the real one — a scenario must decide when
+// the verdict lands, or it races the browser.
+func withMedium(verify mediagate.Verify) option {
+	return func(s *spec) { s.medium, s.verify = true, verify }
 }
 
 func newInstance(t *testing.T, opts ...option) *instance {
@@ -138,10 +206,20 @@ func newInstance(t *testing.T, opts ...option) *instance {
 		Logger:   logger,
 	}
 
-	mux := http.NewServeMux()
-	ui.New(authn, logger, &ui.Options{
+	uiOpts := &ui.Options{
 		Version: "0.3.0-e2e", Mode: "mirror", Store: st, Queue: inst.Queue,
-	}).Mount(mux)
+	}
+	if sp.medium {
+		seedMedium(t, st)
+		gate := mediagate.Open(t.Context(), st.Root(), mediumZone, logger)
+		gate.SetVerify(sp.verify)
+		inst.Gate = gate
+		uiOpts.MediaZone = mediaZone{}
+		uiOpts.MediaGate = gate
+	}
+
+	mux := http.NewServeMux()
+	ui.New(authn, logger, uiOpts).Mount(mux)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	inst.URL = srv.URL

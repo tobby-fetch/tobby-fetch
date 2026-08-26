@@ -677,6 +677,46 @@ physical medium.
 destination-side logs of the same medium; re-synchronizing an existing store
 keeps it; a freshly created store gets a different one.
 
+*Amendment 2026-08-26 (R-19b) — the serving half of the order.* "Verification
+SHALL precede any push, any **serving**, and any local write" governs three
+verbs, and this paragraph states how the second is enforced, since it was the
+one left implicit.
+
+- **Who is guarded.** A destination-side instance (FR-052: one told which zone
+  it serves) whose storage root carries a media manifest — a store that changed
+  hands. A passthrough instance and a source-side mirror instance both serve
+  unconditionally: the latter's store carries a manifest because it *wrote*
+  it, and the zone identity is what tells the two sides apart.
+- **What is withheld.** The embedded registry (FR-040) and the FileSet surface
+  (FR-047), in whole, for every role. Nothing else: the web UI, the API, the
+  probes and the metrics stay available, because they are what an operator
+  needs in order to verify.
+- **What opens it.** A verification, in the running process, whose verdict is
+  *pushable*. R-19 made the PUSH decision per recipe; serving is not that
+  decision — `/v2/` and `/files/` hand out blobs, and a blob a blocked recipe
+  reaches is exactly the content that failed — so a medium that did not come
+  out whole serves nothing while its intact recipes remain pushable into the
+  zone registry, which then serves them. No verdict is cached across a
+  restart: the question is whether the bytes are right now.
+- **How the refusal reads.** Both surfaces SHALL answer `403` with the error
+  taxonomy's what/cause/action, in the shape their clients understand — the
+  OCI error envelope on `/v2/`, plain text on `/files/` — naming the medium
+  and the way to verify it. Never a `404` and never a silent `503`.
+- **No opt-out.** There is no configuration that serves an unverified medium.
+  The overrides FR-054 sanctions are the two anti-accident guards over the
+  unsigned manifest (zone identity, freshness); an integrity or signature
+  verdict has no override, and a "serve anyway" setting would be that override
+  under another name (FR-075).
+- **Probes.** The instance stays live and ready (FR-092): it is running and
+  usable, and `/readyz` states in its body which surfaces are closed and where
+  to open them. A `503` would remove the interface that fixes the condition.
+*Acceptance:* an instance started on a transported store answers `403` naming
+the taxonomy code on `GET /v2/<repo>/manifests/<digest>` and on
+`GET /files/<set>/<path>` for content the store demonstrably holds, while
+`/healthz` and `/readyz` answer `200`; the same instance serves both after a
+verification clears the medium; a source-side mirror instance holding the same
+store serves both immediately.
+
 **FR-055 — Pre-flight checks.**
 Before starting a mirror synchronization or an export, Tobby SHALL compute and
 display the per-recipe and total bytes to transfer — from source manifests,

@@ -1,0 +1,355 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /media — the physical transfer (FR-062 amendment R-02, FR-052,
+     FR-054), present on both sides of it. Source side: the inventory
+     summary of the medium this store is. Destination side: the same
+     summary plus the guided sequence Verify → Report → Push, where the
+     Push control is ABSENT from the document until a verdict cleared at
+     least one delivery — unreachable, not merely disabled.
+
+     The whole body is one polled zone with the auto-terminating contract
+     of UI-SPEC §8.3: the polling attributes are re-emitted only while a
+     verification is walking the medium, and morphed so focus, scroll and
+     open <details> survive (B-002, B-012 — morph: needs the hx-ext="morph"
+     the layout carries). */}}
+{{define "title"}}{{.T "media.title"}}{{end}}
+{{define "main"}}
+<section class="t-media">
+  {{template "media-body" .}}
+</section>
+{{end}}
+
+{{define "media-body"}}
+<div id="media-body"{{if .Data.Running}} hx-get="/media" hx-trigger="every 2s" hx-swap="morph:outerHTML" hx-target="this"{{end}}>
+  <div class="t-titlerow">
+    <h1 class="t-page-title">{{.T "media.title"}}</h1>
+    {{if .Data.Destination}}
+    <span class="t-chip"><span class="t-chip-label">{{.T "media.chip_side"}}</span> {{.T "media.side_destination"}}</span>
+    {{else}}
+    <span class="t-chip"><span class="t-chip-label">{{.T "media.chip_side"}}</span> {{.T "media.side_source"}}</span>
+    {{end}}
+  </div>
+  <p class="t-page-sub">{{if .Data.Destination}}{{.T "media.subtitle_destination"}}{{else}}{{.T "media.subtitle_source"}}{{end}}</p>
+  <p class="t-page-guide">{{template "help-cta" (withData . (.Guide "air-gap/media-workflow"))}}</p>
+
+  {{if .Err}}{{template "error-block" .}}{{end}}
+
+  {{/* ---------------------------------------------------------------
+       The medium, as it presents itself. Claims, restated for display:
+       only the recipes and the inventory below them are checkable
+       against bytes, and nothing on this screen is checked until the
+       Verify step has run (FR-054, ADR-0006 — the manifest is unsigned
+       and Tobby signs nothing).
+       --------------------------------------------------------------- */}}
+  {{if .Data.Medium}}
+  <div class="t-card t-media-summary">
+    <p class="t-report-title">{{.T "media.summary_title"}}</p>
+    <dl class="t-deflist">
+      <dt>{{.T "media.f_media_id"}}</dt>
+      <dd><span class="t-chip">
+        <span translate="no">{{.Data.Medium.MediaID}}</span>
+        <button type="button" class="t-chip-copy" data-copy="{{.Data.Medium.MediaID}}"
+                aria-label="{{.T "media.copy_media_id"}}" title="{{.T "media.copy_media_id"}}">⧉</button>
+      </span></dd>
+
+      <dt>{{.T "media.f_zone_addressed"}}</dt>
+      <dd><b translate="no">{{.Data.Medium.Zone}}</b></dd>
+
+      {{if .Data.Destination}}
+      <dt>{{.T "media.f_zone_served"}}</dt>
+      <dd>
+        <b translate="no">{{.Data.Zone}}</b>
+        {{if eq .Data.Zone .Data.Medium.Zone}}
+        <span class="t-badge t-badge--done">✓ {{.T "media.zone_match"}}</span>
+        {{else}}
+        <span class="t-badge t-badge--failed">✗ {{.T "media.zone_mismatch"}}</span>
+        {{end}}
+      </dd>
+      {{end}}
+
+      <dt>{{.T "media.f_resolved"}}</dt>
+      <dd><time datetime="{{.TimeAttr .Data.Medium.ResolvedAt}}">{{.FmtTime .Data.Medium.ResolvedAt}}</time> <span class="t-muted">({{.FmtAgo .Data.Medium.ResolvedAt}})</span></dd>
+
+      <dt>{{.T "media.f_written"}}</dt>
+      <dd><time datetime="{{.TimeAttr .Data.Medium.WrittenAt}}">{{.FmtTime .Data.Medium.WrittenAt}}</time></dd>
+
+      <dt>{{.T "media.f_produced_by"}}</dt>
+      <dd><span translate="no">Tobby {{.Data.Medium.ProducedBy.Version}}</span>{{if .Data.Medium.ProducedBy.RunID}} · <span class="t-chip"><span class="t-chip-label" lang="en">run</span> <span translate="no">{{.Data.Medium.ProducedBy.RunID}}</span></span>{{end}}</dd>
+
+      <dt>{{.T "media.f_volumes"}}</dt>
+      <dd>{{.TN "media.volumes" .Data.Medium.Totals.Files "Count" .Data.Medium.Totals.Files "Size" (.FmtBytes .Data.Medium.Totals.Bytes)}}</dd>
+
+      <dt>{{.T "media.f_root"}}</dt>
+      <dd class="t-mono t-muted" translate="no">{{.Data.Root}}</dd>
+
+      {{if .Data.HasLast}}
+      <dt>{{.T "media.f_last_import"}}</dt>
+      <dd>
+        <span translate="no">{{.Data.LastImport.MediaID}}</span> ·
+        <time datetime="{{.TimeAttr .Data.LastImport.ResolvedAt}}">{{.FmtTime .Data.LastImport.ResolvedAt}}</time>
+        <span class="t-muted t-note">{{.T "media.last_import_note"}}</span>
+      </dd>
+      {{end}}
+    </dl>
+    <p class="t-muted t-note">{{.T "media.unsigned_note"}}</p>
+  </div>
+  {{else if .Data.MediumErr}}
+  {{template "error-block" (withErr . .Data.MediumErr)}}
+  {{else}}
+  <div class="t-card">
+    <p>{{.T "media.no_medium"}}</p>
+    <p class="t-muted t-note">{{.T "media.no_medium_note"}}</p>
+  </div>
+  {{end}}
+
+  {{/* ---------------------------------------------------------------
+       The serving gate (FR-054): an instance that refuses to serve says
+       so, in words, with the way out — never a blank page.
+       --------------------------------------------------------------- */}}
+  {{if .Data.Guarded}}
+  <div class="t-card t-media-gate">
+    <p class="t-report-title">{{.T "media.gate_title"}}</p>
+    {{if .Data.Serving}}
+    <p><span class="t-badge t-badge--done">✓ {{.T "media.gate_open"}}</span> {{.T "media.gate_open_note"}}</p>
+    {{else}}
+    <p><span class="t-badge t-badge--failed">✗ {{.T "media.gate_closed"}}</span> {{.T "media.gate_closed_note"}}</p>
+    {{end}}
+  </div>
+  {{end}}
+
+  {{/* ---------------------------------------------------------------
+       Step 1 — Verify. The whole first step of the FR-054 order, and
+       the only one an operator starts by hand. Minutes of I/O on a full
+       disk, so it runs in the background and the zone above polls.
+       --------------------------------------------------------------- */}}
+  {{if .Data.Destination}}
+  <ol class="t-media-steps">
+    <li class="t-media-step{{if ge .Data.Step 1}} t-media-step--active{{end}}">
+      <h2 class="t-kick"><span class="t-media-stepno" aria-hidden="true">1</span> {{.T "media.step1_title"}}</h2>
+      <p class="t-muted">{{.T "media.step1_help"}}</p>
+
+      {{if .Data.Running}}
+      <div class="t-media-progress">
+        <progress max="100" value="{{.Data.Percent}}"
+                  aria-label="{{.T "media.progress_label"}}">{{.Data.Percent}}%</progress>
+        <p class="t-muted">
+          <span class="t-badge t-badge--running">{{.T "media.verifying"}}</span>
+          {{if .Data.Progress}}
+          <span translate="no">{{.T (printf "media.stage_%s" .Data.Progress.Stage)}}</span>
+          {{if .Data.Progress.Recipe}}· <span class="t-mono" translate="no">{{.Data.Progress.Recipe}}</span>{{end}}
+          · {{.FmtBytes .Data.Progress.Bytes}}{{if .Data.Progress.TotalBytes}} / {{.FmtBytes .Data.Progress.TotalBytes}}{{end}}
+          · {{.Data.Percent}}%
+          {{end}}
+        </p>
+      </div>
+      {{else if .Data.CanVerify}}
+      <form class="t-media-verify" method="post" action="/media/verify"
+            hx-post="/media/verify" hx-target="#media-body" hx-swap="morph:outerHTML"
+            hx-disabled-elt="find button[type='submit']">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        {{if .Data.CanOverride}}
+        {{/* The two guards an administrator may waive, and only those
+             two (FR-054). Both are anti-accident guards over an UNSIGNED
+             claim, never security controls, and waiving one is audited
+             (FR-094) — which is what the note says, in words. */}}
+        <fieldset class="t-media-waivers">
+          <legend>{{.T "media.waivers_legend"}}</legend>
+          <div class="t-row">
+            <input type="checkbox" id="waive-zone" name="allowZoneMismatch" value="1"{{if .Data.ZoneWaived}} checked{{end}}>
+            <label for="waive-zone">{{.T "media.waive_zone"}}</label>
+          </div>
+          <div class="t-row">
+            <input type="checkbox" id="waive-stale" name="allowStale" value="1"{{if .Data.StaleWaived}} checked{{end}}>
+            <label for="waive-stale">{{.T "media.waive_stale"}}</label>
+          </div>
+          <p class="t-muted t-note">{{.T "media.waivers_note"}}</p>
+        </fieldset>
+        {{end}}
+        <button type="submit" class="t-btn t-btn--primary">{{.T "media.verify_submit"}}</button>
+        <span class="htmx-indicator t-pulse-dot" aria-hidden="true"></span>
+      </form>
+      {{else}}
+      <p class="t-muted">{{.T "media.verify_no_role"}}</p>
+      {{end}}
+
+      {{if .Data.Failure}}
+      {{template "error-block" (withErr . .Data.Failure)}}
+      {{end}}
+    </li>
+
+    {{/* ---------------------------------------------------------------
+         Step 2 — Report. The per-stage and per-recipe verdicts R-02 asks
+         for. It exists only once a verification produced one: a report
+         zone with nothing in it would suggest the medium is fine.
+         --------------------------------------------------------------- */}}
+    <li class="t-media-step{{if ge .Data.Step 2}} t-media-step--active{{end}}">
+      <h2 class="t-kick"{{if and (ge .Data.Step 2) (not .Data.Running)}} tabindex="-1" data-focus-target{{end}}><span class="t-media-stepno" aria-hidden="true">2</span> {{.T "media.step2_title"}}</h2>
+      {{if lt .Data.Step 2}}
+      <p class="t-muted">{{.T "media.step2_waiting"}}</p>
+      {{else}}
+      <div class="t-row t-media-verdictrow">
+        {{if eq .Data.Verdict "pushable"}}
+        <span class="t-badge t-badge--done">✓ {{.T "media.verdict_pushable"}}</span>
+        {{else if eq .Data.Verdict "partial"}}
+        <span class="t-badge t-badge--done-errors">◈ {{.T "media.verdict_partial"}}</span>
+        {{else}}
+        <span class="t-badge t-badge--failed">✗ {{.T "media.verdict_blocked"}}</span>
+        {{end}}
+        <span class="t-muted">{{.TN "media.checked" .Data.Report.Checked.Files "Count" .Data.Report.Checked.Files "Size" (.FmtBytes .Data.Report.Checked.Bytes)}}</span>
+        {{/* Raw report off the machine surface: never boosted (B-013),
+             or htmx swaps the JSON into the page instead of saving it. */}}
+        <a class="t-btn t-btn--secondary t-btn--sm" href="{{.Data.ReportHref}}"
+           download="media-report.json" hx-boost="false">↓ {{.T "media.report_download"}}</a>
+      </div>
+
+      {{/* The three stages of FR-054, named separately (R-02). */}}
+      <ul class="t-media-stages">
+        {{range .Data.Stages}}
+        <li>
+          {{if eq .State "passed"}}<span class="t-badge t-badge--done">✓ {{$.T "media.stage_passed"}}</span>
+          {{else if eq .State "partial"}}<span class="t-badge t-badge--done-errors">◈ {{$.T "media.stage_partial"}}</span>
+          {{else if eq .State "failed"}}<span class="t-badge t-badge--failed">✗ {{$.T "media.stage_failed"}}</span>
+          {{else}}<span class="t-badge t-badge--pending">– {{$.T "media.stage_not_reached"}}</span>{{end}}
+          <span>{{$.T (printf "media.stagename_%s" .Key)}}</span>
+          {{if or .Passed .Failed}}<span class="t-muted">{{$.T "media.stage_counts" "Passed" .Passed "Failed" .Failed}}</span>{{end}}
+        </li>
+        {{end}}
+      </ul>
+
+      {{/* Medium-wide refusals, in plain language with the course of
+           action — never a code alone (R-02). A waivable one names the
+           checkbox that waives it and says who may tick it. */}}
+      {{range .Data.Blocks}}
+      <div class="t-media-block">
+        {{template "error-block" (withErr $ .Err)}}
+        {{if .Overridden}}
+        <p class="t-muted t-note">{{$.T "media.block_overridden"}}</p>
+        {{else if .Overridable}}
+        <p class="t-muted t-note">{{if $.Data.CanOverride}}{{$.T "media.block_overridable_admin"}}{{else}}{{$.T "media.block_overridable"}}{{end}}</p>
+        {{else}}
+        <p class="t-muted t-note">{{$.T "media.block_final"}}</p>
+        {{end}}
+      </div>
+      {{end}}
+      {{end}}
+    </li>
+
+    {{/* ---------------------------------------------------------------
+         Step 3 — Push. The control is rendered only when a verdict
+         cleared at least one delivery (R-02 acceptance: unreachable
+         until verification has completed). The engine re-verifies before
+         it pushes anything regardless — this is legibility, not the
+         guarantee (FR-054).
+         --------------------------------------------------------------- */}}
+    <li class="t-media-step{{if ge .Data.Step 3}} t-media-step--active{{end}}">
+      <h2 class="t-kick"><span class="t-media-stepno" aria-hidden="true">3</span> {{.T "media.step3_title"}}</h2>
+      {{if .Data.PushReady}}
+      <p class="t-muted">{{.T "media.step3_help"}}</p>
+      {{if .Data.CanVerify}}
+      <form class="t-media-push" method="post" action="/media/import"
+            hx-post="/media/import" hx-disabled-elt="find button[type='submit']">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        {{if .Data.ZoneWaived}}<input type="hidden" name="allowZoneMismatch" value="1">{{end}}
+        {{if .Data.StaleWaived}}<input type="hidden" name="allowStale" value="1">{{end}}
+        <button id="media-push" type="submit" class="t-btn t-btn--primary">{{.T "media.push_submit"}}</button>
+        <span class="htmx-indicator t-pulse-dot" aria-hidden="true"></span>
+      </form>
+      {{else}}
+      <p class="t-muted">{{.T "media.push_no_role"}}</p>
+      {{end}}
+      {{else if ge .Data.Step 2}}
+      <p class="t-muted">{{.T "media.step3_blocked"}}</p>
+      {{else}}
+      <p class="t-muted">{{.T "media.step3_waiting"}}</p>
+      {{end}}
+    </li>
+  </ol>
+  {{else}}
+  {{/* Source side: nothing to verify here — the handover is physical. */}}
+  <div class="t-card">
+    <p class="t-report-title">{{.T "media.handover_title"}}</p>
+    <p>{{.T "media.handover_note"}}</p>
+  </div>
+  {{end}}
+
+  {{/* ---------------------------------------------------------------
+       What the medium delivers. Present on both sides: on the source it
+       is the packing list, on the destination it carries each delivery's
+       verdict and, when one failed, the file that failed (FR-054: the
+       refusal names the file).
+       --------------------------------------------------------------- */}}
+  {{if .Data.Recipes}}
+  <p class="t-kick">{{.TN "media.deliveries" (len .Data.Recipes) "Count" (len .Data.Recipes)}}</p>
+  <table class="t-table t-media-deliveries">
+    <caption class="t-visually-hidden">{{.T "media.deliveries_caption"}}</caption>
+    <thead>
+      <tr>
+        <th scope="col">{{.T "media.th_recipe"}}</th>
+        <th scope="col">{{.T "media.th_cookbook"}}</th>
+        <th scope="col">{{.T "media.th_digest"}}</th>
+        <th scope="col" class="t-num">{{.T "media.th_size"}}</th>
+        <th scope="col">{{.T "media.th_digests"}}</th>
+        <th scope="col">{{.T "media.th_signature"}}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Data.Recipes}}
+      <tr>
+        <td class="t-mono" translate="no">{{.ID}}</td>
+        <td class="t-mono t-muted" translate="no" title="{{.CookbookRepo}}">{{$.Trunc .CookbookRepo 36}}</td>
+        <td>
+          <span class="t-chip">
+            <span translate="no" title="{{.Digest}}">{{$.Trunc .Digest 26}}</span>
+            <button type="button" class="t-chip-copy" data-copy="{{.Digest}}"
+                    aria-label="{{$.T "repo.copy_digest" "Digest" .Digest}}" title="{{$.T "repo.copy_digest" "Digest" .Digest}}">⧉</button>
+          </span>
+        </td>
+        <td class="t-num">{{if .Verified}}{{$.FmtBytes .Bytes}}{{else}}—{{end}}</td>
+        <td>{{template "media-state" (withData $ .Content)}}</td>
+        <td>
+          {{template "media-state" (withData $ .Signature)}}
+          {{if .Unsigned}}<span class="t-badge t-badge--outdated" title="{{$.T "media.unsigned_title"}}">{{$.T "media.unsigned"}}</span>{{end}}
+          {{if .KeyFingerprint}}<span class="t-chip"><span class="t-chip-label">{{$.T "media.key"}}</span> <span translate="no" title="{{.KeyFingerprint}}">{{$.Trunc .KeyFingerprint 20}}</span></span>{{end}}
+          {{if .TrustScope}}<span class="t-chip"><span class="t-chip-label">{{$.T "media.scope"}}</span> <span translate="no">{{.TrustScope}}</span></span>{{end}}
+        </td>
+      </tr>
+      {{if .Err}}
+      <tr class="t-blobrow">
+        <td colspan="6">
+          <details class="t-errrow" open>
+            <summary><span class="t-badge t-badge--failed">{{$.T "media.delivery_blocked"}}</span>
+              <span class="t-chip t-chip--code" translate="no">{{.Err.Code}}</span>
+              {{if .Path}}<span class="t-mono" translate="no">{{.Path}}</span>{{end}}</summary>
+            {{template "error-block" (withErr $ .Err)}}
+          </details>
+        </td>
+      </tr>
+      {{end}}
+      {{end}}
+    </tbody>
+  </table>
+  {{end}}
+
+  {{/* Non-blocking observations: content the medium carries that will
+       never be pushed (FR-054 reports it and pushes nothing from it). */}}
+  {{if .Data.Findings}}
+  <details class="t-media-findings">
+    <summary>{{.TN "media.findings" (len .Data.Findings) "Count" (len .Data.Findings)}}</summary>
+    <ul>
+      {{range .Data.Findings}}
+      <li><span class="t-chip t-chip--code" translate="no">{{.Err.Code}}</span> <span class="t-mono" translate="no">{{.Path}}</span> — {{.Err.What}}</li>
+      {{end}}
+    </ul>
+    {{if .Data.FindingsMore}}<p class="t-muted t-note">{{.TN "media.findings_more" .Data.FindingsMore "Count" .Data.FindingsMore}}</p>{{end}}
+  </details>
+  {{end}}
+</div>
+{{end}}
+
+{{/* One stage verdict as a badge. Never colour alone (NFR-017): every
+     state carries a glyph and a word. */}}
+{{define "media-state"}}
+{{- if eq .Data "passed"}}<span class="t-badge t-badge--done">✓ {{.T "media.stage_passed"}}</span>
+{{- else if eq .Data "failed"}}<span class="t-badge t-badge--failed">✗ {{.T "media.stage_failed"}}</span>
+{{- else if eq .Data "not-reached"}}<span class="t-badge t-badge--pending">– {{.T "media.stage_not_reached"}}</span>
+{{- else}}<span class="t-badge t-badge--pending">– {{.T "media.stage_waiting"}}</span>{{end}}
+{{- end}}
