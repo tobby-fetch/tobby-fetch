@@ -177,6 +177,21 @@ on these same anchors. Track it on the
   [configuration reference](../../reference/configuration/).
 - **Fixable offline:** yes · **Blocks:** the whole instance (startup refusal) or the command that loaded the configuration
 
+### TBY-CFG-002
+
+- **What happened:** the instance refuses to start — a secret file is
+  configured inside the transportable store.
+- **Probable cause:** one of `state.root`, `registries.credentialsFile` or
+  `server.tls.keyFile` resolves under `storage.root`. The store is handed
+  to a courier and plugged into a machine in another zone, so everything
+  under it is assumed to be read by someone else (NFR-020).
+- **Corrective action:** move each listed file outside the store — the
+  state directory is its home — update the setting, then start again. The
+  check resolves through the filesystem, so a path that reaches the store
+  through a symbolic link counts as inside; the message reports the
+  resolved path that decided.
+- **Fixable offline:** yes · **Blocks:** the whole instance (startup refusal)
+
 ## Outbound network and TLS (TBY-NET)
 
 ### TBY-NET-001

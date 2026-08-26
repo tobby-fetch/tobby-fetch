@@ -66,6 +66,12 @@ const (
 
 	// CodeConfigInvalid is a rejected configuration (FR-003 validation).
 	CodeConfigInvalid Code = "TBY-CFG-001"
+	// CodeSecretInStore is the NFR-020 startup refusal: a configured
+	// secret path resolves inside the transportable store. A policy
+	// refusal, like every other secure-by-default barrier — the
+	// configuration is perfectly well-formed, it is the placement that is
+	// forbidden, and no opt-out exists because the medium leaves the site.
+	CodeSecretInStore Code = "TBY-CFG-002" //nolint:gosec // G101: a stable error code, not a credential
 
 	// CodeProxyInvalid is an unusable outbound proxy configuration
 	// (FR-080). Parameters name the setting and the credential-free
@@ -186,6 +192,9 @@ var catalog = map[Code]Entry{
 	CodeAuthRateLimited: {Code: CodeAuthRateLimited, Class: ClassOperational, HTTPStatus: http.StatusTooManyRequests},
 
 	CodeConfigInvalid: {Code: CodeConfigInvalid, Class: ClassOperational, Params: []string{"detail"}},
+	// Never served over HTTP: the instance refuses to start, so there is
+	// no listener to answer with it.
+	CodeSecretInStore: {Code: CodeSecretInStore, Class: ClassPolicy, Params: []string{"paths", "root"}},
 
 	CodeProxyInvalid: {Code: CodeProxyInvalid, Class: ClassOperational, Params: []string{"setting", "proxy"}},
 	CodeTrustStore:   {Code: CodeTrustStore, Class: ClassOperational, Params: []string{"source"}},

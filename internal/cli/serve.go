@@ -88,6 +88,20 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("storage root: %w", err)
 	}
 
+	// Secrets never travel (NFR-020, R-16). The store leaves the site on a
+	// medium; a secret configured inside it is a credential handed to
+	// whoever plugs the medium in next. Checked here rather than in
+	// config.validate because the verdict is a filesystem one — the
+	// directories have just been created, so a symlink pointing back into
+	// the store resolves for real — and because `tobby config dump` must
+	// stay usable on the very configuration being refused.
+	if offenders := cfg.SecretsInStore(); len(offenders) > 0 {
+		return taxonomy.New(taxonomy.CodeSecretInStore, taxonomy.Params{
+			"paths": config.FormatSecretPaths(offenders),
+			"root":  cfg.StoreRootResolved(),
+		})
+	}
+
 	// Authentication state (R-01): without the explicit FR-075 opt-out, the
 	// instance refuses to start until a local account exists — no surface is
 	// ever exposed open.
