@@ -31,6 +31,8 @@ const (
 	EnvSyncParallelism     = "TOBBY_SYNC_PARALLELISM"
 	EnvSyncRetries         = "TOBBY_SYNC_RETRIES"
 	EnvSyncInterval        = "TOBBY_SYNC_INTERVAL"
+	EnvPreflightMargin     = "TOBBY_PREFLIGHT_SAFETY_MARGIN_PERCENT"
+	EnvPreflightDisabled   = "TOBBY_PREFLIGHT_DISABLED"
 	EnvTasksKeepFinished   = "TOBBY_TASKS_KEEP_FINISHED"
 	EnvLoggingLevel        = "TOBBY_LOGGING_LEVEL"
 	EnvShutdownGracePeriod = "TOBBY_SHUTDOWN_GRACE_PERIOD"
@@ -207,6 +209,20 @@ func applyEnv(cfg *Config, lookup func(string) (string, bool)) error {
 			return fmt.Errorf("%s: invalid duration %q (expected e.g. \"15m\")", EnvSyncInterval, v)
 		}
 		cfg.Sync.Interval = Duration(d)
+	}
+	if v, ok := lookup(EnvPreflightMargin); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("%s: invalid integer %q", EnvPreflightMargin, v)
+		}
+		cfg.Preflight.SafetyMarginPercent = n
+	}
+	if v, ok := lookup(EnvPreflightDisabled); ok {
+		b, err := parseBool(EnvPreflightDisabled, v)
+		if err != nil {
+			return err
+		}
+		cfg.Preflight.Disabled = b
 	}
 	if v, ok := lookup(EnvTasksKeepFinished); ok {
 		n, err := strconv.Atoi(v)

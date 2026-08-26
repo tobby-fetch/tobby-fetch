@@ -156,6 +156,20 @@ const (
 	// check the store when the state disk is full sends them to the wrong
 	// machine — sometimes literally (R-16).
 	CodeResumeSpool Code = "TBY-STO-003"
+	// CodeInsufficientSpace is the FR-055 pre-flight refusal: the
+	// projected write does not fit in the target's free space minus the
+	// configured safety margin. It is raised BEFORE any transfer, and it
+	// states the shortfall in bytes — an operator who has to guess how
+	// much to free will free the wrong amount.
+	CodeInsufficientSpace Code = "TBY-STO-004"
+	// CodeFileTooLarge is the FR-055 file-size refusal: the target's
+	// filesystem was positively identified and cannot hold the largest
+	// file the operation would write — FAT32's 4 GiB ceiling, single-tar
+	// export archives included. It also carries the mid-write failure of
+	// the same condition, so the pre-flight refusal and the write that
+	// slipped past it (a medium swapped between the check and the run)
+	// read as one problem rather than two.
+	CodeFileTooLarge Code = "TBY-STO-005"
 
 	// CodeTaskNotFound is a task identifier unknown to this instance.
 	CodeTaskNotFound Code = "TBY-TSK-001"
@@ -223,6 +237,12 @@ var catalog = map[Code]Entry{
 	CodeStoreRead:   {Code: CodeStoreRead, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
 	CodeStoreWrite:  {Code: CodeStoreWrite, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
 	CodeResumeSpool: {Code: CodeResumeSpool, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"path", "detail"}},
+	// 507: the request is well-formed and permitted — the target simply
+	// cannot hold the result. RFC 4918's Insufficient Storage is the one
+	// status that says that, and it keeps the pre-flight refusal apart
+	// from the 500 of a store that broke.
+	CodeInsufficientSpace: {Code: CodeInsufficientSpace, Class: ClassOperational, HTTPStatus: http.StatusInsufficientStorage, Params: []string{"path", "needed", "available", "shortfall", "margin", "free"}},
+	CodeFileTooLarge:      {Code: CodeFileTooLarge, Class: ClassOperational, HTTPStatus: http.StatusInsufficientStorage, Params: []string{"path", "filesystem", "limit", "size", "what"}},
 
 	CodeTaskNotFound: {Code: CodeTaskNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound, Params: []string{"id"}},
 

@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/preflight"
 )
 
 // Mode is the operating mode, selected by configuration at startup (FR-001).
@@ -53,6 +55,7 @@ type Config struct {
 	Retriever   Retriever   `yaml:"retriever"`
 	Destination Destination `yaml:"destination"`
 	Sync        Sync        `yaml:"sync"`
+	Preflight   Preflight   `yaml:"preflight"`
 	Tasks       Tasks       `yaml:"tasks"`
 	Trust       Trust       `yaml:"trust"`
 	Files       Files       `yaml:"files"`
@@ -137,6 +140,33 @@ type Sync struct {
 	// directory wins over it (package schedule). The override is a
 	// sensitive configuration change and is audited as one (FR-094).
 	Interval Duration `yaml:"interval"`
+}
+
+// Preflight configures the checks that run before a synchronization or an
+// export starts (FR-055).
+type Preflight struct {
+	// SafetyMarginPercent is the share of the target's free space the
+	// projection must NOT consume. Default 10 (package preflight's
+	// DefaultMarginPercent).
+	//
+	// It exists because a store is never the only writer on its volume:
+	// the instance's own logs, the container runtime, and the operating
+	// system keep writing while a multi-hour transfer runs, and a
+	// projection that lands on the last free byte lands on a full disk.
+	// Zero restores the default rather than removing the margin — an
+	// absent key must not silently mean "fill the volume". Setting it to
+	// 0 % on purpose is spelled `disabled: true`.
+	SafetyMarginPercent int `yaml:"safetyMarginPercent"`
+	// Disabled turns the FR-055 gate into a report: volumes and verdicts
+	// are still computed and still displayed, and the synchronization
+	// starts anyway.
+	//
+	// It is the FR-075 shape — a safety check is removed only by an
+	// explicit, visible, logged opt-in, never by a value that happens to
+	// be zero — and it exists for the operator whose volume the instance
+	// cannot measure honestly (a network mount, an unusual driver) and
+	// who would otherwise have no way forward.
+	Disabled bool `yaml:"disabled"`
 }
 
 // Trust configures signature verification (FR-033, ADR-0007,
@@ -505,6 +535,7 @@ func Default() Config {
 		Transfer:    Transfer{ResumeThreshold: 64 * MiB},
 		Destination: Destination{Cookbook: DefaultCookbook},
 		Sync:        Sync{Parallelism: 3, Retries: 3, Interval: Duration(15 * time.Minute)},
+		Preflight:   Preflight{SafetyMarginPercent: preflight.DefaultMarginPercent},
 		Tasks:       Tasks{KeepFinished: 500},
 		Logging:     Logging{Level: "info"},
 		Shutdown:    Shutdown{GracePeriod: Duration(30 * time.Second)},
@@ -625,6 +656,9 @@ func (c *Config) validate(scope Scope) error {
 	}
 	if time.Duration(c.Sync.Interval) < 0 {
 		errs = append(errs, errors.New("sync.interval must not be negative: use 0 to disable the periodic reconciliation of FR-013"))
+	}
+	if c.Preflight.SafetyMarginPercent < 0 || c.Preflight.SafetyMarginPercent >= 100 {
+		errs = append(errs, errors.New("preflight.safetyMarginPercent must be between 0 and 99: it is a share of the target's free space held back (FR-055); use \"preflight.disabled: true\" to remove the check itself"))
 	}
 	if c.Tasks.KeepFinished < 0 {
 		errs = append(errs, errors.New("tasks.keepFinished must not be negative: use 0 to keep the whole task history"))
