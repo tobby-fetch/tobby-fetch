@@ -31,6 +31,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
+	"github.com/tobby-fetch/tobby-fetch/internal/medialog"
 	"github.com/tobby-fetch/tobby-fetch/internal/metrics"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
@@ -143,6 +144,34 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
+	// The operation log on the medium (FR-053): in mirror mode the store
+	// IS a transport medium, and both sides of a transfer record what
+	// they did with it there — the source what it put on, the destination
+	// what it made of it. It lives outside the media manifest's coverage
+	// (FR-054), which medialog enforces rather than assumes, and it is
+	// teed into the instance stream so one schema serves both.
+	var mediaLog *medialog.Writer
+	if cfg.Mode == config.ModeMirror && !cfg.Logging.Media.Disabled {
+		mediaLog, err = medialog.Open(cfg.Storage.Root, medialog.Options{
+			Path:     cfg.Logging.Media.File,
+			MaxBytes: int64(cfg.Logging.Media.MaxSize),
+			Keep:     cfg.Logging.Media.Keep,
+		})
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if cerr := mediaLog.Close(); cerr != nil {
+				logger.LogAttrs(context.Background(), slog.LevelError, "closing the medium's log",
+					slog.String("error", cerr.Error()))
+			}
+		}()
+		logger = logging.Tee(logger, logging.New(mediaLog, level))
+		logger.LogAttrs(ctx, slog.LevelInfo, "operation log written onto the medium",
+			slog.String("path", mediaLog.Path()),
+			slog.String("requirement", "FR-053/FR-056"))
+	}
+
 	st, err := store.Open(ctx, cfg.Storage.Root, logger)
 	if err != nil {
 		return err
@@ -166,7 +195,19 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// (tasks.keepFinished) bounds the history a long-lived instance
 	// accumulates — without it, every cycle leaves a task in RAM and two
 	// files in the store, forever (2026-08 audit).
-	queue, err := tasks.Open(cfg.Storage.Root, logger, tasks.WithRetention(cfg.Tasks.KeepFinished))
+	//
+	// FR-056: the medium's log is fsync'd at every task boundary, so a
+	// yanked medium loses at most the entries of the task in progress.
+	queueOpts := []tasks.QueueOption{tasks.WithRetention(cfg.Tasks.KeepFinished)}
+	if mediaLog != nil {
+		queueOpts = append(queueOpts, tasks.WithBoundary(func() {
+			if serr := mediaLog.Sync(); serr != nil {
+				logger.LogAttrs(context.Background(), slog.LevelWarn, "flushing the medium's log",
+					slog.String("error", serr.Error()))
+			}
+		}))
+	}
+	queue, err := tasks.Open(cfg.Storage.Root, logger, queueOpts...)
 	if err != nil {
 		return err
 	}
@@ -301,6 +342,34 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		})
 	}
 
+	// The destination side of a physical transfer (FR-052, feature 5.4):
+	// this instance's zone identity, and the per-zone freshness register
+	// (R-28) — which lives in the INSTANCE state directory and never on
+	// the medium, because a register carried on the medium would be
+	// rewritten by whoever holds it.
+	imports, err := media.OpenImports(cfg.State.Root)
+	if err != nil {
+		return err
+	}
+	eng.SetMediaImport(cfg.Zone, imports)
+	switch {
+	case cfg.Zone == "":
+		logger.LogAttrs(ctx, slog.LevelInfo, "no zone identity configured: this instance imports no medium",
+			slog.String("requirement", "FR-052"))
+	case cfg.State.Root == "":
+		// FR-075 posture: a guard that cannot persist is announced, never
+		// silently absent. Without a state directory the freshness record
+		// evaporates on restart, and the R-28 guard with it.
+		logger.LogAttrs(ctx, slog.LevelWarn, "zone configured without a state directory: the media freshness guard will not persist",
+			slog.String("zone", cfg.Zone), slog.String("requirement", "R-28"))
+	default:
+		logger.LogAttrs(ctx, slog.LevelInfo, "zone identity configured",
+			slog.String("zone", cfg.Zone),
+			slog.Any("last_imports", imports.Zones()),
+			slog.String("requirement", "FR-052/R-28"))
+	}
+	queue.Register(tasks.TypeMediaImport, eng.MediaImportRunner())
+
 	eng.SetDestination(destination)
 	if destination != nil {
 		logger.LogAttrs(ctx, slog.LevelInfo, "promotion destination configured",
@@ -387,6 +456,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Interval:          interval,
 	})
 	api.RegisterPublish(restAPI, publisher)
+	api.RegisterMedia(restAPI, &api.MediaOptions{
+		Engine: eng, Queue: queue, StorageRoot: cfg.Storage.Root,
+	})
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{
 		Cert:     serverCert,
 		CertFile: cfg.Server.TLS.CertFile,
