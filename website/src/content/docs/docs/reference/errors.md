@@ -501,6 +501,18 @@ on these same anchors. Track it on the
   single file exceeds the limit.
 - **Fixable offline:** yes · **Blocks:** the synchronization or export concerned; on a mid-write failure the store is left intact
 
+### TBY-STO-006
+
+- **What happened:** the store was not reset.
+- **Probable cause:** the typed confirmation did not match. A reset asks
+  for the word `RESET`, in capitals and with nothing else — a control this
+  destructive is not one you can click through by accident (FR-046).
+- **Corrective action:** type `RESET` in the confirmation field and submit
+  again. The reset removes every artifact this store holds; the operation
+  history, the task logs and the audit trail are **kept**, because a trail
+  a destructive action erases is not a trail.
+- **Fixable offline:** yes · **Blocks:** nothing — the store is untouched
+
 ## Removable-media transport (TBY-MED)
 
 The medium is a store that changed hands, so everything it says about
@@ -651,6 +663,102 @@ a partially damaged medium still hands over its intact recipes.
 - **Corrective action:** re-copy the store from the source instance if you
   did not alter it deliberately. Nothing is pushed out of these files.
 - **Fixable offline:** yes · **Blocks:** nothing (reported only)
+
+## OCI image layout export and import (TBY-LAY)
+
+The interoperability exit (FR-051): the store written out in the standard
+layout that `skopeo`, `oras` and `crane` read, and read back in. An
+imported layout arrives from outside, so it is treated the way any foreign
+input is.
+
+### TBY-LAY-001
+
+- **What happened:** this is not a usable OCI image layout.
+- **Probable cause:** the path could not be read as one — no `oci-layout`
+  marker, an `index.json` that does not parse, or a blob that does not hash
+  to the digest addressing it.
+- **Corrective action:** check that the path is the layout itself: the
+  directory, or the **uncompressed** tar of it, holding `oci-layout`,
+  `index.json` and `blobs/`. A compressed archive must be decompressed
+  first — Tobby reads an uncompressed archive by seeking to a recorded blob
+  offset, which is also what leaves a decompression bomb nothing to expand
+  into. `skopeo copy oci:<path>:<tag> …` on the same path tells you whether
+  any OCI tool reads it either.
+- **Fixable offline:** yes · **Blocks:** the import concerned; nothing is written
+
+### TBY-LAY-002
+
+- **What happened:** the archive was refused — one of its entries has no
+  place in an image layout.
+- **Probable cause:** the named entry is an absolute path, a path leading
+  outside the archive, or a link. A layout archive holds `oci-layout`,
+  `index.json` and `blobs/<algorithm>/<digest>` files and nothing else, so
+  an archive carrying such an entry was not produced by an OCI tool.
+- **Corrective action:** nothing was written. Have the medium re-made at
+  its source, and report it as an incident if it arrived from outside your
+  organization. This is a verification failure, not a damaged transfer.
+- **Fixable offline:** yes · **Blocks:** the import concerned; nothing is written (verification class, exit 4)
+
+### TBY-LAY-003
+
+- **What happened:** the export destination already exists.
+- **Probable cause:** the path is already there and this export was not
+  allowed to replace it. An export writes to a staging path and renames it
+  into place, so it never half-overwrites anything.
+- **Corrective action:** choose another destination, or re-run with the
+  replace option (`--overwrite`) once you are sure what is there can be
+  lost.
+- **Fixable offline:** yes · **Blocks:** the export concerned; nothing is written
+
+## Packing file sets (TBY-FIL)
+
+`tobby fileset pack` turns a local directory into a FileSet OCI image and
+imports it through the unit-import path (FR-048). What
+[RECIPE-SPEC §14.5](https://tobby-fetch.github.io/recipe-spec/#145-extraction-safety)
+refuses at extraction time, packing refuses **first** — where the operator
+can still fix the tree. A file set that quietly held fewer files than the
+directory it came from would be worse than a refusal naming the entry.
+
+### TBY-FIL-001
+
+- **What happened:** the file set could not be packed.
+- **Probable cause:** stated verbatim — most often a directory that does
+  not exist, is empty, or is unreadable, or a name and version that do not
+  parse.
+- **Corrective action:** point the command at an existing, non-empty
+  directory and give the file set a lowercase name and a version, for
+  example `tobby fileset pack ./repo site-docs:1.0.0`. Nothing was written
+  to the store.
+- **Fixable offline:** yes · **Blocks:** the packing concerned; nothing is written
+
+### TBY-FIL-002
+
+- **What happened:** the directory holds an entry that cannot be packed
+  safely.
+- **Probable cause:** the named entry is a symbolic link pointing outside
+  the directory, a special file (device, FIFO, socket), a setuid or setgid
+  file, a name starting with `.wh.` — which a layer reader would take for a
+  deletion — or a name carrying a backslash or a NUL byte.
+- **Corrective action:** remove or replace that entry and pack again. A
+  file set is extracted and served on other machines, including Windows,
+  so the refusals are about where the content lands, not about this host.
+  Nothing was written to the store.
+- **Fixable offline:** yes · **Blocks:** the packing concerned; nothing is written
+
+### TBY-FIL-003
+
+- **What happened:** packing that directory is not allowed from this
+  surface.
+- **Probable cause:** the path lies outside the directories
+  `files.packRoots` allows the web interface and the API to read. With no
+  entry configured they may read **none** — reading an arbitrary host
+  directory on a network request is a capability an instance is given, not
+  one it holds.
+- **Corrective action:** either run `tobby fileset pack` on the instance
+  host, which is not restricted because whoever runs it already holds those
+  filesystem rights, or add the directory to `files.packRoots` in the
+  configuration file and restart the instance.
+- **Fixable offline:** yes · **Blocks:** the packing concerned; nothing is written
 
 ## Tasks (TBY-TSK)
 

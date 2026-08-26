@@ -520,6 +520,20 @@ mêmes ancres. À suivre sur la page
   qu'aucun fichier ne dépasse la limite.
 - **Corrigeable hors ligne :** oui · **Bloque :** la synchronisation ou l'export concerné ; en cours d'écriture, le store reste intact
 
+### TBY-STO-006
+
+- **Ce qui s'est passé :** le store n'a pas été réinitialisé.
+- **Cause probable :** la confirmation saisie ne correspond pas. Une remise
+  à zéro demande le mot `RESET`, en majuscules et rien d'autre — une
+  commande aussi destructrice n'est pas de celles qu'on valide par
+  inadvertance (FR-046).
+- **Action corrective :** saisissez `RESET` dans le champ de confirmation
+  et validez de nouveau. La remise à zéro supprime tous les artefacts du
+  store ; l'historique des opérations, les journaux de tâches et le journal
+  d'audit sont **conservés**, parce qu'une trace qu'une action destructrice
+  efface n'est pas une trace.
+- **Corrigeable hors ligne :** oui · **Bloque :** rien — le store est intact
+
 ## Transport sur support amovible (TBY-MED)
 
 Le support est un store qui a changé de mains : tout ce qu'il dit de
@@ -679,6 +693,107 @@ remet quand même ses recipes intactes.
 - **Action corrective :** recopiez le store depuis l'instance source si vous
   ne l'avez pas modifié délibérément. Rien n'est poussé depuis ces fichiers.
 - **Corrigeable hors ligne :** oui · **Bloque :** rien (signalé seulement)
+
+## Export et import OCI image layout (TBY-LAY)
+
+La sortie d'interopérabilité (FR-051) : le store écrit dans le format
+standard que `skopeo`, `oras` et `crane` lisent, et relu ensuite. Un layout
+importé vient de l'extérieur : il est traité comme n'importe quelle entrée
+étrangère.
+
+### TBY-LAY-001
+
+- **Ce qui s'est passé :** ce n'est pas un OCI image layout exploitable.
+- **Cause probable :** le chemin n'a pas pu être lu comme tel — pas de
+  marqueur `oci-layout`, un `index.json` qui ne s'analyse pas, ou un blob
+  dont l'empreinte ne correspond pas au digest qui l'adresse.
+- **Action corrective :** vérifiez que le chemin désigne le layout
+  lui-même : le répertoire, ou son tar **non compressé**, contenant
+  `oci-layout`, `index.json` et `blobs/`. Une archive compressée doit
+  d'abord être décompressée — Tobby lit une archive non compressée en se
+  positionnant sur un décalage de blob enregistré, ce qui ne laisse rien à
+  déployer à une bombe de décompression. `skopeo copy oci:<chemin>:<tag> …`
+  sur le même chemin vous dira si un outil OCI y arrive davantage.
+- **Corrigeable hors ligne :** oui · **Bloque :** l'import concerné ; rien n'est écrit
+
+### TBY-LAY-002
+
+- **Ce qui s'est passé :** l'archive a été refusée — une de ses entrées n'a
+  rien à faire dans un image layout.
+- **Cause probable :** l'entrée nommée est un chemin absolu, un chemin qui
+  sort de l'archive, ou un lien. Une archive de layout contient
+  `oci-layout`, `index.json` et des fichiers
+  `blobs/<algorithme>/<digest>`, et rien d'autre : une archive qui porte
+  une telle entrée n'a pas été produite par un outil OCI.
+- **Action corrective :** rien n'a été écrit. Faites refabriquer le support
+  à sa source, et signalez-le comme incident s'il provient de l'extérieur
+  de votre organisation. C'est un échec de vérification, pas un transfert
+  abîmé.
+- **Corrigeable hors ligne :** oui · **Bloque :** l'import concerné ; rien n'est écrit (classe vérification, code 4)
+
+### TBY-LAY-003
+
+- **Ce qui s'est passé :** la destination de l'export existe déjà.
+- **Cause probable :** le chemin est déjà présent et cet export n'était pas
+  autorisé à le remplacer. Un export écrit dans un chemin de préparation
+  puis le renomme en place : il n'écrase donc jamais à moitié.
+- **Action corrective :** choisissez une autre destination, ou relancez
+  avec l'option de remplacement (`--overwrite`) une fois certain que ce qui
+  s'y trouve peut être perdu.
+- **Corrigeable hors ligne :** oui · **Bloque :** l'export concerné ; rien n'est écrit
+
+## Empaquetage d'ensembles de fichiers (TBY-FIL)
+
+`tobby fileset pack` transforme un répertoire local en image OCI FileSet et
+l'importe par le chemin d'import unitaire (FR-048). Ce que
+[RECIPE-SPEC §14.5](https://tobby-fetch.github.io/recipe-spec/#145-extraction-safety)
+refuse à l'extraction, l'empaquetage le refuse **d'abord** — là où
+l'exploitant peut encore corriger son arbre. Un ensemble qui contiendrait
+discrètement moins de fichiers que le répertoire dont il sort serait pire
+qu'un refus qui nomme l'entrée fautive.
+
+### TBY-FIL-001
+
+- **Ce qui s'est passé :** l'ensemble de fichiers n'a pas pu être empaqueté.
+- **Cause probable :** énoncée telle quelle — le plus souvent un répertoire
+  inexistant, vide ou illisible, ou un nom et une version qui ne s'analysent
+  pas.
+- **Action corrective :** indiquez un répertoire existant et non vide, et
+  donnez à l'ensemble un nom en minuscules et une version, par exemple
+  `tobby fileset pack ./repo site-docs:1.0.0`. Rien n'a été écrit dans le
+  store.
+- **Corrigeable hors ligne :** oui · **Bloque :** l'empaquetage concerné ; rien n'est écrit
+
+### TBY-FIL-002
+
+- **Ce qui s'est passé :** le répertoire contient une entrée qui ne peut pas
+  être empaquetée sans risque.
+- **Cause probable :** l'entrée nommée est un lien symbolique pointant hors
+  du répertoire, un fichier spécial (périphérique, FIFO, socket), un fichier
+  setuid ou setgid, un nom commençant par `.wh.` — qu'un lecteur de couche
+  prendrait pour une suppression — ou un nom portant un antislash ou un
+  octet NUL.
+- **Action corrective :** supprimez ou remplacez cette entrée puis
+  empaquetez à nouveau. Un ensemble de fichiers est extrait et servi sur
+  d'autres machines, Windows compris : les refus portent sur l'endroit où
+  le contenu atterrit, pas sur cet hôte. Rien n'a été écrit dans le store.
+- **Corrigeable hors ligne :** oui · **Bloque :** l'empaquetage concerné ; rien n'est écrit
+
+### TBY-FIL-003
+
+- **Ce qui s'est passé :** l'empaquetage de ce répertoire n'est pas autorisé
+  depuis cette surface.
+- **Cause probable :** le chemin est en dehors des répertoires que
+  `files.packRoots` autorise l'interface web et l'API à lire. Sans entrée
+  configurée, elles n'en lisent **aucun** — lire un répertoire arbitraire de
+  l'hôte sur requête réseau est une capacité qu'on donne à une instance, pas
+  qu'elle possède.
+- **Action corrective :** lancez `tobby fileset pack` sur l'hôte de
+  l'instance, qui n'est pas restreint parce que celui qui l'exécute détient
+  déjà ces droits sur le système de fichiers, ou ajoutez le répertoire à
+  `files.packRoots` dans le fichier de configuration puis redémarrez
+  l'instance.
+- **Corrigeable hors ligne :** oui · **Bloque :** l'empaquetage concerné ; rien n'est écrit
 
 ## Tâches (TBY-TSK)
 
