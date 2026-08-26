@@ -30,6 +30,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
+	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/metrics"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
@@ -277,6 +278,29 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
+	// The media manifest (FR-054): mirror mode, and only mirror mode,
+	// ends each synchronization by inventorying the store it just
+	// produced — that store is what crosses the air gap, and the manifest
+	// is what the destination side verifies it against. A passthrough
+	// store is a cache, not a medium, and gets no manifest.
+	if cfg.Mode == config.ModeMirror {
+		eng.SetMediaManifest(func(ctx context.Context, zone, runID string, resolvedAt time.Time) error {
+			m, err := media.Write(ctx, st, media.WriteOptions{
+				Zone: zone, RunID: runID, ResolvedAt: resolvedAt,
+			})
+			if err != nil {
+				return err
+			}
+			// R-28: the medium's identity travels in the operation logs of
+			// both sides, so an incident traces back to a physical object.
+			logger.LogAttrs(ctx, slog.LevelInfo, "media manifest written",
+				slog.String("media_id", m.MediaID), slog.String("zone", m.Zone),
+				slog.String("run_id", runID),
+				slog.Int("files", m.Totals.Files), slog.Int64("bytes", m.Totals.Bytes))
+			return nil
+		})
+	}
+
 	eng.SetDestination(destination)
 	if destination != nil {
 		logger.LogAttrs(ctx, slog.LevelInfo, "promotion destination configured",

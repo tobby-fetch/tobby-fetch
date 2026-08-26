@@ -71,6 +71,9 @@ type Engine struct {
 	base    string
 	cfg     config.Sync
 	meters  Meters
+	// media writes the transport medium's manifest at the end of a run
+	// (FR-054); nil outside mirror mode.
+	media MediaManifestWriter
 }
 
 // New assembles the engine.
@@ -95,6 +98,25 @@ func (e *Engine) SetDestination(d *Destination) { e.dest = d }
 // Destination reports the configured promotion target, for the surfaces
 // that show where this instance pushes to (FR-035 mapping, FR-065).
 func (e *Engine) Destination() *Destination { return e.dest }
+
+// MediaManifestWriter writes the media manifest into the transportable
+// store at the end of a synchronization (FR-054), given the zone the
+// medium is addressed to, the run that produced it, and the instant the
+// Retriever was resolved — the freshness instant of R-28.
+//
+// A function rather than an interface, and installed rather than
+// constructed in: mirror mode is the only mode whose store IS a medium,
+// and an engine with no writer installed is a complete engine, exactly
+// like an engine with no destination.
+type MediaManifestWriter func(ctx context.Context, zone, runID string, resolvedAt time.Time) error
+
+// SetMediaManifest installs the end-of-run media manifest writer.
+//
+// Nil — the default — is the passthrough behaviour: that store is not a
+// transport medium, it is a cache in front of a destination registry, and
+// inventorying it every cycle would cost real time for a document nobody
+// would carry anywhere.
+func (e *Engine) SetMediaManifest(w MediaManifestWriter) { e.media = w }
 
 // Source reports the configured retriever source (FR-010: shown in the
 // UI and the API).
@@ -122,6 +144,11 @@ func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) e
 		return e.mapError(err, e.source)
 	}
 	zone := retr.Metadata.Name
+	// The instant this run resolved its Retriever. It dates the DELIVERY,
+	// which is what the destination's freshness guard compares against
+	// (R-28) — not the moment the bookkeeping was written, which would
+	// drift with the size of the transfer.
+	resolvedAt := time.Now().UTC()
 	logger.LogAttrs(ctx, slog.LevelInfo, "retriever loaded",
 		slog.String("source", e.source), slog.String("zone", zone),
 		slog.Int("recipes", len(retr.Spec.Recipes)))
@@ -139,6 +166,25 @@ func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) e
 			cookbookRef = retr.Spec.Cookbook
 		}
 		e.syncRecipe(ctx, sink, logger, cookbookRef, entry, zone)
+	}
+
+	// FR-054: in mirror mode the store IS the transport medium, so every
+	// synchronization that produced it ends by writing the media manifest
+	// — after the content, and after any prune (FR-045), so the inventory
+	// describes what the medium finally holds.
+	//
+	// Unlike a per-item failure this one fails the task: a medium without
+	// a manifest is refused whole on the destination side (R-19), so
+	// reporting the run as successful would promise a delivery that
+	// cannot be delivered.
+	if e.media != nil {
+		if err := e.media(ctx, zone, sink.runID(), resolvedAt); err != nil {
+			logger.LogAttrs(ctx, slog.LevelError, "media manifest not written",
+				slog.String("zone", zone), slog.String("error", err.Error()))
+			return e.mapError(err, zone)
+		}
+		logger.LogAttrs(ctx, slog.LevelInfo, "media manifest written",
+			slog.String("zone", zone), slog.Time("resolved_at", resolvedAt))
 	}
 	return nil
 }
@@ -337,10 +383,19 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 			kept = append(kept, r)
 		}
 	}
+	// Where the artifact itself landed in this store. A reader of the
+	// store — destination-side media verification above all (FR-054) —
+	// cannot recompute it from the nominal repository, because the base
+	// prefix belongs to this instance and not to the content.
+	artifactRepo, err := relocate.PathWithBase(e.base, nominalRepo)
+	if err != nil {
+		artifactRepo = ""
+	}
 	if err := e.store.PutRecipeRecord(&store.RecipeRecord{
 		Name: recipe.Metadata.Name, Version: recipe.Metadata.Version,
-		CookbookRepo: nominalRepo, Digest: fetched.ManifestDigest,
-		RunID: sink.runID(), Zone: zone, ResolvedAt: time.Now().UTC(),
+		CookbookRepo: nominalRepo, ArtifactRepo: artifactRepo, ArtifactTag: fetched.Tag,
+		Digest: fetched.ManifestDigest,
+		RunID:  sink.runID(), Zone: zone, ResolvedAt: time.Now().UTC(),
 		Verified: verified, TrustScope: scopeName, Ingredients: kept,
 	}); err != nil {
 		fail(rid, err)
