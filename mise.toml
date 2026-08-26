@@ -34,6 +34,19 @@ run = "pnpm install --prefer-offline && pnpm dev"
 description = "Build the tobby binary"
 run = "go build -trimpath -o bin/tobby ./cmd/tobby"
 
+# The documentation the binary serves offline (R-05, NFR-003) is a
+# byte-for-byte copy of website/src/content/docs. Run this after editing a
+# page; `mise run help-check` is the same comparison as a gate, and CI runs
+# it on every documentation change (.github/workflows/help-corpus.yml).
+#   mise run help-sync
+[tasks.help-sync]
+description = "Refresh the embedded help corpus from the website sources"
+run = "go run ./tools/helpsync"
+
+[tasks.help-check]
+description = "Fail if the embedded help corpus has drifted from the website"
+run = "go run ./tools/helpsync -check"
+
 [tasks.test]
 description = "Unit and integration tests (race detector, anti-flaky double run)"
 run = "go test -race -count=2 ./..."

@@ -79,3 +79,35 @@ sidebar:
 ```bash
 mise exec -- pnpm build   # includes strict internal-link validation
 ```
+
+## Embedding (the offline half)
+
+These same files are served by the binary under `/help`, so an operator in
+an isolated zone reads them with no connection to anything but their own
+instance (NFR-003, amendment 2026-08-11). The corpus in
+`internal/help/corpus/` is a **byte-for-byte copy** of this directory —
+never a second edition of it.
+
+```bash
+mise run help-sync    # refresh the copy after editing a page
+mise run help-check   # fail if the copy has drifted (the CI gate)
+```
+
+What that implies when writing:
+
+- Editing a page is not finished until `mise run help-sync` has been run
+  and the corpus change committed with it. CI fails otherwise, on the
+  documentation workflow rather than on the Go one.
+- `index.mdx` and `reference/errors.md` are deliberately **not** embedded.
+  The first is replaced by the `/help` home; the second is rendered live
+  from the error catalog inside the binary, so links to
+  `../../reference/errors/` — anchor included — resolve onto `/help`.
+- A screenshot is embedded only if a page references it. An `![…](…)`
+  pointing at a file that does not exist fails the build.
+- The Markdown subset the binary renders is the one used here: headings,
+  paragraphs, lists, GFM tables, fenced code, asides, links, images and
+  inline SVG. A construct outside it (a new Astro component, raw HTML)
+  fails `internal/help`'s tests rather than rendering as nothing.
+- Anchors are computed the same way on both sides, so a `#fragment` link
+  that the Astro build accepts resolves offline too — including the French
+  slugs of translated headings.

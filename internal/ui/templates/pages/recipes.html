@@ -10,6 +10,7 @@
 <section>
   <h1 class="t-page-title">{{.T "recipes.title"}}</h1>
   <p class="t-page-sub">{{.T "recipes.subtitle"}}</p>
+<p class="t-page-guide">{{template "help-cta" (withData . (.Guide "recipes/understand"))}}</p>
   {{if .Err}}
   {{template "error-block" .}}
   {{else}}

@@ -8,6 +8,7 @@
   {{template "help-subnav" .}}
   <h1 class="t-page-title">{{.T "apidocs.title"}}</h1>
   <p class="t-page-sub">{{.T "apidocs.subtitle"}}</p>
+<p class="t-page-guide">{{template "help-cta" (withData . (.Guide "reference/api"))}}</p>
   <p class="t-row">
     {{/* Raw file off the machine surface: never boosted (B-013). */}}
     <a class="t-btn t-btn--secondary t-btn--sm" href="/api/v1/openapi.yaml" hx-boost="false">{{.T "apidocs.download"}}</a>

@@ -876,3 +876,160 @@ button.t-lang:hover { color: var(--tobby-accent-text); }
    recipe is read in one go rather than tailed. */
 .t-docview { max-height: 32rem; }
 .t-docview pre { font-size: 0.74rem; }
+
+/* ==========================================================================
+   Embedded documentation (/help/…) — R-05, NFR-003
+   The guides travel inside the binary, so their presentation travels with
+   them: no web font, no external stylesheet, nothing to fetch (NFR-019).
+   ========================================================================== */
+
+/* The corpus diagrams are authored for the documentation site and paint
+   with its variables. Rather than rewrite the SVG — which would fork the
+   single source the site and the binary share — the names are aliased onto
+   the product's own design tokens, so a diagram follows the theme switch
+   like every other surface (FR-064). */
+.t-doc {
+  --sl-color-gray-1: var(--tobby-text);
+  --sl-color-gray-2: var(--tobby-text);
+  --sl-color-gray-3: var(--tobby-muted);
+  --sl-color-gray-5: var(--tobby-border-control);
+  --sl-color-gray-6: var(--tobby-chip-bg);
+  --sl-color-accent: var(--tobby-accent);
+  --sl-font: var(--tobby-font-sans);
+  max-width: 56rem;
+}
+
+.t-doc-body { font-size: var(--tobby-text-md); line-height: 1.65; }
+.t-doc-body > p { margin: 0 0 var(--tobby-space-4); }
+.t-doc-body h2 {
+  font-size: var(--tobby-text-lg); margin: var(--tobby-space-6) 0 var(--tobby-space-3);
+  padding-bottom: var(--tobby-space-2);
+  border-bottom: 1px solid var(--tobby-border-hairline);
+  scroll-margin-top: 5rem;
+}
+.t-doc-body h3 {
+  font-size: var(--tobby-text-md); margin: var(--tobby-space-5) 0 var(--tobby-space-2);
+  scroll-margin-top: 5rem;
+}
+.t-doc-body h4 { font-size: var(--tobby-text-sm); margin: var(--tobby-space-4) 0 var(--tobby-space-2); }
+.t-doc-body code {
+  font-family: var(--tobby-font-mono); font-size: 0.86em;
+  background: var(--tobby-chip-bg); border-radius: var(--tobby-radius-xs);
+  padding: 0.08em 0.34em;
+}
+.t-doc-code {
+  background: var(--tobby-bg-raise); border: 1px solid var(--tobby-border-hairline);
+  border-radius: var(--tobby-radius-sm); padding: var(--tobby-space-3);
+  margin: 0 0 var(--tobby-space-4); overflow-x: auto;
+}
+.t-doc-code code { background: none; padding: 0; font-size: 0.78rem; line-height: 1.55; }
+.t-doc-list { margin: 0 0 var(--tobby-space-4); padding-left: 1.3rem; }
+.t-doc-list li { margin-bottom: var(--tobby-space-2); }
+.t-doc-list .t-doc-list { margin: var(--tobby-space-2) 0 0; }
+.t-doc-tablewrap { overflow-x: auto; margin: 0 0 var(--tobby-space-4); }
+.t-doc-table { font-size: var(--tobby-text-sm); }
+.t-doc-table td { height: auto; padding-top: 0.45rem; padding-bottom: 0.45rem; }
+
+/* Starlight asides, kept as callouts: the badge that says "this part is
+   not shipped yet" is load-bearing honesty, not decoration. */
+.t-doc-aside {
+  border-left: 3px solid var(--tobby-border-control);
+  background: var(--tobby-chip-bg);
+  border-radius: 0 var(--tobby-radius-sm) var(--tobby-radius-sm) 0;
+  padding: var(--tobby-space-3) var(--tobby-space-4);
+  margin: 0 0 var(--tobby-space-4);
+}
+.t-doc-aside > p:last-child { margin-bottom: 0; }
+.t-doc-aside-title {
+  font-weight: 600; font-size: var(--tobby-text-sm);
+  margin: 0 0 var(--tobby-space-2);
+}
+.t-doc-aside--note { border-left-color: var(--tobby-accent); }
+.t-doc-aside--tip { border-left-color: var(--tobby-success); }
+.t-doc-aside--caution { border-left-color: var(--tobby-accent); background: var(--tobby-warning-bg); }
+.t-doc-aside--danger { border-left-color: var(--tobby-danger); background: var(--tobby-danger-bg); }
+
+.t-doc-figure { margin: 0 0 var(--tobby-space-4); }
+.t-doc-shot {
+  max-width: 100%; height: auto; display: block;
+  border: 1px solid var(--tobby-border-hairline); border-radius: var(--tobby-radius-sm);
+}
+.t-doc-figure figcaption {
+  color: var(--tobby-muted); font-size: var(--tobby-text-xs);
+  margin-top: var(--tobby-space-2);
+}
+.t-doc-extlink { white-space: normal; }
+
+.t-doc-status-updated { color: var(--tobby-muted); font-size: var(--tobby-text-xs); }
+.t-doc-status-id {
+  font-family: var(--tobby-font-mono); font-size: 0.85em;
+  color: var(--tobby-muted); margin-right: 0.35em;
+}
+.t-doc-status-note { display: block; color: var(--tobby-muted); font-size: 0.85em; }
+.t-doc-status-milestone { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.t-badge--status-available { color: var(--tobby-success-text); background: var(--tobby-success-bg); }
+.t-badge--status-partial { color: var(--tobby-accent-text); background: var(--tobby-warning-bg); }
+.t-badge--status-upcoming { color: var(--tobby-muted); border-color: var(--tobby-border-control); }
+.t-badge--doc-partial { color: var(--tobby-accent-text); background: var(--tobby-warning-bg); }
+.t-badge--doc-upcoming { color: var(--tobby-muted); border-color: var(--tobby-border-control); }
+
+/* On-this-page table of contents, above the body: the guides are long and
+   a reader arriving from an error block is looking for one section. */
+.t-doc-toc {
+  border: 1px solid var(--tobby-border-hairline); border-radius: var(--tobby-radius-sm);
+  padding: var(--tobby-space-3) var(--tobby-space-4); margin: 0 0 var(--tobby-space-5);
+}
+.t-doc-toc-title {
+  margin: 0 0 var(--tobby-space-2); color: var(--tobby-muted);
+  font-size: var(--tobby-text-2xs); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.t-doc-toc ul { margin: 0; padding-left: 1.1rem; font-size: var(--tobby-text-sm); }
+.t-doc-toc li { margin-bottom: var(--tobby-space-1); }
+
+.t-doc-pager {
+  display: flex; justify-content: space-between; gap: var(--tobby-space-4);
+  margin-top: var(--tobby-space-6); padding-top: var(--tobby-space-4);
+  border-top: 1px solid var(--tobby-border-hairline);
+  font-size: var(--tobby-text-sm);
+}
+.t-doc-pager a { display: flex; flex-direction: column; gap: 0.15rem; }
+.t-doc-pager-next { text-align: right; }
+.t-doc-pager span {
+  color: var(--tobby-muted); font-size: var(--tobby-text-2xs);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+
+/* /help home: the guide navigation above the error-code index. */
+.t-help-h2 {
+  font-size: var(--tobby-text-lg); margin: var(--tobby-space-6) 0 var(--tobby-space-2);
+  padding-bottom: var(--tobby-space-2);
+  border-bottom: 1px solid var(--tobby-border-hairline);
+}
+.t-help-lead { color: var(--tobby-muted); font-size: var(--tobby-text-sm); margin: 0 0 var(--tobby-space-4); }
+.t-help-grid {
+  display: grid; gap: var(--tobby-space-4);
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  margin-bottom: var(--tobby-space-5);
+}
+.t-help-section h3 {
+  font-size: var(--tobby-text-2xs); color: var(--tobby-muted);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  margin: 0 0 var(--tobby-space-2);
+}
+.t-help-section ul { margin: 0; padding-left: 1.1rem; font-size: var(--tobby-text-sm); }
+.t-help-section li { margin-bottom: var(--tobby-space-1); }
+.t-help-fallback-tag {
+  font-size: var(--tobby-text-2xs); color: var(--tobby-muted);
+  border: 1px solid var(--tobby-border-hairline); border-radius: var(--tobby-radius-xs);
+  padding: 0 0.25rem; margin-left: 0.3rem;
+}
+
+/* The contextual pointer a screen shows towards its guide. Quiet by
+   design: it is an offer, never a step of the task at hand. */
+.t-help-cta {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  font-size: var(--tobby-text-xs); color: var(--tobby-muted);
+}
+.t-help-cta:hover { color: var(--tobby-accent-text); }
+.t-help-cta-icon { color: var(--tobby-accent); }
+.t-page-guide { margin: -0.4rem 0 var(--tobby-space-4); }

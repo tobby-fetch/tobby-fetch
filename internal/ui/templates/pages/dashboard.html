@@ -3,6 +3,10 @@
 {{define "main"}}
 <section>
   <h1 class="t-page-title">{{.T "dashboard.title"}}</h1>
+{{/* The guide of the mode this instance runs: the mode is fixed at
+     startup (FR-001), so this pointer can never send an operator to the
+     procedure of the other one. */}}
+<p class="t-page-guide">{{if eq .Mode "mirror"}}{{template "help-cta" (withData . (.Guide "air-gap/media-workflow"))}}{{else}}{{template "help-cta" (withData . (.Guide "passthrough/overview"))}}{{end}}</p>
 
   <div class="t-tiles">
     <div class="t-tile t-card">

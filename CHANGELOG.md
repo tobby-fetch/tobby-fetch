@@ -8,6 +8,28 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+### Added
+
+- **The documentation travels inside the binary** (R-05, NFR-003 amendment
+  2026-08-11). The destination zone is cut off from the network by
+  definition, so documentation that lives on a website is documentation the
+  operator who needs it most cannot read. `/help` now serves the whole
+  corpus offline: the operations guides of both modes, the *Try* walkthrough,
+  the security, recipe, project and reference sections — 50 pages, English
+  and French, screenshots and diagrams included — plus the troubleshooting
+  index still generated live from the error catalog, so `/help#<code>`
+  anchors keep resolving against the codes this binary actually carries.
+  Screens carry a contextual pointer into the guide that covers them; the
+  dashboard points at the guide of the mode the instance runs.
+- The embedded corpus is a byte-for-byte copy of `website/src/content/docs`
+  written by `tools/helpsync`, not a second edition of it: `mise run
+  help-check` (and a CI job on every documentation change) fails the moment
+  the two drift apart. A link check over the corpus as embedded proves no
+  cross-page link, anchor, screenshot or error-code reference points at
+  nothing, in either language.
+- French translations of the whole *Connected zones (passthrough)* section
+  (7 pages), on the website and in the binary alike.
+
 ## [0.4.2] - 2026-08-22
 
 Hardening release. A point-in-time quality audit was run between

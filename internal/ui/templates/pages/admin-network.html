@@ -13,6 +13,7 @@
   {{template "admin-subnav" .}}
   <h1 class="t-page-title">{{.T "network.title"}}</h1>
   <p class="t-page-sub">{{.T "network.subtitle"}}</p>
+<p class="t-page-guide">{{template "help-cta" (withData . (.Guide "passthrough/network"))}}</p>
 
   {{if .Err}}{{template "error-block" .}}{{end}}
 

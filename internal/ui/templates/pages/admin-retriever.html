@@ -10,6 +10,7 @@
   {{template "admin-subnav" .}}
   <h1 class="t-page-title">{{.T "retriever.title"}}</h1>
   <p class="t-page-sub">{{.T "retriever.subtitle"}}</p>
+<p class="t-page-guide">{{template "help-cta" (withData . (.Guide "passthrough/retriever-cascade"))}}</p>
   <p class="t-muted t-note">{{.T "retriever.readonly_note"}}</p>
 
   <h2 class="t-kick">{{.T "retriever.source_title"}}</h2>

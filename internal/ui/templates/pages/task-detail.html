@@ -35,6 +35,7 @@
 <div id="task-body"{{if .Data.Row.Active}} hx-get="/tasks/{{.Data.Row.ID}}" hx-trigger="every 2s" hx-swap="morph:outerHTML" hx-target="this"{{end}}>
   <div class="t-titlerow">
     <h1 class="t-page-title">{{.T "task.title" "ID" .Data.Row.ID}}</h1>
+<p class="t-page-guide">{{template "help-cta" (withData . (.Guide "passthrough/operate"))}}</p>
     {{template "task-badge" (withData . .Data.Row)}}
     <span class="t-taskactions">
       {{if and .CanOperate .Data.RelaunchHref}}<a class="t-btn t-btn--secondary t-btn--sm" href="{{.Data.RelaunchHref}}">{{.T "task.relaunch"}}</a>{{end}}

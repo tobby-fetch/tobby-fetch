@@ -251,6 +251,14 @@ func (u *UI) Mount(rt Router) {
 	mux.Handle("GET /admin/network", admin(u.adminNetwork))
 	mux.Handle("POST /admin/network/certificate", admin(u.adminNetworkCertificate))
 	mux.Handle("GET /help", app(u.helpScreen))
+	// The embedded documentation (R-05, NFR-003): the guides at
+	// /help/<section>/<page>, their screenshots on the "/-/" sub-resource
+	// separator (ADR-0015 §3) so the asset namespace can never collide
+	// with a page key. The asset pattern is more specific than the
+	// catch-all and wins on ServeMux's precedence rules, whatever the
+	// declaration order.
+	mux.Handle("GET /help/-/assets/{name}", app(u.helpAsset))
+	mux.Handle("GET /help/{page...}", app(u.helpPage))
 	mux.Handle("GET /about", app(u.aboutScreen))
 	mux.Handle("GET /about/third-party", app(u.thirdPartyNotices))
 	mux.Handle("GET /api-docs", app(u.apiDocsScreen))
