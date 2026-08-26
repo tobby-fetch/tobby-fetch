@@ -233,7 +233,7 @@
 
 "TBY-MED-030.what": "Ce support n'a pas encore été vérifié : rien n'en est servi."
 "TBY-MED-030.cause": "{{.surface}} est fermé parce que le support {{.media}} vient d'une autre zone et qu'aucune vérification n'a établi que son contenu est intact et signé (FR-054). L'instance, elle, fonctionne normalement."
-"TBY-MED-030.action": "Ouvrez {{.screen}} dans l'interface web et lancez Vérifier — la vérification recalcule les empreintes du support et peut prendre plusieurs minutes sur un disque plein. `tobby media verify` et POST /api/v1/media/verify font la même chose depuis un terminal. Cette surface s'ouvre d'elle-même dès que le support est vérifié."
+"TBY-MED-030.action": "Ouvrez {{.screen}} dans l'interface web et lancez Vérifier — la vérification recalcule les empreintes du support et peut prendre plusieurs minutes sur un disque plein — ou appelez POST /api/v1/media/verify sur cette instance. Cette surface s'ouvre d'elle-même dès que le support est vérifié. `tobby media verify` rend le même verdict mais s'exécute dans son propre processus et n'ouvre pas les surfaces de cette instance : seule une vérification exécutée par l'instance elle-même le fait."
 
 "TBY-MED-031.what": "Une vérification de ce support est déjà en cours."
 "TBY-MED-031.cause": "Une exécution parcourt le support (étape : {{.stage}}) ; en lancer une seconde ralentirait les deux sans rien apprendre de plus."

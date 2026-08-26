@@ -233,7 +233,7 @@
 
 "TBY-MED-030.what": "This medium has not been verified yet, so nothing is served from it."
 "TBY-MED-030.cause": "{{.surface}} is closed because medium {{.media}} arrived from another zone and no verification has established that its content is intact and signed (FR-054). The instance itself is running normally."
-"TBY-MED-030.action": "Open {{.screen}} in the web interface and run Verify — it re-hashes the medium and can take several minutes on a full disk. `tobby media verify` and POST /api/v1/media/verify do the same from a terminal. This surface opens by itself as soon as the medium clears."
+"TBY-MED-030.action": "Open {{.screen}} in the web interface and run Verify — it re-hashes the medium and can take several minutes on a full disk — or call POST /api/v1/media/verify on this instance. This surface opens by itself as soon as the medium clears. `tobby media verify` reports the same verdict but runs in its own process and does not open this instance's surfaces: only a verification the instance itself performs does."
 
 "TBY-MED-031.what": "A verification of this medium is already running."
 "TBY-MED-031.cause": "One run is walking the medium (stage: {{.stage}}); starting a second would halve both and answer nothing new."

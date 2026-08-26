@@ -233,7 +233,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if mediaGate.Guarded() {
 		logger.LogAttrs(ctx, slog.LevelWarn, "transported medium not verified: the registry and the file surfaces are closed",
 			slog.String("zone", cfg.Zone), slog.String("store", cfg.Storage.Root),
-			slog.String("action", "verify the medium on "+mediagate.Screen+", with `tobby media verify`, or through POST /api/v1/media/verify"),
+			slog.String("action", "verify the medium on "+mediagate.Screen+" or through POST /api/v1/media/verify: only a verification this instance performs opens its surfaces"),
 			slog.String("requirement", "FR-054"))
 	}
 	srv.SetReadyDetail(mediaGate.ReadyDetail)

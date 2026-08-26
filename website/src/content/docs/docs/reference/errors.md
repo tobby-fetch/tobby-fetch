@@ -675,10 +675,13 @@ a partially damaged medium still hands over its intact recipes.
   `/files/` are closed until it has run. The instance itself is alive,
   ready, and serving its interface and its API normally.
 - **Corrective action:** open the **Media** screen and run *Verify* — on a
-  full disk it takes minutes — or run `tobby media verify`, or call
-  `POST /api/v1/media/verify`. The content surfaces open by themselves as
-  soon as the medium clears. There is deliberately no setting that serves a
-  medium without verifying it.
+  full disk it takes minutes — or call `POST /api/v1/media/verify` on this
+  instance. The content surfaces open by themselves as soon as the medium
+  clears. `tobby media verify` reaches the same verdict but runs in its own
+  process against the directory, so it does **not** open the surfaces of a
+  running instance: the gate is opened by a verification the instance
+  itself performs. There is deliberately no setting that serves a medium
+  without verifying it.
 - **Fixable offline:** yes · **Blocks:** the embedded registry and the file
   surface, for this medium
 

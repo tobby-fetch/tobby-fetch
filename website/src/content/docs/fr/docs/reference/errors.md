@@ -706,10 +706,14 @@ remet quand même ses recipes intactes.
   qu'elle n'a pas eu lieu. L'instance, elle, est vivante, prête, et sert
   normalement son interface et son API.
 - **Action corrective :** ouvrez l'écran **Média** et lancez *Vérifier* — sur
-  un disque plein cela prend plusieurs minutes — ou lancez
-  `tobby media verify`, ou appelez `POST /api/v1/media/verify`. Les surfaces
-  de contenu s'ouvrent d'elles-mêmes dès que le support est validé. Aucun
-  réglage ne permet délibérément de servir un support sans le vérifier.
+  un disque plein cela prend plusieurs minutes — ou appelez
+  `POST /api/v1/media/verify` sur cette instance. Les surfaces de contenu
+  s'ouvrent d'elles-mêmes dès que le support est validé. `tobby media verify`
+  rend le même verdict mais s'exécute dans son propre processus sur le
+  répertoire : il **n'ouvre pas** les surfaces d'une instance en cours
+  d'exécution — le verrou est levé par une vérification que l'instance
+  elle-même effectue. Aucun réglage ne permet délibérément de servir un
+  support sans le vérifier.
 - **Corrigeable hors ligne :** oui · **Bloque :** la registry embarquée et la
   surface de fichiers, pour ce support
 
