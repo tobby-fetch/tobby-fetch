@@ -1,0 +1,161 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /filesets — what this instance holds as file sets, what it serves under
+     /files/ (FR-047), and the form that packages a directory of the host
+     into one (FR-048). The interface half of `tobby fileset pack` and the
+     mirror of /api/v1/filesets (FR-061).
+
+     The form submits a PATH on the instance host, never a file: FR-048
+     opens no upload surface, and SRS §5.2 says why that door stays shut.
+     A packed file set is unsigned — Tobby holds no private key
+     (ADR-0007) — so the listing marks manual imports and the success
+     state says it in words rather than leaving it to be inferred.
+
+     No raw-file link appears here on purpose: /files/<name>/ addresses a
+     directory and would 404, and a boosted link to a served file would be
+     displayed in the page instead of downloaded (B-013). The served base
+     path is a copyable chip, not an anchor. */}}
+{{define "title"}}{{.T "filesets.title"}}{{end}}
+{{define "main"}}
+<section>
+  <h1 class="t-page-title">{{.T "filesets.title"}}</h1>
+  <p class="t-page-sub">{{.T "filesets.subtitle"}}</p>
+
+  {{if .Err}}{{template "error-block" .}}{{end}}
+
+  {{if .Data.Packed}}
+  {{/* Success. Three facts, in this order: what landed, that it is
+       unsigned, and that serving it is a separate explicit step. */}}
+  <div class="t-card">
+    <div class="t-row">
+      <span class="t-badge t-badge--fileset" translate="no" lang="en">FileSet</span>
+      <span>{{.T "filesets.packed" "Reference" .Data.Packed.Reference "Version" .Data.Packed.Version}}</span>
+    </div>
+    <p class="t-muted t-note">{{.T "filesets.packed_counts"
+        "Files" .Data.Packed.Files "Directories" .Data.Packed.Directories
+        "Symlinks" .Data.Packed.Symlinks "Size" (.FmtBytes .Data.Packed.Bytes)}}</p>
+    <p>
+      <span class="t-chip">
+        <span class="t-chip-label" lang="en">digest</span>
+        <span class="t-truncate t-mono" translate="no" title="{{.Data.Packed.Digest}}">{{.Trunc .Data.Packed.Digest 30}}</span>
+        <button type="button" class="t-chip-copy" data-copy="{{.Data.Packed.Digest}}"
+                aria-label="{{.T "filesets.copy_digest"}}" title="{{.T "filesets.copy_digest"}}">⧉</button>
+      </span>
+    </p>
+    <p class="t-muted t-note">{{.T "filesets.unsigned_note"}}</p>
+
+    <h2 class="t-kick">{{.T "filesets.serve_title"}}</h2>
+    <p class="t-muted t-note">{{.T "filesets.serve_note"}}</p>
+    <p>
+      <span class="t-chip">
+        <span class="t-truncate t-mono" translate="no">{{.T "filesets.serve_snippet_label"}}</span>
+        <button type="button" class="t-chip-copy" data-copy="{{.Data.ServeSnippet}}"
+                aria-label="{{.T "filesets.copy_snippet"}}" title="{{.T "filesets.copy_snippet"}}">⧉</button>
+      </span>
+    </p>
+    <pre class="t-mono" translate="no">{{.Data.ServeSnippet}}</pre>
+  </div>
+  {{end}}
+
+  <h2 class="t-kick">{{.T "filesets.pack_title"}}</h2>
+  <p class="t-muted t-note">{{.T "filesets.no_upload"}}</p>
+  {{if not .IsAdmin}}<p class="t-muted t-note">{{.T "filesets.admin_only"}}</p>{{end}}
+  {{if not .Data.PackEnabled}}<p class="t-muted t-note">{{.T "filesets.inert"}}</p>{{end}}
+
+  <form class="t-form t-card" method="post" action="/filesets/pack"
+        hx-disabled-elt="find button[type='submit']" hx-indicator="find .htmx-indicator">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+
+    <label for="pack-source">{{.T "filesets.source_label"}}</label>
+    <input id="pack-source" class="t-input t-mono" type="text" name="source"
+           value="{{.Data.Source}}" required placeholder="/srv/filesets/apt-repo"
+           autocomplete="off" autocapitalize="off" spellcheck="false" translate="no"
+           aria-describedby="pack-source-help">
+    <p id="pack-source-help" class="t-form-hint">{{.T "filesets.source_help"}}</p>
+
+    <label for="pack-name">{{.T "filesets.name_label"}}</label>
+    <input id="pack-name" class="t-input t-mono" type="text" name="name"
+           value="{{.Data.Name}}" required placeholder="debs"
+           autocomplete="off" autocapitalize="off" spellcheck="false" translate="no"
+           aria-describedby="pack-name-help">
+    <p id="pack-name-help" class="t-form-hint">{{.T "filesets.name_help"}}</p>
+
+    <label for="pack-version">{{.T "filesets.version_label"}}</label>
+    <input id="pack-version" class="t-input t-mono" type="text" name="version"
+           value="{{.Data.Version}}" required placeholder="1.0.0"
+           autocomplete="off" autocapitalize="off" spellcheck="false" translate="no"
+           aria-describedby="pack-version-help">
+    <p id="pack-version-help" class="t-form-hint">{{.T "filesets.version_help"}}</p>
+
+    <div class="t-row" style="margin-top:0.8rem">
+      {{/* Disabled, never hidden: an action an operator cannot take here
+           has to explain itself (ADR-0015). */}}
+      <button type="submit" class="t-btn t-btn--primary"
+              {{if or (not .IsAdmin) (not .Data.PackEnabled)}}disabled aria-describedby="pack-source-help"{{end}}>{{.T "filesets.submit"}}</button>
+      <span class="htmx-indicator t-pulse-dot" aria-hidden="true"></span>
+    </div>
+  </form>
+
+  <h2 class="t-kick">{{.T "filesets.rules_title"}}</h2>
+  {{/* What packing refuses, said before it refuses — each with the stable
+       code the block above would carry (RECIPE-SPEC §14.5). */}}
+  <ul class="t-muted t-note">
+    <li>{{.T "filesets.rule_symlink"}} <span class="t-mono" translate="no">TBY-FIL-002</span></li>
+    <li>{{.T "filesets.rule_special"}} <span class="t-mono" translate="no">TBY-FIL-002</span></li>
+    <li>{{.T "filesets.rule_limits"}} <span class="t-mono" translate="no">TBY-FIL-002</span></li>
+    <li>{{.T "filesets.rule_empty"}} <span class="t-mono" translate="no">TBY-FIL-001</span></li>
+    <li>{{.T "filesets.rule_roots"}} <span class="t-mono" translate="no">TBY-FIL-003</span></li>
+  </ul>
+
+  <h2 class="t-kick">{{.T "filesets.inventory_title"}}</h2>
+  {{if not .Data.Entries}}
+  <p class="t-empty">{{.T "filesets.empty"}}</p>
+  {{else}}
+  <table class="t-table">
+    <caption class="t-visually-hidden">{{.T "filesets.table_caption"}}</caption>
+    <thead>
+      <tr>
+        <th scope="col" class="t-col-path">{{.T "filesets.th_reference"}}</th>
+        <th scope="col">{{.T "filesets.th_origin"}}</th>
+        <th scope="col">{{.T "filesets.th_versions"}}</th>
+        <th scope="col">{{.T "filesets.th_served"}}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Data.Entries}}
+      <tr>
+        <td class="t-primary">
+          <span class="t-chip">
+            <a class="t-mono t-truncate" href="/content/{{.Repository}}" title="{{.Reference}}" translate="no">{{$.Trunc .Reference 48}}</a>
+            <button type="button" class="t-chip-copy" data-copy="{{.Reference}}"
+                    aria-label="{{$.T "filesets.copy_reference" "Reference" .Reference}}"
+                    title="{{$.T "filesets.copy_reference" "Reference" .Reference}}">⧉</button>
+          </span>
+        </td>
+        <td>
+          <span class="t-badge t-badge--{{provenanceClass .Provenance}}" translate="no" lang="en">{{.Provenance}}</span>
+          {{if not .Signed}}<span class="t-muted t-note">{{$.T "filesets.unsigned_badge"}}</span>{{end}}
+        </td>
+        <td class="t-mono" translate="no">{{if .Versions}}{{$.Trunc (join .Versions) 32}}{{else}}—{{end}}</td>
+        <td>
+          {{if .Served}}
+          <span class="t-badge t-badge--up-to-date" translate="no" lang="en">served</span>
+          <span class="t-chip">
+            <span class="t-mono t-truncate" translate="no">{{.URL}}</span>
+            <button type="button" class="t-chip-copy" data-copy="{{.URL}}"
+                    aria-label="{{$.T "filesets.copy_url" "Url" .URL}}"
+                    title="{{$.T "filesets.copy_url" "Url" .URL}}">⧉</button>
+          </span>
+          {{if .Anonymous}}<span class="t-muted t-note">{{$.T "filesets.anonymous"}}</span>{{end}}
+          {{else if .Declared}}
+          <span class="t-muted">{{$.T "filesets.declared_only"}}</span>
+          {{else}}
+          <span class="t-muted">{{$.T "filesets.not_served"}}</span>
+          {{end}}
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{end}}
+</section>
+{{end}}

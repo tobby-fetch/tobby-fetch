@@ -12,6 +12,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
@@ -47,6 +48,10 @@ type UI struct {
 	// publisher backs the R-40 publication screen; nil on an instance
 	// wired without one, which renders the form inert.
 	publisher Publisher
+	// fileSets backs the FR-047/FR-048 FileSets screen — the same surface
+	// the REST endpoints use, so the two cannot drift (FR-061). Nil on an
+	// instance wired without one, which renders the screen empty.
+	fileSets *fileserve.Surface
 	// serverCert backs the FR-082 network screen: what the listener
 	// presents, and — through its own Destination — where a replacement
 	// goes. Asking the certificate rather than carrying the configured
@@ -109,6 +114,11 @@ type Options struct {
 	// Publisher publishes recipe documents into a cookbook (R-40). Nil
 	// leaves the publication screen readable and its form inert.
 	Publisher Publisher
+	// FileSets is the FR-047/FR-048 surface behind the FileSets screen:
+	// the inventory of held and served file sets, and the packing of a
+	// local directory into one. Shared with the REST endpoints so the two
+	// give one answer (FR-061).
+	FileSets *fileserve.Surface
 	// ServerCert is the certificate the listener presents (FR-082). Nil
 	// on an instance serving plain HTTP — the screen says so rather than
 	// showing an empty certificate.
@@ -147,6 +157,7 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		cookbook:          opts.Cookbook,
 		interval:          opts.Interval,
 		publisher:         opts.Publisher,
+		fileSets:          opts.FileSets,
 		serverCert:        opts.ServerCert,
 		egress:            opts.Egress,
 	}
@@ -217,6 +228,12 @@ func (u *UI) Mount(rt Router) {
 	// push`. Operator-gated — publishing writes into a cookbook — and
 	// declared before /recipes/{recipe}/mapping only for readability:
 	// the two patterns differ in segment count and cannot collide.
+	// The FileSets screen (FR-047, FR-048). Reading the inventory is a
+	// listing like any other; packing is admin, because it reads a
+	// directory of the host filesystem and puts unsigned content in the
+	// store — the same floor as content removal.
+	mux.Handle("GET /filesets", app(u.filesetsScreen))
+	mux.Handle("POST /filesets/pack", admin(u.filesetsPack))
 	mux.Handle("GET /recipes/publish", operator(u.recipePublishScreen))
 	mux.Handle("POST /recipes/publish", operator(u.recipePublishSubmit))
 	mux.Handle("GET /recipes/{recipe}/mapping", app(u.recipeMapping))

@@ -34,6 +34,7 @@
     <a href="/content" {{if hasPrefix .Path "/content"}}aria-current="page"{{end}}>{{.T "nav.content"}}</a>
     <a href="/recipes" {{if hasPrefix .Path "/recipes"}}aria-current="page"{{end}}>{{.T "nav.recipes"}}</a>
     {{if .CanOperate}}<a href="/import" {{if eq .Path "/import"}}aria-current="page"{{end}}>{{.T "nav.import"}}</a>{{end}}
+    <a href="/filesets" {{if hasPrefix .Path "/filesets"}}aria-current="page"{{end}}>{{.T "nav.filesets"}}</a>
     <a href="/tasks" {{if hasPrefix .Path "/tasks"}}aria-current="page"{{end}}>{{.T "nav.tasks"}}<span id="task-badge" hx-get="/tasks/badge" hx-trigger="load" hx-swap="outerHTML"></span></a>
     <a href="/help" {{if or (hasPrefix .Path "/help") (eq .Path "/about") (eq .Path "/api-docs")}}aria-current="page"{{end}}>{{.T "nav.help"}}</a>
     {{if .IsAdmin}}<a href="/admin/accounts" {{if hasPrefix .Path "/admin"}}aria-current="page"{{end}}>{{.T "nav.admin"}}</a>{{end}}

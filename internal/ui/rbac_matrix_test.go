@@ -41,6 +41,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/api"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 )
@@ -90,6 +91,8 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "GET /tasks/{id}", Floor: auth.RoleViewer, Method: "GET", Path: "/tasks/no-such-task"},
 	{Pattern: "GET /import", Floor: auth.RoleOperator, Why: "importing is an operator action (FR-023)", Method: "GET", Path: "/import"},
 	{Pattern: "POST /import", Floor: auth.RoleOperator, Method: "POST", Path: "/import", Form: "reference="},
+	{Pattern: "GET /filesets", Floor: auth.RoleViewer, Why: "the FileSet inventory is a listing like any other (FR-047)", Method: "GET", Path: "/filesets"},
+	{Pattern: "POST /filesets/pack", Floor: auth.RoleAdmin, Why: "packing reads a directory of the host and puts unsigned content in the store (FR-048)", Method: "POST", Path: "/filesets/pack", Form: "source="},
 	{Pattern: "GET /content", Floor: auth.RoleViewer, Method: "GET", Path: "/content"},
 	{Pattern: "GET /content/{repo...}", Floor: auth.RoleViewer, Method: "GET", Path: "/content/no/such/repo"},
 	{Pattern: "POST /content/{repo...}", Floor: auth.RoleAdmin, Why: "removal of unit-imported content (FR-044 amendment)", Method: "POST", Path: "/content/no/such/repo/-/delete"},
@@ -125,6 +128,8 @@ var apiMatrix = []rbacRoute{
 	{Pattern: "GET /api/v1/content", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/content"},
 	{Pattern: "GET /api/v1/content/{repo...}", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/content/no/such/repo"},
 	{Pattern: "DELETE /api/v1/content/{repo...}", Floor: auth.RoleAdmin, Method: "DELETE", Path: "/api/v1/content/no/such/repo"},
+	{Pattern: "GET /api/v1/filesets", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/filesets"},
+	{Pattern: "POST /api/v1/filesets/pack", Floor: auth.RoleAdmin, Method: "POST", Path: "/api/v1/filesets/pack", Body: `{"source":""}`},
 	{Pattern: "POST /api/v1/import", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/import", Body: `{"reference":""}`},
 	{Pattern: "GET /api/v1/import/inspect", Floor: auth.RoleOperator, Method: "GET", Path: "/api/v1/import/inspect"},
 	{Pattern: "GET /api/v1/tasks", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/tasks"},
@@ -239,6 +244,13 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	// and without a certificate: the matrix probes the GATE, and every
 	// row here is decided before the handler runs.
 	api.RegisterPublish(restAPI, nil)
+	// The FR-048 mirror. The surface is wired with a packer confined to
+	// no root at all — the matrix probes the GATE, and every row here is
+	// decided before the handler runs.
+	api.RegisterFileSets(restAPI, &fileserve.Surface{
+		Catalog: rbacCatalog{st: st},
+		Packer:  fileserve.NewPacker(st, "", slog.New(slog.DiscardHandler), fileserve.WithPackRoots(nil)),
+	})
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{})
 	api.RegisterOpenAPI(restAPI)
 	rec.mux.Handle("/api/v1/", restAPI.Handler())
@@ -457,6 +469,8 @@ func TestRBACMatrixMirrorsUIFloors(t *testing.T) {
 		{"GET /content/{repo...}", "GET /api/v1/content/{repo...}"},
 		{"POST /content/{repo...}", "DELETE /api/v1/content/{repo...}"},
 		{"POST /import", "POST /api/v1/import"},
+		{"GET /filesets", "GET /api/v1/filesets"},
+		{"POST /filesets/pack", "POST /api/v1/filesets/pack"},
 		{"GET /tasks", "GET /api/v1/tasks"},
 		{"GET /recipes", "GET /api/v1/recipes"},
 		{"POST /recipes/sync", "POST /api/v1/sync"},
@@ -479,3 +493,17 @@ func TestRBACMatrixMirrorsUIFloors(t *testing.T) {
 		}
 	}
 }
+
+// rbacCatalog is the minimal inventory read surface the FR-048 rows need:
+// the matrix probes the gate, so an empty store is the whole fixture.
+type rbacCatalog struct{ st *store.Store }
+
+func (c rbacCatalog) Repositories(ctx context.Context) ([]string, error) {
+	return c.st.Repositories(ctx)
+}
+
+func (c rbacCatalog) Tags(ctx context.Context, repo string) ([]string, error) {
+	return c.st.Tags(ctx, repo)
+}
+
+func (c rbacCatalog) Provenance(string) string { return fileserve.FromSeed }
