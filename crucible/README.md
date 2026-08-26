@@ -41,7 +41,8 @@ crucible/
     ├── m1/run.sh     # milestone-1 reduced scenario
     ├── m2/run.sh     # milestone-2 secure journey
     ├── m3/run.sh     # milestone-3 recipe engine
-    └── m4/run.sh     # milestone-4 passthrough / promotion
+    ├── m4/run.sh     # milestone-4 passthrough / promotion
+    └── m5/run.sh     # milestone-5 mirror & air-gap
 ```
 
 Everything lives in the dedicated Incus project `tobby-crucible`; the host's
@@ -135,3 +136,44 @@ rather than pulled: the crucible installs nothing at scenario time, and a
 proxy of our own doubles as a witness — it logs every destination it was
 asked to reach, so "the traffic went through the proxy" is observed
 rather than assumed.
+
+### m5 — mirror & air-gap
+
+The complete rehearsal of a physical transfer, with the medium a real
+detachable block device and the damage inflicted between the two halves
+of the trip:
+
+1. Pre-flight refuses an undersized medium **before any transfer**,
+   stating the shortfall, with nothing written (FR-055); a real FAT32
+   volume is positively identified with its 4 GiB per-file ceiling. The
+   refusal on that ceiling is exercised by execution in the Go suite —
+   filling 4 GiB on a crucible node costs more than it proves — so what
+   the node adds here is that the filesystem is recognised at all.
+2. The mirror synchronization is triggered by hand, and the absence of an
+   automatic one is **asserted rather than assumed** (FR-014).
+3. Prune to the Retriever runs **before** the manifest is written, so the
+   inventory describes what the medium finally holds (FR-045, FR-054); a
+   manually packed FileSet survives it, and the medium keeps its
+   identifier across synchronizations (R-28).
+4. A credentials file planted under the store makes the instance refuse to
+   start, naming the path (NFR-020).
+5. One blob of one delivery is truncated, then the device is detached and
+   re-attached to the air-gapped node — real block-device semantics.
+6. Before verification, `/v2/` and `/files/` serve **nothing**, and
+   `/readyz` still answers 200 with the reason (FR-054's third clause).
+7. A medium addressed to another zone is blocked; the administrator waiver
+   clears it and is recorded (FR-054, FR-094).
+8. **R-19 exercised as arbitrated**: the damaged delivery is blocked whole
+   and named with its offending file, its intact neighbour is pushed. Two
+   deliveries on one medium is why this scenario carries two recipes.
+9. The cleared delivery lands in the zone registry and its cookbook, and a
+   standard OCI client **inside the isolated zone** pulls it back.
+10. The return log is on the medium, outside the manifest's coverage
+    (FR-053, FR-054).
+11. Re-presenting the same medium is refused, both timestamps named (R-28).
+12. `skopeo` — the tool, not a library standing in for it — reads the
+    exported OCI image layout (FR-051).
+13. `/help` answers offline in both languages (R-05); a directory packed
+    inside the zone is served under `/files/`, which still accepts no
+    write method (R-41, FR-047); a reset without the exact typed
+    confirmation is refused (FR-046).
