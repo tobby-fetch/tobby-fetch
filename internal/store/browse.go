@@ -327,11 +327,27 @@ func (s *Store) Counts(ctx context.Context) (Counts, error) {
 		}
 		c.Tags += len(tags)
 	}
-	c.PhysicalBytes, err = dirSize(filepath.Join(s.root, "docker", "registry", "v2", "blobs"))
+	c.PhysicalBytes, err = s.PhysicalBytes()
 	if err != nil {
-		return c, fmt.Errorf("store: sizing blob directory: %w", err)
+		return c, err
 	}
 	return c, nil
+}
+
+// PhysicalBytes is the on-disk size of the blob directory: real,
+// deduplicated bytes.
+//
+// It is exposed on its own — Counts already returns it — because the
+// FR-055 pre-flight needs exactly this number and nothing else Counts
+// computes. Counts walks every repository and every tag to produce its
+// two counters, which on a large store is minutes of directory listings
+// for a figure the projected-size arithmetic does not use.
+func (s *Store) PhysicalBytes() (int64, error) {
+	n, err := dirSize(filepath.Join(s.root, "docker", "registry", "v2", "blobs"))
+	if err != nil {
+		return 0, fmt.Errorf("store: sizing blob directory: %w", err)
+	}
+	return n, nil
 }
 
 // BrowsePageSize is the server-side page size of the repository listing

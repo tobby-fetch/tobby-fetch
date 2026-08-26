@@ -251,6 +251,18 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	eng := engine.New(st, remotes, trust, cfg.Retriever.Source, cfg.Storage.BasePrefix, cfg.Sync)
+	// The FR-055 pre-flight: the safety margin, and the explicit opt-out
+	// that turns the gate into a report. The opt-out is announced at
+	// startup like every other removed safety (FR-075) — an instance that
+	// will start a transfer it cannot finish must say so before it does,
+	// not in the task that fails.
+	eng.SetPreflight(string(cfg.Mode), cfg.Preflight)
+	if cfg.Preflight.Disabled {
+		logger.LogAttrs(ctx, slog.LevelWarn, "pre-flight gate disabled",
+			slog.String("setting", "preflight.disabled"),
+			slog.String("effect", "volumes and filesystem verdicts are still reported; they no longer refuse a synchronization"),
+			slog.String("requirement", "FR-055/FR-075"))
+	}
 	eng.SetMeters(engine.Meters{
 		TransferStarted: reg.SyncInflight.Inc,
 		TransferDone:    reg.SyncInflight.Dec,
@@ -363,6 +375,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Interval:          interval,
 	})
 	api.RegisterPublish(restAPI, publisher)
+	api.RegisterPlan(restAPI, &api.PlanOptions{Planner: eng.Planner()})
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{
 		Cert:     serverCert,
 		CertFile: cfg.Server.TLS.CertFile,
@@ -392,6 +405,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Cookbook:           destination.Cookbook(),
 		Interval:           interval,
 		Publisher:          publisher,
+		Planner:            eng.Planner(),
 		ServerCert:         serverCert,
 		Egress:             egress,
 	})
