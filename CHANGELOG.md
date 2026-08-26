@@ -10,6 +10,30 @@ starting with `v0.1.0`.
 
 ### Added
 
+- **Windows is a validated platform, not a compiled one** (NFR-018,
+  feature 5.6). `windows-latest` joins the CI test matrix and runs the
+  whole suite under the race detector, twice — until now Windows was
+  covered by cross-compilation alone, which checks that the code parses.
+  The UC2 journey is played end to end there: a mirror synchronization
+  produces a store, the store is carried to a path it has never occupied
+  (the transport, simulated by a directory copy — the real removable
+  device is the crucible's job), and a destination-side instance verifies
+  it and pushes its content with digests identical from one end to the
+  other. The runner also attaches a genuine FAT32 volume, so the FR-055
+  file-size pre-flight is exercised against the filesystem it exists for
+  rather than against a fixture, and the NFR-020 owner-only access list is
+  read back from the objects it was applied to. Two source files written
+  for Windows had been merged and released without ever executing; they
+  execute now. The supported feature matrix per operating system is
+  documented in *Reference → Supported platforms*, in English and French.
+- **winget and Scoop manifests for the Windows workstation**
+  (`packaging/winget/`, `packaging/scoop/`). Both describe the portable
+  release binary pinned by SHA-256, and the release workflow renders them
+  from this run's own `SHA256SUMS` and attaches them to the release.
+  Neither is published automatically: submitting to `microsoft/winget-pkgs`
+  is a reviewed human step, and the Scoop bucket repository does not exist
+  yet. The jobs say so, precisely, with the remaining manual steps.
+
 - **Operation on the isolated side of a physical transfer** (FR-052,
   feature 5.4). The same application, pointed at the transported store,
   now completes the journey the medium was prepared for: re-verification,
@@ -166,6 +190,62 @@ starting with `v0.1.0`.
   the state the screen polls.
 
 ### Fixed
+
+- **The embedded registry could not write anything on Windows** (B-023).
+  distribution's filesystem driver renames its temporary file over the
+  target and only then closes it, which Unix allows and Windows answers
+  with a sharing violation — and that path is how every manifest revision
+  link, every layer link and every tag is stored. Its listing also joined
+  keys with the platform separator, which the library's own parsers read
+  with the slash-only `path` package: repository enumeration came back
+  empty and the garbage collector marked nothing reachable. Both are
+  corrected by a driver that wraps the library's, on a single code path
+  that behaves identically everywhere rather than a Windows branch nobody
+  else would run.
+- **FileSet extraction validated paths against one separator** (B-025).
+  Entry names and symbolic-link targets were checked for `/` only, while
+  the packing side has refused `\` since FR-048. On Windows `..\..\evil`
+  and `C:\evil` therefore escaped the §14.5 refusal — containment held,
+  because every write goes through an `os.Root`, but the rejection never
+  fired, the depth limit miscounted and whiteout markers were materialized
+  as ordinary files. Worse for links: `os.Root` contains what is written,
+  never what a link points at, so a target the check waved through became
+  a real out-of-rootfs symlink left in the cache. The extractor now
+  refuses the same spellings the packer does, lexically, so a FileSet
+  accepted on the Linux side of a mirror cannot arrive at a Windows
+  destination carrying something that destination would have refused.
+- **A file server that could never let go of its cache** (B-024). Each
+  served FileSet held a directory handle for the process's life with no
+  way to release it — and that cache lives inside the transportable store,
+  so on Windows, where an open handle is what makes a volume refuse to
+  unmount, an instance that had served a single FileSet left the operator
+  unable to eject the medium they had just shut it down to carry away — and made an interrupted extraction unrepairable
+  while the instance ran. `fileserve.Server` now has `Close`, releases the
+  tree it is about to clear, and reports a purge it could not complete
+  instead of failing a synchronization that installed everything asked of
+  it.
+- **"The task is done" did not mean the queue had let go of its files**
+  (B-026). The task worker was fire-and-forget and the task's log handle
+  was released after the terminal status had been published, so a clean
+  shutdown could return while a file under the storage root was still
+  open — on a mirror workstation, that is an operator being told the
+  medium they are ejecting is in use. `Queue.Wait` now exists, `serve`
+  waits for the worker within the same grace period the listener drains
+  under, and the log is closed before the status is published.
+- **The "secrets never travel" guard was evadable by spelling** (B-027,
+  NFR-020). Containment is decided by `filepath.Rel`, which refuses to
+  relate paths whose volume names differ — so `\\?\C:\store\creds.json`
+  was not "under" `C:\store`, and the startup refusal that keeps a
+  credentials file off a medium handed to a courier did not fire. The
+  extended-length and device spellings are now normalized, and a
+  substituted drive or an administrative share is resolved by asking the
+  operating system which path the handle actually names.
+- Three smaller Windows defects: an operation-log path naming a volume was
+  refused with the platform's opaque errno instead of an actionable
+  message (B-028); a Retriever source such as `C:/config/retriever.yaml`
+  was dialled as a registry named `C:` (B-029); and FileSet names
+  differing only by case, by a trailing dot, or matching a DOS device name
+  collided on one cache directory, destroying served content (B-030).
 
 - **An unverified medium was served** (FR-054). "Destination-side
   verification SHALL precede any push, any **serving**, and any local

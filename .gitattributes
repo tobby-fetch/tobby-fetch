@@ -1,0 +1,29 @@
+# Line endings — the first thing Windows breaks (NFR-018).
+#
+# Git for Windows ships with core.autocrlf=true, and actions/checkout does
+# not override it. Without this file, a windows-latest runner checks out
+# every text file with CRLF: the go:embed corpus (help pages, templates,
+# translations) arrives two bytes longer per line, every golden comparison
+# in the suite fails on invisible characters, and `gofmt -l` reports the
+# whole tree. None of that is a Windows defect in the product — it is the
+# checkout lying about the bytes the repository holds.
+#
+# `text=auto eol=lf` normalizes to LF in the repository AND in the working
+# tree, on every platform. On Linux and macOS it is a no-op (autocrlf is
+# false or input there); on Windows it is what makes the checkout match
+# what the tests were written against.
+* text=auto eol=lf
+
+# Binary fixtures — never touched, never diffed as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.tar binary
+*.tgz binary
+*.gz binary
+*.zip binary
