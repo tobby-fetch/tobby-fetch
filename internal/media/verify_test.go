@@ -623,3 +623,21 @@ func TestReportSerializes(t *testing.T) {
 		}
 	}
 }
+
+// TestUnknownCodeRendersInsteadOfPanicking: a report that came back
+// through JSON is data, and a rendering surface must not take the process
+// down over a code it does not know.
+func TestUnknownCodeRendersInsteadOfPanicking(t *testing.T) {
+	b := media.Block{Code: "TBY-MED-999", Params: map[string]string{"path": "meta/media.json"}}
+	if m := taxonomy.Localize("en", b.Error()); m.What == "" {
+		t.Error("an unknown code rendered to nothing")
+	}
+	r := media.Reason{Code: "not-a-code"}
+	if m := taxonomy.Localize("fr", r.Error()); m.Action == "" {
+		t.Error("an unknown reason code rendered to nothing")
+	}
+	fd := media.Finding{Code: "", Path: "x"}
+	if m := taxonomy.Localize("en", fd.Error()); m.Cause == "" {
+		t.Error("an empty finding code rendered to nothing")
+	}
+}

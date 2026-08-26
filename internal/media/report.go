@@ -185,6 +185,14 @@ func (r Reason) Error() *taxonomy.Error  { return errorOf(r.Code, r.Params) }
 func (f Finding) Error() *taxonomy.Error { return errorOf(f.Code, f.Params) }
 
 func errorOf(code taxonomy.Code, params map[string]string) *taxonomy.Error {
+	if _, known := taxonomy.Lookup(code); !known {
+		// A report can come back through JSON — from an older instance, or
+		// from a hand-edited file. taxonomy.New panics on an unknown code,
+		// which is right for a programming error and wrong for data: a
+		// rendering surface must not take the process down over a string
+		// it was handed.
+		return taxonomy.New(taxonomy.CodeInternal, nil)
+	}
 	p := make(taxonomy.Params, len(params))
 	for k, v := range params {
 		p[k] = v
