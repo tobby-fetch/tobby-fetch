@@ -33,6 +33,8 @@ var registeredRoutes = []string{
 	"DELETE /api/v1/content/{repo}",
 	"GET /api/v1/content/{repo}",
 	"GET /api/v1/content/{repo}/-/tags/{tag}",
+	"GET /api/v1/filesets",
+	"POST /api/v1/filesets/pack",
 	"POST /api/v1/import",
 	"POST /api/v1/oci-layout/export",
 	"POST /api/v1/oci-layout/import",

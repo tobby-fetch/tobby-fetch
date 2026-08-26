@@ -48,6 +48,8 @@ possible at all.
 | `GET /tasks`, `GET /tasks/{id}`, `GET /tasks/badge` | viewer | |
 | `GET /content`, `GET /content/{repo…}` | viewer | |
 | `POST /content/{repo…}/-/delete` | admin | Removal of unit-imported content (FR-044 amendment). |
+| `GET /filesets` | viewer | The FileSet inventory: what is held and what is served (FR-047). |
+| `POST /filesets/pack` | admin | Packing a directory of the host into a FileSet (FR-048): it reads the host filesystem and puts unsigned content in the store. Confined to `files.packRoots` on top of the role. |
 | `GET /import` | operator | Importing is an operator action (FR-023). |
 | `POST /import` | operator | |
 | `GET /recipes`, `GET /recipes/{recipe}/mapping` | viewer | |
@@ -96,6 +98,8 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `GET /api/v1/content` | viewer | `GET /content` |
 | `GET /api/v1/content/{repo…}` | viewer | `GET /content/{repo…}` |
 | `DELETE /api/v1/content/{repo…}` | admin | `POST /content/{repo…}/-/delete` |
+| `GET /api/v1/filesets` | viewer | `GET /filesets` |
+| `POST /api/v1/filesets/pack` | admin | `POST /filesets/pack` |
 | `POST /api/v1/import` | operator | `POST /import` |
 | `GET /api/v1/import/inspect` | operator | The import screen's inspection step |
 | `GET /api/v1/tasks`, `/{id}`, `/{id}/logs` | viewer | `GET /tasks…` |

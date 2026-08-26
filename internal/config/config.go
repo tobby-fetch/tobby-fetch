@@ -226,6 +226,16 @@ type TrustScope struct {
 // configuration file only.
 type Files struct {
 	FileSets []FileSetServe `yaml:"filesets,omitempty"`
+	// PackRoots confines operator FileSet packing (FR-048) as reached
+	// from the web interface and the API: those surfaces may pack a
+	// directory only if it sits under one of these absolute paths. The
+	// default — no entry — refuses every path, because reading an
+	// arbitrary host directory on request is a capability an instance
+	// should be given, not one it should have (FR-075: security-reducing
+	// settings are always explicit opt-in). `tobby fileset pack` on the
+	// host is unaffected: whoever runs it already holds the filesystem's
+	// own rights. List-valued: configuration file only.
+	PackRoots []string `yaml:"packRoots,omitempty"`
 }
 
 // FileSetServe enables one verified FileSet under /files/<name>/.
@@ -555,11 +565,12 @@ const (
 	// ScopeState validates only what state-directory commands need:
 	// everything set must be coherent, but no mode is required.
 	ScopeState
-	// ScopeStorage validates what store-facing commands need (`tobby
-	// export`, `tobby import`, FR-051): the storage root and its
-	// separation from the state directory. No mode is required — reading
-	// a store out to an image layout says nothing about how this host
-	// serves.
+	// ScopeStorage validates what store-directory commands need (`tobby
+	// export`, `tobby import` — FR-051 — and `tobby fileset pack` —
+	// FR-048): the store root, its relocation base prefix, and its
+	// separation from the state directory. Like ScopeState it requires no
+	// mode: reading a store out to an image layout, or writing a packed
+	// FileSet into it, says nothing about how this host serves.
 	ScopeStorage
 	// ScopeRegistries validates what registry-facing commands need
 	// (`tobby recipe push`, R-36): credentials and per-host insecure
@@ -648,6 +659,9 @@ func (c *Config) validate(scope Scope) error {
 	}
 	if time.Duration(c.Import.InspectTimeout) <= 0 {
 		errs = append(errs, errors.New("import.inspectTimeout must be positive"))
+	}
+	if c.Storage.Root == "" && scope == ScopeStorage {
+		errs = append(errs, fmt.Errorf("storage.root is required: set --storage-root, %s, or \"storage.root:\" in the configuration file", EnvStorageRoot))
 	}
 	if err := disjointRoots(c.State.Root, c.Storage.Root); err != nil {
 		errs = append(errs, err)
@@ -889,6 +903,15 @@ func (c *Config) validateFiles() []error {
 		names[f.Name] = true
 		if f.Ref == "" {
 			errs = append(errs, fmt.Errorf("files.filesets[%d] (%s): ref is required", i, f.Name))
+		}
+	}
+	for i, root := range c.Files.PackRoots {
+		// Relative here would resolve against the working directory of
+		// whoever started the instance — a different answer under systemd,
+		// under a container and in a shell, for a setting whose whole job
+		// is to bound what the remote surfaces can read.
+		if root == "" || !filepath.IsAbs(root) {
+			errs = append(errs, fmt.Errorf("files.packRoots[%d]: %q must be an absolute path", i, root))
 		}
 	}
 	return errs

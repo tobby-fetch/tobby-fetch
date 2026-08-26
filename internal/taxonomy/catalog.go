@@ -141,6 +141,27 @@ const (
 	// limit (FR-035). Reserved: emitter lands at milestone 3.
 	CodeDestinationLimit Code = "TBY-DST-001"
 
+	// CodePackInput is a FileSet packing request Tobby cannot act on
+	// (FR-048): a source that is not a readable directory, a directory
+	// with nothing in it, an unusable FileSet name or version, or a tree
+	// that changed while it was being packed. About the request, not
+	// about the safety of its content.
+	CodePackInput Code = "TBY-FIL-001"
+	// CodePackUnsafe is a local file tree carrying an entry the FileSet
+	// extraction rules refuse (RECIPE-SPEC §14.5, NFR-011): a symbolic
+	// link escaping the root, a setuid bit, a device node, a name the
+	// layer format reads as a whiteout, or a tree beyond the extraction
+	// limits. Refused at packing time, where the operator can still fix
+	// the tree, rather than admitted into a FileSet that fails to
+	// extract later.
+	CodePackUnsafe Code = "TBY-FIL-002"
+	// CodePackNotAllowed is a packing request from the API or the UI
+	// naming a directory outside the configured pack roots (FR-048,
+	// FR-075). Nothing is wrong with the tree: these surfaces reach the
+	// host filesystem only where the configuration says they may, and no
+	// root configured means none.
+	CodePackNotAllowed Code = "TBY-FIL-003"
+
 	// CodeChartDependency is a Helm chart whose declared dependency is not
 	// embedded in the package (FR-024): unusable offline, the import fails
 	// naming the missing dependency.
@@ -327,6 +348,12 @@ var catalog = map[Code]Entry{
 	CodeDestinationLimit: {Code: CodeDestinationLimit, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "limit"}},
 
 	CodeChartDependency: {Code: CodeChartDependency, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"chart", "dependency"}},
+
+	// 422 for both packing refusals: the instance is perfectly able to
+	// serve — what it refuses is the tree it was pointed at.
+	CodePackInput:      {Code: CodePackInput, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"detail"}},
+	CodePackUnsafe:     {Code: CodePackUnsafe, Class: ClassPolicy, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"detail"}},
+	CodePackNotAllowed: {Code: CodePackNotAllowed, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"path"}},
 
 	CodeStoreRead:   {Code: CodeStoreRead, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
 	CodeStoreWrite:  {Code: CodeStoreWrite, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},

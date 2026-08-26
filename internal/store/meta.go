@@ -126,9 +126,25 @@ const (
 	ProvenanceSeed       ProvenanceClass = "seed"
 )
 
+// ProvenanceOrigin refines a class for content that entered by a local
+// operation rather than over the network.
+type ProvenanceOrigin string
+
+// OriginLocalPack marks a FileSet packed on this host from a local file
+// tree (FR-048). It is a unit import — FR-045 never prunes it, the
+// FR-044 amendment makes it individually removable — but one that came
+// from nowhere: no source registry, no signature (ADR-0007: Tobby signs
+// nothing), no Retriever entry to bring it back. FR-048 requires it to
+// be distinguishable from a Recipe-delivered FileSet in listings and
+// reports, and this is the field that distinguishes it.
+const OriginLocalPack ProvenanceOrigin = "local-pack"
+
 // Provenance is the recorded origin of one repository.
 type Provenance struct {
 	Class ProvenanceClass `json:"class"`
+	// Origin refines the class; empty for everything that arrived over
+	// the network.
+	Origin ProvenanceOrigin `json:"origin,omitempty"`
 	// Recipe and RecipeVersion identify the managing recipe for
 	// recipe-managed content.
 	Recipe        string `json:"recipe,omitempty"`
@@ -215,6 +231,15 @@ func (s *Store) SetProvenance(repo string, p *Provenance) error {
 	}
 	f.Repositories[repo] = entry
 	return writeJSON(filepath.Join(s.root, "meta", "provenance.json"), f)
+}
+
+// MarkManualImport records repo as a FileSet packed on this host from a
+// local file tree (FR-048). It is a unit import — FR-045 never prunes
+// one, and the FR-044 amendment keeps it individually removable — of
+// local origin, which is what listings show to tell it apart from a
+// Recipe-delivered FileSet.
+func (s *Store) MarkManualImport(repo string) error {
+	return s.SetProvenance(repo, &Provenance{Class: ProvenanceUnitImport, Origin: OriginLocalPack})
 }
 
 // ProvenanceOf returns the recorded origin of repo. Absence means seeded

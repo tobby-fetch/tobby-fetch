@@ -19,6 +19,7 @@ import (
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/help"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -50,6 +51,7 @@ var pageFiles = []string{
 	"content-repo",
 	"dashboard",
 	"error",
+	"filesets",
 	"help",
 	"help-page",
 	"import",
@@ -66,6 +68,22 @@ var pageFiles = []string{
 // (hx-history="false" stamped on <main>): screens that may carry a secret
 // (ADR-0015 §5). Belt over the global historyCacheSize:0 — the attribute
 // survives a configuration regression.
+// provenanceClass picks the badge modifier of one inventory provenance.
+// A manual import borrows the "outdated" amber rather than a colour of
+// its own: it is the one class that carries a caveat — unsigned, of local
+// origin — and amber is already what this design system uses to say
+// "look at this one".
+func provenanceClass(provenance string) string {
+	switch provenance {
+	case fileserve.FromRecipe:
+		return "recipe"
+	case fileserve.FromManualImport:
+		return "outdated"
+	default:
+		return "solid"
+	}
+}
+
 var noHistoryPages = map[string]bool{"admin-accounts": true, "account": true}
 
 // parseTemplates builds one template set per page: layout + partials +
@@ -76,6 +94,12 @@ func parseTemplates() map[string]*template.Template {
 		// kindClass maps a kind onto its badge modifier (UI-SPEC §7: five
 		// pills, never translated).
 		"kindClass": kindClass,
+		// provenanceClass maps a FileSet inventory provenance onto a badge
+		// modifier (FR-048: a manual import must be distinguishable at a
+		// glance from a Recipe-delivered FileSet).
+		"provenanceClass": provenanceClass,
+		// join renders a version list as one comma-separated cell.
+		"join": func(v []string) string { return strings.Join(v, ", ") },
 		// withErr rebinds the frozen error-block partial onto another error
 		// (per-item task failures): same View context, substituted Err.
 		"withErr": func(v *View, e *ErrView) *View {

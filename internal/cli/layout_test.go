@@ -119,7 +119,7 @@ func TestExportDryRunWritesNothingAndReportsTheProjection(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "payload.tar")
 
-	stdout, err := runSplit(t, "export", "--storage-root", source, "--output", out, "--dry-run", "--json")
+	stdout, _, err := runSplit(t, "export", "--storage-root", source, "--output", out, "--dry-run", "--json")
 	if err != nil {
 		t.Fatalf("dry run: %v", err)
 	}
@@ -176,20 +176,6 @@ func TestImportRefusesAHostileArchive(t *testing.T) {
 	if code := taxonomyCode(t, err); code != taxonomy.CodeLayoutUnsafe {
 		t.Errorf("code = %s, want %s", code, taxonomy.CodeLayoutUnsafe)
 	}
-}
-
-// runSplit executes the CLI keeping the two streams apart: machine
-// output lands on stdout, human feedback and structured logs on stderr
-// (B-010), and a test that merged them would not be checking that.
-func runSplit(t *testing.T, args ...string) (stdout string, err error) {
-	t.Helper()
-	root := New()
-	var out, errOut bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&errOut)
-	root.SetArgs(args)
-	err = root.Execute()
-	return out.String(), err
 }
 
 func taxonomyCode(t *testing.T, err error) taxonomy.Code {

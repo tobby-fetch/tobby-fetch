@@ -29,6 +29,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 )
 
@@ -435,6 +436,28 @@ func TestResolveFileSetsReportsEveryFailureAndKeepsTheRest(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "fileset debs") {
 		t.Errorf("the healthy FileSet was reported as failing: %v", err)
+	}
+}
+
+// TestSyncFileSetsServesWhatResolvedDespiteAFailure: one declaration
+// waiting for its content must not keep every other FileSet — packed ones
+// included (FR-048) — out of /files/. The refresh used to abandon the
+// whole Sync on the joined error, which resolveFileSets already documents
+// as not being an instance failure.
+func TestSyncFileSetsServesWhatResolvedDespiteAFailure(t *testing.T) {
+	st := openFileSetStore(t)
+	pushImages(t, st, "1.0.0")
+	fsrv := fileserve.NewServer(storeBlobs{st: st}, t.TempDir(), fileserve.Limits{}, slog.New(slog.DiscardHandler))
+
+	cfg := fileSetConfig(
+		config.FileSetServe{Name: "not-synced-yet", Ref: "registry.example.com/filesets/absent"},
+		config.FileSetServe{Name: "debs", Ref: fileSetRef},
+	)
+	syncFileSets(context.Background(), fsrv, st, cfg, slog.New(slog.DiscardHandler))
+
+	enabled := fsrv.Enabled()
+	if len(enabled) != 1 || enabled[0].Name != "debs" {
+		t.Fatalf("serving %+v, want the one FileSet whose content is present", enabled)
 	}
 }
 

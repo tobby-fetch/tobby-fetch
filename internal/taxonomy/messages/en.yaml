@@ -139,6 +139,18 @@
 "TBY-CHT-001.cause": "{{.chart}} declares the dependency {{.dependency}} but does not embed it under charts/ — it cannot deploy offline."
 "TBY-CHT-001.action": "Repackage the chart with its dependencies embedded (helm dependency build, then helm package), publish it, and retry the import."
 
+"TBY-FIL-001.what": "The file set could not be packed."
+"TBY-FIL-001.cause": "{{.detail}}"
+"TBY-FIL-001.action": "Point `tobby fileset pack` at an existing, non-empty directory, and give the file set a lowercase name and a version (for example `tobby fileset pack ./repo site-docs:1.0.0`). Nothing was written to the store."
+
+"TBY-FIL-002.what": "The directory holds an entry that cannot be packed safely."
+"TBY-FIL-002.cause": "{{.detail}}"
+"TBY-FIL-002.action": "Remove or replace that entry, then pack again — a file set is extracted and served on other machines, so symbolic links must stay inside the directory, special files and setuid bits are not carried, and names must not start with `.wh.`. Nothing was written to the store."
+
+"TBY-FIL-003.what": "Packing that directory is not allowed from this surface."
+"TBY-FIL-003.cause": "{{.path}} is outside the directories `files.packRoots` allows the web interface and the API to read; with no entry configured, they may read none."
+"TBY-FIL-003.action": "Either run `tobby fileset pack` on the instance host, which is not restricted, or add the directory to `files.packRoots` in the configuration file and restart the instance."
+
 "TBY-STO-001.what": "The local store could not be read."
 "TBY-STO-001.cause": "{{.detail}}"
 "TBY-STO-001.action": "Check that the storage root exists, is mounted, and is readable by the instance, then retry."

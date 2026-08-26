@@ -327,16 +327,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// served read-only under /files/. Refreshed after every sync.
 	fsrv := fileserve.NewServer(storeBlobs{st: st}, filepath.Join(cfg.Storage.Root, "meta", "fileserve"), fileserve.Limits{}, logger)
 	refreshFileSets := func(runCtx context.Context) {
-		sets, err := resolveFileSets(runCtx, st, cfg)
-		if err != nil {
-			logger.LogAttrs(runCtx, slog.LevelWarn, "fileset resolution failed",
-				slog.String("error", err.Error()))
-			return
-		}
-		if err := fsrv.Sync(runCtx, sets); err != nil {
-			logger.LogAttrs(runCtx, slog.LevelWarn, "fileset extraction failed",
-				slog.String("error", err.Error()))
-		}
+		syncFileSets(runCtx, fsrv, st, cfg, logger)
 	}
 	refreshFileSets(ctx)
 	queue.Register(tasks.TypeSync, func(runCtx context.Context, t *tasks.Task, taskLogger *slog.Logger, save func()) error {
@@ -383,6 +374,22 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	srv.Handle(fileserve.RoutePrefix, filesAuth(authn, anonymous, fsrv.Handler()))
 
+	// The FileSets surface (FR-047 inventory, FR-048 packing), shared by
+	// the screen and the endpoints so the two give one answer (FR-061).
+	// The packer is confined to files.packRoots: reaching a directory of
+	// the host over the network takes a configuration entry, not just an
+	// administrator session, and no entry means no directory (FR-075).
+	// `tobby fileset pack` on the host builds its own, unconfined.
+	fileSets := &fileserve.Surface{
+		Catalog: storeCatalog{st: st},
+		Packer: fileserve.NewPacker(st, cfg.Storage.BasePrefix, logger,
+			fileserve.WithPackRoots(cfg.Files.PackRoots)),
+		Served:      fsrv.Enabled,
+		Declared:    declaredFileSets(cfg),
+		BasePrefix:  cfg.Storage.BasePrefix,
+		PackEnabled: len(cfg.Files.PackRoots) > 0,
+	}
+
 	// The versioned REST API (FR-060), strict UI parity (FR-061). Content
 	// browsing reads the store through its accessors (FR-062), never the
 	// HTTP loopback.
@@ -414,6 +421,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Egress:   egress,
 	})
 	api.RegisterOCILayout(restAPI, interopSvc, queue)
+	api.RegisterFileSets(restAPI, fileSets)
 	api.RegisterOpenAPI(restAPI)
 	srv.Handle("/api/v1/", restAPI.Handler())
 
@@ -438,6 +446,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Interval:           interval,
 		Publisher:          publisher,
 		Planner:            eng.Planner(),
+		FileSets:           fileSets,
 		ServerCert:         serverCert,
 		Egress:             egress,
 		Interop:            interopSvc,
@@ -506,6 +515,54 @@ func syncTrigger(queue *tasks.Queue, source string, logger *slog.Logger) schedul
 	}
 }
 
+// declaredFileSets flattens the files.filesets configuration for the
+// FR-047/FR-048 inventory.
+func declaredFileSets(cfg *config.Config) []fileserve.Declared {
+	out := make([]fileserve.Declared, 0, len(cfg.Files.FileSets))
+	for _, f := range cfg.Files.FileSets {
+		out = append(out, fileserve.Declared{
+			Name: f.Name, Ref: f.Ref, Version: f.Version, Anonymous: f.Anonymous,
+		})
+	}
+	return out
+}
+
+// storeCatalog adapts the embedded store to the inventory read surface.
+// The provenance is flattened here rather than in fileserve, which stays
+// free of the store's types.
+type storeCatalog struct{ st *store.Store }
+
+func (c storeCatalog) Repositories(ctx context.Context) ([]string, error) {
+	return c.st.Repositories(ctx)
+}
+
+func (c storeCatalog) Tags(ctx context.Context, repo string) ([]string, error) {
+	return c.st.Tags(ctx, repo)
+}
+
+// Provenance mirrors the rule the content screens apply (ui/content.go):
+// the live recipe graph wins over the recorded ledger, and content with
+// no record at all was pushed through /v2/ by a standard client.
+func (c storeCatalog) Provenance(repo string) string {
+	if len(c.st.ManagingRecipes(repo)) > 0 {
+		return fileserve.FromRecipe
+	}
+	p, ok := c.st.ProvenanceOf(repo)
+	if !ok {
+		return fileserve.FromSeed
+	}
+	switch {
+	case p.Class == store.ProvenanceRecipe:
+		return fileserve.FromRecipe
+	case p.Origin == store.OriginLocalPack:
+		return fileserve.FromManualImport
+	case p.Class == store.ProvenanceUnitImport:
+		return fileserve.FromUnitImport
+	default:
+		return fileserve.FromSeed
+	}
+}
+
 // storeBlobs adapts the embedded store to the fileserve read surface.
 type storeBlobs struct{ st *store.Store }
 
@@ -556,6 +613,29 @@ func filesAuth(a *auth.Authenticator, anonymous map[string]bool, next http.Handl
 		}
 		next.ServeHTTP(w, r.WithContext(auth.WithIdentity(r.Context(), id)))
 	})
+}
+
+// syncFileSets resolves the declared FileSets and hands what resolved to
+// the server.
+//
+// A FileSet that did not resolve is reported and skipped, never fatal to
+// the others: resolveFileSets already documents that content which has
+// not arrived yet is not an instance failure, but the caller used to
+// abandon the whole refresh on the joined error — so one declaration
+// waiting for its recipe kept every other FileSet, packed ones included,
+// out of /files/. Found by running the FR-048 flow end to end against a
+// configuration declaring both a packed FileSet and one still to come.
+func syncFileSets(ctx context.Context, fsrv *fileserve.Server, st *store.Store, cfg *config.Config, logger *slog.Logger) {
+	sets, err := resolveFileSets(ctx, st, cfg)
+	if err != nil {
+		logger.LogAttrs(ctx, slog.LevelWarn, "fileset resolution failed",
+			slog.Int("resolved", len(sets)),
+			slog.String("error", err.Error()))
+	}
+	if err := fsrv.Sync(ctx, sets); err != nil {
+		logger.LogAttrs(ctx, slog.LevelWarn, "fileset extraction failed",
+			slog.String("error", err.Error()))
+	}
 }
 
 // resolveFileSets maps the files.filesets configuration onto concrete

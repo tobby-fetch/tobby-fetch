@@ -22,6 +22,13 @@
 // strict entry validation, and at serve time by opening every file
 // through an os.Root anchored on the extracted rootfs, so that even a
 // symlink planted inside the cache can never resolve outside it.
+//
+// The package also owns the other direction of the same contract:
+// operator FileSet packing (FR-048, pack.go) turns a local file tree
+// into a single-manifest FileSet image written straight into the store.
+// The two halves live together because they enforce one rule set — what
+// extraction refuses under §14.5, packing refuses first — and because a
+// packed FileSet has to be one this server can serve.
 package fileserve
 
 import (

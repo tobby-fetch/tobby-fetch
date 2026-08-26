@@ -144,10 +144,8 @@ func New() *cobra.Command {
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		return &usageError{err: err, hint: "see '" + cmd.CommandPath() + " --help'"}
 	})
-	root.AddCommand(newServeCmd(), newVersionCmd(), newConfigCmd(), newUserCmd(), newQuickstartCmd(), newRecipeCmd(), newSyncCmd())
-
-	root.AddCommand(newServeCmd(), newVersionCmd(), newConfigCmd(), newUserCmd(), newQuickstartCmd(), newRecipeCmd(),
-		newExportCmd(), newImportCmd())
+	root.AddCommand(newServeCmd(), newVersionCmd(), newConfigCmd(), newUserCmd(), newQuickstartCmd(),
+		newRecipeCmd(), newSyncCmd(), newExportCmd(), newImportCmd(), newFileSetCmd())
 	return root
 }
 

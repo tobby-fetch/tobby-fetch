@@ -138,6 +138,48 @@ paths:
                 $ref: "#/components/schemas/ContentManifest"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/filesets:
+    get:
+      summary: >-
+        List the FileSets this instance holds or declares for serving —
+        Recipe-delivered and manually packed alike, with their provenance
+        (FR-047, FR-048). Mirror of the /filesets screen. Role viewer.
+      responses:
+        "200":
+          description: The FileSet inventory.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileSetList"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/filesets/pack:
+    post:
+      summary: >-
+        Package a directory of the instance host as a single-manifest
+        FileSet image and import it into the store, pinned by digest
+        (FR-048). No file is uploaded: the request names a path, and the
+        path must sit under files.packRoots. The result is unsigned and
+        recorded as a manual import. Mirror of the /filesets screen form.
+        Role admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FileSetPackRequest"
+      responses:
+        "201":
+          description: The packed FileSet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fileset:
+                    $ref: "#/components/schemas/PackedFileSet"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v1/import:
     post:
       summary: >-
@@ -1653,6 +1695,119 @@ components:
               present:
                 type: boolean
                 description: False for a sparse-index entry absent locally.
+    FileSetList:
+      type: object
+      required: [filesets, packEnabled]
+      properties:
+        filesets:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileSet"
+        packEnabled:
+          type: boolean
+          description: >-
+            Whether files.packRoots names at least one directory. False
+            means this surface packs nothing: the answer is TBY-FIL-003
+            for every path (FR-075 — the capability is granted by
+            configuration, not by a session).
+    FileSet:
+      type: object
+      required: [name, reference, repository, versions, provenance, signed, declared, served, anonymous]
+      properties:
+        name:
+          type: string
+          description: The /files/<name>/ segment; empty when the FileSet is held but not declared for serving.
+        reference:
+          type: string
+          description: The nominal reference — the value of files.filesets[].ref.
+        repository:
+          type: string
+          description: Where the content sits in the store (relocated path, ADR-0013).
+        versions:
+          type: array
+          description: The tags held locally, ascending.
+          items:
+            type: string
+        version:
+          type: string
+          description: The tag the declaration pins, when it pins one.
+        digest:
+          type: string
+          description: The served image manifest; absent when the FileSet is not served.
+        provenance:
+          type: string
+          enum: [recipe, manual-import, unit-import, seed]
+          description: >-
+            How the content got here. "manual-import" is a FileSet packed
+            on this host (FR-048): unsigned, of local origin, and never
+            pruned (FR-045) because nothing would bring it back.
+        signed:
+          type: boolean
+          description: >-
+            False for a manual import, which can carry no signature —
+            Tobby holds no private key (ADR-0007).
+        declared:
+          type: boolean
+          description: Whether the FileSet appears in files.filesets.
+        served:
+          type: boolean
+          description: Whether the instance is serving it under /files/ right now.
+        anonymous:
+          type: boolean
+          description: Whether reads of it need no credentials (FR-047 opt-in).
+        url:
+          type: string
+          description: The base path it is served under; absent when it is not served.
+    FileSetPackRequest:
+      type: object
+      required: [source, name, version]
+      properties:
+        source:
+          type: string
+          description: >-
+            An absolute directory ON THE INSTANCE HOST. No file is
+            uploaded — FR-048 writes through the OCI import path only
+            (SRS §5.2) — and the path must sit under files.packRoots.
+        name:
+          type: string
+          description: >-
+            The FileSet name: one lowercase word, the last part of the
+            reference and the /files/<name>/ segment.
+        version:
+          type: string
+          description: The tag the packaged image carries.
+    PackedFileSet:
+      type: object
+      required: [name, reference, repository, version, digest, layerDigest, files, directories, symlinks, bytes, signed]
+      properties:
+        name:
+          type: string
+        reference:
+          type: string
+        repository:
+          type: string
+        version:
+          type: string
+        digest:
+          type: string
+          description: The pinned image manifest digest. Packing the same tree again yields this same digest.
+        layerDigest:
+          type: string
+          description: The uncompressed tar layer, which is also its diff_id.
+        files:
+          type: integer
+        directories:
+          type: integer
+        symlinks:
+          type: integer
+        bytes:
+          type: integer
+          format: int64
+        signed:
+          type: boolean
+          description: >-
+            Always false, and reported rather than omitted: a packed
+            FileSet can never be anything else (ADR-0007).
     ImportRequest:
       type: object
       required: [reference, platforms]

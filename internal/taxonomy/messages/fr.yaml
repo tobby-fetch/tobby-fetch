@@ -139,6 +139,18 @@
 "TBY-CHT-001.cause": "{{.chart}} déclare la dépendance {{.dependency}} mais ne l'embarque pas sous charts/ — il ne peut pas se déployer hors-ligne."
 "TBY-CHT-001.action": "Ré-empaquetez le chart avec ses dépendances embarquées (helm dependency build puis helm package), publiez-le, puis relancez l'import."
 
+"TBY-FIL-001.what": "L'ensemble de fichiers n'a pas pu être empaqueté."
+"TBY-FIL-001.cause": "{{.detail}}"
+"TBY-FIL-001.action": "Indiquez à `tobby fileset pack` un répertoire existant et non vide, et donnez à l'ensemble un nom en minuscules et une version (par exemple `tobby fileset pack ./repo site-docs:1.0.0`). Rien n'a été écrit dans le magasin."
+
+"TBY-FIL-002.what": "Le répertoire contient une entrée qui ne peut pas être empaquetée sans risque."
+"TBY-FIL-002.cause": "{{.detail}}"
+"TBY-FIL-002.action": "Supprimez ou remplacez cette entrée, puis empaquetez à nouveau : un ensemble de fichiers est extrait et servi sur d'autres machines, donc les liens symboliques doivent rester dans le répertoire, les fichiers spéciaux et les bits setuid ne sont pas transportés, et les noms ne doivent pas commencer par `.wh.`. Rien n'a été écrit dans le magasin."
+
+"TBY-FIL-003.what": "L'empaquetage de ce répertoire n'est pas autorisé depuis cette surface."
+"TBY-FIL-003.cause": "{{.path}} est en dehors des répertoires que `files.packRoots` autorise l'interface web et l'API à lire ; sans entrée configurée, elles n'en lisent aucun."
+"TBY-FIL-003.action": "Lancez `tobby fileset pack` sur l'hôte de l'instance, qui n'est pas restreint, ou ajoutez le répertoire à `files.packRoots` dans le fichier de configuration puis redémarrez l'instance."
+
 "TBY-STO-001.what": "Le store local n'a pas pu être lu."
 "TBY-STO-001.cause": "{{.detail}}"
 "TBY-STO-001.action": "Vérifiez que le répertoire de stockage existe, est monté et lisible par l'instance, puis réessayez."
