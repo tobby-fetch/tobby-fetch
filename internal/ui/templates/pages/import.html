@@ -9,6 +9,7 @@
 <section class="t-import">
   <h1 class="t-page-title">{{.T "import.title"}}</h1>
   <p class="t-page-sub">{{.T "import.subtitle"}}</p>
+<p class="t-page-guide">{{template "help-cta" (withData . (.Guide "passthrough/one-off-import"))}}</p>
 
   <form class="t-import-form" method="get" action="/import"
         hx-get="/import" hx-push-url="true" hx-target="#inspect-zone" hx-swap="outerHTML"

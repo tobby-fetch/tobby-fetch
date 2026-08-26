@@ -111,6 +111,8 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "GET /admin/network", Floor: auth.RoleAdmin, Why: "reveals the instance's own TLS identity and its outbound path (FR-082, FR-080)", Method: "GET", Path: "/admin/network"},
 	{Pattern: "POST /admin/network/certificate", Floor: auth.RoleAdmin, Why: "decides what every client of this instance authenticates against (FR-082); audited as sensitive configuration (FR-094)", Method: "POST", Path: "/admin/network/certificate"},
 	{Pattern: "GET /help", Floor: auth.RoleViewer, Method: "GET", Path: "/help"},
+	{Pattern: "GET /help/{page...}", Floor: auth.RoleViewer, Why: "the embedded operations guides (NFR-003 amendment): readable by whoever operates the instance, and by nobody who has not signed in (R-01)", Method: "GET", Path: "/help/passthrough/operate"},
+	{Pattern: "GET /help/-/assets/{name}", Floor: auth.RoleViewer, Why: "the screenshots of those guides; same floor as the pages that show them", Method: "GET", Path: "/help/-/assets/no-such-shot.png"},
 	{Pattern: "GET /about", Floor: auth.RoleViewer, Method: "GET", Path: "/about"},
 	{Pattern: "GET /about/third-party", Floor: auth.RoleViewer, Method: "GET", Path: "/about/third-party"},
 	{Pattern: "GET /api-docs", Floor: auth.RoleViewer, Method: "GET", Path: "/api-docs"},

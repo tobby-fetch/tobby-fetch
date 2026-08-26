@@ -9,6 +9,7 @@
 <section class="t-account">
   <h1 class="t-page-title">{{.T "account.title"}}</h1>
   <p class="t-page-sub">{{.T "account.subtitle"}}</p>
+<p class="t-page-guide">{{template "help-cta" (withData . (.Guide "security/auth-rbac"))}}</p>
 
   <div class="t-card">
     <h2 class="t-kick">{{.T "account.profile_title"}}</h2>

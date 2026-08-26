@@ -19,6 +19,7 @@ import (
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/help"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 	"github.com/tobby-fetch/tobby-fetch/internal/ui/format"
@@ -48,6 +49,7 @@ var pageFiles = []string{
 	"dashboard",
 	"error",
 	"help",
+	"help-page",
 	"import",
 	"login",
 	"recipe-mapping",
@@ -181,6 +183,27 @@ func pairsToMap(pairs []any) map[string]any {
 		}
 	}
 	return m
+}
+
+// GuideLink is a screen's contextual pointer into the embedded
+// documentation (NFR-003, amendment 2026-08-11: "screens SHOULD link into
+// the relevant section contextually"). It is nil when the corpus carries
+// no such page, so a screen can never render a help link that leads
+// nowhere — the failure mode offline documentation exists to avoid.
+type GuideLink struct {
+	Href  string
+	Title string
+}
+
+// Guide resolves a corpus page key into a link labelled with the page's
+// own title, in the viewer's language. TestScreenGuidesExist walks the
+// templates and fails on a key the corpus does not carry.
+func (v *View) Guide(key string) *GuideLink {
+	pg, _, ok := help.Load().Lookup(v.lang, key)
+	if !ok {
+		return nil
+	}
+	return &GuideLink{Href: "/help/" + key, Title: pg.Title}
 }
 
 // Formatting helpers (package format: the single localization point).

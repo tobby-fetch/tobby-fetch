@@ -67,6 +67,7 @@ possible at all.
 | `GET /admin/network` | admin | Reveals this instance's own TLS identity and its outbound path (FR-082, FR-080, FR-081). |
 | `POST /admin/network/certificate` | admin | Replaces the listener's certificate — what every client of this instance authenticates against (FR-082). Audited as sensitive configuration (FR-094). |
 | `GET /help`, `GET /about`, `GET /about/third-party`, `GET /api-docs` | viewer | |
+| `GET /help/{page...}`, `GET /help/-/assets/{name}` | viewer | The operations guides embedded in the binary and their screenshots (NFR-003, amendment 2026-08-11). Readable by whoever operates the instance — and by nobody who has not signed in (R-01). |
 | anything else | viewer | The taxonomized 404 renders inside the authenticated shell (UI-SPEC §5.13). |
 
 Every mutating UI route additionally requires the session's anti-forgery

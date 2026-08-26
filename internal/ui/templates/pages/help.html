@@ -1,14 +1,38 @@
 {{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
-{{/* /help — troubleshooting stub auto-generated from the taxonomy catalog
-     (R-03, UI-SPEC §5.10): a summary of anchors, then one section per code
-     with the localized what/cause/action triptych. The section targeted by
-     the anchor is highlighted by CSS :target. */}}
+{{/* /help — the offline documentation home (R-05, UI-SPEC §5.10). Two
+     stacked halves: the navigation of the guides embedded in the binary
+     (NFR-003), then the troubleshooting index generated from the taxonomy
+     catalog — one anchored section per code, so every /help#<code> anchor
+     the product emits resolves against the catalog this binary carries.
+     The section targeted by the anchor is highlighted by CSS :target. */}}
 {{define "title"}}{{.T "help.title"}}{{end}}
 {{define "main"}}
 <section class="t-help">
   {{template "help-subnav" .}}
   <h1 class="t-page-title">{{.T "help.title"}}</h1>
   <p class="t-page-sub">{{.T "help.subtitle"}}</p>
+
+  <h2 class="t-help-h2" id="guides">{{.T "help.guides_title"}}</h2>
+  <p class="t-help-lead">{{.T "help.guides_sub"}}</p>
+  <div class="t-help-grid">
+    {{range .Data.Sections}}
+    <nav class="t-help-section" aria-labelledby="section-{{.ID}}">
+      <h3 id="section-{{.ID}}">{{$.T (printf "help.section.%s" .ID)}}</h3>
+      <ul>
+        {{range .Pages}}
+        <li>
+          <a href="/help/{{.Key}}">{{.Title}}</a>
+          {{if .BadgeText}}<span class="t-badge t-badge--doc-{{if eq .BadgeVariant "caution"}}partial{{else}}upcoming{{end}}">{{.BadgeText}}</span>{{end}}
+          {{if .Fallback}}<span class="t-help-fallback-tag" lang="en" title="{{$.T "help.fallback_short"}}">EN</span>{{end}}
+        </li>
+        {{end}}
+      </ul>
+    </nav>
+    {{end}}
+  </div>
+
+  <h2 class="t-help-h2" id="codes">{{.T "help.codes_title"}}</h2>
+  <p class="t-help-lead">{{.T "help.codes_sub"}}</p>
 
   <nav class="t-row t-help-toc" aria-label="{{.T "help.toc_label"}}">
     {{range .Data.Entries}}

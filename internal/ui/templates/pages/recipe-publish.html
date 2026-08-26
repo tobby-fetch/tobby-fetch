@@ -12,6 +12,7 @@
 <section>
   <h1 class="t-page-title">{{.T "publish.title"}}</h1>
   <p class="t-page-sub">{{.T "publish.subtitle"}}</p>
+<p class="t-page-guide">{{template "help-cta" (withData . (.Guide "recipes/write-and-publish"))}}</p>
 
   {{if .Err}}{{template "error-block" .}}{{end}}
 
