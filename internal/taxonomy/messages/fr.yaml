@@ -151,7 +151,6 @@
 "TBY-STO-002.cause": "{{.detail}}"
 "TBY-STO-002.action": "Vérifiez l'espace libre et les permissions du répertoire de stockage, puis relancez l'opération."
 
-<<<<<<< HEAD
 "TBY-MED-001.what": "Le support ne porte aucun manifeste de média."
 "TBY-MED-001.cause": "{{.path}} est absent — le store n'a pas été produit par une synchronisation miroir menée à son terme, ou la copie sur le support est partielle."
 "TBY-MED-001.action": "Recopiez le store depuis l'instance source, ou relancez la synchronisation miroir qui le produit. Rien ne peut être poussé depuis un support sans inventaire, et ce refus n'admet aucune dérogation."
@@ -215,7 +214,7 @@
 "TBY-MED-022.what": "Un fichier de tenue de registre du support ne correspond pas à son empreinte enregistrée."
 "TBY-MED-022.cause": "{{.path}} ne correspond pas à son entrée d'inventaire — la comptabilité interne du store a été modifiée après l'écriture du manifeste."
 "TBY-MED-022.action": "Rien n'est poussé depuis ce fichier, la vérification continue ; recopiez le store depuis l'instance source si vous ne l'avez pas modifié délibérément."
-=======
+
 "TBY-STO-004.what": "L'opération a été refusée avant de démarrer : la cible n'a pas assez d'espace libre."
 "TBY-STO-004.cause": "{{.path}} demande {{.needed}} octets et seuls {{.available}} sont utilisables — {{.free}} octets sont libres, moins la marge de sécurité de {{.margin}} %. Il manque {{.shortfall}} octets."
 "TBY-STO-004.action": "Libérez au moins {{.shortfall}} octets sur la cible, visez un volume plus grand, ou supprimez du contenu qui n'est plus référencé. N'abaissez preflight.safetyMarginPercent que si vous acceptez de remplir le volume."
@@ -223,7 +222,6 @@
 "TBY-STO-005.what": "Le système de fichiers de la cible ne peut pas contenir un fichier de cette taille."
 "TBY-STO-005.cause": "{{.path}} est formaté en {{.filesystem}}, dont le plus gros fichier possible fait {{.limit}} octets ; le transfert ({{.what}}) écrirait un fichier de {{.size}} octets."
 "TBY-STO-005.action": "Reformatez le support avec un système de fichiers sans cette limite (exFAT, NTFS, ext4, XFS), ou découpez le transfert pour qu'aucun fichier ne dépasse la limite."
->>>>>>> lot/preflight
 
 "TBY-TSK-001.what": "La tâche n'existe pas."
 "TBY-TSK-001.cause": "Aucune tâche d'identifiant {{.id}} sur cette instance — lien erroné, ou store réinitialisé."

@@ -151,7 +151,6 @@
 "TBY-STO-002.cause": "{{.detail}}"
 "TBY-STO-002.action": "Check free space and permissions on the storage root, then retry the operation."
 
-<<<<<<< HEAD
 "TBY-MED-001.what": "The medium carries no media manifest."
 "TBY-MED-001.cause": "{{.path}} is absent — the store was not produced by a completed mirror synchronization, or the copy onto the medium was partial."
 "TBY-MED-001.action": "Re-copy the store from the source instance, or re-run the mirror synchronization that produces it. Nothing can be pushed from a medium without an inventory, and this refusal has no override."
@@ -215,7 +214,7 @@
 "TBY-MED-022.what": "A bookkeeping file on the medium does not match its recorded digest."
 "TBY-MED-022.cause": "{{.path}} does not match its inventory entry — the store's own bookkeeping was altered after the manifest was written."
 "TBY-MED-022.action": "Nothing is pushed from this file, so verification continues; re-copy the store from the source instance if you did not alter it deliberately."
-=======
+
 "TBY-STO-004.what": "The operation was refused before it started: the target does not have enough free space."
 "TBY-STO-004.cause": "{{.path}} needs {{.needed}} bytes and only {{.available}} are usable — {{.free}} bytes are free, minus the {{.margin}} % safety margin. It is short by {{.shortfall}} bytes."
 "TBY-STO-004.action": "Free at least {{.shortfall}} bytes on the target, point the operation at a larger volume, or remove content that is no longer referenced. Lower preflight.safetyMarginPercent only if you accept filling the volume."
@@ -223,7 +222,6 @@
 "TBY-STO-005.what": "The target filesystem cannot hold a file this large."
 "TBY-STO-005.cause": "{{.path}} is formatted as {{.filesystem}}, whose largest single file is {{.limit}} bytes; the {{.what}} would write a file of {{.size}} bytes."
 "TBY-STO-005.action": "Reformat the medium with a filesystem that has no such limit (exFAT, NTFS, ext4, XFS), or split the transfer so that no single file exceeds the limit."
->>>>>>> lot/preflight
 
 "TBY-TSK-001.what": "The task does not exist."
 "TBY-TSK-001.cause": "No task with identifier {{.id}} on this instance — wrong link, or the store was reset."

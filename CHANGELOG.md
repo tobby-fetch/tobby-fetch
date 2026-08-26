@@ -10,7 +10,6 @@ starting with `v0.1.0`.
 
 ### Added
 
-<<<<<<< HEAD
 - **The documentation travels inside the binary** (R-05, NFR-003 amendment
   2026-08-11). The destination zone is cut off from the network by
   definition, so documentation that lives on a website is documentation the
@@ -30,7 +29,7 @@ starting with `v0.1.0`.
   nothing, in either language.
 - French translations of the whole *Connected zones (passthrough)* section
   (7 pages), on the website and in the binary alike.
-=======
+
 - Pre-flight checks before a mirror synchronization (public feature 5.2,
   FR-055). Tobby now computes, per recipe and in total, the bytes it would
   transfer — from the source manifests, deduplicated by digest, net of what
@@ -75,7 +74,6 @@ starting with `v0.1.0`.
   `5` changes planned, `3` refused by policy, `4` verification failed,
   `1` the plan could not complete. `--output json` emits the report itself,
   schema documented alongside the OpenAPI document.
->>>>>>> lot/preflight
 
 ## [0.4.2] - 2026-08-22
 

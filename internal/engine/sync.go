@@ -79,16 +79,13 @@ type Engine struct {
 	base    string
 	cfg     config.Sync
 	meters  Meters
-<<<<<<< HEAD
 	// media writes the transport medium's manifest at the end of a run
 	// (FR-054); nil outside mirror mode.
 	media MediaManifestWriter
-=======
 	// planner is the FR-055 pre-flight and the R-04 plan mode. It is
 	// built with the engine, from the same store, so there is no wiring
 	// step to forget and no nil to guard against on the gate path.
 	planner *Planner
->>>>>>> lot/preflight
 }
 
 // New assembles the engine.
