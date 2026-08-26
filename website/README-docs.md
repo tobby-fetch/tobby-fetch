@@ -65,9 +65,14 @@ sidebar:
 - Short sentences. The reader's vocabulary (an operator manages *zones*,
   *recipes*, *media* — not internal type names).
 - No superlatives, no marketing filler, no em-dash walls of adjectives.
-- Screenshots and diagrams come in a later pass: leave
-  `<!-- TODO: screenshot: … -->` or `<!-- TODO: diagram: … -->` markers
-  where they belong.
+- Diagrams are inline SVG following the shared visual language (reference:
+  the one in `docs/discover/why-tobby.md` — CSS-variable colors only,
+  amber-stroked Tobby boxes, per-diagram unique `<marker>` ids,
+  `role="img"` + `aria-label`). **No blank line inside an SVG block**:
+  markdown ends the raw-HTML block there and silently breaks the
+  rendering.
+- Screenshots follow the capture rig in the maintainers' notes; missing
+  ones are marked `<!-- TODO: screenshot: … -->` where they belong.
 
 ## Build
 
