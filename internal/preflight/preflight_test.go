@@ -339,23 +339,32 @@ func TestIsFileTooLarge(t *testing.T) {
 	}
 }
 
-// TestRealFAT32Volume runs the whole FR-055 file-size verdict against a
-// GENUINE FAT32 filesystem, created and mounted by the test.
+// realFAT32Mount answers with a mount point carrying a GENUINE FAT32
+// filesystem, or "" when this environment cannot produce one.
 //
-// The injected fixtures above prove the decision; this proves the
-// detector — that a real msdos volume is positively identified as one on
-// the platform this build runs on. It is macOS-only because hdiutil is
-// the one way to create and attach a filesystem image without
-// privileges: on Linux, mkfs.vfat plus a loop mount needs root, which a
-// test suite must not have. The Linux and Windows detectors are covered
-// by TestSystemInspectorOnTheRunningVolume and by the injected fixtures;
-// this is the extra assurance the platform makes cheap.
-func TestRealFAT32Volume(t *testing.T) {
+// Two providers, because the two platforms that can do it do it
+// differently and neither can do the other's:
+//
+//   - TOBBY_PREFLIGHT_FAT32_PATH, set by whoever attached the volume
+//     outside the test. On the Windows runner that is the CI step that
+//     builds a virtual disk with diskpart, formats it FAT32 and mounts it
+//     on a drive letter (NFR-018): formatting a volume is not something a
+//     test process should be doing to the machine it runs on, and doing
+//     it in the workflow keeps the failure legible when the runner image
+//     changes under us.
+//   - hdiutil on macOS, which creates and attaches a filesystem image
+//     without privileges. On Linux, mkfs.vfat plus a loop mount needs
+//     root, which a test suite must not have.
+func realFAT32Mount(t *testing.T) string {
+	t.Helper()
+	if mount := os.Getenv("TOBBY_PREFLIGHT_FAT32_PATH"); mount != "" {
+		return mount
+	}
 	if runtime.GOOS != "darwin" {
-		t.Skip("a FAT32 image can only be attached without privileges on darwin (hdiutil)")
+		return ""
 	}
 	if _, err := exec.LookPath("hdiutil"); err != nil {
-		t.Skip("hdiutil is not available")
+		return ""
 	}
 	dir := t.TempDir()
 	image := filepath.Join(dir, "fat32.dmg")
@@ -371,17 +380,49 @@ func TestRealFAT32Volume(t *testing.T) {
 	out, err := exec.Command("hdiutil", "create", "-quiet",
 		"-size", "16m", "-fs", "MS-DOS", "-volname", "TOBBYFAT", image).CombinedOutput()
 	if err != nil {
-		t.Skipf("hdiutil create failed (%v): %s", err, out)
+		t.Logf("hdiutil create failed (%v): %s", err, out)
+		return ""
 	}
 	//nolint:gosec // G204: same paths, same provenance
 	out, err = exec.Command("hdiutil", "attach", "-quiet", "-nobrowse", "-mountpoint", mount, image).CombinedOutput()
 	if err != nil {
-		t.Skipf("hdiutil attach failed (%v): %s", err, out)
+		t.Logf("hdiutil attach failed (%v): %s", err, out)
+		return ""
 	}
 	t.Cleanup(func() {
 		//nolint:gosec // G204: the mount point this test created
 		_ = exec.Command("hdiutil", "detach", "-quiet", "-force", mount).Run()
 	})
+	return mount
+}
+
+// TestRealFAT32Volume runs the whole FR-055 file-size verdict against a
+// GENUINE FAT32 filesystem.
+//
+// The injected fixtures above prove the decision; this proves the
+// DETECTOR — that a real FAT volume is positively identified as one by
+// the platform call this build makes. That distinction is the whole
+// reason the test exists: on Windows the identification comes from
+// GetVolumePathNameW plus GetVolumeInformationW, and a USB stick
+// formatted FAT32 on a Windows workstation is the exact case FR-055
+// refuses a > 4 GiB blob on. Until this test ran there, that code path
+// had been compiled and never executed.
+//
+// TOBBY_PREFLIGHT_REQUIRE_FAT32 turns "no FAT32 volume here" from a skip
+// into a failure. CI sets it on the runner that attaches one, which is
+// what stops the coverage from evaporating the day the attach step breaks
+// — a skipped detector test looks exactly like a passing one.
+func TestRealFAT32Volume(t *testing.T) {
+	mount := realFAT32Mount(t)
+	if mount == "" {
+		if os.Getenv("TOBBY_PREFLIGHT_REQUIRE_FAT32") != "" {
+			t.Fatal("TOBBY_PREFLIGHT_REQUIRE_FAT32 is set but no FAT32 volume was provided: " +
+				"set TOBBY_PREFLIGHT_FAT32_PATH to a mounted FAT32 filesystem")
+		}
+		t.Skipf("no FAT32 volume on %s: the real-volume identification of the %s detector "+
+			"is NOT covered by this run (the injected fixtures still cover the FR-055 decision); "+
+			"attach one and set TOBBY_PREFLIGHT_FAT32_PATH to exercise it", runtime.GOOS, runtime.GOOS)
+	}
 
 	fs, space, err := preflight.System.Inspect(mount)
 	if err != nil {

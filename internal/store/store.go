@@ -87,9 +87,13 @@ func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error)
 	}
 
 	cfg := &configuration.Configuration{}
+	// driverName, not "filesystem": the library's own driver renames an
+	// open file and joins listing keys with the platform separator, and
+	// neither survives Windows (driver.go, B-023). The corrected driver
+	// wraps it; the parameters are the library's.
 	cfg.Storage = configuration.Storage{
-		"filesystem": configuration.Parameters{"rootdirectory": root},
-		"delete":     configuration.Parameters{"enabled": true},
+		driverName: configuration.Parameters{"rootdirectory": root},
+		"delete":   configuration.Parameters{"enabled": true},
 	}
 	// The HTTP secret signs upload-session state. Ephemeral is fine for a
 	// single instance; generating it ourselves keeps the library from
@@ -114,7 +118,7 @@ func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error)
 	// Second access to the same backend for the browsing accessors
 	// (browse.go): the storage library over the same root directory as the
 	// app handlers — never the HTTP loopback (FR-062, package doc).
-	driver, err := factory.Create(ctx, "filesystem", configuration.Parameters{"rootdirectory": root})
+	driver, err := factory.Create(ctx, driverName, configuration.Parameters{"rootdirectory": root})
 	if err != nil {
 		return nil, fmt.Errorf("store: creating browse driver: %w", err)
 	}

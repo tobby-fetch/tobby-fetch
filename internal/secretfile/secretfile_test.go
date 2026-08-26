@@ -28,7 +28,7 @@ func permOf(t *testing.T, path string) os.FileMode {
 // owner read/write, nothing for group or others.
 func TestWriteCreatesOwnerOnly(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("permission bits do not carry the rule on Windows; the access list does")
+		t.Skip("permission bits do not carry the rule on Windows; the access list does — TestWriteCreatesAnOwnerOnlyAccessList and its siblings in secretfile_windows_test.go read it back")
 	}
 	path := filepath.Join(t.TempDir(), "nested", "secret.pem")
 	if err := Write(path, []byte("planted")); err != nil {
@@ -52,7 +52,7 @@ func TestWriteCreatesOwnerOnly(t *testing.T) {
 // for a public certificate and wrong for a key.
 func TestWriteNarrowsAnExistingLooseFile(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("permission bits do not carry the rule on Windows; the access list does")
+		t.Skip("permission bits do not carry the rule on Windows; the access list does — TestWriteCreatesAnOwnerOnlyAccessList and its siblings in secretfile_windows_test.go read it back")
 	}
 	path := filepath.Join(t.TempDir(), "secret.pem")
 	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil { //nolint:gosec // G306: deliberately loose — the fixture is the state Write must narrow
@@ -91,7 +91,7 @@ func TestWriteLeavesNoLooseTemporary(t *testing.T) {
 // package did not write.
 func TestHardenNarrowsAnExistingFile(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("permission bits do not carry the rule on Windows; the access list does")
+		t.Skip("permission bits do not carry the rule on Windows; the access list does — TestWriteCreatesAnOwnerOnlyAccessList and its siblings in secretfile_windows_test.go read it back")
 	}
 	path := filepath.Join(t.TempDir(), "secret.pem")
 	if err := os.WriteFile(path, []byte("x"), 0o666); err != nil { //nolint:gosec // G306: deliberately loose — the fixture is the state Harden must narrow
@@ -110,7 +110,7 @@ func TestHardenNarrowsAnExistingFile(t *testing.T) {
 // file modes are the only barrier left.
 func TestMkdirAllCreatesOwnerOnly(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("permission bits do not carry the rule on Windows; the access list does")
+		t.Skip("permission bits do not carry the rule on Windows; the access list does — TestWriteCreatesAnOwnerOnlyAccessList and its siblings in secretfile_windows_test.go read it back")
 	}
 	dir := filepath.Join(t.TempDir(), "state")
 	if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // G301: deliberately loose — the fixture is the state MkdirAll must narrow
@@ -142,12 +142,13 @@ func TestWriteReportsWhereItFailed(t *testing.T) {
 	})
 
 	t.Run("the directory is not writable", func(t *testing.T) {
-		if os.Getuid() == 0 {
-			t.Skip("root ignores permission bits")
-		}
 		ro := filepath.Join(dir, "read-only")
-		if err := os.Mkdir(ro, 0o500); err != nil {
+		if err := os.Mkdir(ro, DirMode); err != nil {
 			t.Fatal(err)
+		}
+		if !makeUnwritable(t, ro) {
+			t.Skip("this account can write anywhere (root, or an administrator holding SeRestorePrivilege): " +
+				"the refusal on an unwritable directory is NOT covered by this run")
 		}
 		target := filepath.Join(ro, "secret.pem")
 		err := Write(target, []byte("s"))

@@ -40,6 +40,8 @@ func TestMediaLogStaysOutsideManifestCoverage(t *testing.T) {
 		"/var/log/tobby.log",                     // outside the store entirely
 		"../escape.log",                          // ditto, relatively
 		`_tobby\logs\ops.log`,                    // a Windows separator (NFR-018)
+		"C:/logs/ops.log",                        // a drive designator (NFR-018)
+		"C:logs.txt",                             // ditto, drive-relative
 	} {
 		if _, err := medialog.Open(root, medialog.Options{Path: bad}); err == nil {
 			t.Errorf("Open(%q) succeeded; a media log must never live there", bad)

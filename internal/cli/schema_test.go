@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -206,7 +207,10 @@ spec:
 func planConfig(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	body := "mode: mirror\nstorage:\n  root: " + t.TempDir() +
+	// The store root is emitted as a quoted scalar: a Windows path is full
+	// of backslashes and a colon after the drive letter, none of which a
+	// plain YAML scalar is obliged to carry unchanged (NFR-018).
+	body := "mode: mirror\nstorage:\n  root: " + strconv.Quote(t.TempDir()) +
 		"\nregistries:\n  insecure: [\"127.0.0.1:1\"]\n"
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)

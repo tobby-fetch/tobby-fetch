@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -98,8 +99,12 @@ func tree(t *testing.T, files map[string]string) string {
 		}
 		mustMkdirAll(t, filepath.Dir(full))
 		if target, ok := strings.CutPrefix(content, "-> "); ok {
+			// Creating a symbolic link needs a privilege a Windows
+			// runner may not hold (NFR-018). Skip as the packing-root
+			// case at the bottom of this file already does, rather than
+			// fail a fixture the platform refuses to build.
 			if err := os.Symlink(filepath.FromSlash(target), full); err != nil {
-				t.Fatalf("symlink %s: %v", name, err)
+				t.Skipf("symlinks unavailable, the symlink cases of this tree are not covered: %v", err)
 			}
 			continue
 		}
@@ -168,7 +173,12 @@ func TestPackedTreeIsServedBackByTheFileSetServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lstat extracted file: %v", err)
 	}
-	if fi.Mode().Perm() != 0o400 {
+	// Windows has no POSIX permission bits: Chmod(0o400) there only sets
+	// the read-only attribute, Stat reports a synthetic 0444, and the
+	// packed header records that instead of 0400. The exact mode bits of
+	// a packed and re-extracted tree are therefore not observable on
+	// Windows (NFR-018); the rest of the round trip still is.
+	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o400 {
 		t.Fatalf("extracted mode = %o, want 400", fi.Mode().Perm())
 	}
 }
@@ -297,6 +307,10 @@ func TestPackRefusesUnsafeTrees(t *testing.T) {
 		name  string
 		files map[string]string
 		want  string
+		// windowsSkip, when set, is the reason the case cannot be built
+		// on Windows at all — the fixture the corpus needs is not a tree
+		// the platform can represent (NFR-018).
+		windowsSkip string
 	}{
 		{
 			name:  "absolute symlink",
@@ -319,13 +333,47 @@ func TestPackRefusesUnsafeTrees(t *testing.T) {
 			want:  "whiteout prefix",
 		},
 		{
+			// A directory named "C:" is legal on Linux and packs into an
+			// entry named "C:/…", which is an absolute path onto another
+			// volume on Windows. The extraction side refuses it
+			// (TestRejectsTraversalEntries "drive forward"); §14.5 wants
+			// the packer to refuse it first (B-025).
+			name:  "volume designator in a name",
+			files: map[string]string{"ok.txt": "x", "C:/evil.txt": "y"},
+			want:  "names a volume",
+			windowsSkip: "a colon cannot appear in a Windows path component, so this fixture cannot be built here; " +
+				"the same rule is exercised from the extraction side on every platform by " +
+				"TestRejectsTraversalEntries (\"drive forward\") in fileserve_test.go",
+		},
+		{
+			// filepath.IsAbs answers with the rules of the platform this
+			// binary was built for, so on Linux this target reads as an
+			// ordinary relative path. It is not one where the FileSet is
+			// extracted.
+			name:  "symlink to a Windows volume",
+			files: map[string]string{"ok.txt": "x", "escape": `-> C:/Windows/System32/config/SAM`},
+			want:  "absolute path",
+		},
+		{
+			name:  "symlink to a UNC share",
+			files: map[string]string{"ok.txt": "x", "escape": `-> \\attacker\share\payload`},
+			want:  "backslash",
+		},
+		{
 			name:  "backslash in a name",
 			files: map[string]string{`a\b.txt`: "x"},
 			want:  "backslash",
+			windowsSkip: "a backslash cannot appear in a Windows file name, so this fixture becomes the legal tree a/b.txt " +
+				"and checkEntryName's backslash rule is unreachable from the packing side here; " +
+				"the same rule is exercised from the extraction side on every platform by " +
+				"TestRejectsTraversalEntries (\"windows dotdot\" and \"unc share\") in fileserve_test.go",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if runtime.GOOS == "windows" && tc.windowsSkip != "" {
+				t.Skip(tc.windowsSkip)
+			}
 			st := newFakeStore()
 			_, err := NewPacker(st, "", discardLogger()).Pack(context.Background(),
 				PackRequest{Source: tree(t, tc.files), Name: "hostile", Version: "1.0.0"})
@@ -349,11 +397,15 @@ func TestPackRefusesUnsafeTrees(t *testing.T) {
 // honors — the refusal happens where the operator can still see it.
 func TestPackRefusesSetuidEntries(t *testing.T) {
 	src := tree(t, map[string]string{"tool": "binary"})
+	// This case needs the setuid bit to be SET on the fixture before Pack
+	// can be asked to refuse it. Windows never records or reports it, so
+	// the guard below always fires there (NFR-018) and the refusal cannot
+	// be exercised; the same is true of any filesystem mounted nosuid.
 	if err := os.Chmod(filepath.Join(src, "tool"), 0o755|os.ModeSetuid); err != nil {
-		t.Skipf("this filesystem does not keep the setuid bit: %v", err)
+		t.Skipf("the setuid bit cannot be set here, the §14.5 setuid refusal in Pack is not covered: %v", err)
 	}
 	if fi, err := os.Lstat(filepath.Join(src, "tool")); err != nil || fi.Mode()&os.ModeSetuid == 0 {
-		t.Skip("this filesystem does not keep the setuid bit")
+		t.Skip("the setuid bit is not reported here, the §14.5 setuid refusal in Pack is not covered")
 	}
 	_, err := NewPacker(newFakeStore(), "", discardLogger()).Pack(context.Background(),
 		PackRequest{Source: src, Name: "tools", Version: "1.0.0"})
@@ -371,11 +423,14 @@ func TestPackRefusesSpecialFiles(t *testing.T) {
 	sock := filepath.Join(src, "sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
-		t.Skipf("no unix socket available here: %v", err)
+		t.Skipf("no unix socket available here, the §14.5 special-file refusal in Pack is not covered: %v", err)
 	}
 	defer ln.Close() //nolint:errcheck // test listener
+	// Windows reports an AF_UNIX socket as an ordinary file rather than a
+	// special one (NFR-018), so the fixture this case needs does not exist
+	// there and the refusal cannot be exercised.
 	if fi, err := os.Lstat(sock); err != nil || fi.Mode()&os.ModeSocket == 0 {
-		t.Skip("this platform does not expose the socket as a special file")
+		t.Skip("this platform does not expose the socket as a special file, the §14.5 special-file refusal in Pack is not covered")
 	}
 
 	_, err = NewPacker(newFakeStore(), "", discardLogger()).Pack(context.Background(),

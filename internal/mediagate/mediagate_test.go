@@ -92,6 +92,12 @@ func newMedium(t *testing.T) *medium {
 	}
 
 	files := fileserve.NewServer(storeBlobs{st}, t.TempDir(), fileserve.Limits{}, logger)
+	// A served FileSet keeps an os.Root open on its extracted tree for the
+	// server's whole life, and on Windows an open handle is what stops a
+	// directory from being removed (NFR-018). Registering the close after
+	// the t.TempDir() call above makes LIFO cleanup release the handle
+	// before the temporary directory is torn down.
+	t.Cleanup(func() { _ = files.Close() })
 	if err := files.Sync(ctx, []fileserve.FileSet{{
 		Name: fileSetName, Repo: res.Repository, ManifestDigest: res.Digest,
 	}}); err != nil {

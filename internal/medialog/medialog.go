@@ -126,13 +126,26 @@ func Open(storeRoot string, opts Options) (*Writer, error) {
 }
 
 // checkPath refuses a configured path that would put the log where it
-// does not belong. Two refusals, both about the same thing: a path
-// escaping the store writes outside the medium entirely, and a path
-// inside manifest coverage invalidates the inventory (FR-054).
+// does not belong. Every refusal is about the same thing: a path escaping
+// the store writes outside the medium entirely, and a path inside
+// manifest coverage invalidates the inventory (FR-054).
+//
+// The shape guards are lexical, deliberately. A drive designator makes
+// "C:/logs/ops.log" absolute on Windows and an ordinary relative name
+// elsewhere, so filepath.IsAbs and filepath.VolumeName would judge the
+// same configured value differently depending on the build target — and a
+// validation that changes its mind with GOOS is the defect, not the fix.
+// The colon is therefore refused outright, exactly as the inventory path
+// validator refuses it for the same reason (NFR-018). Without it the
+// value survives every other guard here and fails much later inside
+// os.MkdirAll, with an opaque errno instead of the actionable refusal
+// FR-053 owes an operator who configured the path.
 func checkPath(rel string) error {
 	switch {
 	case strings.ContainsRune(rel, '\\'):
 		return fmt.Errorf("medialog: %q uses a backslash: the media log path is slash-separated on every platform (NFR-018)", rel)
+	case strings.ContainsRune(rel, ':'):
+		return fmt.Errorf("medialog: %q contains a colon: a drive or stream designator names a location outside the transported store (FR-053, NFR-018)", rel)
 	case path.IsAbs(rel):
 		return fmt.Errorf("medialog: %q is absolute: the media log lives inside the transported store (FR-053)", rel)
 	case path.Clean(rel) != rel:

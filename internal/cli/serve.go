@@ -658,6 +658,35 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 
 	runErr := srv.Run(ctx)
 
+	// The HTTP listener has drained; the task worker has not necessarily.
+	// Waiting for it is what makes "the instance stopped" true of the
+	// STORE and not only of the socket: until the worker returns, the
+	// running task's own log file is still open under the storage root
+	// (FR-053). On Unix nobody would notice — a file can be removed or a
+	// directory renamed out from under an open handle. On the mirror
+	// workstation NFR-018 puts in scope, that open handle is exactly what
+	// tells an operator the medium they are trying to eject is in use
+	// (B-026).
+	//
+	// Bounded by the same grace period the listener drains under, and for
+	// the same reason: a runner that does not honour cancellation must
+	// delay a shutdown, never prevent one. Expiring is reported, because
+	// an operator whose eject then fails deserves to have been told which
+	// task was still holding the store.
+	waitForWorker(ctx, queue, time.Duration(cfg.Shutdown.GracePeriod), logger)
+
+	// And the FileSet cache, for the same reason and with more force: it
+	// lives at <storage.root>/meta/fileserve, INSIDE the transportable
+	// store, and the server holds one directory handle per served FileSet
+	// for as long as it exists. On Windows an open handle is what makes a
+	// volume refuse to unmount — so an instance that had served a single
+	// FileSet left the operator unable to eject the medium they had just
+	// shut it down to carry away (B-024, NFR-018, FR-050).
+	if err := fsrv.Close(); err != nil {
+		logger.LogAttrs(ctx, slog.LevelWarn, "the fileset cache was not fully released",
+			slog.String("error", err.Error()))
+	}
+
 	outcome := audit.OutcomeSuccess
 	if runErr != nil {
 		outcome = audit.OutcomeFailure
@@ -670,6 +699,30 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Origin:  audit.OriginLocal,
 	})
 	return runErr
+}
+
+// waitForWorker blocks until the task worker has returned, or until the
+// grace period expires. See its call site for why the wait exists at all.
+func waitForWorker(ctx context.Context, queue *tasks.Queue, grace time.Duration, logger *slog.Logger) {
+	if grace <= 0 {
+		grace = 30 * time.Second
+	}
+	done := make(chan struct{})
+	go func() {
+		queue.Wait()
+		close(done)
+	}()
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+		logger.LogAttrs(ctx, slog.LevelWarn,
+			"the task worker did not stop within the grace period",
+			slog.Duration("grace_period", grace),
+			slog.String("consequence", "a task log under the storage root may still be open"),
+			slog.String("requirement", "FR-093"))
+	}
 }
 
 // syncTrigger builds the scheduler's cycle trigger: enqueue one sync of

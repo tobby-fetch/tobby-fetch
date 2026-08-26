@@ -107,6 +107,24 @@ func apiPackPost(t *testing.T, mux *http.ServeMux, user, pw, body string) *httpt
 	return w
 }
 
+// fsPackBody encodes a pack request. The body is marshalled rather than
+// assembled by hand because a source path is a filesystem path, and on
+// Windows (NFR-018) it carries backslashes: pasted into a JSON literal
+// the decoder reads C:\Users as the invalid escape \U and rejects the
+// request before the handler ever sees it.
+func fsPackBody(t *testing.T, source, name, version string) string {
+	t.Helper()
+	b, err := json.Marshal(map[string]string{
+		"source":  source,
+		"name":    name,
+		"version": version,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 // fsSourceTree writes a small tree under a root the caller can allow.
 func fsSourceTree(t *testing.T) (root, source string) {
 	t.Helper()
@@ -143,8 +161,7 @@ func TestFileSetPackEndpointMarksAManualImport(t *testing.T) {
 	root, source := fsSourceTree(t)
 	mux := newFileSetsAPI(t, root)
 
-	w := apiPackPost(t, mux, "alexis", "pw-admin",
-		`{"source":"`+source+`","name":"debs","version":"1.0.0"}`)
+	w := apiPackPost(t, mux, "alexis", "pw-admin", fsPackBody(t, source, "debs", "1.0.0"))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("pack = %d: %s", w.Code, w.Body.String())
 	}
@@ -211,8 +228,7 @@ func TestFileSetPackEndpointRefusals(t *testing.T) {
 
 	t.Run("no configured root refuses every path", func(t *testing.T) {
 		mux := newFileSetsAPI(t)
-		w := apiPackPost(t, mux, "alexis", "pw-admin",
-			`{"source":"`+source+`","name":"debs","version":"1.0.0"}`)
+		w := apiPackPost(t, mux, "alexis", "pw-admin", fsPackBody(t, source, "debs", "1.0.0"))
 		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "TBY-FIL-003") {
 			t.Fatalf("pack = %d, want 403 TBY-FIL-003: %s", w.Code, w.Body.String())
 		}
@@ -227,8 +243,7 @@ func TestFileSetPackEndpointRefusals(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = os.Remove(filepath.Join(source, "escape")) })
 		mux := newFileSetsAPI(t, root)
-		w := apiPackPost(t, mux, "alexis", "pw-admin",
-			`{"source":"`+source+`","name":"debs","version":"1.0.0"}`)
+		w := apiPackPost(t, mux, "alexis", "pw-admin", fsPackBody(t, source, "debs", "1.0.0"))
 		if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "TBY-FIL-002") {
 			t.Fatalf("pack = %d, want 422 TBY-FIL-002: %s", w.Code, w.Body.String())
 		}
@@ -236,7 +251,7 @@ func TestFileSetPackEndpointRefusals(t *testing.T) {
 
 	t.Run("an unusable request is refused", func(t *testing.T) {
 		mux := newFileSetsAPI(t, root)
-		w := apiPackPost(t, mux, "alexis", "pw-admin", `{"source":"`+source+`","name":"Debs","version":""}`)
+		w := apiPackPost(t, mux, "alexis", "pw-admin", fsPackBody(t, source, "Debs", ""))
 		if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "TBY-FIL-001") {
 			t.Fatalf("pack = %d, want 422 TBY-FIL-001: %s", w.Code, w.Body.String())
 		}
@@ -252,8 +267,7 @@ func TestFileSetPackEndpointIsAdminOnly(t *testing.T) {
 	if w := apiGet(t, mux, "/api/v1/filesets"); w.Code != http.StatusOK {
 		t.Fatalf("viewer list = %d", w.Code)
 	}
-	w := apiPackPost(t, mux, "lecteur", "pw-view",
-		`{"source":"`+source+`","name":"debs","version":"1.0.0"}`)
+	w := apiPackPost(t, mux, "lecteur", "pw-view", fsPackBody(t, source, "debs", "1.0.0"))
 	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "TBY-AUTH-003") {
 		t.Fatalf("viewer pack = %d, want 403 TBY-AUTH-003: %s", w.Code, w.Body.String())
 	}

@@ -123,6 +123,11 @@ func TestFileSetPackExitCodes(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(escaping, "ok.txt"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// On Windows the target is stored as \etc\passwd, because Go converts
+	// the separators when it creates the link, so the packer refuses this
+	// tree by its backslash rule rather than by its absolute-path rule
+	// (NFR-018). The refusal and its exit class are the same either way,
+	// but the branch reached is not.
 	if err := os.Symlink("/etc/passwd", filepath.Join(escaping, "escape")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}

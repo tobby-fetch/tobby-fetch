@@ -101,7 +101,9 @@ func TestPublishedExitCodeTableMatchesTheCode(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reading %s: %v", page, err)
 		}
-		text := string(raw)
+		// The rendered table is built with "\n", so the page is normalized
+		// rather than trusting a checkout to have kept it that way (NFR-018).
+		text := strings.ReplaceAll(string(raw), "\r\n", "\n")
 		start := strings.Index(text, exitTableStart)
 		end := strings.Index(text, exitTableEnd)
 		if start < 0 || end < 0 || end < start {

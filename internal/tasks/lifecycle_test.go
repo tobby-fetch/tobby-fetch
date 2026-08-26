@@ -131,8 +131,12 @@ func TestRetentionPurgesPanickedTasks(t *testing.T) {
 	if js, lg := taskFiles(t, q, first.ID); js || lg {
 		t.Errorf("panicked task leaves files behind: json=%v log=%v", js, lg)
 	}
-	// Let the last task settle before the TempDir cleanup races its log.
+	// Let the last task settle, then let the worker go, before the
+	// TempDir cleanup reaches its log: settling publishes the status, and
+	// only the worker returning proves the handle is gone (B-026).
 	wait(t, q, third.ID)
+	cancel()
+	q.Wait()
 }
 
 // TestRetentionPurgesAtOpen: history accumulated before the policy (or
@@ -156,8 +160,14 @@ func TestRetentionPurgesAtOpen(t *testing.T) {
 		wait(t, q, tk.ID)
 		finished = append(finished, tk.ID)
 	}
-	cancel() // stop the worker: the next task stays pending
-	time.Sleep(20 * time.Millisecond)
+	// Stop the worker so the next task stays pending. Wait rather than
+	// sleep: 20 ms was the entire budget for the worker to notice the
+	// cancellation, and on a runner whose timer granularity is 15.6 ms it
+	// lands anywhere between "already stopped" and "still picking the new
+	// task up" — in which case the task under test runs and the assertion
+	// below reads a done task where it wanted a pending one (B-026).
+	cancel()
+	q.Wait()
 	pending, err := q.Create(TypeUnitImport, "quay.io/argoproj/argocd:v2.11.3", "alexis", nil)
 	if err != nil {
 		t.Fatal(err)

@@ -34,6 +34,46 @@ import (
 // instead of only on the one that has it.
 var caseFoldPaths = runtime.GOOS == "windows"
 
+// volumeSyntax reports whether the platform spells the same directory in
+// more than one way at the volume level (Windows, NFR-018). A variable
+// for the same reason as caseFoldPaths: the rewriting below is exercised
+// on every runner, not only on the one where it matters.
+var volumeSyntax = runtime.GOOS == "windows"
+
+// ordinaryVolume rewrites the extended-length and device spellings of a
+// Windows path onto the ordinary one.
+//
+// This matters because the containment test underneath is filepath.Rel,
+// and Rel refuses to relate two paths whose VOLUME NAMES differ — it
+// returns an error, which pathUnder reads as "not under". So
+// `\\?\C:\store\creds.json` was not under `C:\store`, and the NFR-020
+// refusal that exists to keep a credentials file off a medium handed to a
+// courier simply did not fire. The same for `\\.\C:\…` and for
+// `\\?\UNC\server\share\…`, which is the extended spelling of
+// `\\server\share\…` (B-027).
+//
+// Every one of these is an ordinary thing to find in a configuration
+// file: they are what Windows tooling produces when a path might exceed
+// MAX_PATH. This is a rewriting of spellings, not a security boundary —
+// see canonicalVolume for the spellings no amount of string work can
+// reconcile.
+func ordinaryVolume(p string) string {
+	if !volumeSyntax {
+		return p
+	}
+	for _, uncPrefix := range []string{`\\?\UNC\`, `\\.\UNC\`} {
+		if strings.HasPrefix(p, uncPrefix) {
+			return `\\` + p[len(uncPrefix):]
+		}
+	}
+	for _, prefix := range []string{`\\?\`, `\\.\`} {
+		if strings.HasPrefix(p, prefix) {
+			return p[len(prefix):]
+		}
+	}
+	return p
+}
+
 // SecretPath is one configured location holding secret material, with the
 // configuration key an operator has to go and change.
 type SecretPath struct {
@@ -112,6 +152,7 @@ func resolvePath(p string) string {
 	if p == "" {
 		return ""
 	}
+	p = ordinaryVolume(p)
 	abs, err := filepath.Abs(p)
 	if err != nil {
 		abs = filepath.Clean(p)
@@ -120,7 +161,11 @@ func resolvePath(p string) string {
 	cur := abs
 	for {
 		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
-			return filepath.Join(resolved, rest)
+			// canonicalVolume finishes what ordinaryVolume cannot: a
+			// substituted drive and an administrative share are the same
+			// directory under another volume name, and only the operating
+			// system knows it.
+			return filepath.Join(canonicalVolume(ordinaryVolume(resolved)), rest)
 		}
 		parent := filepath.Dir(cur)
 		if parent == cur {

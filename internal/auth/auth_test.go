@@ -104,12 +104,18 @@ func TestPersistenceAndPermissions(t *testing.T) {
 	if !strings.Contains(string(raw), "$argon2id$") {
 		t.Error("hash is not argon2id PHC")
 	}
-	info, err := os.Stat(filepath.Join(dir, accountsFile))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Errorf("accounts file mode = %o, want 0600", perm)
+	// Permission bits do not carry the NFR-020 rule on Windows; the access
+	// list does, and TestAccountsFileIsOwnerOnly skips there for the same
+	// reason. Only this assertion is guarded: the persistence and reload
+	// this test exists for run on every supported platform (NFR-018).
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(filepath.Join(dir, accountsFile))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Errorf("accounts file mode = %o, want 0600", perm)
+		}
 	}
 
 	s2, err := Open(dir)
@@ -572,7 +578,7 @@ func TestAuthOverrideEmitsNoPerRequestAudit(t *testing.T) {
 // no more open than the file inside it.
 func TestAccountsFileIsOwnerOnly(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("permission bits do not carry the rule on Windows; the access list does")
+		t.Skip("permission bits do not carry the rule on Windows; the access list does. internal/secretfile's own Windows tests read that list back and own this assertion")
 	}
 	dir := t.TempDir()
 	// The directory pre-exists world-readable: the state a deployment
