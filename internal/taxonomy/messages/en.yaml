@@ -223,6 +223,22 @@
 "TBY-STO-005.cause": "{{.path}} is formatted as {{.filesystem}}, whose largest single file is {{.limit}} bytes; the {{.what}} would write a file of {{.size}} bytes."
 "TBY-STO-005.action": "Reformat the medium with a filesystem that has no such limit (exFAT, NTFS, ext4, XFS), or split the transfer so that no single file exceeds the limit."
 
+"TBY-STO-006.what": "The store was not reset."
+"TBY-STO-006.cause": "The typed confirmation did not match: resetting the store requires typing {{.phrase}} exactly, in capitals, with nothing else."
+"TBY-STO-006.action": "Type {{.phrase}} in the confirmation field and submit again. A reset removes every artifact of this store; the operation history and the task logs are kept."
+
+"TBY-LAY-001.what": "This is not a usable OCI image layout."
+"TBY-LAY-001.cause": "{{.path}} could not be read as one: {{.detail}}"
+"TBY-LAY-001.action": "Check that the path is the layout itself — the directory (or the uncompressed tar of it) holding `oci-layout`, `index.json` and `blobs/`. A compressed archive must be decompressed first. `skopeo copy oci:<path>:<tag> …` on the same path tells you whether any OCI tool can read it either."
+
+"TBY-LAY-002.what": "The archive was refused: one of its entries has no place in an image layout."
+"TBY-LAY-002.cause": "In {{.path}}, the entry {{.entry}} was refused — {{.reason}}."
+"TBY-LAY-002.action": "Nothing was written. An OCI image layout archive contains only `oci-layout`, `index.json` and `blobs/<algorithm>/<digest>` files: an archive that also carries links or paths leading outside it was not produced by an OCI tool. Get the medium re-made at its source, and report it as an incident if it arrived from outside your organization."
+
+"TBY-LAY-003.what": "The export destination already exists."
+"TBY-LAY-003.cause": "{{.path}} is already there, and this export was not allowed to replace it."
+"TBY-LAY-003.action": "Choose another destination, or re-run the export with the replace option (`--overwrite` on the command line) once you are sure what is there can be lost."
+
 "TBY-TSK-001.what": "The task does not exist."
 "TBY-TSK-001.cause": "No task with identifier {{.id}} on this instance — wrong link, or the store was reset."
 "TBY-TSK-001.action": "Open the task list and follow the link of an existing task."

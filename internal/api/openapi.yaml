@@ -762,6 +762,143 @@ paths:
                 $ref: "#/components/schemas/Publication"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/oci-layout/plan:
+    post:
+      summary: >-
+        What an export would contain and cost, writing nothing (FR-051,
+        FR-055). Mirror of the estimate button of /admin/oci-layout and of
+        `tobby export --dry-run`. Side-effect free by construction: the
+        destination is never opened. `largestFileBytes` is the size of the
+        biggest single file the export would write — the whole archive in
+        tar form, the biggest blob in directory form — which is the number
+        a target filesystem's per-file limit (FAT32's 4 GiB) is compared
+        with. Role admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LayoutExportRequest"
+      responses:
+        "200":
+          description: The projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LayoutProjection"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/oci-layout/export:
+    post:
+      summary: >-
+        Export the store, or a selection of it, to a standard OCI image
+        layout readable by skopeo, oras and crane (FR-051, ADR-0006).
+        Mirror of /admin/oci-layout and of `tobby export`. A recipe
+        selection carries its ingredients, the recipe artifact, and the
+        cosign signature artifacts of both in either published layout
+        (RECIPE-SPEC §12.2). The original index of a multi-platform image
+        travels unchanged, sparse platform sets included, so its pinned
+        digest survives (FR-042). Enqueues a task and answers it.
+        Audited (FR-094). Role admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LayoutExportRequest"
+      responses:
+        "201":
+          description: The enqueued export task.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/oci-layout/import:
+    post:
+      summary: >-
+        Import a standard OCI image layout into the store at identical
+        digests (FR-051). Mirror of /admin/oci-layout and of `tobby
+        import`. The layout is untrusted data: a manifest is accepted only
+        if its bytes hash to the digest addressing it, every blob is
+        committed against the digest its manifest pins, and an archive
+        carrying an absolute path, a traversal or a link is refused with
+        TBY-LAY-002 before anything is read (NFR-011). Compressed archives
+        are refused. Entries are independent: one that did not survive the
+        medium fails on its own task item. Enqueues a task and answers it.
+        Audited (FR-094). Role admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [input]
+              properties:
+                input:
+                  type: string
+                  description: The layout to read — a directory, or an uncompressed tar of one.
+                  examples: ["/media/usb/payload.tar"]
+                repository:
+                  type: string
+                  description: >-
+                    Where entries belong, for a layout that names them by
+                    tag alone (one produced by `skopeo copy`). A layout
+                    exported by Tobby names its repositories and needs
+                    nothing here.
+                  examples: ["docker.io/library/alpine"]
+      responses:
+        "201":
+          description: The enqueued import task.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/store/reset:
+    post:
+      summary: >-
+        Empty the store (FR-046). Mirror of /admin/store. Requires the
+        exact typed confirmation, which is a frozen untranslated phrase;
+        anything else answers TBY-STO-006 and is recorded as a denied
+        attempt. Removes every artifact and the ledgers describing them,
+        keeps the operation history and the task logs. The instance is
+        usable on an empty store when this returns. Audited (FR-094),
+        including on an instance running under the FR-075 authentication
+        override, where the entry records the unauthenticated context.
+        Role admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmation]
+              properties:
+                confirmation:
+                  type: string
+                  description: The exact confirmation phrase.
+                  examples: ["RESET"]
+      responses:
+        "200":
+          description: What the reset discarded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  repositories: { type: integer }
+                  bytes: { type: integer, format: int64 }
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v1/network:
     get:
       summary: >-
@@ -1199,6 +1336,94 @@ components:
             enum: [filesystem-unidentified, space-unknown]
         refusal_code:
           type: string
+
+    LayoutExportRequest:
+      type: object
+      description: >-
+        One OCI image layout export (FR-051). Both selection members empty
+        exports the whole store, which is the interoperability escape
+        hatch in its most useful form.
+      required: [output]
+      properties:
+        output:
+          type: string
+          description: >-
+            Destination path on the instance's host: the archive file to
+            write, or the directory to fill.
+          examples: ["/media/usb/payload.tar"]
+        format:
+          type: string
+          enum: [tar, directory]
+          default: tar
+          description: >-
+            The shape written there. A single uncompressed tar by default:
+            one file crosses a physical transfer more reliably than a
+            tree, and an uncompressed archive is what an import can read
+            back by seeking rather than inflating.
+        recipes:
+          type: array
+          items: { type: string }
+          description: >-
+            Recorded recipes to export, as "name" or "name@version". Each
+            carries its ingredients, its own artifact, and the cosign
+            signature artifacts of both.
+        repositories:
+          type: array
+          items: { type: string }
+          description: Relocated repository paths to export, with all their tags.
+        overwrite:
+          type: boolean
+          default: false
+          description: >-
+            Allow replacing an existing destination. Off by default: the
+            destination of an export is usually a medium somebody else
+            prepared, and replacing it answers TBY-LAY-003 otherwise.
+    LayoutProjection:
+      type: object
+      description: >-
+        What a planned export would contain and cost (FR-055). Byte counts
+        are raw; formatting is a UI concern.
+      properties:
+        format: { type: string, enum: [tar, directory] }
+        references:
+          type: array
+          items: { type: string }
+          description: The repository:tag pairs the selection resolved to.
+        manifests: { type: integer }
+        blobs: { type: integer }
+        files:
+          type: integer
+          description: Total number of files the export writes, index.json and oci-layout included.
+        contentBytes:
+          type: integer
+          format: int64
+          description: The payload total, blobs deduplicated by digest.
+        totalBytes:
+          type: integer
+          format: int64
+          description: What the export occupies on the medium, tar framing included.
+        largestFileBytes:
+          type: integer
+          format: int64
+          description: >-
+            The biggest single file the export writes — the whole archive
+            in tar form, the biggest blob in directory form. This is the
+            number a FAT32 target's 4 GiB per-file limit is compared with.
+        missing:
+          type: array
+          description: >-
+            What the selection named and the store does not hold. Reported
+            rather than fatal: a partially transferred multi-platform image
+            is missing platforms by construction, and the original index
+            travels unchanged so its pinned digest survives.
+            The reason is a stable untranslated label.
+          items:
+            type: object
+            properties:
+              repository: { type: string }
+              tag: { type: string }
+              digest: { type: string }
+              reason: { type: string, enum: [tag, platform, blob] }
     Publication:
       type: object
       description: >-

@@ -129,6 +129,25 @@ const (
 	// "who tried to write into that cookbook".
 	ActionRecipePublish = "recipe.publish"
 
+	// ActionStoreReset is the full store reset of FR-046 — the single
+	// most destructive action the product offers, and the one the
+	// requirement names explicitly among the audited events. The target
+	// is the storage root that was emptied; a refused confirmation is
+	// recorded too, as "denied": somebody typing the wrong word into that
+	// field is the trail's early warning.
+	ActionStoreReset = "store.reset"
+
+	// ActionLayoutExport and ActionLayoutImport are the OCI image layout
+	// operations of FR-051. Recorded because they cross the instance's
+	// boundary in both directions: an export writes content of this store
+	// to a path on the host — the interoperability escape hatch is also
+	// the way content leaves — and an import brings outside bytes in. The
+	// target is the medium's path.
+	ActionLayoutExport = "layout.export"
+	// ActionLayoutImport is the inbound half of ActionLayoutExport: a
+	// medium's content entering this store.
+	ActionLayoutImport = "layout.import"
+
 	// ActionServerCertReplace is a replacement of the listener's own
 	// certificate from the administration surfaces (FR-082). The
 	// sensitive configuration change FR-094 names: it decides what every

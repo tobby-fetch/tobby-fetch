@@ -75,6 +75,41 @@ starting with `v0.1.0`.
   `1` the plan could not complete. `--output json` emits the report itself,
   schema documented alongside the OpenAPI document.
 
+- **OCI image layout export and import (FR-051).** The store — or a
+  selection of recipes and repositories — can be written as a standard
+  OCI image layout, directory or single uncompressed tar, readable by
+  `skopeo`, `oras` and `crane`, and imported back at identical digests.
+  This is the product's exit ramp, on purpose: the content is recoverable
+  without Tobby. The original index of a multi-platform image travels
+  unchanged, sparse platform sets included (FR-042, RECIPE-SPEC §7.1), so
+  its pinned digest survives; the cosign signature artifacts of both
+  published layouts — the attached `sha256-<hex>.sig` tag and the
+  referrers fallback index with the referring artifact it names by digest
+  — travel with the content they attest (RECIPE-SPEC §12.2). Available as
+  `tobby export` / `tobby import`, at `POST /api/v1/oci-layout/…`, and on
+  the `/admin/oci-layout` screen.
+- **Export pre-flight numbers (FR-055 groundwork).** The export plan is a
+  side-effect-free operation — `tobby export --dry-run`, `POST
+  /api/v1/oci-layout/plan`, the screen's estimate — reporting the
+  projected total and the size of the largest single file the export
+  writes. The second number is what a target filesystem's per-file limit
+  (FAT32's 4 GiB) is compared with, and a single-tar export is one file.
+- **Store reset (FR-046).** A full reset behind an explicit typed
+  confirmation, restricted to the admin role and audited (FR-094) —
+  including on an instance running with the FR-075 authentication
+  override, where the entry records the unauthenticated context. Content
+  and its ledgers go; the operation history and task logs stay, because a
+  trail a destructive action erases is not a trail.
+
+### Security
+
+- An imported layout is treated as untrusted data (NFR-011): archive
+  entries are matched against the three shapes the image-spec defines
+  before they are read, links, absolute paths and traversals are refused
+  naming the offending entry, blobs are addressed by the digest they must
+  hash to rather than by any name the archive supplied, and compressed
+  archives are refused rather than inflated.
+
 ## [0.4.2] - 2026-08-22
 
 Hardening release. A point-in-time quality audit was run between

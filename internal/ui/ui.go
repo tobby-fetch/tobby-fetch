@@ -13,6 +13,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
+	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -59,6 +60,10 @@ type UI struct {
 	// egress is the outbound posture reported on the same screen
 	// (FR-080, FR-081).
 	egress tlsadmin.Egress
+	// interop backs the OCI image layout screens (FR-051) and the store
+	// reset (FR-046); nil on an instance wired without one, which renders
+	// those screens explanatory rather than inert.
+	interop *interop.Service
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -122,6 +127,10 @@ type Options struct {
 	// Egress is the instance's outbound transport, reported as posture
 	// (FR-080, FR-081). Only its printable accessors are ever called.
 	Egress tlsadmin.Egress
+	// Interop backs the OCI image layout screens (FR-051) and the store
+	// reset (FR-046) — the same object the API mirror uses, so FR-061
+	// parity holds by construction.
+	Interop *interop.Service
 }
 
 // New assembles the UI.
@@ -156,6 +165,7 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		planner:           opts.Planner,
 		serverCert:        opts.ServerCert,
 		egress:            opts.Egress,
+		interop:           opts.Interop,
 	}
 }
 
@@ -264,6 +274,16 @@ func (u *UI) Mount(rt Router) {
 	// instance authenticates against.
 	mux.Handle("GET /admin/network", admin(u.adminNetwork))
 	mux.Handle("POST /admin/network/certificate", admin(u.adminNetworkCertificate))
+	// Interoperability and the store reset (FR-051, FR-046). Admin on
+	// every one: an export names a host filesystem path and writes the
+	// store's content to it, an import brings outside bytes in, and a
+	// reset empties the store.
+	mux.Handle("GET /admin/oci-layout", admin(u.layoutScreen))
+	mux.Handle("POST /admin/oci-layout/plan", admin(u.layoutEstimate))
+	mux.Handle("POST /admin/oci-layout/export", admin(u.layoutExport))
+	mux.Handle("POST /admin/oci-layout/import", admin(u.layoutImport))
+	mux.Handle("GET /admin/store", admin(u.storeScreen))
+	mux.Handle("POST /admin/store/reset", admin(u.storeReset))
 	mux.Handle("GET /help", app(u.helpScreen))
 	// The embedded documentation (R-05, NFR-003): the guides at
 	// /help/<section>/<page>, their screenshots on the "/-/" sub-resource

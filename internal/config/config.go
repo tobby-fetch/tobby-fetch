@@ -555,6 +555,12 @@ const (
 	// ScopeState validates only what state-directory commands need:
 	// everything set must be coherent, but no mode is required.
 	ScopeState
+	// ScopeStorage validates what store-facing commands need (`tobby
+	// export`, `tobby import`, FR-051): the storage root and its
+	// separation from the state directory. No mode is required — reading
+	// a store out to an image layout says nothing about how this host
+	// serves.
+	ScopeStorage
 	// ScopeRegistries validates what registry-facing commands need
 	// (`tobby recipe push`, R-36): credentials and per-host insecure
 	// opt-ins. Like ScopeState it requires no mode — publishing a recipe

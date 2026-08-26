@@ -68,6 +68,12 @@ possible at all.
 | `POST /admin/retriever/interval` | admin | Changes how often this instance promotes, unattended (FR-013). The change is audited as sensitive configuration (FR-094). |
 | `GET /admin/network` | admin | Reveals this instance's own TLS identity and its outbound path (FR-082, FR-080, FR-081). |
 | `POST /admin/network/certificate` | admin | Replaces the listener's certificate — what every client of this instance authenticates against (FR-082). Audited as sensitive configuration (FR-094). |
+| `GET /admin/oci-layout` | admin | The OCI image layout export/import screen (FR-051). |
+| `POST /admin/oci-layout/plan` | admin | The side-effect-free estimate of the export (FR-055): same selection surface, same floor. |
+| `POST /admin/oci-layout/export` | admin | Writes the store's content to a path on the host filesystem — an administrative capability, not an operator one (FR-051). Audited (FR-094). |
+| `POST /admin/oci-layout/import` | admin | Brings outside bytes into the store (FR-051). Audited (FR-094). |
+| `GET /admin/store` | admin | What the store holds, and the reset that empties it (FR-046). |
+| `POST /admin/store/reset` | admin | Full store reset, restricted to the admin role by FR-046, behind a typed confirmation and audited (FR-094). |
 | `GET /help`, `GET /about`, `GET /about/third-party`, `GET /api-docs` | viewer | |
 | `GET /help/{page...}`, `GET /help/-/assets/{name}` | viewer | The operations guides embedded in the binary and their screenshots (NFR-003, amendment 2026-08-11). Readable by whoever operates the instance — and by nobody who has not signed in (R-01). |
 | anything else | viewer | The taxonomized 404 renders inside the authenticated shell (UI-SPEC §5.13). |
@@ -110,6 +116,10 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `GET /api/v1/tokens` | admin | the token table of `/admin/accounts` |
 | `POST /api/v1/tokens` | admin | `POST /admin/accounts/tokens` |
 | `POST /api/v1/tokens/{name}/revoke` | admin | `POST /admin/accounts/tokens/revoke` |
+| `POST /api/v1/oci-layout/plan` | admin | `POST /admin/oci-layout/plan` |
+| `POST /api/v1/oci-layout/export` | admin | `POST /admin/oci-layout/export` |
+| `POST /api/v1/oci-layout/import` | admin | `POST /admin/oci-layout/import` |
+| `POST /api/v1/store/reset` | admin | `POST /admin/store/reset` |
 
 `POST /api/v1/account/password` has no floor beyond authentication itself,
 exactly like its screen: it changes the caller's own password and nothing

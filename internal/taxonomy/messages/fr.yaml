@@ -223,6 +223,22 @@
 "TBY-STO-005.cause": "{{.path}} est formaté en {{.filesystem}}, dont le plus gros fichier possible fait {{.limit}} octets ; le transfert ({{.what}}) écrirait un fichier de {{.size}} octets."
 "TBY-STO-005.action": "Reformatez le support avec un système de fichiers sans cette limite (exFAT, NTFS, ext4, XFS), ou découpez le transfert pour qu'aucun fichier ne dépasse la limite."
 
+"TBY-STO-006.what": "Le store n'a pas été réinitialisé."
+"TBY-STO-006.cause": "La confirmation saisie ne correspond pas : la remise à zéro du store exige de taper {{.phrase}} exactement, en majuscules, et rien d'autre."
+"TBY-STO-006.action": "Saisissez {{.phrase}} dans le champ de confirmation et validez de nouveau. Une remise à zéro supprime tous les artefacts de ce store ; l'historique des opérations et les journaux de tâches sont conservés."
+
+"TBY-LAY-001.what": "Ce n'est pas un OCI image layout exploitable."
+"TBY-LAY-001.cause": "{{.path}} n'a pas pu être lu comme tel : {{.detail}}"
+"TBY-LAY-001.action": "Vérifiez que le chemin désigne bien le layout lui-même — le répertoire (ou son tar non compressé) contenant `oci-layout`, `index.json` et `blobs/`. Une archive compressée doit d'abord être décompressée. `skopeo copy oci:<chemin>:<tag> …` sur le même chemin vous dira si un outil OCI y arrive davantage."
+
+"TBY-LAY-002.what": "L'archive a été refusée : une de ses entrées n'a rien à faire dans un image layout."
+"TBY-LAY-002.cause": "Dans {{.path}}, l'entrée {{.entry}} a été refusée — {{.reason}}."
+"TBY-LAY-002.action": "Rien n'a été écrit. Une archive OCI image layout ne contient que `oci-layout`, `index.json` et des fichiers `blobs/<algorithme>/<digest>` : une archive qui porte en plus des liens ou des chemins sortant d'elle-même n'a pas été produite par un outil OCI. Faites refabriquer le support à sa source, et signalez-le comme incident s'il provient de l'extérieur de votre organisation."
+
+"TBY-LAY-003.what": "La destination de l'export existe déjà."
+"TBY-LAY-003.cause": "{{.path}} est déjà présent, et cet export n'était pas autorisé à le remplacer."
+"TBY-LAY-003.action": "Choisissez une autre destination, ou relancez l'export avec l'option de remplacement (`--overwrite` en ligne de commande) une fois certain que ce qui s'y trouve peut être perdu."
+
 "TBY-TSK-001.what": "La tâche n'existe pas."
 "TBY-TSK-001.cause": "Aucune tâche d'identifiant {{.id}} sur cette instance — lien erroné, ou store réinitialisé."
 "TBY-TSK-001.action": "Ouvrez la liste des tâches et suivez le lien d'une tâche existante."
