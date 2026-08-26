@@ -448,6 +448,12 @@ func TestSyncFileSetsServesWhatResolvedDespiteAFailure(t *testing.T) {
 	st := openFileSetStore(t)
 	pushImages(t, st, "1.0.0")
 	fsrv := fileserve.NewServer(storeBlobs{st: st}, t.TempDir(), fileserve.Limits{}, slog.New(slog.DiscardHandler))
+	// A served FileSet keeps an os.Root open on its extracted tree for the
+	// server's whole life, and on Windows an open handle is what stops a
+	// directory from being removed (NFR-018). Registering the close after
+	// the t.TempDir() call above makes LIFO cleanup release the handle
+	// before the temporary directory is torn down.
+	t.Cleanup(func() { _ = fsrv.Close() })
 
 	cfg := fileSetConfig(
 		config.FileSetServe{Name: "not-synced-yet", Ref: "registry.example.com/filesets/absent"},

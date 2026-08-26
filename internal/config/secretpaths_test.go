@@ -110,7 +110,7 @@ func TestSecretsOutsideStoreArePermitted(t *testing.T) {
 // is outside the store by every textual measure and lands inside it.
 func TestSecretsInStoreThroughSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("symlink creation needs a privilege Windows does not grant by default")
+		t.Skip("symlink creation needs a privilege Windows does not grant by default: the NFR-020 refusal on a secret reached THROUGH A SYMLINK is not covered by this run — the volume-spelling evasions it shares a resolver with are, above")
 	}
 	base := t.TempDir()
 	root := filepath.Join(base, "store")
@@ -221,5 +221,75 @@ func TestSecretPathsOmitsNonSecrets(t *testing.T) {
 		default:
 			t.Errorf("unexpected secret path %s = %s", sp.Key, sp.Path)
 		}
+	}
+}
+
+// TestSecretsInStoreThroughTheExtendedLengthSpelling is B-027: the
+// containment test is filepath.Rel, and Rel refuses to relate two paths
+// whose volume names differ — it returns an error, which reads as "not
+// under". `\\?\C:\store\creds.json` and `C:\store` are the same
+// directory under two volume names, so the NFR-020 refusal that keeps a
+// credentials file off a medium handed to a courier never fired on the
+// one platform that spells paths that way (NFR-018).
+//
+// The rewriting is exercised on every runner rather than only on Windows,
+// through the same seam TestSecretsInStoreIsCaseInsensitiveOnWindows
+// uses: a rule that only ever runs where it is needed is a rule nobody
+// watches.
+func TestSecretsInStoreThroughTheExtendedLengthSpelling(t *testing.T) {
+	syntax := volumeSyntax
+	t.Cleanup(func() { volumeSyntax = syntax })
+	volumeSyntax = true
+
+	for name, spelling := range map[string]string{
+		"extended length": `\\?\C:\store\creds.json`,
+		"device":          `\\.\C:\store\creds.json`,
+		"extended UNC":    `\\?\UNC\fileserver\medium\store\creds.json`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := ordinaryVolume(spelling)
+			if strings.HasPrefix(got, `\\?\`) || strings.HasPrefix(got, `\\.\`) {
+				t.Fatalf("ordinaryVolume(%q) = %q: the volume prefix survived, and filepath.Rel "+
+					"will refuse to relate it to the store root (B-027)", spelling, got)
+			}
+		})
+	}
+	if got := ordinaryVolume(`\\?\UNC\fileserver\medium\store\creds.json`); got != `\\fileserver\medium\store\creds.json` {
+		t.Errorf("the extended UNC spelling became %q, want the ordinary UNC one", got)
+	}
+	if got := ordinaryVolume(`\\?\C:\store\creds.json`); got != `C:\store\creds.json` {
+		t.Errorf("the extended-length spelling became %q, want the drive-letter one", got)
+	}
+
+	// Off Windows the rewriting must not happen at all: a backslash is an
+	// ordinary character in a Unix file name, and rewriting one would
+	// change which file the operator named.
+	volumeSyntax = false
+	if got := ordinaryVolume(`\\?\C:\store\creds.json`); got != `\\?\C:\store\creds.json` {
+		t.Errorf("a path was rewritten on a platform with no volume syntax: %q", got)
+	}
+}
+
+// TestPathUnderRelatesTheTwoSpellingsOfOneStore closes the loop: the
+// rewriting exists so that the containment answer comes out yes.
+//
+// It runs on Windows only, and not because the rule is Windows-only —
+// ordinaryVolume above is exercised everywhere — but because pathUnder
+// does its arithmetic with filepath.Rel and filepath.Separator, which are
+// the host's. Off Windows `C:\store\creds.json` is one file name with no
+// separators in it, and asking whether it lies under `C:\store` is not a
+// question the host filesystem's rules can answer.
+func TestPathUnderRelatesTheTwoSpellingsOfOneStore(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("filepath.Rel uses the host's separator rules: whether the two spellings of one " +
+			"store relate is NOT covered off Windows (ordinaryVolume itself is, above)")
+	}
+	root := resolvePath(`\\?\C:\store`)
+	secret := resolvePath(`\\?\C:\store\creds.json`)
+	if !pathUnder(root, secret) {
+		t.Errorf("pathUnder(%q, %q) = false: a secret inside the store was not recognized (B-027)", root, secret)
+	}
+	if pathUnder(root, resolvePath(`\\?\C:\elsewhere\creds.json`)) {
+		t.Error("a path outside the store was reported inside it")
 	}
 }

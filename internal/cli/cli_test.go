@@ -47,7 +47,7 @@ func TestVersionPrintsBuildInfo(t *testing.T) {
 // the effective configuration is dumpable.
 func TestConfigDumpMergesLayers(t *testing.T) {
 	dir := t.TempDir()
-	path := dir + "/config.yaml"
+	path := filepath.Join(dir, "config.yaml")
 	if err := os.WriteFile(path, []byte("mode: passthrough\nserver:\n  addr: \":7000\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

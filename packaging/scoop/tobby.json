@@ -1,0 +1,82 @@
+{
+    "$schema": "https://raw.githubusercontent.com/ScoopInstaller/Scoop/master/schema.json",
+    "##": [
+        "SPDX-License-Identifier: GPL-3.0-only",
+        "Copyright © 2026 infraBuilder SASU and contributors",
+        "",
+        "Scoop app manifest for tobby. Scoop reads a manifest named after the",
+        "app from a bucket repository, so the published copy of this file would",
+        "be bucket/tobby.json in a bucket of ours; this repository holds the",
+        "template, and the release workflow renders it and attaches it to the",
+        "GitHub release. Nothing is pushed to a bucket by that workflow — see",
+        "the scoop job in .github/workflows/release.yml for why the last mile is",
+        "deliberately a human step.",
+        "",
+        "JSON has no comment syntax; Scoop reserves the '##' property for",
+        "exactly this purpose and ignores it when installing, which is why this",
+        "header is a string array rather than the comment block every other",
+        "packaging file in this repository carries.",
+        "",
+        "Placeholders match the convention of packaging/homebrew/tobby.rb and",
+        "the winget manifests: version 0.0.0, and sixty-four zeros for each",
+        "hash. Both are rewritten at release time from the SHA256SUMS that run",
+        "produced and that the SLSA provenance covers (ADR-0011) — never",
+        "recomputed from a re-download, which would only attest to whatever the",
+        "network returned.",
+        "",
+        "Windows is a validated target, not an afterthought: NFR-001 requires",
+        "the single static binary on Windows for both architectures and NFR-018",
+        "puts the whole mirror-mode workflow inside the validated Windows scope.",
+        "Scoop is the package manager the operators of those mirror",
+        "workstations tend to already have, and it installs per-user with no",
+        "administrator rights — which is frequently the only kind of install",
+        "available on a managed workstation.",
+        "",
+        "The '#/tobby.exe' URL fragment is Scoop's rename-on-download: the",
+        "release asset is architecture-qualified so that six binaries can share",
+        "one release page, but the command an operator types is 'tobby', so the",
+        "file is stored under that name and 'bin' shims it accordingly.",
+        "",
+        "checkver and autoupdate let a bucket track new releases without a",
+        "push from this repository. autoupdate reads the release's own",
+        "SHA256SUMS and extracts the digest for the exact asset name, so an",
+        "automated bump inherits the same provenance-covered checksums a manual",
+        "one would."
+    ],
+    "version": "0.0.0",
+    "description": "Secure artifact fetch-and-relocate tool with an embedded OCI registry. Tobby fetches OCI assets — container images, Helm charts, AI models, and files — and carries them across isolated network zones, from connected, through restricted, down to fully air-gapped environments.",
+    "homepage": "https://tobby-fetch.github.io/tobby-fetch/",
+    "license": "GPL-3.0-only",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/tobby-fetch/tobby-fetch/releases/download/v0.0.0/tobby-windows-amd64.exe#/tobby.exe",
+            "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "arm64": {
+            "url": "https://github.com/tobby-fetch/tobby-fetch/releases/download/v0.0.0/tobby-windows-arm64.exe#/tobby.exe",
+            "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+    },
+    "bin": "tobby.exe",
+    "checkver": {
+        "github": "https://github.com/tobby-fetch/tobby-fetch"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/tobby-fetch/tobby-fetch/releases/download/v$version/tobby-windows-amd64.exe#/tobby.exe",
+                "hash": {
+                    "url": "https://github.com/tobby-fetch/tobby-fetch/releases/download/v$version/SHA256SUMS",
+                    "regex": "([a-fA-F0-9]{64})\\s+tobby-windows-amd64\\.exe"
+                }
+            },
+            "arm64": {
+                "url": "https://github.com/tobby-fetch/tobby-fetch/releases/download/v$version/tobby-windows-arm64.exe#/tobby.exe",
+                "hash": {
+                    "url": "https://github.com/tobby-fetch/tobby-fetch/releases/download/v$version/SHA256SUMS",
+                    "regex": "([a-fA-F0-9]{64})\\s+tobby-windows-arm64\\.exe"
+                }
+            }
+        }
+    }
+}

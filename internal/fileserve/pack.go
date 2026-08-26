@@ -606,6 +606,16 @@ func checkEntryName(name string, lim Limits) error {
 		// there even though it is an ordinary character here.
 		return &PackRejection{Path: name, Reason: "contains a backslash, a path separator on other platforms", Safety: true}
 	}
+	if hasDriveLetter(name) {
+		// The same argument one spelling further: a directory literally
+		// named "C:" is legal here and packs into an entry named
+		// "C:/something", which on Windows is an absolute path onto
+		// another volume. §14.5 requires packing to refuse what
+		// extraction would refuse, and the extractor refuses this
+		// (extract.go, cleanEntryPath) — so refusing it here is what
+		// keeps the two ends of the rule the same rule (B-025).
+		return &PackRejection{Path: name, Reason: "names a volume, which is an absolute path on other platforms", Safety: true}
+	}
 	if base := path.Base(name); base == opaqueMarker || strings.HasPrefix(base, whiteoutPrefix) {
 		// §7.4 reads these as layer deletions: a real file so named would
 		// delete its neighbour instead of being served.
@@ -629,7 +639,15 @@ func checkLinkTarget(name, target string) error {
 	if strings.ContainsRune(target, 0) || strings.ContainsRune(target, '\\') {
 		return &PackRejection{Path: name, Reason: "is a symbolic link whose target contains a NUL byte or a backslash", Safety: true}
 	}
-	if strings.HasPrefix(target, "/") || filepath.IsAbs(target) {
+	if strings.HasPrefix(target, "/") || filepath.IsAbs(target) || hasDriveLetter(target) {
+		// filepath.IsAbs alone is not enough and cannot be: it answers
+		// with the rules of the platform this binary was BUILT for, and
+		// "C:/Windows/System32/config/SAM" is a relative path on Linux
+		// and an absolute one on Windows. A FileSet packed on the
+		// connected side of a mirror is extracted on the isolated side,
+		// which may not be the same operating system — so the lexical
+		// rule has to be the same on both, and hasDriveLetter is what
+		// makes it so (B-025).
 		return &PackRejection{Path: name, Reason: "is a symbolic link to the absolute path " + target + ", which points outside the FileSet", Safety: true}
 	}
 	resolved := path.Join(path.Dir(name), target)

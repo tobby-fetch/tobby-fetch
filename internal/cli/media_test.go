@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -63,7 +64,10 @@ func emptyMedium(t *testing.T) string {
 // mediumConfig writes a configuration file for a destination instance.
 func mediumConfig(t *testing.T, root, zone, destination string) string {
 	t.Helper()
-	body := "mode: mirror\nzone: " + zone + "\nstorage:\n  root: " + root + "\n"
+	// The store root is emitted as a quoted scalar: a Windows path is full
+	// of backslashes and a colon after the drive letter, none of which a
+	// plain YAML scalar is obliged to carry unchanged (NFR-018).
+	body := "mode: mirror\nzone: " + zone + "\nstorage:\n  root: " + strconv.Quote(root) + "\n"
 	if destination != "" {
 		body += "destination:\n  registry: " + destination + "\nregistries:\n  insecure: [" + destination + "]\n"
 	}

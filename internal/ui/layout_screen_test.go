@@ -72,7 +72,7 @@ func TestLayoutScreenEstimatesWithoutWriting(t *testing.T) {
 
 	dir := t.TempDir()
 	w := postLayout(t, u, mux, session, "/admin/oci-layout/plan", url.Values{
-		"output": {dir + "/payload.tar"},
+		"output": {filepath.Join(dir, "payload.tar")},
 	})
 	if w.Code != http.StatusOK {
 		t.Fatalf("estimate = %d, want 200: %s", w.Code, w.Body.String())

@@ -17,6 +17,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -345,7 +346,22 @@ func (e *extraction) writeFile(ctx context.Context, clean string, perm os.FileMo
 // authoritative barrier for resolution chains this lexical check cannot
 // see.
 func (e *extraction) writeSymlink(ctx context.Context, clean, linkname string) error {
-	if linkname == "" || strings.HasPrefix(linkname, "/") {
+	// os.Root contains what is WRITTEN, never what a link POINTS AT:
+	// Root.Symlink does not validate its target, and Go's own
+	// documentation says so. So a target the lexical check waves through
+	// becomes a real symlink on disk pointing wherever it said. Until
+	// this branch learned the platform's other separator, `..\..\secrets`
+	// and `C:\Windows\...` were waved through on Windows — `path.Join`
+	// reads a backslash string as one ordinary segment, so the escape
+	// test below saw nothing to object to. Serving stayed safe (the
+	// serve-time os.Root refuses to follow it), but §14.5 requires the
+	// refusal at extraction, and the link was left in the cache for
+	// everything that is not an os.Root — a backup agent, an operator, a
+	// future reader of that directory. The packing side has refused
+	// exactly these since FR-048 (pack.go, checkLinkTarget); this is the
+	// same rule, on the same file, ten lines apart (B-025).
+	if linkname == "" || strings.HasPrefix(linkname, "/") ||
+		hasDriveLetter(linkname) || strings.ContainsRune(linkname, '\\') {
 		return e.reject(ctx, fmt.Sprintf("absolute or empty symlink target %q", linkname), clean)
 	}
 	resolved := path.Join(path.Dir(clean), linkname)
@@ -359,6 +375,20 @@ func (e *extraction) writeSymlink(ctx context.Context, clean, linkname string) e
 		return err
 	}
 	if err := e.root.Symlink(linkname, clean); err != nil {
+		// Windows grants SeCreateSymbolicLinkPrivilege to administrators
+		// and to nobody else by default, and os.Root's symlink call has no
+		// unprivileged fallback — so on the mirror workstation NFR-018 puts
+		// in scope, a FileSet carrying a single symlink fails to extract
+		// for an account that is otherwise perfectly able to run the
+		// instance. The platform's own message says "a required privilege
+		// is not held", which names nothing an operator can act on; the
+		// remedy is named here instead. The feature matrix records the
+		// limitation.
+		if runtime.GOOS == "windows" {
+			return fmt.Errorf("creating symlink %q: %w (the account running Tobby needs "+
+				"SeCreateSymbolicLinkPrivilege, held by administrators and by accounts granted "+
+				"\"Create symbolic links\" in the local security policy, or Developer Mode enabled)", clean, err)
+		}
 		return fmt.Errorf("creating symlink %q: %w", clean, err)
 	}
 	return nil
@@ -450,6 +480,25 @@ func (e *extraction) dropModesUnder(victim string) {
 	}
 }
 
+// hasDriveLetter reports a Windows drive designator at the head of a name
+// — "C:\x", "C:/x", and the drive-relative "C:x", which resolves against
+// that volume's own current directory.
+//
+// It is spelled out rather than delegated to filepath.VolumeName because
+// that function answers differently depending on where the binary was
+// built, and validation of REMOTE content that changes its mind with GOOS
+// is the whole defect this rejects: the same layer must be refused on
+// every platform, or a FileSet accepted on the Linux side of a mirror
+// arrives at a Windows destination carrying something its own extractor
+// would have refused (B-025).
+func hasDriveLetter(name string) bool {
+	if len(name) < 2 || name[1] != ':' {
+		return false
+	}
+	c := name[0]
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
 // cleanEntryPath validates a tar entry name against §14.5 — no absolute
 // paths, no ".." components — and normalizes it to a slash path relative
 // to the rootfs ("." for the root itself).
@@ -460,8 +509,27 @@ func cleanEntryPath(name string) (string, error) {
 	if strings.ContainsRune(name, 0) {
 		return "", errors.New("path contains a NUL byte")
 	}
+	if strings.ContainsRune(name, '\\') {
+		// A tar entry name is a slash path by specification, so a
+		// backslash is an ordinary character here — and a path separator
+		// on Windows, which NFR-018 puts in the operating scope. `..\..\x`
+		// splits on "/" into one component that is not "..", is not
+		// "/"-prefixed and survives path.Clean untouched, so without this
+		// the §14.5 refusal never fires: containment still holds, because
+		// every write goes through an os.Root, but the entry is reported
+		// as an internal path error instead of the rejection it is, the
+		// depth limit counts one component where the platform sees
+		// several, and a whiteout marker written with backslashes is
+		// materialized as a regular file instead of applied as a
+		// deletion. The packing side has refused these since FR-048
+		// (pack.go, checkEntryName); the extractor did not (B-025).
+		return "", errors.New("path contains a backslash, a path separator on other platforms")
+	}
 	if strings.HasPrefix(name, "/") {
 		return "", errors.New("absolute path")
+	}
+	if hasDriveLetter(name) {
+		return "", errors.New("path names a volume")
 	}
 	// The ".." check runs on the raw components: §14.5 rejects the
 	// component itself, not merely names that still escape after Clean.

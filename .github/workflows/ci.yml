@@ -33,6 +33,19 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.6.1
+      # The cross-compile job below builds the release targets, which is
+      # NON-TEST code only. The Windows-only test files — the access-list
+      # assertions of internal/secretfile, anything a future
+      # `_windows_test.go` adds — are type-checked by nothing on a Linux
+      # runner, and one of them shipped with a missing import that no job
+      # could see. `go vet` compiles the test files too, so this is the
+      # cheap half of the Windows matrix entry: it catches the rot in
+      # seconds, on every pull request, without waiting for a runner
+      # (NFR-018).
+      - name: Vet the Windows build, test files included
+        env:
+          GOOS: windows
+        run: go vet ./...
 
   test:
     name: Tests (race, anti-flaky, coverage floor)
@@ -43,7 +56,14 @@ jobs:
         # the same full suite: the darwin binaries are a convenience tier
         # (NFR-001) — unit/integration-tested here, e2e-validated only on
         # the Linux and Windows operating scope (NFR-018).
-        runner: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        #
+        # Windows is in the OPERATING scope (NFR-018: the mirror
+        # workstation), and until this entry existed it was covered by
+        # nothing but cross-compilation — a check that the code parses,
+        # not that it runs. Two whole source files, the FR-055 volume
+        # inspector and the NFR-020 access-list hardening, were written,
+        # merged and released without ever executing. They execute here.
+        runner: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -102,6 +122,74 @@ jobs:
           helm version --short
           oras version
           docker --version
+      # The race detector links a prebuilt runtime through cgo, so it needs
+      # a C toolchain — which the Windows runner image ships and nothing in
+      # this repository pins. Printing it makes a runner that lost it fail
+      # here, with the name of what is missing, instead of thirty lines
+      # into a link error.
+      - name: Report the C toolchain the race detector links through
+        if: runner.os == 'Windows'
+        run: gcc --version
+      # NFR-018 puts the mirror workstation on Windows, and the volume
+      # inspector written for it (internal/preflight/fs_windows.go:
+      # GetVolumePathNameW, GetVolumeInformationW, GetDiskFreeSpaceExW) has
+      # never run against the filesystem it exists for. The realistic case
+      # is a USB stick formatted FAT32 on a Windows workstation — the one
+      # FR-055 refuses a > 4 GiB blob on — so the runner makes a real one:
+      # diskpart creates a virtual disk, the Storage module partitions and
+      # formats it FAT32, and it is mounted on a drive letter.
+      #
+      # Nothing is downloaded (NFR-019): diskpart and the Storage module
+      # are the operating system's own. The step fails hard rather than
+      # skipping, because a FAT32 detector "covered" by a volume that was
+      # never attached is exactly the shape of coverage this milestone
+      # exists to remove.
+      - name: Attach a real FAT32 volume (FR-055 detector, NFR-018)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vhd = Join-Path $env:RUNNER_TEMP 'tobby-fat32.vhdx'
+          # diskpart, not New-VHD: the Hyper-V PowerShell module is not
+          # installed on the runner image, and diskpart's virtual-disk
+          # service is part of the base operating system.
+          #
+          # 512 MiB expandable: `format fs=fat32` needs a volume large
+          # enough for FAT32 rather than FAT16, and "expandable" means the
+          # runner writes a few hundred kilobytes, not half a gigabyte.
+          $script = Join-Path $env:RUNNER_TEMP 'attach.txt'
+          @(
+            "create vdisk file=`"$vhd`" maximum=512 type=expandable",
+            "select vdisk file=`"$vhd`"",
+            "attach vdisk"
+          ) | Set-Content -Encoding ascii $script
+          diskpart /s $script
+          if ($LASTEXITCODE -ne 0) { throw "diskpart could not create or attach $vhd" }
+          # The virtual disk is surfaced by a driver, not by diskpart's own
+          # return: it can take a moment to appear in the storage stack, and
+          # a bare Get-Disk immediately after the attach sometimes misses it.
+          $disk = $null
+          foreach ($attempt in 1..20) {
+            $disk = Get-Disk | Where-Object { $_.Location -eq $vhd }
+            if ($disk) { break }
+            Start-Sleep -Milliseconds 500
+          }
+          if (-not $disk) { throw "the attached virtual disk never appeared in Get-Disk" }
+          if ($disk.PartitionStyle -eq 'RAW') {
+            Initialize-Disk -Number $disk.Number -PartitionStyle MBR | Out-Null
+          }
+          New-Partition -DiskNumber $disk.Number -UseMaximumSize -DriveLetter T |
+            Format-Volume -FileSystem FAT32 -NewFileSystemLabel TOBBYFAT -Confirm:$false |
+            Out-Null
+          $vol = Get-Volume -DriveLetter T
+          if ($vol.FileSystem -ne 'FAT32') {
+            throw "the volume formatted as $($vol.FileSystem), not FAT32 — the FR-055 case would not be exercised"
+          }
+          "T:\ is $($vol.FileSystem), $($vol.Size) bytes"
+          # The test reads the volume from here; TOBBY_PREFLIGHT_REQUIRE_FAT32
+          # turns a missing one into a failure rather than a skip.
+          "TOBBY_PREFLIGHT_FAT32_PATH=T:\" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TOBBY_PREFLIGHT_REQUIRE_FAT32=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       # TOBBY_OCILOGIN_REQUIRE_DOCKER turns the docker FR-076 subtest
       # skips into failures on the operating scope where they can actually
       # run. Their TLS half spent a whole release skipping everywhere at
@@ -117,9 +205,19 @@ jobs:
         # hit it under -race -count=2. The fixture cost was cut where it
         # belonged (the account fixture is hashed once per package, not
         # once per test), and this margin exists so the next screen added
-        # reports a real failure rather than a timeout.
-        run: go test -race -count=2 -timeout 30m ./...
+        # reports a real failure rather than a timeout. Raised to the
+        # figure the release gates use when Windows joined the matrix: its
+        # filesystem is slower than both others at everything this suite
+        # does, and a timeout there would read as a hang rather than as
+        # what it is.
+        run: go test -race -count=2 -timeout 45m ./...
+      # `sh` on the Windows runner is Git Bash, which is why this step
+      # names its shell rather than inheriting pwsh. The floor is checked
+      # on every runner on purpose: internal/preflight and
+      # internal/secretfile each carry a file that only COMPILES on
+      # Windows, so their Windows halves are covered by this run alone.
       - name: Per-package coverage floor (NFR-016)
+        shell: bash
         run: sh tools/check-coverage.sh
 
   cross-compile:

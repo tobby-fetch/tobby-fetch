@@ -1,0 +1,63 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright © 2026 infraBuilder SASU and contributors
+#
+# winget installer manifest for `infraBuilder.tobby` — see
+# `infraBuilder.tobby.yaml` for why that identifier was chosen. Placeholders
+# here follow the same convention as the Homebrew formula
+# (packaging/homebrew/tobby.rb): the version is `0.0.0`, every checksum is
+# sixty-four zeros, and the release workflow rewrites both. A placeholder
+# that is syntactically valid but obviously fake is deliberate — a template
+# that happens to parse and install the wrong thing is worse than one that
+# fails, and sixty-four zeros can never be a real SHA-256.
+#
+# `InstallerType: portable`, per the decision of 2026-08-12: what ships is a
+# portable binary pinned by hash, not an installer. There is nothing for an
+# installer to do. NFR-001 requires a single statically linked binary with
+# CGO disabled and no runtime dependencies, so there are no libraries to
+# place, no registry keys to write and no uninstall logic to get wrong;
+# winget puts the file in its portable package root, links it under the
+# links directory, and removes both on uninstall. Any MSI or EXE wrapper
+# would add a second thing to sign, a second thing to reproduce bit for bit,
+# and a second thing that could differ from the artifact the SLSA provenance
+# actually covers — for no gain.
+#
+# The two installers point straight at the GitHub release assets built by
+# tools/release-build.sh, which are the same reproducible binaries carrying
+# the same signed CycloneDX SBOM and the same SLSA Build L3 provenance as
+# every other target (ADR-0011). `InstallerSha256` is copied verbatim out of
+# the `SHA256SUMS` that release produced and that the provenance covers, and
+# is not recomputed from a fresh download: recomputing would attest to
+# whatever the network handed back, which is exactly the thing being
+# guarded against. The schema accepts either case for the digest, so the
+# lower-case form that `sha256sum` emits is kept unaltered — no
+# transformation sits between the provenance-covered value and the manifest.
+#
+# `Commands: tobby` matters more than it looks. The release asset is named
+# `tobby-windows-amd64.exe` so that six binaries can share one release page,
+# but the command an operator types is `tobby`; winget derives the alias it
+# creates in the links directory from this field, so without it the
+# installed command would inherit the architecture-qualified file name and
+# every documented invocation, every runbook and every shell history entry
+# would be wrong on Windows only.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+
+PackageIdentifier: infraBuilder.tobby
+PackageVersion: "0.0.0" # rendered by the release workflow
+InstallerType: portable
+Commands:
+  - tobby
+# Go's toolchain no longer supports Windows releases older than Windows 10
+# and Windows Server 2016; declaring that floor here makes winget refuse the
+# install on a host where the binary could not run, instead of installing a
+# file that fails at first launch.
+MinimumOSVersion: 10.0.14393.0
+ReleaseNotesUrl: https://github.com/tobby-fetch/tobby-fetch/releases/tag/v0.0.0
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/tobby-fetch/tobby-fetch/releases/download/v0.0.0/tobby-windows-amd64.exe
+    InstallerSha256: "0000000000000000000000000000000000000000000000000000000000000000" # rendered by the release workflow
+  - Architecture: arm64
+    InstallerUrl: https://github.com/tobby-fetch/tobby-fetch/releases/download/v0.0.0/tobby-windows-arm64.exe
+    InstallerSha256: "0000000000000000000000000000000000000000000000000000000000000000" # rendered by the release workflow
+ManifestType: installer
+ManifestVersion: 1.6.0

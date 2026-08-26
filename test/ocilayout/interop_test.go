@@ -129,6 +129,11 @@ func TestSkopeoReadsTheExport(t *testing.T) {
 	} {
 		t.Run(string(tc.format), func(t *testing.T) {
 			path := exportFrom(t, st, tc.format, tc.name)
+			// The oci: and oci-archive: transports split their reference on
+			// the colon, so a Windows path mis-parses at the drive letter.
+			// The tools are absent from the Windows runner and this skips
+			// before reaching here (NFR-018); installing them there would
+			// need the reference built some other way first.
 			out, err := exec.Command(skopeo, "inspect", "--raw", //nolint:gosec // G204: a tool path resolved from PATH and fixed arguments
 				tc.transport+path+":"+testRef).CombinedOutput()
 			if err != nil {
@@ -222,6 +227,11 @@ func TestSkopeoRoundTripKeepsDigests(t *testing.T) {
 	// --preserve-digests: without it skopeo may recompress layers, which
 	// is a legitimate thing for a copy tool to do and would make this
 	// test about skopeo's compression policy instead of about the layout.
+	// The oci: transport splits its reference on the colon, so a Windows
+	// path mis-parses at the drive letter. The tools are absent from the
+	// Windows runner and this skips before reaching here (NFR-018);
+	// installing them there would need the reference built some other way
+	// first.
 	out, err := exec.Command(skopeo, "copy", "--preserve-digests", //nolint:gosec // G204: a tool path resolved from PATH and fixed arguments
 		"oci:"+exported+":"+testRef, "oci:"+viaSkopeo+":"+testRef).CombinedOutput()
 	if err != nil {

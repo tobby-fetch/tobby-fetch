@@ -216,13 +216,20 @@ func TestReplaceInstallsTheConfiguredPair(t *testing.T) {
 		t.Error("the installed certificate is not the submitted bytes")
 	}
 	// The key keeps the restrictive mode the previous file carried: a
-	// replacement must not widen the permissions of key material.
-	info, err := os.Stat(keyPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("key mode = %v, want 0600", info.Mode().Perm())
+	// replacement must not widen the permissions of key material. That
+	// check is POSIX-only — permission bits do not carry the rule on
+	// Windows, the access list does, and TestReplaceKeepsTheKeyOwnerOnly
+	// skips there for the same reason. Everything above it, the installed
+	// bytes and the reported subject and fingerprint, runs on every
+	// supported platform (NFR-018).
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(keyPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Errorf("key mode = %v, want 0600", info.Mode().Perm())
+		}
 	}
 }
 
@@ -329,7 +336,7 @@ func (f *fakeCert) Adopt() error { f.adopted = true; return nil }
 // wrong for the key — so the key goes through its own writer.
 func TestReplaceKeepsTheKeyOwnerOnly(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("permission bits do not carry the rule on Windows; the access list does")
+		t.Skip("permission bits do not carry the rule on Windows; the access list does. internal/secretfile's own Windows tests read that list back and own this assertion")
 	}
 	dir := t.TempDir()
 	certPath, keyPath := filepath.Join(dir, "tls.crt"), filepath.Join(dir, "tls.key")

@@ -164,8 +164,12 @@ func TestResumeAfterInterruption(t *testing.T) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	cancel() // "crash"
-	time.Sleep(50 * time.Millisecond)
+	// The "crash". Wait rather than sleep: the interrupted-task save has
+	// to have landed on disk before the next instance reads it back, and
+	// a fixed 50 ms is a guess about how long that takes rather than a
+	// synchronization point (B-026).
+	cancel()
+	q.Wait()
 
 	// Next instance start: the task is pending again, flagged Resumed.
 	q2 := newQueue(t, dir)

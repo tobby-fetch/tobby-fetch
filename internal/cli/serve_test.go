@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -232,7 +233,13 @@ func TestFilesAuthGatesFileSets(t *testing.T) {
 }
 
 func TestEnsureWritableDirRejectsReadOnly(t *testing.T) {
-	if os.Getuid() == 0 {
+	if runtime.GOOS == "windows" {
+		t.Skip("a directory is made unwritable by an access list on Windows, not by mode bits: " +
+			"the refusal on an unwritable state directory is NOT covered by this run")
+	}
+	// Getuid answers -1 where it has no meaning, so the guard is written to
+	// cover that as well and skip rather than assert on a wrong footing.
+	if os.Getuid() <= 0 {
 		t.Skip("root ignores permission bits")
 	}
 	dir := filepath.Join(t.TempDir(), "ro")

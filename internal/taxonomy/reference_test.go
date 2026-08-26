@@ -33,7 +33,9 @@ func TestPublishedReferenceCoversEveryCode(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reading %s: %v", page, err)
 		}
-		text := string(raw)
+		// The headings are searched for with "\n", so the page is normalized
+		// rather than trusting a checkout to have kept it that way (NFR-018).
+		text := strings.ReplaceAll(string(raw), "\r\n", "\n")
 		var missing []string
 		for _, entry := range taxonomy.All() {
 			if !strings.Contains(text, "### "+string(entry.Code)+"\n") {

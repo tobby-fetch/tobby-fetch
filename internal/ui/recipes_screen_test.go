@@ -443,11 +443,17 @@ func TestStoreOccupancyBanner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
+	stOpen := true
+	closeStore := func() {
+		if !stOpen {
+			return
+		}
+		stOpen = false
 		if cerr := st.Close(); cerr != nil {
 			t.Errorf("closing store: %v", cerr)
 		}
-	})
+	}
+	t.Cleanup(closeStore)
 	// One byte of threshold: any content at all crosses it, which keeps
 	// the fixture about the banner rather than about arithmetic.
 	monitor := store.NewOccupancyMonitor(st, 1, slog.New(slog.DiscardHandler))
@@ -475,7 +481,13 @@ func TestStoreOccupancyBanner(t *testing.T) {
 		}
 	}
 
-	// The content goes — the same page, no restart, no dismissal.
+	// The content goes — the same page, no restart, no dismissal. The
+	// removal reaches around the store's API, so the handle on that tree is
+	// given up first: Windows refuses to delete a file another handle holds
+	// open, and this removal is a hard failure here (NFR-018). Nothing
+	// after it needs the store back — the refresh sizes the blob directory
+	// on disk and the dashboard reads the sample the monitor recorded.
+	closeStore()
 	if err := os.RemoveAll(filepath.Join(root, "docker", "registry", "v2", "blobs")); err != nil {
 		t.Fatal(err)
 	}

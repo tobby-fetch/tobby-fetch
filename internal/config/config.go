@@ -1032,8 +1032,14 @@ func disjointRoots(state, storage string) error {
 	if state == "" || storage == "" {
 		return nil
 	}
-	s, err1 := filepath.Abs(state)
-	g, err2 := filepath.Abs(storage)
+	// The two are compared with filepath.Rel, which refuses to relate
+	// paths whose volume names differ — and `\\?\C:\store` and `C:\store`
+	// are the same directory under two of them, so a state directory
+	// spelled one way inside a store spelled the other was accepted
+	// (B-027). Both are normalized onto the ordinary spelling first, the
+	// same rewriting SecretPaths applies (secretpaths.go).
+	s, err1 := filepath.Abs(ordinaryVolume(state))
+	g, err2 := filepath.Abs(ordinaryVolume(storage))
 	if err1 != nil || err2 != nil {
 		return nil // path resolution problems surface later, on use
 	}
