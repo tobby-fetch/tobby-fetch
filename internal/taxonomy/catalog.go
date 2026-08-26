@@ -9,7 +9,8 @@ import "net/http"
 // CFG (configuration), VAL (recipe/retriever validation, FR-011), REG
 // (source registry access), POL (policy refusals, FR-030), SIG (signature
 // and digest verification, FR-033), DST (destination limits, FR-035), STO
-// (local store), TSK (tasks), SRV (instance itself).
+// (local store), MED (removable-media transport, FR-054), TSK (tasks),
+// SRV (instance itself).
 //
 // Codes marked "reserved" have no emitter yet: the class is fixed at
 // milestone 2 (roadmap directive) so later milestones plug engines into an
@@ -157,6 +158,80 @@ const (
 	// machine — sometimes literally (R-16).
 	CodeResumeSpool Code = "TBY-STO-003"
 
+	// Removable-media transport (FR-050, FR-054, ADR-0006). The medium is
+	// a store that changed hands: everything it says about itself is a
+	// claim until the destination has re-hashed it, so every code below
+	// names the file the claim was about — the FR-054 acceptance is
+	// "detected and blocks the push, NAMING the file".
+	//
+	// CodeMediaManifestMissing is a transported store carrying no media
+	// manifest at all. Globally blocking with no override (FR-054
+	// amendment R-19): without the inventory there is nothing to reason
+	// about.
+	CodeMediaManifestMissing Code = "TBY-MED-001"
+	// CodeMediaManifestUnreadable is a media manifest that cannot be read
+	// as one: truncated, unparseable, or internally inconsistent (a path
+	// escaping the store, a duplicated inventory entry). Globally
+	// blocking with no override.
+	CodeMediaManifestUnreadable Code = "TBY-MED-002"
+	// CodeMediaFormatUnsupported is a media manifest whose own format
+	// version this build does not read.
+	CodeMediaFormatUnsupported Code = "TBY-MED-003"
+	// CodeMediaStoreFormat is a medium whose store layout version this
+	// build does not read (R-26, the store's own compatibility policy,
+	// restated for the medium so the refusal names both versions before
+	// anything is opened).
+	CodeMediaStoreFormat Code = "TBY-MED-004"
+	// CodeMediaGraphAltered is a medium whose recipe graph
+	// (meta/recipes.json) does not match its inventory entry. Globally
+	// blocking with no override: the graph IS the reachability set, so an
+	// altered one makes every per-recipe verdict meaningless.
+	CodeMediaGraphAltered Code = "TBY-MED-005"
+	// CodeMediaZoneMismatch is a medium addressed to another zone.
+	// Globally blocking, admin-overridable and audited (FR-054, FR-094):
+	// an anti-accident guard, not a security control.
+	CodeMediaZoneMismatch Code = "TBY-MED-006"
+	// CodeMediaStale is a medium older than the last import recorded for
+	// its zone (R-28). Globally blocking, admin-overridable and audited;
+	// like the zone guard it prevents an accident — re-importing last
+	// month's medium — and not an attack, since the manifest is unsigned.
+	CodeMediaStale Code = "TBY-MED-007"
+
+	// CodeMediaFileMissing is a file a recipe reaches that the medium does
+	// not carry. Blocks that recipe whole, no override (R-19).
+	CodeMediaFileMissing Code = "TBY-MED-010"
+	// CodeMediaFileSize is a covered file whose size differs from its
+	// inventory entry.
+	CodeMediaFileSize Code = "TBY-MED-011"
+	// CodeMediaFileDigest is a covered file whose content does not hash to
+	// its inventory entry — the truncated or corrupted blob of the FR-054
+	// acceptance.
+	CodeMediaFileDigest Code = "TBY-MED-012"
+	// CodeMediaFileUninventoried is a file a recipe reaches that the
+	// inventory does not list: the manifest cannot vouch for it, so it is
+	// treated as an integrity failure of that recipe rather than as
+	// extraneous content.
+	CodeMediaFileUninventoried Code = "TBY-MED-013"
+	// CodeMediaContentUnreadable is a reachable manifest or index on the
+	// medium that cannot be parsed, so the walk cannot establish what the
+	// recipe reaches.
+	CodeMediaContentUnreadable Code = "TBY-MED-014"
+	// CodeMediaContentAddress is a blob whose bytes do not hash to the
+	// digest its own path claims — content-addressed storage disagreeing
+	// with itself, independently of what the inventory says.
+	CodeMediaContentAddress Code = "TBY-MED-015"
+
+	// CodeMediaUncovered reports a file under manifest coverage that the
+	// inventory does not list. Non-blocking: it is never pushed (FR-054).
+	CodeMediaUncovered Code = "TBY-MED-020"
+	// CodeMediaUnreachable reports an inventoried file no recipe reaches.
+	// Non-blocking: it is never pushed (FR-054).
+	CodeMediaUnreachable Code = "TBY-MED-021"
+	// CodeMediaMetadataAltered reports a covered meta/ bookkeeping file —
+	// other than the recipe graph, which blocks globally — that does not
+	// match its inventory entry. Non-blocking: nothing is pushed from it.
+	CodeMediaMetadataAltered Code = "TBY-MED-022"
+
 	// CodeTaskNotFound is a task identifier unknown to this instance.
 	CodeTaskNotFound Code = "TBY-TSK-001"
 
@@ -223,6 +298,29 @@ var catalog = map[Code]Entry{
 	CodeStoreRead:   {Code: CodeStoreRead, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
 	CodeStoreWrite:  {Code: CodeStoreWrite, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
 	CodeResumeSpool: {Code: CodeResumeSpool, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"path", "detail"}},
+
+	// Removable-media transport (FR-054). The two overridable blocks are
+	// policy refusals — an operator plugged in the wrong or the older
+	// medium, and an admin may say otherwise (FR-094); everything else is
+	// a verification verdict, which no override reopens.
+	CodeMediaManifestMissing:    {Code: CodeMediaManifestMissing, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path"}},
+	CodeMediaManifestUnreadable: {Code: CodeMediaManifestUnreadable, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
+	CodeMediaFormatUnsupported:  {Code: CodeMediaFormatUnsupported, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"found", "supported"}},
+	CodeMediaStoreFormat:        {Code: CodeMediaStoreFormat, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"found", "supported"}},
+	CodeMediaGraphAltered:       {Code: CodeMediaGraphAltered, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
+	CodeMediaZoneMismatch:       {Code: CodeMediaZoneMismatch, Class: ClassPolicy, HTTPStatus: http.StatusConflict, Params: []string{"expected", "found"}},
+	CodeMediaStale:              {Code: CodeMediaStale, Class: ClassPolicy, HTTPStatus: http.StatusConflict, Params: []string{"zone", "resolved", "recorded", "media"}},
+
+	CodeMediaFileMissing:       {Code: CodeMediaFileMissing, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "recipe"}},
+	CodeMediaFileSize:          {Code: CodeMediaFileSize, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
+	CodeMediaFileDigest:        {Code: CodeMediaFileDigest, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
+	CodeMediaFileUninventoried: {Code: CodeMediaFileUninventoried, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "recipe"}},
+	CodeMediaContentUnreadable: {Code: CodeMediaContentUnreadable, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
+	CodeMediaContentAddress:    {Code: CodeMediaContentAddress, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
+
+	CodeMediaUncovered:       {Code: CodeMediaUncovered, Class: ClassOperational, Params: []string{"path"}},
+	CodeMediaUnreachable:     {Code: CodeMediaUnreachable, Class: ClassOperational, Params: []string{"path"}},
+	CodeMediaMetadataAltered: {Code: CodeMediaMetadataAltered, Class: ClassOperational, Params: []string{"path"}},
 
 	CodeTaskNotFound: {Code: CodeTaskNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound, Params: []string{"id"}},
 

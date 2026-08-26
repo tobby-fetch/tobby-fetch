@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
@@ -121,6 +122,26 @@ func (p *TrustPolicy) Decide(nominalRepo string) Decision {
 // HasRoots reports whether any trust root is configured at all: without
 // one, only recipes admitted by an allowUnsigned scope can enter.
 func (p *TrustPolicy) HasRoots() bool { return p.all != nil }
+
+// MediaTrust adapts this instance's trust policy to the media package's
+// verification interface (FR-054).
+//
+// The adapter exists so the two packages stay independent of each other,
+// and it only ever wraps the DESTINATION instance's policy: trust roots
+// present on a transported medium are ignored, and nothing in the media
+// package can read any — it has no way to load key material at all.
+type MediaTrust struct {
+	Policy *TrustPolicy
+}
+
+// Decide implements media.Trust.
+func (m MediaTrust) Decide(nominalRepo string) media.TrustDecision {
+	if m.Policy == nil {
+		return media.TrustDecision{}
+	}
+	d := m.Policy.Decide(nominalRepo)
+	return media.TrustDecision{AllowUnsigned: d.AllowUnsigned, Scope: d.Scope, Keys: d.Keys}
+}
 
 // RelaxedScopes names the declared scopes that admit unsigned recipes —
 // the permanent-banner surface (FR-075 principle: a reduced posture is

@@ -19,9 +19,10 @@ le binaire (`internal/taxonomy`). Chaque code a son propre titre : l'ancre
 de dépannage embarqué (`/help#TBY-REG-003`).
 
 :::note[À venir — jalon 5]
-Le guide `/help` embarqué (R-05) et les codes d'erreur du parcours média
-(export, pré-vol, verdicts d'import) arrivent au jalon 5, sur ces mêmes
-ancres. À suivre sur la page
+Les verdicts de vérification d'un média (TBY-MED) sont documentés
+ci-dessous. Le guide `/help` embarqué (R-05) et les codes restants du
+parcours média (export, pré-vol) arrivent avec le reste du jalon 5, sur ces
+mêmes ancres. À suivre sur la page
 [État du projet](../../discover/status/).
 :::
 
@@ -33,11 +34,12 @@ ancres. À suivre sur la page
   chaîne de qualification amont.
 - **Bloque** — la portée : toute l'instance (refus de démarrage), une tâche
   ou une recipe, ou seulement la requête en cours.
-- **Dérogation** — aucun code n'a de dérogation à chaud aujourd'hui. Les
-  refus de politique se lèvent en modifiant la configuration auditée qui
-  les impose (liste blanche, clés de confiance, comptes) ; les échecs de
-  vérification ne se dérogent jamais. L'unique dérogation à chaud —
-  réservée à l'admin, auditée, à l'import d'un média — arrive au jalon 5.
+- **Dérogation** — les refus de politique se lèvent en modifiant la
+  configuration auditée qui les impose (liste blanche, clés de confiance,
+  comptes) ; les échecs de vérification ne se dérogent jamais. Les seules
+  dérogations à chaud sont réservées à l'admin, auditées, et se situent
+  toutes deux à l'import d'un média : la zone qui ne correspond pas
+  (TBY-MED-006) et le garde-fou de fraîcheur (TBY-MED-007).
 
 ## Authentification et comptes (TBY-AUTH)
 
@@ -471,6 +473,166 @@ ancres. À suivre sur la page
   mettez-le à `0` pour transférer chaque blob directement vers le store
   sans fichier temporaire.
 - **Remédiable hors-ligne :** oui · **Bloque :** les transferts reprenables concernés
+
+## Transport sur support amovible (TBY-MED)
+
+Le support est un store qui a changé de mains : tout ce qu'il dit de
+lui-même reste une allégation tant que ce côté-ci n'a pas recalculé les
+empreintes. Quatre conditions bloquent le support entier ; tout le reste se
+décide livraison par livraison, si bien qu'un support partiellement abîmé
+remet quand même ses recipes intactes.
+
+### TBY-MED-001
+
+- **Quoi :** le support ne porte aucun manifeste de média.
+- **Cause probable :** `meta/media.json` est absent — le store n'a pas été
+  produit par une synchronisation miroir menée à son terme, ou la copie sur
+  le support est partielle.
+- **Action corrective :** recopiez le store depuis l'instance source, ou
+  relancez la synchronisation miroir qui le produit.
+- **Corrigeable hors ligne :** oui · **Bloque :** le support entier, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-002
+
+- **Quoi :** le manifeste de média est illisible.
+- **Cause probable :** il est tronqué, non analysable ou incohérent — un
+  chemin qui sort du store, une entrée d'inventaire en double, un nom de
+  dépôt qui n'en est pas un.
+- **Action corrective :** recopiez le store depuis l'instance source puis
+  vérifiez à nouveau.
+- **Corrigeable hors ligne :** oui · **Bloque :** le support entier, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-003
+
+- **Quoi :** le manifeste de média utilise une version de format non prise
+  en charge.
+- **Cause probable :** le support déclare un format de manifeste que cette
+  version de Tobby ne lit pas ; les deux versions sont nommées.
+- **Action corrective :** utilisez de ce côté une version de Tobby
+  correspondant au support, ou reproduisez le support avec la version d'ici.
+- **Corrigeable hors ligne :** oui · **Bloque :** le support entier (classe vérification, code 4)
+
+### TBY-MED-004
+
+- **Quoi :** le support utilise une version de format de store non prise en
+  charge.
+- **Cause probable :** la disposition du store est d'une autre série
+  majeure ; les deux versions sont nommées.
+- **Action corrective :** utilisez une version de Tobby correspondante, ou
+  transférez le contenu via l'OCI image layout avec l'outillage standard.
+- **Corrigeable hors ligne :** oui · **Bloque :** le support entier (classe vérification, code 4)
+
+### TBY-MED-005
+
+- **Quoi :** le graphe de recipes du support ne correspond pas à son
+  inventaire.
+- **Cause probable :** `meta/recipes.json` a été modifié après l'écriture du
+  manifeste — la liste de ce que le support livre a changé.
+- **Action corrective :** recopiez le store depuis l'instance source. Le
+  graphe est ce à partir de quoi chaque verdict par recipe est calculé.
+- **Corrigeable hors ligne :** oui · **Bloque :** le support entier, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-006
+
+- **Quoi :** le support est adressé à une autre zone.
+- **Cause probable :** le manifeste nomme une zone que cette instance ne
+  sert pas ; les deux sont nommées.
+- **Action corrective :** vérifiez qu'il s'agit bien du support destiné à
+  cette zone. Un administrateur peut lever le refus ; la dérogation est
+  consignée au journal d'audit.
+- **Corrigeable hors ligne :** oui · **Bloque :** le support entier, dérogation admin possible (classe politique, code 3)
+
+### TBY-MED-007
+
+- **Quoi :** le support est plus ancien que le dernier importé pour cette
+  zone.
+- **Cause probable :** son horodatage de résolution précède celui du dernier
+  import abouti de la zone ; les deux horodatages et le support sont nommés.
+  Garde-fou anti-accident, pas contrôle de sécurité : le manifeste n'est pas
+  signé.
+- **Action corrective :** vérifiez que vous avez branché le support courant.
+  Un administrateur peut lever le refus — pour restaurer volontairement une
+  livraison antérieure, par exemple ; la dérogation est auditée.
+- **Corrigeable hors ligne :** oui · **Bloque :** le support entier, dérogation admin possible (classe politique, code 3)
+
+### TBY-MED-010
+
+- **Quoi :** un fichier nécessaire à la recipe est absent du support.
+- **Cause probable :** copie partielle, ou fichier supprimé.
+- **Action corrective :** recopiez le store depuis l'instance source.
+- **Corrigeable hors ligne :** oui · **Bloque :** cette recipe entière, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-011
+
+- **Quoi :** un fichier du support n'a pas la taille attendue.
+- **Cause probable :** il a été tronqué ou modifié après l'écriture du
+  manifeste ; les tailles attendue et constatée sont nommées.
+- **Action corrective :** recopiez le store depuis l'instance source.
+- **Corrigeable hors ligne :** oui · **Bloque :** la recipe qui atteint ce fichier, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-012
+
+- **Quoi :** un fichier du support ne correspond pas à son empreinte
+  enregistrée.
+- **Cause probable :** le contenu a été corrompu ou altéré pendant le
+  transport ; les deux empreintes sont nommées.
+- **Action corrective :** recopiez le store depuis l'instance source.
+- **Corrigeable hors ligne :** oui · **Bloque :** la recipe qui atteint ce fichier, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-013
+
+- **Quoi :** un fichier nécessaire à la recipe est absent de l'inventaire.
+- **Cause probable :** le manifeste ne couvre pas tout ce que les recipes
+  atteignent ; il ne peut donc pas en répondre.
+- **Action corrective :** reproduisez le support depuis l'instance source.
+- **Corrigeable hors ligne :** oui · **Bloque :** cette recipe entière, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-014
+
+- **Quoi :** un manifeste du support est illisible.
+- **Cause probable :** le fichier nommé n'est pas lisible comme manifeste ou
+  index OCI ; ce que la recipe livre ne peut pas être établi.
+- **Action corrective :** recopiez le store depuis l'instance source.
+- **Corrigeable hors ligne :** oui · **Bloque :** cette recipe entière (classe vérification, code 4)
+
+### TBY-MED-015
+
+- **Quoi :** un blob du support est rangé sous une mauvaise empreinte.
+- **Cause probable :** ses octets n'ont pas l'empreinte que son propre
+  chemin annonce — le stockage adressé par contenu se contredit, quoi que
+  dise l'inventaire.
+- **Action corrective :** recopiez le store depuis l'instance source.
+- **Corrigeable hors ligne :** oui · **Bloque :** la recipe qui atteint ce blob, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-020
+
+- **Quoi :** un fichier du support n'est pas couvert par l'inventaire.
+- **Cause probable :** il a été ajouté après l'écriture du manifeste.
+- **Action corrective :** rien à faire pour continuer — le contenu
+  surnuméraire n'est jamais poussé. Cherchez comment il est arrivé là si ce
+  n'est pas vous qui l'y avez mis.
+- **Corrigeable hors ligne :** oui · **Bloque :** rien (signalé seulement)
+
+### TBY-MED-021
+
+- **Quoi :** un fichier du support n'est atteint par aucune recipe.
+- **Cause probable :** le plus souvent, un reliquat d'une livraison
+  antérieure.
+- **Action corrective :** rien à faire pour continuer — un contenu atteint
+  par aucune recipe n'est jamais poussé. Élaguez le store source pour que le
+  support porte moins.
+- **Corrigeable hors ligne :** oui · **Bloque :** rien (signalé seulement)
+
+### TBY-MED-022
+
+- **Quoi :** un fichier de tenue de registre du support ne correspond pas à
+  son empreinte enregistrée.
+- **Cause probable :** la comptabilité interne du store — hors graphe de
+  recipes, qui bloque globalement — a été modifiée après l'écriture du
+  manifeste.
+- **Action corrective :** recopiez le store depuis l'instance source si vous
+  ne l'avez pas modifié délibérément. Rien n'est poussé depuis ces fichiers.
+- **Corrigeable hors ligne :** oui · **Bloque :** rien (signalé seulement)
 
 ## Tâches (TBY-TSK)
 

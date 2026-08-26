@@ -151,6 +151,70 @@
 "TBY-STO-002.cause": "{{.detail}}"
 "TBY-STO-002.action": "Check free space and permissions on the storage root, then retry the operation."
 
+"TBY-MED-001.what": "The medium carries no media manifest."
+"TBY-MED-001.cause": "{{.path}} is absent — the store was not produced by a completed mirror synchronization, or the copy onto the medium was partial."
+"TBY-MED-001.action": "Re-copy the store from the source instance, or re-run the mirror synchronization that produces it. Nothing can be pushed from a medium without an inventory, and this refusal has no override."
+
+"TBY-MED-002.what": "The media manifest cannot be read."
+"TBY-MED-002.cause": "{{.path}} is truncated, unparseable, or internally inconsistent: {{.detail}}."
+"TBY-MED-002.action": "Re-copy the store from the source instance and verify again. A manifest that does not parse leaves nothing to check the medium against, and this refusal has no override."
+
+"TBY-MED-003.what": "The media manifest uses an unsupported format version."
+"TBY-MED-003.cause": "The medium declares media manifest format {{.found}}; this build reads format {{.supported}}."
+"TBY-MED-003.action": "Use a Tobby release matching the medium on this side, or re-produce the medium with the release running here."
+
+"TBY-MED-004.what": "The medium uses an unsupported store format version."
+"TBY-MED-004.cause": "The medium declares store format {{.found}}; this build reads format {{.supported}}."
+"TBY-MED-004.action": "Use a Tobby release matching the medium, or move the content through the OCI image layout with standard tooling (skopeo, oras, crane)."
+
+"TBY-MED-005.what": "The medium's recipe graph does not match its inventory."
+"TBY-MED-005.cause": "{{.path}} hashes to {{.actual}} but the manifest records {{.expected}} — the list of what the medium delivers has changed since the manifest was written."
+"TBY-MED-005.action": "Re-copy the store from the source instance. The recipe graph is what every per-recipe verdict is computed from, so an altered one blocks the whole medium and has no override."
+
+"TBY-MED-006.what": "The medium is addressed to another zone."
+"TBY-MED-006.cause": "The manifest names zone {{.found}}; this instance serves zone {{.expected}}."
+"TBY-MED-006.action": "Check that this is the medium intended for this zone. An administrator may override the refusal deliberately; the override is recorded in the audit journal."
+
+"TBY-MED-007.what": "The medium is older than the last one imported for this zone."
+"TBY-MED-007.cause": "Medium {{.media}} was resolved at {{.resolved}}, while zone {{.zone}} last imported content resolved at {{.recorded}} — importing it would roll the zone backwards."
+"TBY-MED-007.action": "Check that you plugged in the current medium. An administrator may override the refusal deliberately — to restore an older delivery on purpose, for instance; the override is recorded in the audit journal."
+
+"TBY-MED-010.what": "A file the recipe needs is missing from the medium."
+"TBY-MED-010.cause": "{{.recipe}} reaches {{.path}}, which the medium does not carry — the copy was partial, or the file was removed."
+"TBY-MED-010.action": "Re-copy the store from the source instance. The recipe is blocked whole and has no override; recipes intact on the same medium remain pushable."
+
+"TBY-MED-011.what": "A file on the medium has the wrong size."
+"TBY-MED-011.cause": "{{.path}} holds {{.actual}} bytes but the manifest records {{.expected}} — the file was truncated or altered after the manifest was written."
+"TBY-MED-011.action": "Re-copy the store from the source instance. The recipe reaching this file is blocked whole and has no override."
+
+"TBY-MED-012.what": "A file on the medium does not match its recorded digest."
+"TBY-MED-012.cause": "{{.path}} hashes to {{.actual}} but the manifest records {{.expected}} — the content was corrupted or tampered with in transport."
+"TBY-MED-012.action": "Re-copy the store from the source instance. The recipe reaching this file is blocked whole and has no override."
+
+"TBY-MED-013.what": "A file the recipe needs is absent from the inventory."
+"TBY-MED-013.cause": "{{.recipe}} reaches {{.path}}, which the media manifest does not list — the manifest cannot vouch for it."
+"TBY-MED-013.action": "Re-produce the medium from the source instance so the manifest covers everything the recipes reach. The recipe is blocked whole and has no override."
+
+"TBY-MED-014.what": "A manifest on the medium cannot be read."
+"TBY-MED-014.cause": "{{.path}} is not readable as an OCI manifest or index: {{.detail}}."
+"TBY-MED-014.action": "Re-copy the store from the source instance. What the recipe delivers cannot be established from an unreadable manifest, so the recipe is blocked whole."
+
+"TBY-MED-015.what": "A blob on the medium is stored under the wrong digest."
+"TBY-MED-015.cause": "{{.path}} is addressed as {{.expected}} but its bytes hash to {{.actual}} — the content-addressed store disagrees with itself."
+"TBY-MED-015.action": "Re-copy the store from the source instance. The recipe reaching this blob is blocked whole and has no override."
+
+"TBY-MED-020.what": "A file on the medium is not covered by the inventory."
+"TBY-MED-020.cause": "{{.path}} lies under manifest coverage but the manifest does not list it — it was added after the manifest was written."
+"TBY-MED-020.action": "Nothing to do to proceed: extraneous content is never pushed. Investigate how it got onto the medium if you did not put it there."
+
+"TBY-MED-021.what": "A file on the medium is reached by no recipe."
+"TBY-MED-021.cause": "{{.path}} is inventoried but no recipe of this medium delivers it — leftover content from an earlier delivery, most often."
+"TBY-MED-021.action": "Nothing to do to proceed: content reachable from no recipe is never pushed. Prune the source store if you want the medium to carry less."
+
+"TBY-MED-022.what": "A bookkeeping file on the medium does not match its recorded digest."
+"TBY-MED-022.cause": "{{.path}} does not match its inventory entry — the store's own bookkeeping was altered after the manifest was written."
+"TBY-MED-022.action": "Nothing is pushed from this file, so verification continues; re-copy the store from the source instance if you did not alter it deliberately."
+
 "TBY-TSK-001.what": "The task does not exist."
 "TBY-TSK-001.cause": "No task with identifier {{.id}} on this instance — wrong link, or the store was reset."
 "TBY-TSK-001.action": "Open the task list and follow the link of an existing task."

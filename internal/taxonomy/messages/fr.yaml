@@ -151,6 +151,70 @@
 "TBY-STO-002.cause": "{{.detail}}"
 "TBY-STO-002.action": "Vérifiez l'espace libre et les permissions du répertoire de stockage, puis relancez l'opération."
 
+"TBY-MED-001.what": "Le support ne porte aucun manifeste de média."
+"TBY-MED-001.cause": "{{.path}} est absent — le store n'a pas été produit par une synchronisation miroir menée à son terme, ou la copie sur le support est partielle."
+"TBY-MED-001.action": "Recopiez le store depuis l'instance source, ou relancez la synchronisation miroir qui le produit. Rien ne peut être poussé depuis un support sans inventaire, et ce refus n'admet aucune dérogation."
+
+"TBY-MED-002.what": "Le manifeste de média est illisible."
+"TBY-MED-002.cause": "{{.path}} est tronqué, non analysable ou incohérent : {{.detail}}."
+"TBY-MED-002.action": "Recopiez le store depuis l'instance source puis vérifiez à nouveau. Un manifeste qui ne s'analyse pas ne laisse rien à quoi confronter le support, et ce refus n'admet aucune dérogation."
+
+"TBY-MED-003.what": "Le manifeste de média utilise une version de format non prise en charge."
+"TBY-MED-003.cause": "Le support déclare le format de manifeste {{.found}} ; cette version de Tobby lit le format {{.supported}}."
+"TBY-MED-003.action": "Utilisez de ce côté une version de Tobby correspondant au support, ou reproduisez le support avec la version qui tourne ici."
+
+"TBY-MED-004.what": "Le support utilise une version de format de store non prise en charge."
+"TBY-MED-004.cause": "Le support déclare le format de store {{.found}} ; cette version de Tobby lit le format {{.supported}}."
+"TBY-MED-004.action": "Utilisez une version de Tobby correspondant au support, ou transférez le contenu via le format OCI image layout avec l'outillage standard (skopeo, oras, crane)."
+
+"TBY-MED-005.what": "Le graphe de recipes du support ne correspond pas à son inventaire."
+"TBY-MED-005.cause": "{{.path}} a pour empreinte {{.actual}} alors que le manifeste enregistre {{.expected}} — la liste de ce que le support livre a changé depuis l'écriture du manifeste."
+"TBY-MED-005.action": "Recopiez le store depuis l'instance source. Le graphe de recipes est ce à partir de quoi chaque verdict par recipe est calculé : un graphe altéré bloque le support entier, sans dérogation."
+
+"TBY-MED-006.what": "Le support est adressé à une autre zone."
+"TBY-MED-006.cause": "Le manifeste nomme la zone {{.found}} ; cette instance sert la zone {{.expected}}."
+"TBY-MED-006.action": "Vérifiez qu'il s'agit bien du support destiné à cette zone. Un administrateur peut lever le refus délibérément ; la dérogation est consignée au journal d'audit."
+
+"TBY-MED-007.what": "Le support est plus ancien que le dernier importé pour cette zone."
+"TBY-MED-007.cause": "Le support {{.media}} a été résolu le {{.resolved}}, alors que la zone {{.zone}} a importé en dernier un contenu résolu le {{.recorded}} — l'importer ferait reculer la zone."
+"TBY-MED-007.action": "Vérifiez que vous avez branché le support courant. Un administrateur peut lever le refus délibérément — pour restaurer volontairement une livraison antérieure, par exemple ; la dérogation est consignée au journal d'audit."
+
+"TBY-MED-010.what": "Un fichier nécessaire à la recipe est absent du support."
+"TBY-MED-010.cause": "{{.recipe}} atteint {{.path}}, que le support ne porte pas — copie partielle, ou fichier supprimé."
+"TBY-MED-010.action": "Recopiez le store depuis l'instance source. La recipe est bloquée entière, sans dérogation ; les recipes intactes du même support restent poussables."
+
+"TBY-MED-011.what": "Un fichier du support n'a pas la taille attendue."
+"TBY-MED-011.cause": "{{.path}} contient {{.actual}} octets alors que le manifeste enregistre {{.expected}} — le fichier a été tronqué ou modifié après l'écriture du manifeste."
+"TBY-MED-011.action": "Recopiez le store depuis l'instance source. La recipe qui atteint ce fichier est bloquée entière, sans dérogation."
+
+"TBY-MED-012.what": "Un fichier du support ne correspond pas à son empreinte enregistrée."
+"TBY-MED-012.cause": "{{.path}} a pour empreinte {{.actual}} alors que le manifeste enregistre {{.expected}} — le contenu a été corrompu ou altéré pendant le transport."
+"TBY-MED-012.action": "Recopiez le store depuis l'instance source. La recipe qui atteint ce fichier est bloquée entière, sans dérogation."
+
+"TBY-MED-013.what": "Un fichier nécessaire à la recipe est absent de l'inventaire."
+"TBY-MED-013.cause": "{{.recipe}} atteint {{.path}}, que le manifeste de média ne liste pas — le manifeste ne peut donc pas en répondre."
+"TBY-MED-013.action": "Reproduisez le support depuis l'instance source pour que le manifeste couvre tout ce que les recipes atteignent. La recipe est bloquée entière, sans dérogation."
+
+"TBY-MED-014.what": "Un manifeste du support est illisible."
+"TBY-MED-014.cause": "{{.path}} n'est pas lisible comme manifeste ou index OCI : {{.detail}}."
+"TBY-MED-014.action": "Recopiez le store depuis l'instance source. Ce que la recipe livre ne peut pas être établi à partir d'un manifeste illisible : la recipe est bloquée entière."
+
+"TBY-MED-015.what": "Un blob du support est rangé sous une mauvaise empreinte."
+"TBY-MED-015.cause": "{{.path}} est adressé comme {{.expected}} mais ses octets ont pour empreinte {{.actual}} — le stockage adressé par contenu se contredit."
+"TBY-MED-015.action": "Recopiez le store depuis l'instance source. La recipe qui atteint ce blob est bloquée entière, sans dérogation."
+
+"TBY-MED-020.what": "Un fichier du support n'est pas couvert par l'inventaire."
+"TBY-MED-020.cause": "{{.path}} se trouve sous la couverture du manifeste mais celui-ci ne le liste pas — il a été ajouté après l'écriture du manifeste."
+"TBY-MED-020.action": "Rien à faire pour continuer : le contenu surnuméraire n'est jamais poussé. Cherchez comment il est arrivé sur le support si ce n'est pas vous qui l'y avez mis."
+
+"TBY-MED-021.what": "Un fichier du support n'est atteint par aucune recipe."
+"TBY-MED-021.cause": "{{.path}} est inventorié mais aucune recipe de ce support ne le livre — le plus souvent, un reliquat d'une livraison antérieure."
+"TBY-MED-021.action": "Rien à faire pour continuer : un contenu atteint par aucune recipe n'est jamais poussé. Élaguez le store source si vous voulez que le support porte moins."
+
+"TBY-MED-022.what": "Un fichier de tenue de registre du support ne correspond pas à son empreinte enregistrée."
+"TBY-MED-022.cause": "{{.path}} ne correspond pas à son entrée d'inventaire — la comptabilité interne du store a été modifiée après l'écriture du manifeste."
+"TBY-MED-022.action": "Rien n'est poussé depuis ce fichier, la vérification continue ; recopiez le store depuis l'instance source si vous ne l'avez pas modifié délibérément."
+
 "TBY-TSK-001.what": "La tâche n'existe pas."
 "TBY-TSK-001.cause": "Aucune tâche d'identifiant {{.id}} sur cette instance — lien erroné, ou store réinitialisé."
 "TBY-TSK-001.action": "Ouvrez la liste des tâches et suivez le lien d'une tâche existante."
