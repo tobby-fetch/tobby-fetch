@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -144,4 +145,98 @@ func TestRunnerPanicFailsTheTaskOnce(t *testing.T) {
 	if got.Status != StatusFailed || got.Resumed {
 		t.Fatalf("after restart: status=%s resumed=%v, want failed and not resumed", got.Status, got.Resumed)
 	}
+}
+
+// TestBoundaryHookRunsOncePerSettledTask is the queue half of FR-056: the
+// transport medium's log is fsync'd at task boundaries, and the queue is
+// what knows where those are.
+//
+// The hook must fire AFTER the task has settled and its records are
+// written — a flush taken mid-run would leave the "task finished" record,
+// the one an operator looks for, on the wrong side of the barrier. It
+// must also fire on a task that FAILED: an operation refused by a
+// corrupted medium is exactly the one whose trail must survive the medium
+// being pulled out in annoyance.
+//
+// The task type is incidental — the boundary belongs to the queue, not to
+// any runner — so the oldest one is used rather than the newest.
+func TestBoundaryHookRunsOncePerSettledTask(t *testing.T) {
+	var mu sync.Mutex
+	var ids []string
+	var seen []Status
+	settled := make(chan struct{}, 4)
+
+	// The hook reads each task's state through the queue's own accessor,
+	// so a flush taken before finish() would observe "running" — which is
+	// the regression this test exists to catch.
+	var q *Queue
+	hook := func() {
+		mu.Lock()
+		known := append([]string(nil), ids...)
+		mu.Unlock()
+		for _, id := range known {
+			if task, ok := q.Get(id); ok && !task.Active() {
+				mu.Lock()
+				seen = append(seen, task.Status)
+				mu.Unlock()
+			}
+		}
+		settled <- struct{}{}
+	}
+
+	var err error
+	q, err = Open(t.TempDir(), slog.New(slog.DiscardHandler), WithBoundary(hook))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q.Register(TypeSync, func(_ context.Context, task *Task, _ *slog.Logger, _ func()) error {
+		if task.Reference == "doomed" {
+			return taxonomy.New(taxonomy.CodeInternal, nil)
+		}
+		return nil
+	})
+
+	for _, ref := range []string{"good", "doomed"} {
+		task, cerr := q.Create(TypeSync, ref, "local", nil)
+		if cerr != nil {
+			t.Fatal(cerr)
+		}
+		mu.Lock()
+		ids = append(ids, task.ID)
+		mu.Unlock()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	q.Start(ctx)
+
+	for range 2 {
+		select {
+		case <-settled:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the boundary hook did not fire for every task")
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) < 2 {
+		t.Fatalf("the hook observed %v: it must run once per SETTLED task, failures included", seen)
+	}
+	for _, s := range seen {
+		if s == StatusRunning || s == StatusPending {
+			t.Errorf("the boundary hook saw a %s task: it must run once the task has settled", s)
+		}
+	}
+	if !containsStatus(seen, StatusFailed) {
+		t.Error("no failed task reached the boundary hook: a refused import's trail must be flushed too")
+	}
+}
+
+func containsStatus(ss []Status, want Status) bool {
+	for _, s := range ss {
+		if s == want {
+			return true
+		}
+	}
+	return false
 }

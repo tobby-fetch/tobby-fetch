@@ -488,6 +488,30 @@ func (t *ClientTLS) Configured() bool { return len(t.CAFiles) > 0 || t.CA != "" 
 type Logging struct {
 	// Level is one of debug, info, warn, error. Default "info".
 	Level string `yaml:"level"`
+	// Media configures the operation log written onto the transport
+	// medium (FR-053).
+	Media MediaLog `yaml:"media"`
+}
+
+// MediaLog configures the operation log on the transport medium (FR-053,
+// FR-056). It applies in mirror mode only: a passthrough store is a cache
+// in front of a destination registry, not an object that changes hands.
+type MediaLog struct {
+	// File is the log's location inside the store, in slash form.
+	// Default medialog.DefaultPath. It must lie OUTSIDE the media
+	// manifest's coverage — the instance refuses to start otherwise
+	// (FR-054): a log inside coverage invalidates, line by line, the
+	// inventory the destination side verifies.
+	File string `yaml:"file,omitempty"`
+	// MaxSize is the size-based rotation threshold (FR-056). Default
+	// 10MiB.
+	MaxSize Size `yaml:"maxSize,omitempty"`
+	// Keep is how many rotated generations to retain. Default 3.
+	Keep int `yaml:"keep,omitempty"`
+	// Disabled turns the medium's log off. Explicit and never a default:
+	// FR-053 makes the log part of what the medium carries, and a medium
+	// arriving without one cannot be audited by whoever receives it.
+	Disabled bool `yaml:"disabled,omitempty"`
 }
 
 // Shutdown configures the graceful-shutdown behavior (FR-093, ADR-0012).
@@ -599,6 +623,12 @@ func (c *Config) validate(scope Scope) error {
 	}
 	if _, err := parseLevel(c.Logging.Level); err != nil {
 		errs = append(errs, fmt.Errorf("logging.level: %w", err))
+	}
+	if c.Logging.Media.MaxSize < 0 {
+		errs = append(errs, errors.New("logging.media.maxSize must not be negative"))
+	}
+	if c.Logging.Media.Keep < 0 {
+		errs = append(errs, errors.New("logging.media.keep must not be negative"))
 	}
 	if c.Server.Addr == "" {
 		errs = append(errs, errors.New("server.addr must not be empty"))
