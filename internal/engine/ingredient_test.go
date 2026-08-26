@@ -215,6 +215,75 @@ func TestSyncMissingPlatform(t *testing.T) {
 	}
 }
 
+// TestSyncSelectsPlatformWhoseVariantTheRecipeOmits is B-020, reproduced
+// on the shape real registries actually publish.
+//
+// RECIPE-SPEC §7.1 writes the field as "os/arch[/variant]" — the variant
+// is optional — and its own normative example asks for
+// platforms: ["linux/amd64", "linux/arm64"]. Docker's official images
+// describe their arm64 child as linux/arm64 WITH variant v8, so an index
+// seeded the way the world publishes them (rather than the way the old
+// fixtures did, variant-free) is what the recipe meets in production.
+//
+// The whole ingredient failed, so the assertion is on both platforms
+// landing under the pinned index digest — the FR-022 sparse index — not
+// merely on the item's status.
+func TestSyncSelectsPlatformWhoseVariantTheRecipeOmits(t *testing.T) {
+	src := newRegistry(t)
+	dst := openStore(t)
+	kp := newKeyPair(t)
+	ctx := context.Background()
+
+	idx := seedIndex(t, src, "library/alpine", "3.22.1",
+		v1.Platform{OS: "linux", Architecture: "amd64"},
+		v1.Platform{OS: "linux", Architecture: "arm64", Variant: "v8"},
+		v1.Platform{OS: "linux", Architecture: "arm", Variant: "v7"},
+	)
+	yaml := cookedRecipeYAML(t, "base", "1.0.0", []spec.Ingredient{{
+		Name: "alpine", Kind: spec.IngredientContainerImage,
+		Ref: src.addr + "/library/alpine", Version: "3.22.1", Digest: idx.digest,
+		Platforms: []string{"linux/amd64", "linux/arm64"},
+	}})
+	manDig := publishRecipe(t, src.st, "cookbook/base", "1.0.0", yaml)
+	signManifest(t, src.st, "cookbook/base", manDig, kp)
+
+	retr := retrieverFile(t, testZone, src.addr+"/cookbook", []spec.RecipeSelector{
+		{Name: "base", Version: "1.0.0"},
+	})
+	task, err := runSync(t, New(dst, newRemotes(t, nil), trustFor(t, nil, kp), retr, "", syncCfg()))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	it := itemByName(t, task, "base@1.0.0/alpine")
+	if it.Status != tasks.StatusDone {
+		t.Fatalf("item = %+v (detail %q), want done: an omitted variant selects the platform",
+			it.Status, errDetail(it))
+	}
+
+	repo := strings.ReplaceAll(src.addr, ":", "_") + "/library/alpine"
+	if d, ok := dst.ResolveTag(ctx, repo, "3.22.1"); !ok || d != idx.digest {
+		t.Errorf("tag resolves %q (ok=%v), want the pinned index %s", d, ok, idx.digest)
+	}
+	for _, label := range []string{"linux/amd64", "linux/arm64/v8"} {
+		if !dst.HasManifest(ctx, repo, idx.children[label]) {
+			t.Errorf("selected platform %s is missing from the store", label)
+		}
+	}
+	// The selection is still a selection: arm/v7 was not asked for, so the
+	// index stays sparse (FR-022).
+	if dst.HasManifest(ctx, repo, idx.children["linux/arm/v7"]) {
+		t.Error("linux/arm/v7 was transferred although the recipe never asked for it")
+	}
+}
+
+// errDetail renders an item's recorded cause for failure messages (B-021).
+func errDetail(it *tasks.Item) string {
+	if it.Error == nil {
+		return ""
+	}
+	return string(it.Error.Code) + ": " + it.Error.Detail
+}
+
 // TestFailedIngredientIsLoggedWithItsCause is B-021: an ingredient that
 // fails must leave a trail an operator can follow.
 //

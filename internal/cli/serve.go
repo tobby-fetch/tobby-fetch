@@ -591,15 +591,15 @@ func selectFileSetManifest(ctx context.Context, st *store.Store, repo string, pa
 		if m.Platform == nil || m.Platform.OS == "unknown" {
 			continue
 		}
-		label := m.Platform.OS + "/" + m.Platform.Arch
-		if m.Platform.Variant != "" {
-			label += "/" + m.Platform.Variant
-		}
 		if platform == "" {
 			candidates = append(candidates, m.Digest)
 			continue
 		}
-		if label == platform {
+		// Same optional-variant rule as an ingredient's platforms list —
+		// same notation, same matcher (B-020): a configured
+		// "linux/arm64" must find the index child the registry describes
+		// as linux/arm64 variant v8.
+		if importer.MatchesPlatform(platform, m.Platform.OS, m.Platform.Arch, m.Platform.Variant) {
 			if !st.HasManifest(ctx, repo, m.Digest) {
 				return "", fmt.Errorf("platform %s of %s is not present locally (sparse index)", platform, repo)
 			}

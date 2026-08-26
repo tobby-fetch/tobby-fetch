@@ -140,9 +140,12 @@ A runnable image, possibly multi-platform. The digest pins the **index**
 (the multi-platform manifest list), not one platform's manifest. The
 optional `platforms:` list names what the destination must have — naming
 only what your zone runs keeps transfers and media small, while the pinned
-index stays intact and verifiable. Platform labels are matched exactly:
-`linux/arm64` and `linux/arm64/v8` are different strings, and Tobby fails
-the ingredient rather than guessing. Spec:
+index stays intact and verifiable. A label is `os/arch[/variant]`, and the
+variant is optional: `linux/arm64` selects the arm64 image whatever
+variant the registry gives it — which matters, because official images
+label theirs `linux/arm64/v8`. Name a variant and it binds: `linux/arm/v7`
+does not accept a v6 image, and a platform the index simply does not carry
+fails the ingredient rather than being silently dropped. Spec:
 [§7.1](https://github.com/tobby-fetch/recipe-spec/blob/main/RECIPE-SPEC.md#71-containerimage).
 
 ### HelmChart

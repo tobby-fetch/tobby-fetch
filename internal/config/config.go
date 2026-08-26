@@ -210,9 +210,10 @@ type FileSetServe struct {
 	// Version pins the served tag; empty serves the highest semver tag
 	// present locally.
 	Version string `yaml:"version,omitempty"`
-	// Platform selects the platform manifest of a multi-platform FileSet
-	// ("linux/amd64"); empty picks the single manifest and fails on an
-	// ambiguous index.
+	// Platform selects the platform manifest of a multi-platform FileSet,
+	// as "os/arch[/variant]" — the variant is optional and an omitted one
+	// accepts any ("linux/arm64" finds the linux/arm64/v8 child, B-020).
+	// Empty picks the single manifest and fails on an ambiguous index.
 	Platform string `yaml:"platform,omitempty"`
 	// Anonymous opts this FileSet into unauthenticated reads (bare-host
 	// bootstrap) — reported like the FR-075 override, never silent.

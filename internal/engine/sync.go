@@ -554,30 +554,31 @@ func selectPlatforms(desc *remote.Descriptor, ing *spec.Ingredient) (map[string]
 	if err != nil {
 		return nil, err
 	}
-	want := map[string]bool{}
-	for _, p := range ing.Platforms {
-		want[p] = true
-	}
+	// The match is the format's rule, not a string comparison on rendered
+	// labels (B-020): the variant is optional in the selector, and one
+	// selector may legitimately match several children.
+	matched := make(map[string]bool, len(ing.Platforms))
 	selected := map[string]bool{}
 	for i := range man.Manifests {
 		child := &man.Manifests[i]
 		if child.Platform == nil {
 			continue
 		}
-		label := child.Platform.OS + "/" + child.Platform.Architecture
-		if child.Platform.Variant != "" {
-			label += "/" + child.Platform.Variant
-		}
-		if want[label] {
+		for _, want := range ing.Platforms {
+			if !importer.MatchesPlatform(want, child.Platform.OS, child.Platform.Architecture, child.Platform.Variant) {
+				continue
+			}
 			selected[child.Digest.String()] = true
-			delete(want, label)
+			matched[want] = true
 		}
 	}
-	if len(want) > 0 {
-		missing := make([]string, 0, len(want))
-		for p := range want {
-			missing = append(missing, p)
+	var missing []string
+	for _, want := range ing.Platforms {
+		if !matched[want] {
+			missing = append(missing, want)
 		}
+	}
+	if len(missing) > 0 {
 		sort.Strings(missing)
 		return nil, fmt.Errorf("platforms %s not present in the source index of %s", strings.Join(missing, ", "), ing.Ref)
 	}

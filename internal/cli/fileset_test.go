@@ -321,6 +321,33 @@ func TestSelectFileSetManifestOnIndex(t *testing.T) {
 	}
 }
 
+// TestSelectFileSetManifestOmittedVariant is B-020 on this selector: the
+// configured platform follows the "os/arch[/variant]" notation, where the
+// variant is optional, and registries describe their arm64 children with
+// variant v8. Comparing rendered labels made the variant mandatory, so a
+// perfectly ordinary "linux/arm64" refused to serve an index that plainly
+// carried one. A named variant still binds.
+func TestSelectFileSetManifestOmittedVariant(t *testing.T) {
+	st := openFileSetStore(t)
+	children := pushIndex(t, st, "1.0.0",
+		v1.Platform{OS: "linux", Architecture: "amd64"},
+		v1.Platform{OS: "linux", Architecture: "arm64", Variant: "v8"})
+
+	got, err := resolveOne(t, st, config.FileSetServe{Name: "debs", Ref: fileSetRef, Platform: "linux/arm64"})
+	if err != nil {
+		t.Fatalf("resolveFileSets: %v", err)
+	}
+	if got.digest != children["linux/arm64"] {
+		t.Errorf("selected %s, want the linux/arm64 child %s", got.digest, children["linux/arm64"])
+	}
+
+	_, err = resolveFileSets(context.Background(), st,
+		fileSetConfig(config.FileSetServe{Name: "debs", Ref: fileSetRef, Platform: "linux/arm64/v9"}))
+	if err == nil || !strings.Contains(err.Error(), "platform linux/arm64/v9 not found in the index") {
+		t.Errorf("wrong variant = %v, want an explicit not-found-in-index error", err)
+	}
+}
+
 // TestSelectFileSetManifestSinglePlatformIndex: an index carrying one real
 // platform plus buildx-style attestation entries ("unknown/unknown") is not
 // ambiguous — the attestations are not platforms, so no configuration is

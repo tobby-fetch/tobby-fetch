@@ -87,6 +87,42 @@ func (p *Platform) Name() string {
 	return s
 }
 
+// MatchesPlatform reports whether an index child described by os, arch
+// and variant is what the selector asks for.
+//
+// The selector is the "os/arch[/variant]" notation of RECIPE-SPEC §7.1
+// (an ingredient's platforms list) and of the fileServing platform
+// setting — the SAME notation on both, hence one rule in one place
+// (the B-014 lesson: a matching rule belongs to whoever owns the
+// vocabulary, not to each of its callers).
+//
+// The variant is OPTIONAL, and an omitted one matches ANY variant of
+// that os/arch. That is the whole of B-020: both call sites used to
+// render the child's platform back into a label and compare strings,
+// which silently made the variant MANDATORY. Docker's official images
+// describe their arm64 child as linux/arm64 with variant v8, so a
+// recipe asking for linux/arm64 — the spelling of the format's own
+// normative example — matched nothing and failed the ingredient. An
+// os/arch alone is never rejected: "give me arm64" is a complete
+// request, and answering it with "no such platform" while the index
+// plainly holds one is the bug, not the strictness.
+//
+// A selector naming a variant still matches that variant only:
+// linux/arm/v7 does not accept a v6 image.
+func MatchesPlatform(selector, os, arch, variant string) bool {
+	want := strings.Split(selector, "/")
+	if len(want) < 2 || len(want) > 3 {
+		// Neither "linux" nor "linux/arm64/v8/extra" identifies a
+		// platform. Refusing beats guessing: a typo that matched every
+		// child of an OS would transfer content nobody asked for.
+		return false
+	}
+	if want[0] != os || want[1] != arch {
+		return false
+	}
+	return len(want) == 2 || want[2] == variant
+}
+
 // Report is the inspection result driving the import screen's step 2.
 type Report struct {
 	// Reference is the canonical source reference.
