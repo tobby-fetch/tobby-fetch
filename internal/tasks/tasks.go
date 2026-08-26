@@ -41,6 +41,21 @@ const (
 const (
 	TypeUnitImport = "unit-import"
 	TypeSync       = "sync"
+	// TypeMediaImport is the destination-side operation of FR-052: verify
+	// a transported medium, then push what verification cleared.
+	TypeMediaImport = "media-import"
+)
+
+// The FR-054 guards an administrator may waive on one media import. Both
+// are anti-accident guards over an unsigned manifest, never security
+// controls, which is why they are overridable at all — and why the waiver
+// is named, persisted on the task and audited (FR-094) rather than
+// flattened into a boolean nobody can attribute afterwards.
+const (
+	// OverrideZone waives the zone-identity refusal (FR-054).
+	OverrideZone = "zone"
+	// OverrideFreshness waives the staleness refusal (R-28).
+	OverrideFreshness = "freshness"
 )
 
 // Task is one tracked operation.
@@ -69,6 +84,13 @@ type Task struct {
 	// before the artifact lands, breaking the upstream digest — always
 	// traced (manifest annotations, report, logs), never the default.
 	VendorDependencies bool `json:"vendor_dependencies,omitempty"`
+
+	// MediaOverrides names the FR-054 guards an administrator waived for
+	// this media import (OverrideZone, OverrideFreshness). It is persisted
+	// on the task, not merely logged: FR-075 asks a lowered barrier to be
+	// visible, and the task record is what an operator opens weeks later
+	// to find out why a medium addressed elsewhere was imported anyway.
+	MediaOverrides []string `json:"media_overrides,omitempty"`
 
 	// Error is the task-level failure (when the operation could not even
 	// decompose into items — e.g. the inspection failed).
@@ -342,4 +364,13 @@ func newID(prefix string) string {
 		panic("tasks: reading random bytes: " + err.Error())
 	}
 	return prefix + hex.EncodeToString(b[:])
+}
+
+// WithMediaOverrides records the FR-054 guards an administrator waived
+// for one media import. Explicit and per-operation, like every other
+// lowered barrier (FR-075): there is no instance-wide setting that waives
+// them, because a medium addressed to another zone is a fact about that
+// medium and not a posture an instance adopts.
+func WithMediaOverrides(guards ...string) TaskOption {
+	return func(t *Task) { t.MediaOverrides = append(t.MediaOverrides, guards...) }
 }

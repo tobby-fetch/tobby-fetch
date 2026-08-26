@@ -23,6 +23,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
+	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -38,6 +39,17 @@ type MetaStore interface {
 	StoreReader
 	SetProvenance(repo string, p *store.Provenance) error
 	PutRecipeRecord(r *store.RecipeRecord) error
+	// Root and MediaID describe the store as a physical object, which is
+	// what it becomes in mirror mode (FR-050): destination-side
+	// verification re-hashes it file by file — a filesystem walk, not an
+	// API call — and every log record of the operation names the medium
+	// it was about (R-28).
+	Root() string
+	MediaID() string
+	// RecipeRecords is the recipe graph: on a transported store it is the
+	// authority on where each delivery landed, and the only place the
+	// producing instance's relocated paths are written down (FR-054).
+	RecipeRecords() ([]store.RecipeRecord, error)
 }
 
 // Meters are the engine's observability hooks (NFR-008: the parallelism
@@ -74,6 +86,13 @@ type Engine struct {
 	// media writes the transport medium's manifest at the end of a run
 	// (FR-054); nil outside mirror mode.
 	media MediaManifestWriter
+	// zone is the identity of the zone this instance serves and imports
+	// media for (FR-052); empty on a source-side instance, which decides
+	// nothing about a medium.
+	zone string
+	// imports is the per-zone freshness register (R-28), held in the
+	// INSTANCE state directory and never on the medium.
+	imports *media.Imports
 }
 
 // New assembles the engine.
@@ -388,7 +407,7 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	// zone. It runs after the fetch and never during it — pushing an
 	// ingredient the local store has not finished committing would put
 	// content on the destination that this instance cannot prove it holds.
-	e.promoteRecipe(ctx, sink, logger, fetched, rid)
+	e.promoteRecipe(ctx, sink, logger, fetched, rid, e.ownContent())
 
 	// Record the graph: reachability for GC/prune (FR-044/FR-045), zone
 	// identity and resolution timestamp for the milestone-5 media manifest

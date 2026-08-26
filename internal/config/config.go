@@ -41,6 +41,14 @@ type Config struct {
 	// instance must state what it is (FR-001).
 	Mode Mode `yaml:"mode"`
 
+	// Zone is this instance's zone identity: the metadata.name of the
+	// Retriever that serves it. A source-side instance reads it from the
+	// Retriever it resolves and needs nothing here; a DESTINATION-side
+	// instance has no Retriever — its content arrives on a medium — and
+	// must be told which zone it serves, or it cannot tell whether a
+	// medium is addressed to it (FR-052, FR-054).
+	Zone string `yaml:"zone,omitempty"`
+
 	Storage     Storage     `yaml:"storage"`
 	State       State       `yaml:"state"`
 	Server      Server      `yaml:"server"`
@@ -553,6 +561,13 @@ const (
 	// opt-ins. Like ScopeState it requires no mode — publishing a recipe
 	// is an authoring act, it says nothing about how this host serves.
 	ScopeRegistries
+	// ScopeMedia validates what the destination-side media commands need
+	// (`tobby media verify|import`, FR-052): the transported store, the
+	// trust roots, the zone identity and the destination. Like the two
+	// above it requires no mode — a medium handed to an operator is
+	// verified the same way whatever this host serves, and demanding a
+	// mode would make an operator invent one to inspect a disk.
+	ScopeMedia
 )
 
 // Load builds the effective configuration: defaults, overlaid with the YAML
