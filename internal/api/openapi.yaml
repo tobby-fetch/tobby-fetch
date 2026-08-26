@@ -357,6 +357,25 @@ paths:
         discovers the items. Mirror of the screens' "Synchronize" button.
         Without a configured source the trigger answers TBY-CFG-001.
         Audited (FR-094). Role operator.
+
+        The optional body carries the FR-045 prune decision for this run.
+        Omitting it takes the instance default — on in mirror mode, where
+        the operator confirms against the projection below, off in
+        passthrough unless sync.prune says otherwise.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                prune:
+                  type: boolean
+                  description: >-
+                    Whether this run removes the recipe-managed content the
+                    resolved Retriever no longer references. Omit the field
+                    to take the instance default; false is an instruction
+                    to remove nothing, not an omission.
       responses:
         "201":
           description: The created task.
@@ -367,6 +386,25 @@ paths:
                 properties:
                   task:
                     $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/sync/prune-preview:
+    get:
+      summary: >-
+        What the next synchronization would remove if it pruned (FR-045):
+        the list and the total size an operator sees BEFORE confirming.
+        Mirror of the confirmation block on the /recipes trigger. A
+        Retriever that does not resolve answers a problem document rather
+        than an empty list — "nothing would go" and "I could not work out
+        what would go" must never read the same to a caller about to
+        confirm a removal. Role operator.
+      responses:
+        "200":
+          description: The projected removal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrunePreview"
         default:
           $ref: "#/components/responses/Problem"
   /api/v1/retriever:
@@ -984,6 +1022,8 @@ components:
           type: integer
         total:
           type: integer
+        occupancy:
+          $ref: "#/components/schemas/StoreOccupancy"
     ContentRepo:
       type: object
       properties:
@@ -1358,8 +1398,88 @@ components:
             (FR-034): "<destination>/<cookbook>/<name>:<version>".
         interval:
           $ref: "#/components/schemas/Interval"
+        prune:
+          type: boolean
+          description: >-
+            Whether each reconciliation removes the recipe-managed content
+            this Retriever no longer references (FR-045 amendment,
+            sync.prune). Off by default: a transit store is not a delivery
+            unit, and shrinking it is never implied by a refresh. Unit
+            imports (FR-023), the offline vulnerability database (FR-032)
+            and content seeded through /v2/ are never eligible.
+        store_occupancy:
+          $ref: "#/components/schemas/StoreOccupancy"
         last_sync:
           $ref: "#/components/schemas/Task"
+    PrunePreview:
+      type: object
+      description: >-
+        The FR-045 trigger-time projection: what a prune would remove if it
+        ran now. It is a projection, not a promise — it is computed against
+        the Retriever as it resolves at this instant.
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              repo:
+                type: string
+                description: The relocated store repository path (FR-035).
+              tag:
+                type: string
+              digest:
+                type: string
+                description: The pinned digest the tag resolves to.
+              recipe:
+                type: string
+                description: >-
+                  The "name@version" of the recipe that brought the item and
+                  that the current Retriever no longer references.
+              bytes:
+                type: integer
+                description: The item's size, 0 when it could not be sized.
+        count:
+          type: integer
+        total_bytes:
+          type: integer
+          description: >-
+            The total the confirmation states. Logical sizes: a blob shared
+            with retained content is counted here and not reclaimed.
+    StoreOccupancy:
+      type: object
+      description: >-
+        The store's on-disk footprint against the configured threshold
+        (FR-045 amendment, storage.occupancyThreshold) — the API side of
+        the persistent occupancy warning in the interface.
+      properties:
+        bytes:
+          type: integer
+          description: >-
+            On-disk size of the deduplicated blob tree at the last sample;
+            0 while no threshold is configured and nothing is sampled.
+        threshold_bytes:
+          type: integer
+          description: The configured threshold; 0 when none is set.
+        monitored:
+          type: boolean
+          description: >-
+            Whether a threshold is configured at all. Its own field on
+            purpose: "no threshold configured" and "within the threshold"
+            are opposite statements and must not decode the same.
+        exceeded:
+          type: boolean
+          description: >-
+            Whether the store is over the threshold. Falls back to false
+            when the store comes back under it, so the condition retracts
+            as visibly as it appeared.
+        sampled_at:
+          type: string
+          format: date-time
+          description: >-
+            When the footprint was measured. Absent while nothing has been
+            sampled. Present only on the retriever response, which reports
+            the freshness of the figure it carries.
     Interval:
       type: object
       description: >-

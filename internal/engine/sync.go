@@ -71,6 +71,11 @@ type Engine struct {
 	base    string
 	cfg     config.Sync
 	meters  Meters
+	// prune is what an unqualified trigger does about content the
+	// resolved Retriever no longer references (FR-045). The per-run
+	// decision lives on the task; this is only the default the surfaces
+	// offer and report.
+	prune bool
 }
 
 // New assembles the engine.
@@ -132,24 +137,42 @@ func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) e
 		return true
 	})
 
+	resolved := newResolvedRecipes()
 	for i := range retr.Spec.Recipes {
 		entry := &retr.Spec.Recipes[i]
 		cookbookRef := entry.Cookbook
 		if cookbookRef == "" {
 			cookbookRef = retr.Spec.Cookbook
 		}
-		e.syncRecipe(ctx, sink, logger, cookbookRef, entry, zone)
+		e.syncRecipe(ctx, sink, logger, cookbookRef, entry, zone, resolved)
+	}
+
+	// Prune last, and only here (FR-045). It is the only scope that knows
+	// the WHOLE resolved Retriever — one entry cannot tell whether content
+	// it does not reference is still referenced by another — and it must
+	// come after every graph entry has been recorded, or reachability
+	// would be computed against a graph the run has not finished writing.
+	//
+	// It must also stay the LAST mutation of the run: FR-054 requires the
+	// media manifest to describe the store after any prune, so whatever
+	// writes that manifest belongs below this call, never above it.
+	if sink.prune() {
+		e.pruneToRetriever(ctx, sink, logger, resolved)
 	}
 	return nil
 }
 
 // syncRecipe resolves, verifies and fetches one Retriever entry. Failures
 // land on the entry's items; other entries continue.
-func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, cookbookRef string, entry *spec.RecipeSelector, zone string) {
+func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, cookbookRef string, entry *spec.RecipeSelector, zone string, resolved *resolvedRecipes) {
 	logger = logger.With(slog.String("recipe", entry.Name))
 	cb := NewCookbook(e.remotes, cookbookRef)
 
 	fail := func(itemName string, err error) {
+		// The run is no longer complete, and prune reads that: content of
+		// an entry that failed to resolve is indistinguishable from
+		// content the Retriever dropped (FR-045).
+		resolved.failed()
 		te := tasks.FromTaxonomy(e.mapError(err, entry.Name))
 		sink.update(func(t *tasks.Task) bool {
 			item := itemFor(t, itemName)
@@ -257,6 +280,7 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 						slog.String("item", itemName),
 						slog.String("panic", fmt.Sprint(r)),
 						slog.String("stack", string(debug.Stack())))
+					resolved.failed()
 					sink.update(func(t *tasks.Task) bool {
 						item := itemFor(t, itemName)
 						item.Status = tasks.StatusFailed
@@ -270,6 +294,9 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 				// records is written index-per-goroutine: no two goroutines
 				// share a slot, so the slice needs no lock of its own.
 				records[i] = rec
+			}
+			if err != nil {
+				resolved.failed()
 			}
 			sink.update(func(t *tasks.Task) bool {
 				item := itemFor(t, itemName)
@@ -301,6 +328,7 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	if !recipeSettled {
 		status, err := e.storeRecipeArtifact(ctx, fetched)
 		if err != nil {
+			resolved.failed()
 			te := tasks.FromTaxonomy(e.mapError(err, rid))
 			sink.update(func(t *tasks.Task) bool {
 				item := itemFor(t, recipeItemName)
@@ -344,7 +372,13 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 		Verified: verified, TrustScope: scopeName, Ingredients: kept,
 	}); err != nil {
 		fail(rid, err)
+		return
 	}
+	// The entry resolved: its graph key is what prune keeps (FR-045). The
+	// key is the RECORD's, not the Retriever entry's — a recipe may be
+	// selected by a version expression and recorded under the concrete
+	// version it resolved to, and prune joins on the recorded one.
+	resolved.keep(recipe.Metadata.Name, recipe.Metadata.Version)
 }
 
 // verifyRecipe applies FR-033: verify against the decision's key set;

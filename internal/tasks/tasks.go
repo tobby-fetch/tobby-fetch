@@ -83,11 +83,42 @@ type Task struct {
 	// it without a schema break.
 	ChartDependencies []ChartDependency `json:"chart_dependencies,omitempty"`
 
+	// Prune is what THIS run was asked to do about content the resolved
+	// Retriever no longer references (FR-045). It lives on the task
+	// rather than on the engine because the answer is per-run: mirror
+	// mode confirms it at trigger time with the list and the total size,
+	// passthrough reads it from sync.prune — and a resumed task must
+	// carry the decision that was confirmed, not the one the instance
+	// happens to default to when it comes back up.
+	Prune bool `json:"prune,omitempty"`
+
+	// Pruned is the FR-045 removal report of a synchronization: the
+	// recipe-managed content the resolved Retriever no longer references,
+	// removed at the end of the cycle when sync.prune is on. Empty on the
+	// default instance, which prunes nothing.
+	Pruned []Pruned `json:"pruned,omitempty"`
+
 	// Resolutions is the FR-021 resolution report of a synchronization:
 	// requested → resolved → digest, per recipe entry and per ingredient,
 	// with the FR-026 status and the FR-036 effective endpoint when a
 	// substitution applied.
 	Resolutions []Resolution `json:"resolutions,omitempty"`
+}
+
+// Pruned is one row of the FR-045 removal report: what went, and which
+// recipe used to hold it. The digest is carried because a tag is not an
+// identity — after the medium has travelled, "which bytes left" is the
+// question the run log has to be able to answer (FR-053).
+type Pruned struct {
+	// Repo is the store repository path the tag belonged to.
+	Repo string `json:"repo"`
+	// Tag is the removed tag.
+	Tag string `json:"tag"`
+	// Digest pins what the tag resolved to.
+	Digest string `json:"digest,omitempty"`
+	// Recipe is the "name@version" of the recipe that brought it and that
+	// the current Retriever no longer references.
+	Recipe string `json:"recipe,omitempty"`
 }
 
 // Resolution is one row of the FR-021 report.

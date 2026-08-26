@@ -56,6 +56,17 @@ type UI struct {
 	// egress is the outbound posture reported on the same screen
 	// (FR-080, FR-081).
 	egress tlsadmin.Egress
+	// occupancy is the latest store-footprint sample (R-33); nil on an
+	// instance with no configured threshold.
+	occupancy *store.OccupancyMonitor
+	// prunesByDefault is what an unqualified trigger does about content
+	// the Retriever no longer references (FR-045): the state the
+	// confirmation checkbox opens in, and what the retriever screen and
+	// its API mirror report.
+	prunesByDefault bool
+	// projector computes the trigger-time confirmation (FR-045). Nil on
+	// an instance wired without an engine.
+	projector PruneProjector
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -116,6 +127,19 @@ type Options struct {
 	// Egress is the instance's outbound transport, reported as posture
 	// (FR-080, FR-081). Only its printable accessors are ever called.
 	Egress tlsadmin.Egress
+	// Occupancy watches the store footprint against the configured
+	// threshold (R-33): a persistent banner while it is exceeded, gone
+	// again when it is not. Nil on an instance with no threshold set.
+	Occupancy *store.OccupancyMonitor
+	// PrunesToRetriever is what an unqualified trigger does about content
+	// the Retriever no longer references (FR-045): on in mirror mode,
+	// where the operator confirms against a projected list, off in
+	// passthrough unless sync.prune says otherwise.
+	PrunesToRetriever bool
+	// Projector computes the FR-045 trigger-time confirmation. Nil leaves
+	// the confirmation fragment saying it cannot project, which is what
+	// an instance with no Retriever source should say.
+	Projector PruneProjector
 }
 
 // New assembles the UI.
@@ -129,6 +153,9 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 	// renderer (FR-033, FR-047 — same channel as the FR-075 override).
 	render.RelaxedScopes = opts.RelaxedTrustScopes
 	render.AnonymousFileSets = opts.AnonymousFileSets
+	if opts.Occupancy != nil {
+		render.Occupancy = opts.Occupancy.Current
+	}
 	return &UI{
 		render:            render,
 		authn:             authn,
@@ -149,6 +176,9 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		publisher:         opts.Publisher,
 		serverCert:        opts.ServerCert,
 		egress:            opts.Egress,
+		occupancy:         opts.Occupancy,
+		prunesByDefault:   opts.PrunesToRetriever,
+		projector:         opts.Projector,
 	}
 }
 
@@ -213,6 +243,7 @@ func (u *UI) Mount(rt Router) {
 	// recipe graph, the per-recipe mapping table, and the sync trigger.
 	mux.Handle("GET /recipes", app(u.recipesList))
 	mux.Handle("POST /recipes/sync", operator(u.recipesSync))
+	mux.Handle("GET /recipes/prune-preview", operator(u.prunePreview))
 	// Recipe publication (R-40): the interface half of `tobby recipe
 	// push`. Operator-gated — publishing writes into a cookbook — and
 	// declared before /recipes/{recipe}/mapping only for readability:

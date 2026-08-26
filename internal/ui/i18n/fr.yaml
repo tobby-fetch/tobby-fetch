@@ -26,6 +26,7 @@
 "banner.auth_disabled": "L'authentification est désactivée sur cette instance : tout visiteur a un accès complet. Réactivez-la en retirant auth.disabled de la configuration."
 "banner.trust_relaxed": "La vérification de signature est relâchée par le(s) scope(s) déclaré(s) : {{.Scopes}}. Les recipes admises non signées sont étiquetées sur toutes les surfaces."
 "banner.anonymous_filesets": "FileSets servis sans authentification : {{.Names}}."
+"banner.store_occupancy": "Le store occupe {{.Used}}, au-delà du seuil configuré de {{.Threshold}}. Retirez du contenu, relevez storage.occupancyThreshold, ou agrandissez le volume — une instance qui remplit son volume cesse d'accepter du contenu."
 
 "error.what_label": "Quoi"
 "error.cause_label": "Cause probable"
@@ -412,6 +413,13 @@
 "retriever.interval_too_short": "Trop court. Utilisez 0 pour arrêter la réconciliation périodique, ou une valeur au moins égale au minimum."
 "retriever.interval_no_state": "Aucun répertoire d'état n'est configuré : un changement d'intervalle ne survivrait pas à un redémarrage. Renseignez state.root, ou modifiez sync.interval dans la configuration."
 "retriever.interval_unavailable": "Cette instance n'exécute aucune boucle de réconciliation : le rafraîchissement périodique est un comportement passthrough, et la synchronisation en mode mirror se déclenche manuellement (FR-014)."
+"retriever.prune_title": "Purge alignée sur le Retriever (FR-045)"
+"retriever.prune_on": "Chaque réconciliation retire le contenu géré par recipe que ce Retriever ne référence plus. Les imports unitaires, la base de vulnérabilités hors-ligne et le contenu poussé via /v2/ ne sont jamais éligibles. Chaque retrait est listé dans le journal de run du cycle."
+"retriever.prune_off": "Désactivée — la réconciliation ne fait qu'ajouter. Le contenu apporté par un Retriever précédent reste jusqu'à un retrait explicite (sync.prune)."
+"retriever.occupancy_title": "Occupation du store (FR-045)"
+"retriever.occupancy_within": "Le store occupe {{.Used}} sur le seuil configuré de {{.Threshold}}."
+"retriever.occupancy_over": "Le store occupe {{.Used}}, au-delà du seuil configuré de {{.Threshold}}."
+"retriever.occupancy_none": "Aucun seuil configuré — la taille du store est rapportée mais ne déclenche jamais d'avertissement (storage.occupancyThreshold)."
 
 "apidocs.title": "Documentation API"
 "apidocs.subtitle": "Le contrat /api/v1, rendu depuis le document OpenAPI embarqué dans ce binaire. Le contrat est rédigé en anglais ; les erreurs sont des documents problème RFC 9457 portant les mêmes codes de taxonomie que cette interface."
@@ -495,3 +503,14 @@
 "network.egress_note": "Tous les chemins sortants — lectures de registry, publications, téléchargements de charts, récupération des racines de confiance — passent par ce transport unique. Aucun réglage nulle part ne désactive la vérification des certificats."
 "network.egress_unavailable": "Cette instance a démarré sans transport sortant."
 "network.toast_replaced": "Certificat remplacé. L'instance présente désormais {{.Fingerprint}}."
+
+# /recipes — the FR-045 trigger-time prune confirmation.
+"prune.loading": "Calcul de ce qu’une synchronisation retirerait…"
+"prune.label": "Retirer le contenu que ce Retriever ne référence plus (FR-045)"
+"prune.summary":
+  one: "1 élément serait retiré, libérant {{.Size}}."
+  other: "{{.Count}} éléments seraient retirés, libérant {{.Size}}."
+"prune.from_recipe": "apporté par {{.Recipe}}"
+"prune.nothing": "Rien ne serait retiré : le store contient exactement ce que ce Retriever référence."
+"prune.error": "Impossible de calculer ce qu’une synchronisation retirerait — le Retriever ne s’est pas résolu. La synchronisation reste possible ; elle ne retirera rien."
+"prune.unavailable": "Aucune source Retriever n’est configurée : il n’y a rien à retirer."

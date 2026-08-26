@@ -355,3 +355,65 @@ func TestContentDeleteEndpoint(t *testing.T) {
 		t.Errorf("re-delete = %d, want 404", w.Code)
 	}
 }
+
+// TestRetrieverReportsPruneAndOccupancy is the FR-061 mirror of the two
+// R-33 statements the retriever screen makes: whether reconciliation
+// removes what the Retriever no longer references, and how full the store
+// is against its threshold.
+func TestRetrieverReportsPruneAndOccupancy(t *testing.T) {
+	st, err := store.Open(context.Background(), t.TempDir(), slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if cerr := st.Close(); cerr != nil {
+			t.Errorf("closing store: %v", cerr)
+		}
+	})
+	monitor := store.NewOccupancyMonitor(st, 8*1024, slog.New(slog.DiscardHandler))
+	monitor.Refresh(context.Background())
+
+	accounts, err := auth.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := accounts.AddAccount("root", auth.RoleAdmin, "pw-admin", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	authn := &auth.Authenticator{
+		Store:    accounts,
+		Sessions: auth.NewSessions(time.Hour),
+		Logger:   slog.New(slog.DiscardHandler),
+	}
+	a := api.New(authn, slog.New(slog.DiscardHandler))
+	api.RegisterRecipes(a, &api.RecipeOptions{
+		Store: st, Source: testSource, Prune: true, Occupancy: monitor,
+	})
+	mux := http.NewServeMux()
+	mux.Handle("/api/v1/", a.Handler())
+
+	w := call(t, mux, http.MethodGet, "/api/v1/retriever", "root", "pw-admin", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("retriever = %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Prune          bool `json:"prune"`
+		StoreOccupancy struct {
+			ThresholdBytes int64 `json:"threshold_bytes"`
+			Monitored      bool  `json:"monitored"`
+			Exceeded       bool  `json:"exceeded"`
+		} `json:"store_occupancy"`
+	}
+	if uerr := json.Unmarshal(w.Body.Bytes(), &resp); uerr != nil {
+		t.Fatal(uerr)
+	}
+	if !resp.Prune {
+		t.Error("the API does not report the FR-045 prune opt-in the screen states")
+	}
+	if !resp.StoreOccupancy.Monitored || resp.StoreOccupancy.ThresholdBytes != 8*1024 {
+		t.Errorf("store_occupancy = %+v, want the configured threshold", resp.StoreOccupancy)
+	}
+	if resp.StoreOccupancy.Exceeded {
+		t.Errorf("an empty store reports itself over its threshold: %+v", resp.StoreOccupancy)
+	}
+}

@@ -95,6 +95,7 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "POST /content/{repo...}", Floor: auth.RoleAdmin, Why: "removal of unit-imported content (FR-044 amendment)", Method: "POST", Path: "/content/no/such/repo/-/delete"},
 	{Pattern: "GET /recipes", Floor: auth.RoleViewer, Method: "GET", Path: "/recipes"},
 	{Pattern: "POST /recipes/sync", Floor: auth.RoleOperator, Why: "triggering a synchronization is an operator action (FR-014)", Method: "POST", Path: "/recipes/sync"},
+	{Pattern: "GET /recipes/prune-preview", Floor: auth.RoleOperator, Why: "what a synchronization would REMOVE is part of the trigger it informs (FR-045): the role that may see it is the role that may confirm it", Method: "GET", Path: "/recipes/prune-preview"},
 	{Pattern: "GET /recipes/publish", Floor: auth.RoleOperator, Why: "the publication form (R-40): only a role that can publish is offered one", Method: "GET", Path: "/recipes/publish"},
 	{Pattern: "POST /recipes/publish", Floor: auth.RoleOperator, Why: "publishing writes into another zone's cookbook (R-40); the write is audited (FR-094)", Method: "POST", Path: "/recipes/publish", Form: "reference=&document="},
 	{Pattern: "GET /recipes/{recipe}/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/recipes/no-such-recipe/mapping"},
@@ -133,6 +134,7 @@ var apiMatrix = []rbacRoute{
 	{Pattern: "GET /api/v1/recipes", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/recipes"},
 	{Pattern: "GET /api/v1/recipes/{recipe}/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/recipes/no-such-recipe/mapping"},
 	{Pattern: "POST /api/v1/sync", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/sync"},
+	{Pattern: "GET /api/v1/sync/prune-preview", Floor: auth.RoleOperator, Method: "GET", Path: "/api/v1/sync/prune-preview"},
 	{Pattern: "POST /api/v1/recipes/publish", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/recipes/publish", Body: `{"reference":"","document":""}`},
 	{Pattern: "GET /api/v1/network", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/network"},
 	{Pattern: "PUT /api/v1/network/certificate", Floor: auth.RoleAdmin, Method: "PUT", Path: "/api/v1/network/certificate", Body: `{"certificate":"","key":""}`},
@@ -231,7 +233,7 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	u.Mount(rec)
 
 	restAPI := api.New(authn, slog.New(slog.DiscardHandler))
-	api.RegisterContent(restAPI, st)
+	api.RegisterContent(restAPI, st, nil)
 	api.RegisterTasks(restAPI, queue, st, time.Second, nil)
 	api.RegisterAccounts(restAPI, accounts)
 	api.RegisterRecipes(restAPI, &api.RecipeOptions{Store: st, Queue: queue})
@@ -460,6 +462,7 @@ func TestRBACMatrixMirrorsUIFloors(t *testing.T) {
 		{"GET /tasks", "GET /api/v1/tasks"},
 		{"GET /recipes", "GET /api/v1/recipes"},
 		{"POST /recipes/sync", "POST /api/v1/sync"},
+		{"GET /recipes/prune-preview", "GET /api/v1/sync/prune-preview"},
 		{"POST /recipes/publish", "POST /api/v1/recipes/publish"},
 		{"GET /admin/network", "GET /api/v1/network"},
 		{"POST /admin/network/certificate", "PUT /api/v1/network/certificate"},

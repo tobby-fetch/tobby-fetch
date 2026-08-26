@@ -327,9 +327,12 @@ func (s *Store) Counts(ctx context.Context) (Counts, error) {
 		}
 		c.Tags += len(tags)
 	}
-	c.PhysicalBytes, err = dirSize(filepath.Join(s.root, "docker", "registry", "v2", "blobs"))
+	// The same measurement the occupancy threshold is compared against
+	// (R-33): the tile and the banner must never disagree about how full
+	// the store is.
+	c.PhysicalBytes, err = s.PhysicalBytes()
 	if err != nil {
-		return c, fmt.Errorf("store: sizing blob directory: %w", err)
+		return c, err
 	}
 	return c, nil
 }

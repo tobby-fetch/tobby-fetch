@@ -26,6 +26,7 @@
 "banner.auth_disabled": "Authentication is disabled on this instance: every visitor has full access. Re-enable it by removing auth.disabled from the configuration."
 "banner.trust_relaxed": "Signature verification is relaxed by the declared trust scope(s): {{.Scopes}}. Recipes admitted unsigned are labeled on every surface."
 "banner.anonymous_filesets": "FileSets served without authentication: {{.Names}}."
+"banner.store_occupancy": "The store holds {{.Used}}, over the configured {{.Threshold}} threshold. Remove content, raise storage.occupancyThreshold, or grow the volume — an instance that fills its volume stops accepting content."
 
 "error.what_label": "What"
 "error.cause_label": "Probable cause"
@@ -412,6 +413,13 @@
 "retriever.interval_too_short": "Too short. Use 0 to stop the periodic reconciliation, or a value at or above the minimum."
 "retriever.interval_no_state": "No state directory is configured, so an interval change could not survive a restart. Set state.root, or change sync.interval in the configuration."
 "retriever.interval_unavailable": "This instance runs no reconciliation loop: the periodic refresh is a passthrough behaviour, and mirror-mode synchronization is triggered manually (FR-014)."
+"retriever.prune_title": "Prune to the Retriever (FR-045)"
+"retriever.prune_on": "Each reconciliation removes the recipe-managed content this Retriever no longer references. Unit imports, the offline vulnerability database, and content seeded through /v2/ are never eligible. Every removal is listed in the run log of the cycle."
+"retriever.prune_off": "Off — reconciliation only adds. Content brought by a previous Retriever stays until it is removed explicitly (sync.prune)."
+"retriever.occupancy_title": "Store occupancy (FR-045)"
+"retriever.occupancy_within": "The store holds {{.Used}} of the configured {{.Threshold}} threshold."
+"retriever.occupancy_over": "The store holds {{.Used}}, over the configured {{.Threshold}} threshold."
+"retriever.occupancy_none": "No threshold configured — the store size is reported but never raises a warning (storage.occupancyThreshold)."
 
 "apidocs.title": "API documentation"
 "apidocs.subtitle": "The /api/v1 contract, rendered from the OpenAPI document embedded in this binary. The contract is written in English; errors are RFC 9457 problem documents carrying the same taxonomy codes as this interface."
@@ -495,3 +503,14 @@
 "network.egress_note": "Every outbound path — registry reads, publications, chart downloads, trust-root fetches — goes through this one transport. There is no setting anywhere that disables certificate verification."
 "network.egress_unavailable": "This instance was started without an outbound transport."
 "network.toast_replaced": "Certificate replaced. The instance now presents {{.Fingerprint}}."
+
+# /recipes — the FR-045 trigger-time prune confirmation.
+"prune.loading": "Working out what a synchronization would remove…"
+"prune.label": "Remove content this Retriever no longer references (FR-045)"
+"prune.summary":
+  one: "1 item would be removed, freeing {{.Size}}."
+  other: "{{.Count}} items would be removed, freeing {{.Size}}."
+"prune.from_recipe": "brought by {{.Recipe}}"
+"prune.nothing": "Nothing would be removed: the store holds exactly what this Retriever references."
+"prune.error": "What a synchronization would remove could not be worked out — the Retriever did not resolve. Synchronizing is still possible; it will not remove anything."
+"prune.unavailable": "No Retriever source is configured, so nothing can be removed."

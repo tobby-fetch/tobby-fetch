@@ -48,6 +48,20 @@ type Registry struct {
 	// (TBY-DST-001), the allowlist (TBY-POL-001), the pre-push signature
 	// re-verification of FR-033 (TBY-SIG-001).
 	PromotionRefusals *prometheus.CounterVec
+
+	// Store occupancy (FR-045 amendment, R-33). Three gauges rather than
+	// one, because the alert an operator writes needs all three and none
+	// of them can be derived from the others: how full the store is, what
+	// it was told the limit is, and whether it is over. An instance with
+	// no threshold configured reports a zero threshold — "nothing
+	// configured" reads as such, never as "within limits".
+	//
+	// StoreOccupancyExceeded is the one that alerts. It is a gauge, not a
+	// counter, on purpose: the requirement is that going back UNDER the
+	// threshold is as visible as going over it, and a counter cannot fall.
+	StoreBytes             prometheus.Gauge
+	StoreThresholdBytes    prometheus.Gauge
+	StoreOccupancyExceeded prometheus.Gauge
 }
 
 // New builds the registry with the standard process and Go collectors and
@@ -90,6 +104,18 @@ func New() *Registry {
 		Name: "tobby_promotion_refusals_total",
 		Help: "Pushes refused before transfer, by taxonomy code (FR-030 allowlist, FR-033 signatures, FR-035 destination limits).",
 	}, []string{"code"})
+	storeBytes := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "tobby_store_occupancy_bytes",
+		Help: "On-disk size of the store's deduplicated blob tree at the last sample (R-33); 0 while no storage.occupancyThreshold is configured.",
+	})
+	storeThreshold := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "tobby_store_occupancy_threshold_bytes",
+		Help: "Configured store-occupancy threshold (storage.occupancyThreshold); 0 means no threshold is set and the store is not monitored.",
+	})
+	storeExceeded := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "tobby_store_occupancy_exceeded",
+		Help: "1 while the store exceeds the configured occupancy threshold, 0 otherwise (R-33); a gauge, so clearing the threshold is as visible as crossing it.",
+	})
 	// Both results exist from the first scrape: a counter that only
 	// appears once it fires cannot distinguish "never happened" from
 	// "instance not reporting", and on a promotion service the difference
@@ -97,7 +123,8 @@ func New() *Registry {
 	promotionPushes.WithLabelValues(ResultPushed)
 	promotionPushes.WithLabelValues(ResultSkipped)
 	reg.MustRegister(syncInflight, syncBytes, policyRejections,
-		promotionPushes, promotionBytes, promotionRefusals)
+		promotionPushes, promotionBytes, promotionRefusals,
+		storeBytes, storeThreshold, storeExceeded)
 
 	return &Registry{
 		Registry:          reg,
@@ -107,6 +134,10 @@ func New() *Registry {
 		PromotionPushes:   promotionPushes,
 		PromotionBytes:    promotionBytes,
 		PromotionRefusals: promotionRefusals,
+
+		StoreBytes:             storeBytes,
+		StoreThresholdBytes:    storeThreshold,
+		StoreOccupancyExceeded: storeExceeded,
 	}
 }
 

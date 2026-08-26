@@ -151,6 +151,14 @@ func WithVendorDependencies() TaskOption {
 	return func(t *Task) { t.VendorDependencies = true }
 }
 
+// WithPrune states what this synchronization does about content the
+// resolved Retriever no longer references (FR-045). Explicit at every
+// call site on purpose: a removal that happens because nobody passed an
+// option is a removal nobody decided.
+func WithPrune(enabled bool) TaskOption {
+	return func(t *Task) { t.Prune = enabled }
+}
+
 // Create persists and enqueues a new task, returning it.
 func (q *Queue) Create(taskType, reference, actor string, items []Item, opts ...TaskOption) (*Task, error) {
 	q.mu.Lock()

@@ -26,6 +26,13 @@
       {{if and .CanOperate .Data.Source}}
       <form method="post" action="/recipes/sync">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
+        {{/* FR-045: what a prune would remove is shown BEFORE the trigger,
+             with the list and the total size. Loaded as its own fragment
+             because it costs a Retriever resolution — the recipe table
+             must render at once even when the cookbook is slow. */}}
+        <div id="prune-preview" hx-get="/recipes/prune-preview" hx-trigger="load" hx-swap="outerHTML">
+          <p class="t-muted t-note">{{.T "prune.loading"}}</p>
+        </div>
         <button type="submit" class="t-btn t-btn--primary">{{.T "recipes.sync"}}</button>
       </form>
       {{else}}
@@ -82,4 +89,42 @@
   {{end}}
   {{end}}
 </section>
+{{end}}
+
+{{/* FR-045 trigger-time confirmation. The checkbox carries a hidden
+     companion so the field is posted whichever way it is left: an
+     unchecked box must reach the server as an instruction, not as an
+     absence the handler has to guess at. */}}
+{{define "prune-preview"}}
+<div id="prune-preview" class="t-note">
+  <label>
+    <input type="hidden" name="prune" value="off">
+    <input type="checkbox" name="prune" value="on"{{if .Data.Default}} checked{{end}}>
+    {{.T "prune.label"}}
+  </label>
+  {{if .Data.Count}}
+  <p class="t-form-error" role="alert">{{.TN "prune.summary" .Data.Count "Count" .Data.Count "Size" (.FmtBytes .Data.TotalBytes)}}</p>
+  <ul>
+    {{range .Data.Items}}
+    <li><span class="t-mono" translate="no">{{.Repo}}:{{.Tag}}</span> <span class="t-muted">{{$.T "prune.from_recipe" "Recipe" .Recipe}}</span></li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="t-muted t-note">{{.T "prune.nothing"}}</p>
+  {{end}}
+</div>
+{{end}}
+
+{{define "prune-preview-error"}}
+<div id="prune-preview" class="t-note">
+  {{/* No checkbox at all: a removal must never be confirmed against a
+       projection the instance could not compute (FR-045). */}}
+  <p class="t-form-error" role="alert">{{.T "prune.error"}}</p>
+</div>
+{{end}}
+
+{{define "prune-preview-unavailable"}}
+<div id="prune-preview" class="t-note">
+  <p class="t-muted t-note">{{.T "prune.unavailable"}}</p>
+</div>
 {{end}}

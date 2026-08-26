@@ -95,7 +95,7 @@ func newContentAPI(t *testing.T) (*http.ServeMux, v1.Hash) {
 		Logger:   slog.New(slog.DiscardHandler),
 	}
 	a := api.New(authn, slog.New(slog.DiscardHandler))
-	api.RegisterContent(a, st)
+	api.RegisterContent(a, st, nil)
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/", a.Handler())
 	return mux, digest
