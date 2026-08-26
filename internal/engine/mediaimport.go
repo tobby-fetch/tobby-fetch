@@ -91,6 +91,30 @@ func (e *Engine) SetMediaImport(zone string, imports *media.Imports) {
 // surfaces that show it (FR-052, FR-054).
 func (e *Engine) Zone() string { return e.zone }
 
+// SetMediaVerdicts installs the observer every verification report is
+// handed to, whichever surface asked for one.
+//
+// It exists because FR-054 governs SERVING as well as pushing: an
+// instance holding a transported medium withholds /v2/ and /files/ until
+// verification has cleared it (internal/mediagate), and that decision has
+// to be taken from the same report the operator reads — not from a
+// second, parallel notion of "verified" maintained beside it. VerifyMedia
+// is the one funnel every path goes through, so installing the observer
+// there is what makes it impossible for a verdict to be reached without
+// the gate hearing it.
+func (e *Engine) SetMediaVerdicts(observe func(*media.Report)) { e.verdicts = observe }
+
+// LastMediaImport reports the freshness record this instance holds for
+// the zone it serves (R-28), for the surfaces that show it beside the
+// medium's own claims. False when no import has been recorded, which is
+// also the answer of an instance that is not a destination side.
+func (e *Engine) LastMediaImport() (media.ImportRecord, bool) {
+	if e.imports == nil || e.zone == "" {
+		return media.ImportRecord{}, false
+	}
+	return e.imports.Last(e.zone)
+}
+
 // MediaImportRunner returns the task runner for tasks.TypeMediaImport.
 func (e *Engine) MediaImportRunner() tasks.Runner {
 	return func(ctx context.Context, t *tasks.Task, logger *slog.Logger, save func()) error {
@@ -132,7 +156,7 @@ func (e *Engine) VerifyMedia(ctx context.Context, logger *slog.Logger, opts Medi
 			last = &rec
 		}
 	}
-	return media.Verify(ctx, e.store, media.VerifyOptions{
+	rep, err := media.Verify(ctx, e.store, media.VerifyOptions{
 		Zone: e.zone,
 		// The DESTINATION instance's trust policy, and no other. Trust
 		// roots present on the medium are ignored (FR-054): the media
@@ -145,6 +169,16 @@ func (e *Engine) VerifyMedia(ctx context.Context, logger *slog.Logger, opts Medi
 		Progress:          opts.Progress,
 		Logger:            logger,
 	})
+	// The verdict reaches the serving gate here and nowhere else
+	// (FR-054): every caller — the screen, the API, the CLI, and the
+	// import journey below — comes through this function, so there is no
+	// path to a verdict the gate does not hear. A run that produced no
+	// report at all leaves the gate as it was: an unreadable store says
+	// nothing about the bytes the gate is withholding.
+	if err == nil && e.verdicts != nil {
+		e.verdicts(rep)
+	}
+	return rep, err
 }
 
 // importMedia is the destination-side operation of FR-052, in the order

@@ -202,12 +202,51 @@ Checklist:
   zone-identity mismatch; integrity failures have no override.
 - The push completed; the returning medium carries the destination logs.
 
-:::note[Upcoming — milestone 5]
-The destination-side Media screen, its per-recipe verdicts and the guided
-Verify → Report → Push flow ship with milestone 5 (SRS FR-052, FR-054).
-The verification order itself is already normative — see the
-[media security model](../../air-gap/media-security/).
-:::
+#### The Media screen
+
+Everything above has a screen: **Media**, in the main navigation, on both
+sides of the transfer. On the source it is the packing list — which zone the
+medium is addressed to, when it was resolved, what it delivers, how big it
+is — read before you unmount the disk. On the destination it opens the
+guided sequence:
+
+1. **Verify.** Re-reads and re-hashes every covered file, then checks each
+   recipe's signature against *this* instance's trust roots. On a full disk
+   this takes minutes, so it runs in the background with live progress; you
+   can leave the page and come back.
+2. **Report.** The three stages named separately — manifest completeness and
+   checksums, ingredient digests, recipe signatures — and one verdict per
+   delivery. A blocked delivery names the file that failed, which is the
+   difference between "re-copy the disk" and "call the source zone". The raw
+   report downloads as JSON.
+3. **Push.** The control does not exist until a verdict cleared at least one
+   delivery. Not greyed out: absent.
+
+A zone mismatch and a medium older than the last one imported here are the
+only two refusals an administrator may waive, from the Verify step, audited.
+Integrity and signature verdicts have no override, for anyone.
+
+#### An unverified medium serves nothing
+
+A destination instance started on a transported store does not serve its
+content until verification has cleared it — the "any serving" of the rule
+above, enforced rather than merely written down. `/v2/` and `/files/` answer
+`403` with [TBY-MED-030](../../reference/errors/#tby-med-030) and the way
+out; the interface, the API and the probes stay available, because they are
+what you need in order to verify. The instance is **live and ready**:
+`/readyz` answers `200` and says in its body which surfaces are closed.
+
+The gate opens on a whole medium and on nothing else. A partially damaged one
+still delivers its intact recipes into the zone registry — that is the point
+of carrying several deliveries on one disk — but this instance will not serve
+off the disk itself, because `/v2/` hands out blobs and a blob a blocked
+recipe reaches is exactly the content that failed. There is no setting that
+serves an unverified medium; the verdict is not cached across a restart
+either.
+
+A **source-side** mirror instance is unaffected: its store carries a media
+manifest because it wrote one, and it serves normally. The two sides are told
+apart by the zone identity, which only a destination instance configures.
 
 ## After the import
 

@@ -273,6 +273,28 @@ const (
 	// match its inventory entry. Non-blocking: nothing is pushed from it.
 	CodeMediaMetadataAltered Code = "TBY-MED-022"
 
+	// The serving half of FR-054. "Destination-side verification SHALL
+	// precede any push, any serving, and any local write": the push and
+	// the local write are refused by the engine, and these two are what a
+	// client asking the registry or the file surface of a destination
+	// instance for content it has not verified gets back. They are
+	// answers to a REQUEST, never task outcomes — which is why they carry
+	// the surface that was refused and, above all, the way out.
+	//
+	// CodeMediaUnverified is a destination instance holding a transported
+	// medium nothing has verified yet.
+	CodeMediaUnverified Code = "TBY-MED-030"
+	// CodeMediaVerificationRunning is a second verification asked for
+	// while one is already walking the medium. Re-hashing a disk twice at
+	// once halves both runs and answers nothing new.
+	CodeMediaVerificationRunning Code = "TBY-MED-031"
+	// CodeMediaNotCleared is a medium that HAS been verified and did not
+	// come out whole. Serving stays closed: unlike the push decision,
+	// which R-19 takes recipe by recipe, serving is a property of the
+	// store as a whole — /v2/ and /files/ hand out blobs, and a blob a
+	// blocked recipe reaches is exactly the byte range that failed.
+	CodeMediaNotCleared Code = "TBY-MED-032"
+
 	// CodeResetConfirmation is a store reset submitted without the exact
 	// typed confirmation FR-046 requires. Distinct from a validation
 	// error: nothing about the request is malformed — the operator was
@@ -396,6 +418,18 @@ var catalog = map[Code]Entry{
 	CodeMediaUncovered:       {Code: CodeMediaUncovered, Class: ClassOperational, Params: []string{"path"}},
 	CodeMediaUnreachable:     {Code: CodeMediaUnreachable, Class: ClassOperational, Params: []string{"path"}},
 	CodeMediaMetadataAltered: {Code: CodeMediaMetadataAltered, Class: ClassOperational, Params: []string{"path"}},
+
+	// 403 on both closed-gate codes, and deliberately not 404 or a bare
+	// 503: the content exists and the instance is alive — it is refusing,
+	// and a refusal an operator can read is the difference between
+	// clicking Verify and calling support. ClassPolicy, because that is
+	// what a secure-by-default refusal is (FR-075); the verification
+	// verdicts themselves keep ClassVerification above.
+	CodeMediaUnverified: {Code: CodeMediaUnverified, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"surface", "media", "screen"}},
+	// 409: the medium is busy being verified, and the answer is to wait
+	// for the run already in flight.
+	CodeMediaVerificationRunning: {Code: CodeMediaVerificationRunning, Class: ClassOperational, HTTPStatus: http.StatusConflict, Params: []string{"stage"}},
+	CodeMediaNotCleared:          {Code: CodeMediaNotCleared, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"surface", "media", "verdict", "screen"}},
 
 	// 422: the request is well formed, the confirmation is simply not the
 	// word the requirement asks for.

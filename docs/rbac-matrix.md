@@ -58,6 +58,9 @@ possible at all.
 | `POST /recipes/publish` | operator | Publishing writes into another zone's cookbook (R-40). Audited as outbound writing (FR-094). |
 | `GET /recipes/plan` | operator | The plan form (FR-055 amendment R-04): only a role that can trigger a synchronization is offered a simulation of one. |
 | `POST /recipes/plan` | operator | A plan mutates nothing, but it makes this instance reach out to every registry the submitted Retriever names. |
+| `GET /media` | viewer | The Media screen (FR-062 amendment R-02): the medium's inventory summary, the verification verdicts, and the guided sequence. Reading it is a listing like any other. |
+| `POST /media/verify` | operator | Starts the FR-054 verification: it re-reads and re-hashes the whole medium, which is work rather than a read. The two waivers below need admin. |
+| `POST /media/import` | operator | Pushes the transported medium into the zone registry (FR-052). Audited (FR-094). The two waivers below need admin. |
 | `GET /account` | viewer | Self-service: every authenticated role manages its own account (R-34). |
 | `POST /account/password` | viewer | Own password only. Administrators manage others on `/admin/accounts`. |
 | `GET /admin/accounts` | admin | |
@@ -107,9 +110,10 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `POST /api/v1/sync` | operator | `POST /recipes/sync` |
 | `POST /api/v1/plan` | operator | `POST /recipes/plan` |
 | `POST /api/v1/recipes/publish` | operator | `POST /recipes/publish` |
-| `GET /api/v1/media` | viewer | the Media screen's summary (R-02, not yet shipped) |
-| `POST /api/v1/media/verify` | operator | the Media screen's Verify step (R-02, not yet shipped) |
-| `POST /api/v1/media/import` | operator | the Media screen's Push step (R-02, not yet shipped) |
+| `GET /api/v1/media` | viewer | the Media screen's summary (`GET /media`) |
+| `GET /api/v1/media/verification` | viewer | the serving gate and the verification in progress — what `GET /media` polls |
+| `POST /api/v1/media/verify` | operator | `POST /media/verify` |
+| `POST /api/v1/media/import` | operator | `POST /media/import` |
 | `GET /api/v1/network` | admin | `GET /admin/network` |
 | `PUT /api/v1/network/certificate` | admin | `POST /admin/network/certificate` |
 | `GET /api/v1/retriever` | admin | `GET /admin/retriever` |
@@ -136,9 +140,21 @@ an administrator's, and the handler refuses `allowZoneMismatch` or
 `allowStale` from anyone below admin with the same `TBY-AUTH-003` the
 middleware would have produced. Both the attempt and the applied waiver
 are audited (FR-094). No role, admin included, can waive an integrity or
-signature verdict: those have no override at all (R-19). Their UI mirrors
-arrive with the Media screen (R-02); until then the endpoints are the
-only surface, and `tobby media verify|import` the local equivalent.
+signature verdict: those have no override at all (R-19). The same rule is
+enforced a second time on the UI side, in `POST /media/verify` and
+`POST /media/import`: two doors, one rule, and the waiver checkboxes are
+rendered only for an administrator.
+
+`GET /api/v1/media/verification` carries no floor beyond the viewer's
+because it hashes nothing — it reports the state of the serving gate
+(FR-054) and of the verification currently walking the medium, which is
+what makes it safe to poll every two seconds. **A closed gate is not an
+authorization refusal and appears nowhere in this matrix**: an instance
+holding an unverified medium answers `TBY-MED-030` (or `TBY-MED-032` for
+a medium that did not clear) with `403` on `/v2/` and `/files/` to every
+role, administrator included, until verification opens it. The role
+matrix decides who may ask; the gate decides whether this instance has
+anything it is willing to hand out yet.
 
 `POST /api/v1/account/password` has no floor beyond authentication itself,
 exactly like its screen: it changes the caller's own password and nothing
@@ -159,6 +175,13 @@ same accounts and tokens as the UI and the API.
 An unauthenticated request answers `401` with a `Basic` challenge, which
 is what makes standard clients prompt for credentials.
 
+On a **destination instance holding a transported medium**, the whole
+surface sits behind the FR-054 serving gate: until a verification has
+cleared the medium, every method answers `403` with the OCI error envelope
+carrying `TBY-MED-030` — the message, the cause and the way out, so a
+`docker pull` prints an instruction rather than a mystery. This is not a
+role decision and no role bypasses it.
+
 ## FileSet surface (`/files/`)
 
 Read-only by construction; the floor is `viewer`, except for FileSets
@@ -166,10 +189,24 @@ explicitly opted into anonymous access (`files.filesets[].anonymous`,
 FR-047) for bare-host bootstrap. Those opt-ins are surfaced by a permanent
 banner, like the FR-075 override.
 
+The FR-054 serving gate applies here exactly as it does to `/v2/`, and
+before authentication: an unverified medium answers `403` with the
+taxonomy entry rendered as plain text, because the clients of this surface
+are `apt`, `dnf` and `curl`, which show a body and know nothing of problem
+documents. An anonymous FileSet is no exception — anonymity decides who
+may ask, not whether the medium has been verified.
+
 ## Probes and health
 
 `/healthz`, `/readyz`, and `/metrics` are unauthenticated: they are the
 orchestrator's contract (FR-091, FR-092) and carry no instance content.
+
+An instance withholding an unverified medium stays **live and ready**: it
+is running, its storage is writable, its configuration is valid, and its
+interface is serving — every one of which an operator needs in order to
+press Verify. A `503` would take it out of rotation and remove the screen
+that fixes the condition. `/readyz` therefore keeps its `200` and says in
+its body which surfaces are closed and where to open them.
 
 ## Refusals
 

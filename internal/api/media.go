@@ -26,6 +26,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
+	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -49,6 +50,12 @@ type MediaOptions struct {
 	// StorageRoot is the transported store — the import's subject, and
 	// the target of its audit record.
 	StorageRoot string
+	// Gate is the FR-054 serving gate and the session behind it: whether
+	// /v2/ and /files/ answer, the verification currently walking the
+	// medium, and the verdict the last one reached. It is the API mirror
+	// of what the Media screen polls (FR-061). Nil on an instance that
+	// guards nothing.
+	Gate *mediagate.Gate
 }
 
 // RegisterMedia mounts the media endpoints.
@@ -61,6 +68,10 @@ type MediaOptions struct {
 func RegisterMedia(a *API, opts *MediaOptions) {
 	m := &mediaAPI{api: a, opts: opts}
 	a.Handle("GET /api/v1/media", a.RequireRole(auth.RoleViewer, m.summary))
+	// The state the Media screen polls, mirrored for a machine (FR-061):
+	// whether the content surfaces answer, what the verification in
+	// progress is doing, and the last verdict — read-only, hence viewer.
+	a.Handle("GET /api/v1/media/verification", a.RequireRole(auth.RoleViewer, m.verification))
 	a.Handle("POST /api/v1/media/verify", a.RequireRole(auth.RoleOperator, m.verify))
 	a.Handle("POST /api/v1/media/import", a.RequireRole(auth.RoleOperator, m.importMedia))
 }
@@ -88,6 +99,21 @@ func (m *mediaAPI) summary(w http.ResponseWriter, r *http.Request) {
 	m.api.JSON(w, http.StatusOK, m.opts.Engine.MediaSummary())
 }
 
+// verification serves GET /api/v1/media/verification: the serving gate
+// and the media session behind it (FR-054, FR-061).
+//
+// It reads state and re-hashes nothing, which is what makes it pollable —
+// the screen asks it every two seconds while a verification walks the
+// medium, and a caller's own tooling can do the same to know when /v2/
+// opened.
+func (m *mediaAPI) verification(w http.ResponseWriter, r *http.Request) {
+	if m.opts.Gate == nil {
+		m.api.Problem(w, r, notADestination())
+		return
+	}
+	m.api.JSON(w, http.StatusOK, m.opts.Gate.Status())
+}
+
 // verify serves POST /api/v1/media/verify: re-verify and report, writing
 // nothing and pushing nothing (FR-054).
 //
@@ -108,6 +134,17 @@ func (m *mediaAPI) verify(w http.ResponseWriter, r *http.Request) {
 	if err := m.authorizeOverrides(r, id, req); err != nil {
 		m.api.Problem(w, r, err)
 		return
+	}
+	// One walk of the disk at a time. A second run started while the
+	// screen's own is in flight would halve both and answer nothing new
+	// (TBY-MED-031), so the caller is told to read the verdict of the one
+	// already running rather than being silently queued behind it.
+	if m.opts.Gate != nil {
+		if s := m.opts.Gate.Status(); s.Running {
+			m.api.Problem(w, r, taxonomy.New(taxonomy.CodeMediaVerificationRunning,
+				taxonomy.Params{"stage": stageOf(&s)}))
+			return
+		}
 	}
 	rep, verr := m.opts.Engine.VerifyMedia(r.Context(), m.api.logger, engine.MediaOptions{
 		AllowZoneMismatch: req.AllowZoneMismatch,
@@ -209,6 +246,15 @@ func decodeMediaRequest(r *http.Request) (*mediaRequest, *taxonomy.Error) {
 	return nil, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
 		"file": "the request body", "path": "-", "constraint": err.Error(),
 	})
+}
+
+// stageOf names the phase a running verification is in, for the refusal
+// that tells a second caller to wait for it.
+func stageOf(s *mediagate.Status) string {
+	if s.Progress == nil {
+		return string(media.StageManifest)
+	}
+	return string(s.Progress.Stage)
 }
 
 // notADestination is the answer of an instance that has no medium to

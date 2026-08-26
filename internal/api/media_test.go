@@ -18,6 +18,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
+	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 )
 
@@ -55,7 +56,7 @@ func (s *stubVerifier) VerifyMedia(_ context.Context, _ *slog.Logger, opts engin
 
 // newMediaAPI mounts the media endpoints behind real authentication, with
 // one account per role (FR-076).
-func newMediaAPI(t *testing.T, v *stubVerifier) (*http.ServeMux, *tasks.Queue) {
+func newMediaAPI(t *testing.T, v *stubVerifier) (*http.ServeMux, *tasks.Queue, *mediagate.Gate) {
 	t.Helper()
 	root := t.TempDir()
 	q, err := tasks.Open(root, slog.New(slog.DiscardHandler))
@@ -86,13 +87,99 @@ func newMediaAPI(t *testing.T, v *stubVerifier) (*http.ServeMux, *tasks.Queue) {
 	}
 	a := api.New(authn, slog.New(slog.DiscardHandler))
 	opts := &api.MediaOptions{Queue: q, StorageRoot: "/mnt/medium"}
+	var gate *mediagate.Gate
 	if v != nil {
 		opts.Engine = v
+		// The gate is wired over a store that is NOT a medium, so it
+		// guards nothing: what these tests own is the endpoint contract,
+		// and the guard itself is proved in internal/mediagate against
+		// the real handlers it withholds.
+		gate = mediagate.Open(t.Context(), t.TempDir(), v.zone, slog.New(slog.DiscardHandler))
+		opts.Gate = gate
 	}
 	api.RegisterMedia(a, opts)
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/", a.Handler())
-	return mux, q
+	return mux, q, gate
+}
+
+// TestMediaVerificationMirrorsWhatTheScreenPolls (FR-061): the state the
+// Media screen refreshes every two seconds is a document a machine can
+// read too — the serving gate of FR-054, the run in flight, and the last
+// verdict — and it must be a read, so that polling it costs nothing.
+func TestMediaVerificationMirrorsWhatTheScreenPolls(t *testing.T) {
+	v := &stubVerifier{zone: "zone-alpha", report: blockedReport()}
+	mux, _, _ := newMediaAPI(t, v)
+
+	w := mediaCall(t, mux, http.MethodGet, "/api/v1/media/verification", "lecteur", "pw-view", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/media/verification as viewer = %d, want 200", w.Code)
+	}
+	var got struct {
+		Guarded bool          `json:"guarded"`
+		Serving bool          `json:"serving"`
+		Running bool          `json:"running"`
+		Report  *media.Report `json:"report"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding the verification state: %v", err)
+	}
+	if got.Guarded || !got.Serving {
+		t.Errorf("an instance whose store is not a medium reports guarded=%v serving=%v",
+			got.Guarded, got.Serving)
+	}
+	if v.calls != 0 {
+		t.Errorf("reading the verification state re-verified the medium %d time(s)", v.calls)
+	}
+}
+
+// TestMediaVerifyRefusesASecondWalkOfTheSameDisk: the Media screen runs
+// its verification in the background, because a full medium is minutes of
+// I/O. A machine caller arriving while that run is in flight is told to
+// read its verdict (TBY-MED-031) rather than being queued behind a second
+// walk of the same disk, which would halve both and answer nothing new.
+func TestMediaVerifyRefusesASecondWalkOfTheSameDisk(t *testing.T) {
+	v := &stubVerifier{zone: "zone-alpha", report: blockedReport()}
+	mux, _, gate := newMediaAPI(t, v)
+
+	held := make(chan struct{})
+	started := make(chan struct{})
+	gate.SetVerify(func(_ context.Context, _ mediagate.Options, _ func(media.Progress)) (*media.Report, error) {
+		close(started)
+		<-held
+		return blockedReport(), nil
+	})
+	if e := gate.Start(mediagate.Options{}); e != nil {
+		t.Fatalf("starting the screen's verification: %v", e)
+	}
+	<-started
+
+	w := mediaCall(t, mux, http.MethodPost, "/api/v1/media/verify", "op", "pw-op", "{}")
+	close(held)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("a concurrent verification = %d, want 409", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "TBY-MED-031") {
+		t.Errorf("body = %s, want TBY-MED-031", w.Body.String())
+	}
+	if v.calls != 0 {
+		t.Errorf("the refused call still re-hashed the medium (%d engine calls)", v.calls)
+	}
+}
+
+// TestMediaVerificationNeedsAMedium: an instance that is not the
+// destination side of a transfer has no gate to report on, and says so
+// with the same TBY-CFG-001 the other media endpoints answer rather than
+// inventing an empty document.
+func TestMediaVerificationNeedsAMedium(t *testing.T) {
+	mux, _, _ := newMediaAPI(t, nil)
+	w := mediaCall(t, mux, http.MethodGet, "/api/v1/media/verification", "lecteur", "pw-view", "")
+	if w.Code < 400 {
+		t.Errorf("GET /api/v1/media/verification with no medium = %d, want a refusal", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "TBY-CFG-001") {
+		t.Errorf("body = %s, want TBY-CFG-001", w.Body.String())
+	}
 }
 
 // mediaCall issues one authenticated request.
@@ -131,7 +218,7 @@ func blockedReport() *media.Report {
 // render (FR-061, FR-063).
 func TestMediaVerifyAnswersTheReportWhateverTheVerdict(t *testing.T) {
 	v := &stubVerifier{zone: "zone-alpha", report: blockedReport()}
-	mux, _ := newMediaAPI(t, v)
+	mux, _, _ := newMediaAPI(t, v)
 
 	w := mediaCall(t, mux, http.MethodPost, "/api/v1/media/verify", "op", "pw-op", "{}")
 	if w.Code != http.StatusOK {
@@ -165,7 +252,7 @@ func TestMediaVerifyAnswersTheReportWhateverTheVerdict(t *testing.T) {
 // not.
 func TestMediaWaiversAreAdministratorOnly(t *testing.T) {
 	v := &stubVerifier{zone: "zone-alpha", report: blockedReport()}
-	mux, q := newMediaAPI(t, v)
+	mux, q, _ := newMediaAPI(t, v)
 
 	for _, path := range []string{"/api/v1/media/verify", "/api/v1/media/import"} {
 		w := mediaCall(t, mux, http.MethodPost, path, "op", "pw-op", `{"allowZoneMismatch":true}`)
@@ -203,7 +290,7 @@ func TestMediaWaiversAreAdministratorOnly(t *testing.T) {
 // visible, and the task record is what an operator opens weeks later.
 func TestMediaImportEnqueuesATaskCarryingItsWaivers(t *testing.T) {
 	v := &stubVerifier{zone: "zone-alpha", report: blockedReport()}
-	mux, q := newMediaAPI(t, v)
+	mux, q, _ := newMediaAPI(t, v)
 
 	w := mediaCall(t, mux, http.MethodPost, "/api/v1/media/import", "chef", "pw-admin",
 		`{"allowStale":true}`)
@@ -250,7 +337,7 @@ func TestMediaImportEnqueuesATaskCarryingItsWaivers(t *testing.T) {
 // nothing — unlike verification, which re-hashes the whole disk.
 func TestMediaSummaryNeedsOnlyAViewer(t *testing.T) {
 	v := &stubVerifier{zone: "zone-alpha"}
-	mux, _ := newMediaAPI(t, v)
+	mux, _, _ := newMediaAPI(t, v)
 
 	w := mediaCall(t, mux, http.MethodGet, "/api/v1/media", "lecteur", "pw-view", "")
 	if w.Code != http.StatusOK {
@@ -279,7 +366,7 @@ func TestMediaSummaryNeedsOnlyAViewer(t *testing.T) {
 // configuration code and the setting to change — never a 500 and never an
 // empty report.
 func TestMediaEndpointsRefuseAnInstanceWithNoMedium(t *testing.T) {
-	mux, _ := newMediaAPI(t, nil)
+	mux, _, _ := newMediaAPI(t, nil)
 	for _, c := range []struct{ method, path, user, pass string }{
 		{http.MethodGet, "/api/v1/media", "lecteur", "pw-view"},
 		{http.MethodPost, "/api/v1/media/verify", "op", "pw-op"},
@@ -300,7 +387,7 @@ func TestMediaEndpointsRefuseAnInstanceWithNoMedium(t *testing.T) {
 // dressed up as one.
 func TestMediaVerifyPropagatesAnInfrastructureFailure(t *testing.T) {
 	v := &stubVerifier{zone: "zone-alpha", err: errors.New("opening the transported store: input/output error")}
-	mux, _ := newMediaAPI(t, v)
+	mux, _, _ := newMediaAPI(t, v)
 
 	w := mediaCall(t, mux, http.MethodPost, "/api/v1/media/verify", "op", "pw-op", "{}")
 	if w.Code == http.StatusOK {

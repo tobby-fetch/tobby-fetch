@@ -1056,6 +1056,28 @@ paths:
                 $ref: "#/components/schemas/MediaSummary"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/media/verification:
+    get:
+      summary: >-
+        The FR-054 serving gate and the media session behind it: whether
+        this instance is withholding its content surfaces, whether they
+        currently answer, the verification walking the medium right now
+        with its progress, and the last verdict reached — whichever
+        surface produced it, this endpoint, the Media screen or a media
+        import. It reads state and hashes nothing, which is what makes it
+        safe to poll: the Media screen asks it every two seconds while a
+        verification runs, and a caller's own tooling can do the same to
+        know when /v2/ opened. An instance that guards nothing answers
+        TBY-CFG-001. Role viewer.
+      responses:
+        "200":
+          description: The gate, the run in progress, and the last verdict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaVerification"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v1/media/verify:
     post:
       summary: >-
@@ -2410,6 +2432,65 @@ components:
             resolvedAt: { type: string, format: date-time }
             importedAt: { type: string, format: date-time }
             runId: { type: string }
+    MediaVerification:
+      type: object
+      description: >-
+        The serving gate of FR-054 — "verification SHALL precede any push,
+        any serving, and any local write" — and the verification session
+        behind it.
+      properties:
+        guarded:
+          type: boolean
+          description: >-
+            This instance withholds /v2/ and /files/ until the medium is
+            verified. True only on a destination side (a configured zone
+            identity) whose store carries a media manifest; a passthrough
+            instance and a source-side mirror both answer false and serve
+            unconditionally.
+        serving:
+          type: boolean
+          description: >-
+            /v2/ and /files/ currently answer. It opens on a verdict of
+            "pushable" and on nothing else: unlike the push decision,
+            which R-19 takes recipe by recipe, serving engages the store
+            as a whole. There is no setting that opens it without a
+            verification.
+        mediaId: { type: string }
+        running:
+          type: boolean
+          description: A verification is walking the medium right now.
+        startedAt: { type: string, format: date-time }
+        progress:
+          type: object
+          description: >-
+            The last progress notification of the run in flight (FR-054:
+            verification progress is displayed). Totals are the
+            inventory's declared volumetry — a claim from the medium,
+            useful for a progress bar and for nothing else.
+          properties:
+            stage:
+              type: string
+              enum: [inventory, manifest, recipes, extraneous]
+            recipe: { type: string }
+            files: { type: integer }
+            totalFiles: { type: integer }
+            bytes: { type: integer, format: int64 }
+            totalBytes: { type: integer, format: int64 }
+        report:
+          $ref: "#/components/schemas/MediaReport"
+        verdictAt: { type: string, format: date-time }
+        failure:
+          type: object
+          description: >-
+            Why the last run reached no verdict at all — a store that
+            cannot be opened, a missing zone identity. Distinct from a
+            blocked verdict, which IS a report. Code and parameters, never
+            a sentence, so every surface renders it in the reader's
+            language.
+          properties:
+            code: { type: string }
+            params: { type: object, additionalProperties: { type: string } }
+            at: { type: string, format: date-time }
     MediaOverrides:
       type: object
       description: >-

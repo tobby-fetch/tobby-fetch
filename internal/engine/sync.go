@@ -110,6 +110,11 @@ type Engine struct {
 	// imports is the per-zone freshness register (R-28), held in the
 	// INSTANCE state directory and never on the medium.
 	imports *media.Imports
+	// verdicts receives every verification report this engine produces,
+	// whichever surface asked for one — the serving gate of FR-054 is
+	// built on it (internal/mediagate). Nil on an instance that serves
+	// no medium.
+	verdicts func(*media.Report)
 }
 
 // New assembles the engine.

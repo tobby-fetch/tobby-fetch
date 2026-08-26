@@ -440,3 +440,49 @@ func TestMediaImportNeedsAZoneIdentity(t *testing.T) {
 		t.Errorf("an instance with no zone identity pushed %d writes: %v", len(w), w)
 	}
 }
+
+// TestEveryVerificationReachesTheServingGate: FR-054 governs SERVING as well as pushing, and the withholding of /v2/
+// and /files/ (internal/mediagate) is decided from the verification
+// report — not from a second, parallel notion of "verified" maintained
+// beside it. That only holds if EVERY path to a verdict passes the
+// observer, so this pins the funnel rather than any one caller:
+// VerifyMedia notifies on a direct call (the screen, the API, the CLI)
+// and on the one inside a media import, and a run that reached no verdict
+// notifies nothing — an unreadable store says nothing about the bytes the
+// gate is withholding.
+//
+// Proved fallible: with the observer call removed from VerifyMedia, both
+// counters stay at zero.
+func TestEveryVerificationReachesTheServingGate(t *testing.T) {
+	kp := newKeyPair(t)
+	m := seedMedium(t, kp, mediumRecipe{name: "alpine", version: "3.22.1"})
+	dest := newDestRegistry(t)
+	eng, _ := destinationFor(t, m, dest, "zone-alpha", kp)
+
+	var seen []media.Verdict
+	eng.SetMediaVerdicts(func(rep *media.Report) { seen = append(seen, rep.Verdict) })
+
+	if _, err := eng.VerifyMedia(t.Context(), discardLogger(), MediaOptions{}); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("a direct verification notified the gate %d time(s), want 1", len(seen))
+	}
+	if seen[0] != media.VerdictPushable {
+		t.Fatalf("the gate was told %q, want %q", seen[0], media.VerdictPushable)
+	}
+
+	if _, err := runImport(t, eng, MediaOptions{}); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if len(seen) != 2 {
+		t.Errorf("the verification inside an import notified the gate %d time(s) in total, want 2", len(seen))
+	}
+
+	// A run that produced no report at all leaves the gate untouched.
+	blind, _ := destinationFor(t, m, dest, "", kp)
+	blind.SetMediaVerdicts(func(*media.Report) { t.Error("a run that reached no verdict notified the gate") })
+	if _, err := blind.VerifyMedia(t.Context(), discardLogger(), MediaOptions{}); err == nil {
+		t.Fatal("verifying without a zone identity should refuse")
+	}
+}

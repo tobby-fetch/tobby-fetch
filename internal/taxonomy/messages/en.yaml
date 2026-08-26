@@ -231,6 +231,18 @@
 "TBY-MED-022.cause": "{{.path}} does not match its inventory entry — the store's own bookkeeping was altered after the manifest was written."
 "TBY-MED-022.action": "Nothing is pushed from this file, so verification continues; re-copy the store from the source instance if you did not alter it deliberately."
 
+"TBY-MED-030.what": "This medium has not been verified yet, so nothing is served from it."
+"TBY-MED-030.cause": "{{.surface}} is closed because medium {{.media}} arrived from another zone and no verification has established that its content is intact and signed (FR-054). The instance itself is running normally."
+"TBY-MED-030.action": "Open {{.screen}} in the web interface and run Verify — it re-hashes the medium and can take several minutes on a full disk — or call POST /api/v1/media/verify on this instance. This surface opens by itself as soon as the medium clears. `tobby media verify` reports the same verdict but runs in its own process and does not open this instance's surfaces: only a verification the instance itself performs does."
+
+"TBY-MED-031.what": "A verification of this medium is already running."
+"TBY-MED-031.cause": "One run is walking the medium (stage: {{.stage}}); starting a second would halve both and answer nothing new."
+"TBY-MED-031.action": "Wait for the run in progress. Its verdict lands on the Media screen and on GET /api/v1/media/verification."
+
+"TBY-MED-032.what": "This medium did not clear verification, so nothing is served from it."
+"TBY-MED-032.cause": "{{.surface}} is closed because medium {{.media}} verified as {{.verdict}} rather than whole. Serving is a property of the store as a whole — a blob a blocked recipe reaches is exactly the content that failed — so unlike the push decision it is not taken recipe by recipe."
+"TBY-MED-032.action": "Read the report on {{.screen}}: it names each blocked recipe and the file that failed. Re-copy the medium from the source instance and verify again. The intact recipes can still be pushed into the zone registry, which then serves them."
+
 "TBY-STO-004.what": "The operation was refused before it started: the target does not have enough free space."
 "TBY-STO-004.cause": "{{.path}} needs {{.needed}} bytes and only {{.available}} are usable — {{.free}} bytes are free, minus the {{.margin}} % safety margin. It is short by {{.shortfall}} bytes."
 "TBY-STO-004.action": "Free at least {{.shortfall}} bytes on the target, point the operation at a larger volume, or remove content that is no longer referenced. Lower preflight.safetyMarginPercent only if you accept filling the volume."

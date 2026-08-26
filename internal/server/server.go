@@ -40,6 +40,11 @@ type Server struct {
 	// ready gates /readyz: false during startup and drain (FR-092).
 	ready atomic.Bool
 
+	// detail supplies the readiness note: a sentence a ready instance
+	// adds about what it is nevertheless withholding, and from where an
+	// operator can act on it. Empty or unset adds nothing.
+	detail atomic.Value
+
 	// addr holds the bound listener address once Run has started listening;
 	// tests bind ":0" and read the effective address from Addr.
 	addr atomic.Value
@@ -64,6 +69,17 @@ func New(addr string, gracePeriod time.Duration, reg *metrics.Registry, logger *
 			return
 		}
 		w.WriteHeader(http.StatusOK)
+		// The instance is ready; a detail says what it is nevertheless not
+		// serving and why (FR-054's media gate is the first such case).
+		// The status stays 200 on purpose: a probe that answered 503 would
+		// take the instance out of rotation and remove the very interface
+		// an operator needs to fix the condition. Liveness and readiness
+		// are about the process; what it will hand out is a separate
+		// question, and the body is where that answer belongs.
+		if detail := s.readyDetail(); detail != "" {
+			_, _ = w.Write([]byte("ok: " + detail + "\n"))
+			return
+		}
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	s.mux.Handle("GET /metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{
@@ -111,6 +127,20 @@ func (s *Server) Mux() *http.ServeMux {
 // configuration are usable).
 func (s *Server) SetReady(ready bool) {
 	s.ready.Store(ready)
+}
+
+// SetReadyDetail installs the readiness note source (see the /readyz
+// handler). The function is called per probe, so the note follows the
+// instance's state rather than a value frozen at startup.
+func (s *Server) SetReadyDetail(f func() string) { s.detail.Store(f) }
+
+// readyDetail reads the note, if one was installed.
+func (s *Server) readyDetail() string {
+	f, ok := s.detail.Load().(func() string)
+	if !ok || f == nil {
+		return ""
+	}
+	return f()
 }
 
 // SetTLS makes the listener serve TLS with cfg (FR-082). Call before Run.

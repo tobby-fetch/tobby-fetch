@@ -231,6 +231,18 @@
 "TBY-MED-022.cause": "{{.path}} ne correspond pas à son entrée d'inventaire — la comptabilité interne du store a été modifiée après l'écriture du manifeste."
 "TBY-MED-022.action": "Rien n'est poussé depuis ce fichier, la vérification continue ; recopiez le store depuis l'instance source si vous ne l'avez pas modifié délibérément."
 
+"TBY-MED-030.what": "Ce support n'a pas encore été vérifié : rien n'en est servi."
+"TBY-MED-030.cause": "{{.surface}} est fermé parce que le support {{.media}} vient d'une autre zone et qu'aucune vérification n'a établi que son contenu est intact et signé (FR-054). L'instance, elle, fonctionne normalement."
+"TBY-MED-030.action": "Ouvrez {{.screen}} dans l'interface web et lancez Vérifier — la vérification recalcule les empreintes du support et peut prendre plusieurs minutes sur un disque plein — ou appelez POST /api/v1/media/verify sur cette instance. Cette surface s'ouvre d'elle-même dès que le support est vérifié. `tobby media verify` rend le même verdict mais s'exécute dans son propre processus et n'ouvre pas les surfaces de cette instance : seule une vérification exécutée par l'instance elle-même le fait."
+
+"TBY-MED-031.what": "Une vérification de ce support est déjà en cours."
+"TBY-MED-031.cause": "Une exécution parcourt le support (étape : {{.stage}}) ; en lancer une seconde ralentirait les deux sans rien apprendre de plus."
+"TBY-MED-031.action": "Attendez la fin de l'exécution en cours. Son verdict s'affiche sur l'écran Média et sur GET /api/v1/media/verification."
+
+"TBY-MED-032.what": "Ce support n'a pas passé la vérification : rien n'en est servi."
+"TBY-MED-032.cause": "{{.surface}} est fermé parce que le support {{.media}} a été vérifié « {{.verdict}} » et non intact. Servir engage le store entier — un blob atteint par une recipe bloquée est exactement le contenu qui a échoué — donc, contrairement à la décision de poussée, cela ne se décide pas recipe par recipe."
+"TBY-MED-032.action": "Lisez le rapport sur {{.screen}} : il nomme chaque recipe bloquée et le fichier fautif. Recopiez le support depuis l'instance source, puis vérifiez de nouveau. Les recipes intactes restent poussables vers la registry de zone, qui les sert ensuite."
+
 "TBY-STO-004.what": "L'opération a été refusée avant de démarrer : la cible n'a pas assez d'espace libre."
 "TBY-STO-004.cause": "{{.path}} demande {{.needed}} octets et seuls {{.available}} sont utilisables — {{.free}} octets sont libres, moins la marge de sécurité de {{.margin}} %. Il manque {{.shortfall}} octets."
 "TBY-STO-004.action": "Libérez au moins {{.shortfall}} octets sur la cible, visez un volume plus grand, ou supprimez du contenu qui n'est plus référencé. N'abaissez preflight.safetyMarginPercent que si vous acceptez de remplir le volume."
