@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright © 2026 infraBuilder SASU and contributors
+#
+# winget default-locale manifest for `infraBuilder.tobby` — see
+# `infraBuilder.tobby.yaml` for why that identifier was chosen. en-US is the
+# locale the version manifest names as `DefaultLocale`, which is why this
+# file's `ManifestType` is `defaultLocale` and not `locale`: winget requires
+# the default locale to be complete, and treats the additional `locale`
+# manifests as overlays on top of it. Only this one is published, because a
+# translation nobody maintains drifts from the English text and then
+# misdescribes the product in the index.
+#
+# Every string below is taken verbatim from packaging/nfpm/nfpm.yaml, which
+# is the single source of the vendor, homepage, licence and description used
+# by the Linux packages. Two channels describing the same binary in two
+# slightly different ways is how a product ends up looking like two
+# products, so nothing here is a fresh wording.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+
+PackageIdentifier: infraBuilder.tobby
+PackageVersion: "0.0.0" # rendered by the release workflow
+PackageLocale: en-US
+Publisher: infraBuilder SASU
+PackageName: tobby
+PackageUrl: https://tobby-fetch.github.io/tobby-fetch/
+License: GPL-3.0-only
+Copyright: Copyright © 2026 infraBuilder SASU and contributors
+ShortDescription: Secure artifact fetch-and-relocate tool with an embedded OCI registry.
+Description: |-
+  Secure artifact fetch-and-relocate tool with an embedded OCI registry.
+  Tobby fetches OCI assets — container images, Helm charts, AI models,
+  and files — and carries them across isolated network zones, from
+  connected, through restricted, down to fully air-gapped environments.
+Moniker: tobby
+Tags:
+  - oci
+  - registry
+  - air-gap
+  - mirror
+  - supply-chain
+  - containers
+  - helm
+  - sbom
+ReleaseNotesUrl: https://github.com/tobby-fetch/tobby-fetch/releases/tag/v0.0.0
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
