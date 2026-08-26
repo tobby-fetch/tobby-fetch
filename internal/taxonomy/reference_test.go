@@ -28,6 +28,7 @@ func TestPublishedReferenceCoversEveryCode(t *testing.T) {
 		"website/src/content/docs/docs/reference/errors.md",
 		"website/src/content/docs/fr/docs/reference/errors.md",
 	} {
+		//nolint:gosec // G304: page comes from the fixed list above, not from input
 		raw, err := os.ReadFile(filepath.Join(root, page))
 		if err != nil {
 			t.Fatalf("reading %s: %v", page, err)
