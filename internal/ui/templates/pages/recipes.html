@@ -24,6 +24,10 @@
       {{/* R-40: the publication screen, operator-gated like the trigger
            beside it — the way back in for a document edited offline. */}}
       {{if .CanOperate}}<a class="t-btn t-btn--secondary" href="/recipes/publish">{{.T "recipes.publish"}}</a>{{end}}
+      {{/* FR-055 amendment R-04: the simulation sits beside the trigger it
+           simulates — the volumes and the free-space verdict are meant to
+           be read before the button next to them is pressed. */}}
+      {{if .CanOperate}}<a class="t-btn t-btn--secondary" href="/recipes/plan">{{.T "recipes.plan"}}</a>{{end}}
       {{if and .CanOperate .Data.Source}}
       <form method="post" action="/recipes/sync">
         <input type="hidden" name="csrf" value="{{.CSRF}}">

@@ -474,6 +474,37 @@ mêmes ancres. À suivre sur la page
   sans fichier temporaire.
 - **Remédiable hors-ligne :** oui · **Bloque :** les transferts reprenables concernés
 
+### TBY-STO-004
+
+- **Ce qui s'est passé :** l'opération a été refusée avant de démarrer — la
+  cible n'a pas assez d'espace libre (FR-055).
+- **Cause probable :** l'écriture projetée dépasse l'espace libre de la
+  cible moins la marge de sécurité configurée
+  (`preflight.safetyMarginPercent`, 10 % par défaut). Le message énonce le
+  manque exact, en octets.
+- **Action corrective :** libérez au moins le nombre d'octets annoncé sur
+  la cible, visez un volume plus grand, ou supprimez du contenu qui n'est
+  plus référencé. Abaisser `preflight.safetyMarginPercent` n'a de sens que
+  si vous acceptez de remplir le volume ; `preflight.disabled: true`
+  supprime la vérification et l'annonce au démarrage.
+- **Corrigeable hors ligne :** oui · **Bloque :** la synchronisation ou l'export concerné ; rien n'est écrit
+
+### TBY-STO-005
+
+- **Ce qui s'est passé :** le système de fichiers de la cible ne peut pas
+  contenir un fichier de cette taille (FR-055).
+- **Cause probable :** la cible est formatée avec un système de fichiers
+  dont la limite par fichier est inférieure au plus gros fichier que
+  l'opération écrirait — typiquement FAT32, limité à 4 Gio moins un octet.
+  Une archive tar d'export compte pour un seul fichier. Le même code est
+  émis quand la condition survient en cours d'écriture plutôt qu'au
+  pré-vol : support échangé entre les deux, ou système de fichiers que ce
+  build n'a pas su identifier.
+- **Action corrective :** reformatez le support avec un système de fichiers
+  sans cette limite (exFAT, NTFS, ext4, XFS), ou découpez le transfert pour
+  qu'aucun fichier ne dépasse la limite.
+- **Corrigeable hors ligne :** oui · **Bloque :** la synchronisation ou l'export concerné ; en cours d'écriture, le store reste intact
+
 ## Transport sur support amovible (TBY-MED)
 
 Le support est un store qui a changé de mains : tout ce qu'il dit de

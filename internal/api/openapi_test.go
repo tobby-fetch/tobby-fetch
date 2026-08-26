@@ -38,6 +38,7 @@ var registeredRoutes = []string{
 	"GET /api/v1/network",
 	"PUT /api/v1/network/certificate",
 	"GET /api/v1/openapi.yaml",
+	"POST /api/v1/plan",
 	"GET /api/v1/recipes",
 	"GET /api/v1/recipes/{recipe}/mapping",
 	"POST /api/v1/recipes/publish",

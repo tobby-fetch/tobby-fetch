@@ -23,6 +23,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
+	"github.com/tobby-fetch/tobby-fetch/internal/preflight"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -33,9 +34,16 @@ import (
 // MetaStore extends the write surface with the bookkeeping the engine
 // maintains: provenance (FR-045 groundwork) and the recipe graph
 // (FR-044 reachability), implemented by the embedded store.
+//
+// PlanStore is embedded rather than optional so the FR-055 gate cannot
+// be wired out by accident: an engine that could not read the store's
+// size and free space would be an engine that starts transfers it cannot
+// finish, and making that state unrepresentable is cheaper than a test
+// that checks somebody remembered to call a setter.
 type MetaStore interface {
 	Store
 	StoreReader
+	PlanStore
 	SetProvenance(repo string, p *store.Provenance) error
 	PutRecipeRecord(r *store.RecipeRecord) error
 }
@@ -71,15 +79,39 @@ type Engine struct {
 	base    string
 	cfg     config.Sync
 	meters  Meters
+<<<<<<< HEAD
 	// media writes the transport medium's manifest at the end of a run
 	// (FR-054); nil outside mirror mode.
 	media MediaManifestWriter
+=======
+	// planner is the FR-055 pre-flight and the R-04 plan mode. It is
+	// built with the engine, from the same store, so there is no wiring
+	// step to forget and no nil to guard against on the gate path.
+	planner *Planner
+>>>>>>> lot/preflight
 }
 
 // New assembles the engine.
 func New(st MetaStore, remotes *Remotes, trust *TrustPolicy, retrieverSource, basePrefix string, cfg config.Sync) *Engine {
-	return &Engine{store: st, remotes: remotes, trust: trust, source: retrieverSource, base: basePrefix, cfg: cfg}
+	e := &Engine{store: st, remotes: remotes, trust: trust, source: retrieverSource, base: basePrefix, cfg: cfg}
+	e.planner = NewPlanner(st, remotes, trust, retrieverSource, PlanConfig{BasePrefix: basePrefix})
+	return e
 }
+
+// SetPreflight refines the pre-flight parameters with the instance's own
+// (FR-055 safety margin, FR-001 mode). Not calling it leaves the engine
+// on the defaults, which is the secure position: the margin applies, the
+// gate is armed.
+func (e *Engine) SetPreflight(mode string, pf config.Preflight) {
+	e.planner.cfg.Mode = mode
+	e.planner.cfg.MarginPercent = pf.SafetyMarginPercent
+	e.planner.cfg.MarginDisabled = pf.Disabled
+}
+
+// Planner exposes the plan engine to the surfaces that report one (the
+// CLI, the API and the UI), so they run the same computation the gate
+// runs rather than a second one that could disagree with it.
+func (e *Engine) Planner() *Planner { return e.planner }
 
 // SetMeters installs the observability hooks.
 func (e *Engine) SetMeters(m Meters) { e.meters = m }
@@ -93,7 +125,10 @@ func (e *Engine) SetMeters(m Meters) { e.meters = m }
 // SetMeters is: an engine without a destination is a complete engine, and
 // every existing caller that never promotes should keep reading as one
 // that never promotes.
-func (e *Engine) SetDestination(d *Destination) { e.dest = d }
+func (e *Engine) SetDestination(d *Destination) {
+	e.dest = d
+	e.planner.SetDestination(d)
+}
 
 // Destination reports the configured promotion target, for the surfaces
 // that show where this instance pushes to (FR-035 mapping, FR-065).
@@ -152,6 +187,15 @@ func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) e
 	logger.LogAttrs(ctx, slog.LevelInfo, "retriever loaded",
 		slog.String("source", e.source), slog.String("zone", zone),
 		slog.Int("recipes", len(retr.Spec.Recipes)))
+
+	// FR-055: does it fit, and will it go through — decided BEFORE the
+	// first byte moves, because that is the only moment at which the
+	// answer is worth anything. A refusal fails the whole task rather
+	// than an item: there is nothing partial about "the volume cannot
+	// hold this".
+	if err := e.preflightGate(ctx, logger); err != nil {
+		return err
+	}
 	sink.update(func(t *tasks.Task) bool {
 		// A resumed task's resolution report is rebuilt from scratch: the
 		// rows describe THIS run's decisions.
@@ -827,6 +871,13 @@ func withRetries(ctx context.Context, retries int, fn func() error) error {
 	for attempt := 0; ; attempt++ {
 		err = fn()
 		if err == nil || attempt >= retries {
+			return err
+		}
+		// FR-055: "file too large" is a property of the target, not a
+		// transient. Retrying it burns the backoff budget to reach the
+		// same ceiling three times, and delays the clean failure the
+		// requirement asks for.
+		if preflight.IsFileTooLarge(err) {
 			return err
 		}
 		var te *taxonomy.Error

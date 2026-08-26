@@ -109,6 +109,8 @@ Value syntax in the environment:
 | `sync.interval` | duration | `15m` | `TOBBY_SYNC_INTERVAL` | Reconciliation cadence, **passthrough mode only** (mirror-mode synchronization is manual by requirement). `0` disables the loop, reported at startup. An operator override persisted in the state directory wins over this value and is audited. |
 | `import.inspectTimeout` | duration | `20s` | `TOBBY_IMPORT_INSPECT_TIMEOUT` | Deadline of one remote inspection on the unit-import screens; a hit maps to the dedicated [`TBY-REG-004`](../../reference/errors/#tby-reg-004). |
 | `transfer.resumeThreshold` | size | `64MiB` | `TOBBY_TRANSFER_RESUME_THRESHOLD` | Blob size from which a download becomes resumable inside the blob (spooled in the state directory, resumed by HTTP Range). `0` disables in-blob resumption and streams every blob straight to the store. |
+| `preflight.safetyMarginPercent` | int 0–99 | `10` | `TOBBY_PREFLIGHT_SAFETY_MARGIN_PERCENT` | Share of the target's free space held back by the pre-flight check: a synchronization is refused before any transfer when the projection exceeds free space minus this margin, stating the shortfall ([`TBY-STO-004`](../../reference/errors/#tby-sto-004)). The margin exists because the store is never the only writer on its volume. `0` restores the default — an absent key must not silently mean "fill the volume". |
+| `preflight.disabled` | bool | `false` | `TOBBY_PREFLIGHT_DISABLED` | Turns the pre-flight gate into a report: volumes and filesystem verdicts are still computed and still shown, and they no longer refuse a synchronization. An explicit, announced removal of a safety check — logged at startup and again every time it lets a refusal through. |
 | `tasks.keepFinished` | int | `500` | `TOBBY_TASKS_KEEP_FINISHED` | Finished tasks retained (newest first); older ones are purged with their log files. Pending and running tasks are never purged. `0` keeps the whole history. |
 
 ### Trust
@@ -216,6 +218,9 @@ sync:
   parallelism: 3
   retries: 3
   interval: 15m
+
+preflight:
+  safetyMarginPercent: 10           # refuse before filling the volume (FR-055)
 
 logging:
   level: info

@@ -54,6 +54,8 @@ possible at all.
 | `POST /recipes/sync` | operator | Triggering a synchronization is an operator action (FR-014). |
 | `GET /recipes/publish` | operator | The recipe publication form (R-40): only a role that can publish is offered one. |
 | `POST /recipes/publish` | operator | Publishing writes into another zone's cookbook (R-40). Audited as outbound writing (FR-094). |
+| `GET /recipes/plan` | operator | The plan form (FR-055 amendment R-04): only a role that can trigger a synchronization is offered a simulation of one. |
+| `POST /recipes/plan` | operator | A plan mutates nothing, but it makes this instance reach out to every registry the submitted Retriever names. |
 | `GET /account` | viewer | Self-service: every authenticated role manages its own account (R-34). |
 | `POST /account/password` | viewer | Own password only. Administrators manage others on `/admin/accounts`. |
 | `GET /admin/accounts` | admin | |
@@ -93,6 +95,7 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `GET /api/v1/tasks`, `/{id}`, `/{id}/logs` | viewer | `GET /tasks…` |
 | `GET /api/v1/recipes`, `/{recipe}/mapping` | viewer | `GET /recipes…` |
 | `POST /api/v1/sync` | operator | `POST /recipes/sync` |
+| `POST /api/v1/plan` | operator | `POST /recipes/plan` |
 | `POST /api/v1/recipes/publish` | operator | `POST /recipes/publish` |
 | `GET /api/v1/network` | admin | `GET /admin/network` |
 | `PUT /api/v1/network/certificate` | admin | `POST /admin/network/certificate` |

@@ -25,6 +25,13 @@ import (
 // failures carry the fingerprints tried (FR-033), registry failures their
 // stable transport codes. subject names the file/reference for messages.
 func (e *Engine) mapError(err error, subject string) *taxonomy.Error {
+	// FR-055: a write that hit the filesystem's file-size ceiling reads
+	// as the same problem the pre-flight refuses in advance, and it can
+	// only be named here — the package-level mapping below has no store
+	// to ask which filesystem the bytes were headed for.
+	if te := fileTooLargeError(err, e.store.Root(), 0); te != nil {
+		return te
+	}
 	return mapEngineError(err, subject)
 }
 
