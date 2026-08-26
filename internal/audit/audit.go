@@ -111,6 +111,12 @@ const (
 	// ActionContentDelete is the admin removal of one unit-imported
 	// repository (FR-044 amendment): the target is the repository path.
 	ActionContentDelete = "content.delete"
+	// ActionFileSetPack is the packing of a local file tree into a
+	// FileSet imported in the store (FR-048): the target is the packed
+	// reference, version included. Recorded from every surface — the
+	// content is unsigned and of local origin, so the trail is the only
+	// record of who put it there.
+	ActionFileSetPack = "fileset.pack"
 
 	// ActionIntervalChange is a change to the promotion cadence of
 	// FR-013 — the sensitive configuration change FR-094 asks to be
