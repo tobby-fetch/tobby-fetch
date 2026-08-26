@@ -266,9 +266,9 @@ check "the isolated zone's registry is serving on $DEST_IP:5000"
 write_config tbc-m5-connected /media/small/store ""
 SMALL_PLAN=$(inc exec tbc-m5-connected -- sh -c \
     'tobby sync --dry-run --output json 2>/dev/null' || true)
-echo "$SMALL_PLAN" | jq -e '.plan.preflight.refusal_code == "TBY-STO-004"' >/dev/null ||
-    fail "an undersized medium was not refused by the pre-flight: $(echo "$SMALL_PLAN" | jq -c '.plan.preflight' 2>/dev/null)"
-echo "$SMALL_PLAN" | jq -e '.plan.preflight.shortfall_bytes > 0' >/dev/null ||
+echo "$SMALL_PLAN" | jq -e '[.checks[].refusal_code] | index("TBY-STO-004") != null' >/dev/null ||
+    fail "an undersized medium was not refused by the pre-flight: $(echo "$SMALL_PLAN" | jq -c '.checks' 2>/dev/null)"
+echo "$SMALL_PLAN" | jq -e '[.checks[] | select(.refusal_code == "TBY-STO-004") | .shortfall_bytes] | max > 0' >/dev/null ||
     fail "the refusal does not state the shortfall in bytes (FR-055)"
 inc exec tbc-m5-connected -- sh -c 'test ! -d /media/small/store/docker' ||
     fail "the refused synchronization wrote content anyway"
@@ -282,10 +282,10 @@ check "FR-055: undersized medium refused before any transfer, shortfall stated, 
 write_config tbc-m5-connected /media/fat32/store ""
 FAT_PLAN=$(inc exec tbc-m5-connected -- sh -c \
     'tobby sync --dry-run --output json 2>/dev/null' || true)
-echo "$FAT_PLAN" | jq -e '.plan.preflight.filesystem.identified == true' >/dev/null ||
-    fail "the FAT32 volume was not positively identified: $(echo "$FAT_PLAN" | jq -c '.plan.preflight.filesystem' 2>/dev/null)"
-echo "$FAT_PLAN" | jq -e '.plan.preflight.filesystem.max_file_size == 4294967295' >/dev/null ||
-    fail "the FAT32 per-file ceiling is not 4 GiB - 1: $(echo "$FAT_PLAN" | jq -c '.plan.preflight.filesystem' 2>/dev/null)"
+echo "$FAT_PLAN" | jq -e '[.checks[].filesystem.identified] | index(true) != null' >/dev/null ||
+    fail "the FAT32 volume was not positively identified: $(echo "$FAT_PLAN" | jq -c '[.checks[].filesystem]' 2>/dev/null)"
+echo "$FAT_PLAN" | jq -e '[.checks[].filesystem.max_file_size] | index(4294967295) != null' >/dev/null ||
+    fail "the FAT32 per-file ceiling is not 4 GiB - 1: $(echo "$FAT_PLAN" | jq -c '[.checks[].filesystem]' 2>/dev/null)"
 check "FR-055: a real FAT32 volume is identified with its 4 GiB per-file ceiling"
 
 # -- 6. The mirror synchronization is triggered by hand, and only by hand ----
@@ -413,27 +413,27 @@ check "FR-054: before verification /v2/ and /files/ serve nothing, and /readyz s
 # -- 11. A medium addressed elsewhere is refused, and the waiver is audited --
 ELSEWHERE=$(inc exec tbc-m5-isolated -- sh -c \
     'tobby media verify --zone zone-elsewhere --output json 2>/dev/null' || true)
-echo "$ELSEWHERE" | jq -e '.report.verdict == "blocked"' >/dev/null ||
+echo "$ELSEWHERE" | jq -e '.verdict == "blocked"' >/dev/null ||
     fail "FR-054: a medium addressed to another zone was not blocked"
-echo "$ELSEWHERE" | jq -e '[.report.blocks[].code] | index("TBY-MED-006") != null' >/dev/null ||
+echo "$ELSEWHERE" | jq -e '[.blocks[].code] | index("TBY-MED-006") != null' >/dev/null ||
     fail "FR-054: the zone refusal does not carry TBY-MED-006"
 WAIVED=$(inc exec tbc-m5-isolated -- sh -c \
     'tobby media verify --zone zone-elsewhere --allow-zone-mismatch --output json 2>/dev/null' || true)
-echo "$WAIVED" | jq -e '[.report.blocks[] | select(.code=="TBY-MED-006") | .overridden] | index(true) != null' >/dev/null ||
+echo "$WAIVED" | jq -e '[.blocks[] | select(.code=="TBY-MED-006") | .overridden] | index(true) != null' >/dev/null ||
     fail "FR-054: the administrator waiver did not clear the zone refusal"
 check "FR-054: a medium for another zone is blocked; the admin waiver clears it and is recorded"
 
 # -- 12. R-19: the damaged delivery is blocked, its neighbour is not ---------
 VERDICT=$(inc exec tbc-m5-isolated -- sh -c 'tobby media verify --output json 2>/dev/null' || true)
-echo "$VERDICT" | jq -e '.report.verdict == "partial"' >/dev/null ||
-    fail "R-19: the verdict is $(echo "$VERDICT" | jq -r '.report.verdict // "unreadable"'), want partial — a damaged medium must still deliver its intact recipes"
-echo "$VERDICT" | jq -e '.report.recipes[] | select(.name=="zone-app") | .pushable == false' >/dev/null ||
+echo "$VERDICT" | jq -e '.verdict == "partial"' >/dev/null ||
+    fail "R-19: the verdict is $(echo "$VERDICT" | jq -r '.verdict // "unreadable"'), want partial — a damaged medium must still deliver its intact recipes"
+echo "$VERDICT" | jq -e '.recipes[] | select(.name=="zone-app") | .pushable == false' >/dev/null ||
     fail "R-19: the delivery whose blob was truncated is still pushable"
-echo "$VERDICT" | jq -e '.report.recipes[] | select(.name=="zone-app") | .reason.path != null and .reason.path != ""' >/dev/null ||
+echo "$VERDICT" | jq -e '.recipes[] | select(.name=="zone-app") | .reason.path != null and .reason.path != ""' >/dev/null ||
     fail "R-19/FR-054: the blocked delivery does not name the offending file"
-echo "$VERDICT" | jq -e '.report.recipes[] | select(.name=="zone-tool") | .pushable == true' >/dev/null ||
+echo "$VERDICT" | jq -e '.recipes[] | select(.name=="zone-tool") | .pushable == true' >/dev/null ||
     fail "R-19: an intact delivery was blocked because its neighbour was damaged"
-OFFENDER=$(echo "$VERDICT" | jq -r '.report.recipes[] | select(.name=="zone-app") | .reason.path')
+OFFENDER=$(echo "$VERDICT" | jq -r '.recipes[] | select(.name=="zone-app") | .reason.path')
 check "R-19: zone-app blocked whole, naming $OFFENDER; zone-tool still pushable"
 
 # -- 13. Import: only what cleared crosses into the zone registry ------------
@@ -467,9 +467,9 @@ check "FR-053/FR-054: the return log is on the medium, outside the manifest's co
 # medium is the accident the guard exists for — an operator re-plugging
 # last month's disk — and it must be refused by default and waivable.
 STALE=$(inc exec tbc-m5-isolated -- sh -c 'tobby media verify --output json 2>/dev/null' || true)
-echo "$STALE" | jq -e '[.report.blocks[].code] | index("TBY-MED-007") != null' >/dev/null ||
+echo "$STALE" | jq -e '[.blocks[].code] | index("TBY-MED-007") != null' >/dev/null ||
     fail "R-28: a medium no newer than the zone's last import was not refused"
-echo "$STALE" | jq -e '.report.freshness.recorded != null and .report.freshness.resolved != null' >/dev/null ||
+echo "$STALE" | jq -e '.freshness.recorded != null and .freshness.resolved != null' >/dev/null ||
     fail "R-28: the refusal does not name both timestamps"
 check "R-28: a medium not newer than the zone's last import is refused, both timestamps named"
 
