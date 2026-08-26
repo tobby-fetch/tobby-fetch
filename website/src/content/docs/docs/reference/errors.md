@@ -456,6 +456,36 @@ on these same anchors. Track it on the
   spooling.
 - **Fixable offline:** yes · **Blocks:** the resumable transfers concerned
 
+### TBY-STO-004
+
+- **What happened:** the operation was refused before it started — the
+  target does not have enough free space (FR-055).
+- **Probable cause:** the projected write exceeds the target's free space
+  minus the configured safety margin (`preflight.safetyMarginPercent`,
+  default 10 %). The message states the exact shortfall in bytes.
+- **Corrective action:** free at least the stated number of bytes on the
+  target, point the operation at a larger volume, or remove content that is
+  no longer referenced. Lowering `preflight.safetyMarginPercent` only makes
+  sense if you accept filling the volume; `preflight.disabled: true` removes
+  the check entirely and is announced at startup.
+- **Fixable offline:** yes · **Blocks:** the synchronization or export concerned; nothing is written
+
+### TBY-STO-005
+
+- **What happened:** the target filesystem cannot hold a file this large
+  (FR-055).
+- **Probable cause:** the target is formatted with a filesystem whose
+  single-file ceiling is below the largest file the operation would
+  write — typically FAT32, whose limit is 4 GiB minus one byte. Single-tar
+  export archives count as one file. The same code is raised when the
+  condition arrives mid-write instead of at the pre-flight check: a medium
+  swapped between the two, or a filesystem this build could not identify.
+- **Corrective action:** reformat the medium with a filesystem that has no
+  such limit (exFAT, NTFS, ext4, XFS), or split the transfer so that no
+  single file exceeds the limit.
+- **Fixable offline:** yes · **Blocks:** the synchronization or export concerned; on a mid-write failure the store is left intact
+
+
 ## Tasks (TBY-TSK)
 
 ### TBY-TSK-001

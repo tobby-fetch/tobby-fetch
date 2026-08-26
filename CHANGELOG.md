@@ -8,6 +8,53 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+### Added
+
+- Pre-flight checks before a mirror synchronization (public feature 5.2,
+  FR-055). Tobby now computes, per recipe and in total, the bytes it would
+  transfer — from the source manifests, deduplicated by digest, net of what
+  the local store already holds — the projected store size, and the target's
+  free space. A synchronization is REFUSED before any transfer when the
+  projection exceeds free space minus a configurable safety margin
+  (`preflight.safetyMarginPercent`, default 10 %), stating the shortfall in
+  bytes (`TBY-STO-004`); it is refused when the target's filesystem is
+  positively identified as unable to hold the largest file to be written —
+  FAT32's 4 GiB ceiling, single-tar export archives included
+  (`TBY-STO-005`) — and it WARNS, without refusing, when the filesystem
+  cannot be identified. A "file too large" error arriving mid-write fails
+  cleanly and leaves the store byte-identical.
+
+  Filesystem identification is deliberately honest and per-platform:
+  `statfs(2)` magic numbers on Linux, `f_fstypename` on macOS,
+  `GetVolumeInformationW` on Windows. A filesystem this build knows no
+  ceiling for is reported as unidentified — never as capable.
+
+  `preflight.disabled: true` turns the gate into a report, in the FR-075
+  shape: explicit, announced at startup, and logged again every time it
+  lets a refusal through. The verdict keeps its refusal code, so a disabled
+  gate can never be mistaken for a passed one.
+
+- Plan mode: simulate a synchronization before running it (R-04, FR-055
+  amendment). `tobby sync --dry-run`, `POST /api/v1/plan` and the
+  `/recipes/plan` screen produce the same report over either the configured
+  Retriever or a candidate one (a file, a URL, an OCI reference, or a
+  document submitted inline): resolved versions (FR-021), per-digest
+  statuses against the store and against the destination (FR-026),
+  deduplicated volumes and the space verdict (FR-055), the projected prune
+  (FR-045), and the policy verdicts that need no transfer — the registry
+  allow-list (FR-030) and the recipes' own signatures (FR-033).
+
+  A plan writes nothing to the store, pushes nothing, and does not touch
+  the passthrough refresh schedule (FR-013). The guarantee is structural —
+  the planner holds a read-only store interface and no scheduler — and it
+  is locked by a test that fingerprints the entire store tree before and
+  after a plan and fails on any difference.
+
+  Exit codes make it usable as a CI gate (FR-066): `0` nothing to do,
+  `5` changes planned, `3` refused by policy, `4` verification failed,
+  `1` the plan could not complete. `--output json` emits the report itself,
+  schema documented alongside the OpenAPI document.
+
 ## [0.4.2] - 2026-08-22
 
 Hardening release. A point-in-time quality audit was run between
