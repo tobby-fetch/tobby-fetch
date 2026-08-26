@@ -1,0 +1,49 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /admin/store — full store reset (FR-046). Admin-gated, audited
+     (FR-094), and behind a typed confirmation that is NOT translated: the
+     phrase is quoted in the audit trail and in the operations
+     documentation, and a confirmation that reads differently per language
+     is one two people cannot talk about (ADR-0015 §7).
+
+     The page says what is about to go before asking: a confirmation dialog
+     that does not state the consequence is a dialog nobody can answer. */}}
+{{define "title"}}{{.T "store.title"}}{{end}}
+{{define "main"}}
+<section>
+  {{template "admin-subnav" .}}
+  <h1 class="t-page-title">{{.T "store.title"}}</h1>
+  <p class="t-page-sub">{{.T "store.subtitle"}}</p>
+
+  {{if .Err}}{{template "error-block" .}}{{end}}
+
+  {{if .Data.Done}}
+  <div class="t-card">
+    <p>{{.T "store.done" "Count" .Data.Done.Repositories "Bytes" (.FmtBytes .Data.Done.Bytes)}}</p>
+  </div>
+  {{end}}
+
+  <div class="t-card">
+    <h2 class="t-kick">{{.T "store.current_title"}}</h2>
+    <dl class="t-kv">
+      <dt>{{.T "store.current_repositories"}}</dt><dd>{{.Data.Repositories}}</dd>
+      <dt>{{.T "store.current_bytes"}}</dt><dd>{{.FmtBytes .Data.Bytes}}</dd>
+    </dl>
+  </div>
+
+  <div class="t-card t-danger">
+    <h2 class="t-kick">{{.T "store.reset_title"}}</h2>
+    <p>{{.T "store.reset_what"}}</p>
+    <p class="t-form-hint">{{.T "store.reset_kept"}}</p>
+    <form class="t-form" method="post" action="/admin/store/reset"
+          hx-disabled-elt="find button[type='submit']">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label for="store-confirmation">{{.T "store.confirm_label" "Phrase" .Data.ConfirmationPhrase}}</label>
+      <input id="store-confirmation" class="t-input t-mono" type="text" name="confirmation"
+             required autocomplete="off" autocapitalize="off" spellcheck="false" translate="no"
+             aria-describedby="store-confirmation-help">
+      <p id="store-confirmation-help" class="t-form-hint">{{.T "store.confirm_help" "Phrase" .Data.ConfirmationPhrase}}</p>
+      <button type="submit" class="t-btn t-btn--danger"{{if not .Data.Configured}} disabled{{end}}>{{.T "store.reset_submit"}}</button>
+    </form>
+  </div>
+</section>
+{{end}}

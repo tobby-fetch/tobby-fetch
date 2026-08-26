@@ -40,6 +40,8 @@ var pageFiles = []string{
 	"account",
 	"admin-accounts",
 	"admin-network",
+	"admin-oci-layout",
+	"admin-store",
 	"admin-retriever",
 	"api-docs",
 	"content-list",

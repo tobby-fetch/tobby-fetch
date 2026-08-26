@@ -41,6 +41,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/api"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 )
@@ -110,6 +111,12 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "POST /admin/retriever/interval", Floor: auth.RoleAdmin, Why: "changes how often this instance promotes, unattended (FR-013); the change is audited as sensitive configuration (FR-094)", Method: "POST", Path: "/admin/retriever/interval"},
 	{Pattern: "GET /admin/network", Floor: auth.RoleAdmin, Why: "reveals the instance's own TLS identity and its outbound path (FR-082, FR-080)", Method: "GET", Path: "/admin/network"},
 	{Pattern: "POST /admin/network/certificate", Floor: auth.RoleAdmin, Why: "decides what every client of this instance authenticates against (FR-082); audited as sensitive configuration (FR-094)", Method: "POST", Path: "/admin/network/certificate"},
+	{Pattern: "GET /admin/oci-layout", Floor: auth.RoleAdmin, Why: "the export writes the store's content to a path on the host filesystem (FR-051)", Method: "GET", Path: "/admin/oci-layout"},
+	{Pattern: "POST /admin/oci-layout/plan", Floor: auth.RoleAdmin, Why: "same selection surface as the export it estimates (FR-055)", Method: "POST", Path: "/admin/oci-layout/plan", Form: "output="},
+	{Pattern: "POST /admin/oci-layout/export", Floor: auth.RoleAdmin, Why: "writes the store's content to a host path (FR-051); audited (FR-094)", Method: "POST", Path: "/admin/oci-layout/export", Form: "output="},
+	{Pattern: "POST /admin/oci-layout/import", Floor: auth.RoleAdmin, Why: "brings outside bytes into the store (FR-051); audited (FR-094)", Method: "POST", Path: "/admin/oci-layout/import", Form: "input="},
+	{Pattern: "GET /admin/store", Floor: auth.RoleAdmin, Why: "the reset lives here (FR-046)", Method: "GET", Path: "/admin/store"},
+	{Pattern: "POST /admin/store/reset", Floor: auth.RoleAdmin, Why: "full store reset, restricted to admin by FR-046 and audited (FR-094)", Method: "POST", Path: "/admin/store/reset", Form: "confirmation=not-the-phrase"},
 	{Pattern: "GET /help", Floor: auth.RoleViewer, Method: "GET", Path: "/help"},
 	{Pattern: "GET /about", Floor: auth.RoleViewer, Method: "GET", Path: "/about"},
 	{Pattern: "GET /about/third-party", Floor: auth.RoleViewer, Method: "GET", Path: "/about/third-party"},
@@ -130,6 +137,10 @@ var apiMatrix = []rbacRoute{
 	{Pattern: "GET /api/v1/tasks", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/tasks"},
 	{Pattern: "GET /api/v1/tasks/{id}", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/tasks/no-such-task"},
 	{Pattern: "GET /api/v1/tasks/{id}/logs", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/tasks/no-such-task/logs"},
+	{Pattern: "POST /api/v1/oci-layout/plan", Floor: auth.RoleAdmin, Why: "mirror of /admin/oci-layout's estimate (FR-061)", Method: "POST", Path: "/api/v1/oci-layout/plan", Body: `{"output":""}`},
+	{Pattern: "POST /api/v1/oci-layout/export", Floor: auth.RoleAdmin, Why: "writes the store's content to a host path (FR-051)", Method: "POST", Path: "/api/v1/oci-layout/export", Body: `{"output":""}`},
+	{Pattern: "POST /api/v1/oci-layout/import", Floor: auth.RoleAdmin, Why: "brings outside bytes into the store (FR-051)", Method: "POST", Path: "/api/v1/oci-layout/import", Body: `{"input":""}`},
+	{Pattern: "POST /api/v1/store/reset", Floor: auth.RoleAdmin, Why: "full store reset, restricted to admin by FR-046", Method: "POST", Path: "/api/v1/store/reset", Body: `{"confirmation":"not-the-phrase"}`},
 	{Pattern: "GET /api/v1/recipes", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/recipes"},
 	{Pattern: "GET /api/v1/recipes/{recipe}/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/recipes/no-such-recipe/mapping"},
 	{Pattern: "POST /api/v1/sync", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/sync"},
@@ -222,8 +233,9 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 		Logger:   slog.New(slog.DiscardHandler),
 		Now:      func() time.Time { return t0 },
 	}
+	svc := interop.New(st, queue, "", slog.New(slog.DiscardHandler))
 	u := New(authn, slog.New(slog.DiscardHandler), &Options{
-		Version: "0.4.0-test", Mode: "mirror", Store: st, Queue: queue,
+		Version: "0.4.0-test", Mode: "mirror", Store: st, Queue: queue, Interop: svc,
 	})
 	u.Now = func() time.Time { return t0 }
 
@@ -240,6 +252,7 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	// row here is decided before the handler runs.
 	api.RegisterPublish(restAPI, nil)
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{})
+	api.RegisterOCILayout(restAPI, svc, queue)
 	api.RegisterOpenAPI(restAPI)
 	rec.mux.Handle("/api/v1/", restAPI.Handler())
 

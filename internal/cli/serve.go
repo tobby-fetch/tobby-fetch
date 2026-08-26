@@ -29,6 +29,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
+	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/metrics"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
@@ -349,6 +350,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// The versioned REST API (FR-060), strict UI parity (FR-061). Content
 	// browsing reads the store through its accessors (FR-062), never the
 	// HTTP loopback.
+	// Interoperability (FR-051) and the store reset (FR-046): one service
+	// behind the API, the UI, and the queue, so the confirmation rule and
+	// the selection rules cannot drift between surfaces (FR-061).
+	interopSvc := interop.New(st, queue, cfg.Storage.BasePrefix, logger)
+	interopSvc.Register()
+
 	restAPI := api.New(authn, logger)
 	api.RegisterContent(restAPI, st)
 	api.RegisterTasks(restAPI, queue, st, time.Duration(cfg.Import.InspectTimeout), importPolicy)
@@ -369,6 +376,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		KeyFile:  cfg.Server.TLS.KeyFile,
 		Egress:   egress,
 	})
+	api.RegisterOCILayout(restAPI, interopSvc, queue)
 	api.RegisterOpenAPI(restAPI)
 	srv.Handle("/api/v1/", restAPI.Handler())
 
@@ -394,6 +402,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Publisher:          publisher,
 		ServerCert:         serverCert,
 		Egress:             egress,
+		Interop:            interopSvc,
 	})
 	webUI.Mount(srv.Mux())
 
