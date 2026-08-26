@@ -53,6 +53,9 @@ type Queue struct {
 	// keepFinished bounds how many finished tasks the queue retains
 	// (WithRetention); 0 keeps everything.
 	keepFinished int
+	// boundary runs once per settled task (WithBoundary): the FR-056
+	// fsync point of the transport medium's log. Nil does nothing.
+	boundary func()
 
 	mu      sync.Mutex
 	tasks   map[string]*Task
@@ -86,6 +89,23 @@ type QueueOption func(*Queue)
 // Open.
 func WithRetention(keep int) QueueOption {
 	return func(q *Queue) { q.keepFinished = keep }
+}
+
+// WithBoundary installs a callback the worker runs at every task
+// boundary — once a task has settled and every record it produced has
+// been written.
+//
+// It exists for FR-056: the operation log on a transport medium is
+// fsync'd here and nowhere else. The boundary is the granularity the
+// requirement fixes, and it belongs to the queue because the queue is
+// what knows when a task ended: an engine that flushed on its own last
+// line would miss the queue's own "task finished" record, which is
+// precisely the one an operator looks for.
+//
+// A boundary callback must not panic and must not block: it runs on the
+// single worker goroutine, between two tasks.
+func WithBoundary(f func()) QueueOption {
+	return func(q *Queue) { q.boundary = f }
 }
 
 // Open loads the queue from the store root, re-queuing interrupted tasks
@@ -347,6 +367,11 @@ func (q *Queue) execute(ctx context.Context, id string) {
 	work := t.clone()
 	q.mu.Unlock()
 
+	// The FR-056 flush point, registered before the task's own log handle
+	// so that defers unwind in the order the requirement describes: the
+	// task's records are written and its file closed, and only then is
+	// the medium flushed to stable storage.
+	defer q.atBoundary()
 	taskLogger, closeLog := q.taskLogger(work)
 	defer closeLog()
 
@@ -376,6 +401,22 @@ func (q *Queue) execute(ctx context.Context, id string) {
 		te = taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err)
 	}
 	q.finish(t, work, taskLogger, te)
+}
+
+// atBoundary runs the WithBoundary callback, behind the same kind of
+// barrier the runner gets: a durability hook that panicked would take
+// down a long-lived service over a flush.
+func (q *Queue) atBoundary() {
+	if q.boundary == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			q.logger.LogAttrs(context.Background(), slog.LevelError, "task boundary hook panicked",
+				slog.String("panic", fmt.Sprint(r)))
+		}
+	}()
+	q.boundary()
 }
 
 // runProtected invokes the runner behind a panic barrier (2026-08
@@ -498,32 +539,9 @@ func (q *Queue) taskLogger(t *Task) (logger *slog.Logger, closeLog func()) {
 		return base.With(slog.String("task_id", t.ID), slog.String("run_id", t.RunID)),
 			func() {}
 	}
-	fileLogger := logging.New(f, slog.LevelDebug)
-	tee := slog.New(teeHandler{a: base.Handler(), b: fileLogger.Handler()}).
+	tee := logging.Tee(base, logging.New(f, slog.LevelDebug)).
 		With(slog.String("task_id", t.ID), slog.String("run_id", t.RunID))
 	return tee, func() { _ = f.Close() }
-}
-
-// teeHandler duplicates records to two handlers (instance stream + task
-// file).
-type teeHandler struct{ a, b slog.Handler }
-
-func (h teeHandler) Enabled(ctx context.Context, l slog.Level) bool {
-	return h.a.Enabled(ctx, l) || h.b.Enabled(ctx, l)
-}
-
-func (h teeHandler) Handle(ctx context.Context, r slog.Record) error { //nolint:gocritic // hugeParam: slog.Handler's fixed signature
-	err1 := h.a.Handle(ctx, r.Clone())
-	err2 := h.b.Handle(ctx, r)
-	return errors.Join(err1, err2)
-}
-
-func (h teeHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return teeHandler{a: h.a.WithAttrs(attrs), b: h.b.WithAttrs(attrs)}
-}
-
-func (h teeHandler) WithGroup(name string) slog.Handler {
-	return teeHandler{a: h.a.WithGroup(name), b: h.b.WithGroup(name)}
 }
 
 // Get returns a task by id. The copy is deep on the runner-mutated

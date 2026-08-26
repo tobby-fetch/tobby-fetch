@@ -19,6 +19,30 @@ import (
 // and the os.Root the verifier opens the store through, which refuses the
 // escape even via a symlink planted on the medium.
 
+// TobbyDir is Tobby's own area inside a store, in slash form. Nothing
+// under it is covered by the manifest, by construction: the task queue
+// writes there while a run is in progress, and the destination side
+// writes its return logs there AFTER the inventory was taken (FR-053,
+// FR-054). An inventory that covered it would be stale the moment it was
+// written.
+const TobbyDir = "_tobby"
+
+// LogsDir is where operation logs live on a transport medium (FR-053).
+// It is the default parent of the return-log file the destination side
+// writes, and it sits under TobbyDir for the reason above.
+const LogsDir = TobbyDir + "/logs"
+
+// Covered reports whether a slash-separated path inside a store falls
+// under the manifest's inventory.
+//
+// It is exported for the one caller that must stay OUT of coverage by
+// construction: the destination side's return logs (FR-053, FR-054). A
+// log file written inside coverage would invalidate the very inventory it
+// is meant to accompany — every line appended would make the medium fail
+// its own checksum — so the writer asks this function rather than
+// re-deriving the rule beside it.
+func Covered(slashPath string) bool { return covered(slashPath) }
+
 // Layout constants of the registry filesystem backend, in slash form.
 const (
 	blobsPrefix = "docker/registry/v2/blobs/sha256"

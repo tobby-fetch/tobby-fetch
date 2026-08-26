@@ -13,6 +13,8 @@
 package logging
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -51,6 +53,40 @@ func stableKeys(groups []string, a slog.Attr) slog.Attr {
 		return slog.String("level", a.Value.String())
 	}
 	return a
+}
+
+// Tee returns a logger that duplicates every record onto both loggers.
+//
+// Two destinations, one schema. The task queue writes each record to the
+// instance stream and to the task's own file; a mirror instance writes it
+// to the instance stream and to the operation log on the transport medium
+// (FR-053). Both are the same need, and one implementation of it is what
+// keeps the medium's log parseable by the same tooling as everything else.
+func Tee(a, b *slog.Logger) *slog.Logger {
+	return slog.New(teeHandler{a: a.Handler(), b: b.Handler()})
+}
+
+// teeHandler duplicates records to two handlers.
+type teeHandler struct{ a, b slog.Handler }
+
+func (h teeHandler) Enabled(ctx context.Context, l slog.Level) bool {
+	return h.a.Enabled(ctx, l) || h.b.Enabled(ctx, l)
+}
+
+func (h teeHandler) Handle(ctx context.Context, r slog.Record) error { //nolint:gocritic // hugeParam: slog.Handler's fixed signature
+	// Both sides get their own copy: a handler may retain the record's
+	// attributes, and slog documents Record as unsafe to share.
+	err1 := h.a.Handle(ctx, r.Clone())
+	err2 := h.b.Handle(ctx, r)
+	return errors.Join(err1, err2)
+}
+
+func (h teeHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return teeHandler{a: h.a.WithAttrs(attrs), b: h.b.WithAttrs(attrs)}
+}
+
+func (h teeHandler) WithGroup(name string) slog.Handler {
+	return teeHandler{a: h.a.WithGroup(name), b: h.b.WithGroup(name)}
 }
 
 // ParseLevel maps a configuration string to a slog level.

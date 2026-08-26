@@ -16,6 +16,7 @@ import (
 // enumerate them.
 const (
 	EnvMode                = "TOBBY_MODE"
+	EnvZone                = "TOBBY_ZONE"
 	EnvStorageRoot         = "TOBBY_STORAGE_ROOT"
 	EnvStateRoot           = "TOBBY_STATE_ROOT"
 	EnvServerAddr          = "TOBBY_SERVER_ADDR"
@@ -96,6 +97,9 @@ func parseBool(name, v string) (bool, error) {
 func applyEnv(cfg *Config, lookup func(string) (string, bool)) error {
 	if v, ok := lookup(EnvMode); ok {
 		cfg.Mode = Mode(v)
+	}
+	if v, ok := lookup(EnvZone); ok {
+		cfg.Zone = v
 	}
 	if v, ok := lookup(EnvStorageRoot); ok {
 		cfg.Storage.Root = v

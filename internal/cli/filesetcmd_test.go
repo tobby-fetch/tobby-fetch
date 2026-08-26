@@ -8,7 +8,6 @@
 package cli
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -17,20 +16,6 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
-
-// runSplit executes the CLI with args and returns stdout and stderr apart,
-// which is the whole point on this command: the report is on stdout and
-// nothing else may join it (B-010, R-08).
-func runSplit(t *testing.T, args ...string) (stdout, stderr string, err error) {
-	t.Helper()
-	root := New()
-	var out, errBuf bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&errBuf)
-	root.SetArgs(args)
-	err = root.Execute()
-	return out.String(), errBuf.String(), err
-}
 
 // packTree writes a small file tree and returns its path.
 func packTree(t *testing.T) string {

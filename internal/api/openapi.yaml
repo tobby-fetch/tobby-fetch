@@ -1037,6 +1037,86 @@ paths:
                     $ref: "#/components/schemas/Certificate"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/media:
+    get:
+      summary: >-
+        What this instance knows about the transported store without
+        reading a byte of its content (FR-052): the zone identity it
+        serves, the store directory, the medium's own identifier (R-28)
+        and the last import recorded for the zone. Answered instantly —
+        verification is the expensive operation, and an operator decides
+        whether to spend it from here. An instance with no zone identity
+        answers TBY-CFG-001. Role viewer.
+      responses:
+        "200":
+          description: The medium and the zone's freshness record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaSummary"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/media/verify:
+    post:
+      summary: >-
+        Re-verify a transported store and return the report, writing
+        nothing and pushing nothing (FR-054). Manifest completeness and
+        checksums first, then the recipes' signatures against THIS
+        instance's trust roots, then every ingredient against its pinned
+        digest; trust roots present on the medium are ignored. Answers 200
+        with the report whatever the verdict — a blocked medium is a
+        successful verification of a bad medium, and the report is what
+        says why. A POST rather than a GET because it re-hashes the whole
+        medium. The two waivers below need role admin and are audited
+        (FR-094); the endpoint itself is role operator.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MediaOverrides"
+      responses:
+        "200":
+          description: The verification report, whatever the verdict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaReport"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/media/import:
+    post:
+      summary: >-
+        Verify a transported store and push what verification cleared into
+        the zone registry (FR-052). The order is normative: nothing is
+        pushed, served or written before the whole medium has been
+        re-verified (FR-054). What crosses goes through the same
+        allow-list and signature checks a passthrough promotion goes
+        through (FR-030, FR-033), only what the destination is missing
+        moves (FR-028), and the signed recipes land in the zone's own
+        cookbook (FR-034). The operation is journalled onto the medium
+        itself, outside the manifest's coverage (FR-053). Content no
+        verified recipe reaches is reported and never pushed. Enqueues one
+        task and answers 201 with it. Audited (FR-094). The waivers need
+        role admin; the endpoint is role operator.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MediaOverrides"
+      responses:
+        "201":
+          description: The enqueued media-import task.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     basicAuth:
@@ -2302,3 +2382,187 @@ components:
           format: date-time
         revoked:
           type: boolean
+    MediaSummary:
+      type: object
+      description: >-
+        The medium as this instance sees it before anything is done to it
+        (FR-052, R-28).
+      properties:
+        zone:
+          type: string
+          description: The identity of the zone this instance serves.
+        root:
+          type: string
+          description: The store directory the medium is.
+        mediaId:
+          type: string
+          description: >-
+            This store's own identity, minted when it was created and
+            stable across re-synchronizations onto it (R-28).
+        lastImport:
+          type: object
+          description: >-
+            The last completed import recorded for the zone. Absent when
+            the zone has never imported. A medium older than its
+            resolvedAt is refused by default.
+          properties:
+            mediaId: { type: string }
+            resolvedAt: { type: string, format: date-time }
+            importedAt: { type: string, format: date-time }
+            runId: { type: string }
+    MediaOverrides:
+      type: object
+      description: >-
+        The two FR-054 guards an administrator may waive. Both are
+        anti-accident guards over an UNSIGNED manifest, never security
+        controls — which is why they are waivable at all, and why each
+        waiver is named, recorded on the task and audited (FR-094). The
+        integrity and signature verdicts are not waivable by anyone.
+      properties:
+        allowZoneMismatch:
+          type: boolean
+          description: Proceed on a medium addressed to another zone.
+        allowStale:
+          type: boolean
+          description: >-
+            Proceed on a medium older than the last one imported for this
+            zone (R-28).
+    MediaReport:
+      type: object
+      description: >-
+        The result of verifying one transported store (FR-054). It carries
+        codes and parameters rather than sentences, so every surface
+        re-renders it in the reader's language (FR-063) long after the
+        fact, and it states for every refusal both why and WHICH FILE.
+      properties:
+        verdict:
+          type: string
+          enum: [pushable, partial, blocked]
+          description: >-
+            pushable — every delivery may be pushed; partial — some may
+            and some may not, which is the normal state of a medium
+            carrying several deliveries one of which did not survive the
+            trip (R-19); blocked — nothing may be pushed.
+        blocks:
+          type: array
+          description: >-
+            Medium-wide refusals. A waived one stays in the list with
+            overridden set: the report is also the evidence of what an
+            administrator waved through (FR-094).
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              params: { type: object, additionalProperties: { type: string } }
+              overridable:
+                type: boolean
+                description: >-
+                  Only the zone mismatch and the staleness guard ever are.
+                  An integrity verdict never is (R-19).
+              overridden: { type: boolean }
+        media:
+          type: object
+          description: >-
+            What the manifest says about the medium — claims, restated.
+            Absent when the manifest could not be read at all.
+          properties:
+            mediaId: { type: string }
+            zone: { type: string }
+            mediaFormat: { type: integer }
+            storeFormat: { type: integer }
+            resolvedAt: { type: string, format: date-time }
+            writtenAt: { type: string, format: date-time }
+            producedBy:
+              type: object
+              properties:
+                version: { type: string }
+                runId: { type: string }
+            totals:
+              $ref: "#/components/schemas/MediaTotals"
+        zone:
+          type: object
+          description: The zone-identity comparison that decided the global block.
+          properties:
+            expected: { type: string }
+            found: { type: string }
+            match: { type: boolean }
+        freshness:
+          type: object
+          description: >-
+            The R-28 comparison against the last completed import. Both
+            timestamps are always named: a refusal an operator cannot date
+            is a refusal they cannot act on.
+          properties:
+            resolved: { type: string, format: date-time }
+            recorded: { type: string, format: date-time }
+            recordedMediaId: { type: string }
+            stale: { type: boolean }
+        recipes:
+          type: array
+          description: One verdict per delivery, in manifest order.
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              version: { type: string }
+              cookbookRepo:
+                type: string
+                description: >-
+                  The nominal repository the trust decision was taken on
+                  (FR-036).
+              artifactRepo:
+                type: string
+                description: Where the artifact sits ON THE MEDIUM (FR-035).
+              digest: { type: string }
+              resolvedAt: { type: string, format: date-time }
+              pushable:
+                type: boolean
+                description: >-
+                  False means blocked whole, with no override: a recipe is
+                  one delivery, and a delivery that verified in part is not
+                  a delivery (RECIPE-SPEC §12.3, R-19).
+              reason:
+                type: object
+                description: Why, when pushable is false. Never absent in that case.
+                properties:
+                  code: { type: string }
+                  path:
+                    type: string
+                    description: >-
+                      The offending file, relative to the store root, in
+                      slash form. Empty only for a refusal about no file in
+                      particular (a signature that does not verify).
+                  params: { type: object, additionalProperties: { type: string } }
+              keyFingerprint:
+                type: string
+                description: The trust root that verified the signature.
+              trustScope:
+                type: string
+                description: >-
+                  The declared scope that decided the verdict, when one
+                  matched — a relaxation is always visible (FR-033).
+              unsigned: { type: boolean }
+              files: { type: integer }
+              bytes: { type: integer, format: int64 }
+        findings:
+          type: array
+          description: >-
+            Non-blocking observations: content the medium carries that
+            will never be pushed, and bookkeeping that does not match its
+            inventory entry (FR-054).
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              path: { type: string }
+              params: { type: object, additionalProperties: { type: string } }
+        checked:
+          $ref: "#/components/schemas/MediaTotals"
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+    MediaTotals:
+      type: object
+      description: A volumetry — files and bytes.
+      properties:
+        files: { type: integer }
+        bytes: { type: integer, format: int64 }

@@ -10,6 +10,52 @@ starting with `v0.1.0`.
 
 ### Added
 
+- **Operation on the isolated side of a physical transfer** (FR-052,
+  feature 5.4). The same application, pointed at the transported store,
+  now completes the journey the medium was prepared for: re-verification,
+  then a differential push into the zone registry, then the signed recipes
+  into the zone's own cookbook. The medium is untrusted until proven
+  otherwise, and the ORDER is the guarantee rather than a sequence of
+  steps — FR-054 makes verification precede any push, any serving and any
+  local write, and a test watches the destination registry so that a
+  single request arriving before the verification report fails the build.
+  `tobby media verify` reports without touching the store; `tobby media
+  import` does the whole journey; `GET /api/v1/media`, `POST
+  /api/v1/media/verify` and `POST /api/v1/media/import` are their strict
+  mirrors (FR-061). Exit codes follow the taxonomy classes: a zone
+  refusal is a policy refusal (3), a corrupted blob a verification
+  failure (4).
+- Only what verification cleared is pushed, recipe by recipe (R-19,
+  RECIPE-SPEC §12.3): a medium carrying two deliveries where one arrived
+  damaged still delivers the intact one, and names the other with the file
+  that decided it. Signatures travel with their content in **both** cosign
+  layouts across this hop too (§12.2, B-015) — the classic attached tag
+  and the Sigstore bundle's referring artifact with its fallback index —
+  so what verified on the source zone verifies again at the destination.
+  Trust roots present on the medium are ignored: a key file planted on a
+  medium buys nothing, and a test plants one to prove it.
+- **The operation log on the transport medium** (FR-053, FR-056). Both
+  sides of a transfer now record what they did with the medium, in the
+  same JSON schema as every other Tobby log, inside the medium itself —
+  under `_tobby/logs/`, outside the media manifest's coverage, because a
+  log written inside coverage would invalidate the very inventory it
+  accompanies. Size-based rotation bounds it; an explicit `fsync` at every
+  task boundary means a yanked medium loses at most the entries of the
+  task in progress. Tested by execution: a process killed outright
+  immediately after a task leaves that task's records readable on the
+  medium. Configurable through `logging.media.*`.
+- **The per-zone freshness record** advances on completed imports only
+  (R-28): re-importing last month's medium is refused by default, naming
+  both timestamps, and an administrator may waive that refusal
+  deliberately — audited (FR-094), with the register never rolling
+  backwards. The record lives in the instance state directory and never on
+  the medium, since a register carried on the medium would be rewritten by
+  whoever holds it.
+- `zone:` (`TOBBY_ZONE`) states a destination-side instance's zone
+  identity. A source-side instance reads it from the Retriever it
+  resolves; an instance whose content arrives on a medium has no Retriever
+  and cannot otherwise tell whether a medium is addressed to it.
+
 - **The documentation travels inside the binary** (R-05, NFR-003 amendment
   2026-08-11). The destination zone is cut off from the network by
   definition, so documentation that lives on a website is documentation the

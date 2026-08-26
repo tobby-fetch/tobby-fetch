@@ -107,6 +107,9 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `POST /api/v1/sync` | operator | `POST /recipes/sync` |
 | `POST /api/v1/plan` | operator | `POST /recipes/plan` |
 | `POST /api/v1/recipes/publish` | operator | `POST /recipes/publish` |
+| `GET /api/v1/media` | viewer | the Media screen's summary (R-02, not yet shipped) |
+| `POST /api/v1/media/verify` | operator | the Media screen's Verify step (R-02, not yet shipped) |
+| `POST /api/v1/media/import` | operator | the Media screen's Push step (R-02, not yet shipped) |
 | `GET /api/v1/network` | admin | `GET /admin/network` |
 | `PUT /api/v1/network/certificate` | admin | `POST /admin/network/certificate` |
 | `GET /api/v1/retriever` | admin | `GET /admin/retriever` |
@@ -124,6 +127,18 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `POST /api/v1/oci-layout/export` | admin | `POST /admin/oci-layout/export` |
 | `POST /api/v1/oci-layout/import` | admin | `POST /admin/oci-layout/import` |
 | `POST /api/v1/store/reset` | admin | `POST /admin/store/reset` |
+
+The three media endpoints (FR-052) carry a floor **and** an in-handler
+check the floor cannot express. Verifying a medium and importing it are
+operator actions; **waiving** one of the two FR-054 guards — a medium
+addressed to another zone, or older than the last one imported here — is
+an administrator's, and the handler refuses `allowZoneMismatch` or
+`allowStale` from anyone below admin with the same `TBY-AUTH-003` the
+middleware would have produced. Both the attempt and the applied waiver
+are audited (FR-094). No role, admin included, can waive an integrity or
+signature verdict: those have no override at all (R-19). Their UI mirrors
+arrive with the Media screen (R-02); until then the endpoints are the
+only surface, and `tobby media verify|import` the local equivalent.
 
 `POST /api/v1/account/password` has no floor beyond authentication itself,
 exactly like its screen: it changes the caller's own password and nothing

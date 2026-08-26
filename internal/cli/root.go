@@ -145,7 +145,7 @@ func New() *cobra.Command {
 		return &usageError{err: err, hint: "see '" + cmd.CommandPath() + " --help'"}
 	})
 	root.AddCommand(newServeCmd(), newVersionCmd(), newConfigCmd(), newUserCmd(), newQuickstartCmd(),
-		newRecipeCmd(), newSyncCmd(), newExportCmd(), newImportCmd(), newFileSetCmd())
+		newRecipeCmd(), newSyncCmd(), newExportCmd(), newImportCmd(), newFileSetCmd(), newMediaCmd())
 	return root
 }
 

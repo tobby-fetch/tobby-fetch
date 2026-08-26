@@ -157,6 +157,9 @@ var apiMatrix = []rbacRoute{
 	{Pattern: "POST /api/v1/plan", Floor: auth.RoleOperator, Why: "a plan mutates nothing, but it makes the instance open outbound connections to every registry the submitted Retriever names (FR-055/R-04)", Method: "POST", Path: "/api/v1/plan", Body: `{}`},
 	{Pattern: "GET /api/v1/sync/prune-preview", Floor: auth.RoleOperator, Method: "GET", Path: "/api/v1/sync/prune-preview"},
 	{Pattern: "POST /api/v1/recipes/publish", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/recipes/publish", Body: `{"reference":"","document":""}`},
+	{Pattern: "GET /api/v1/media", Floor: auth.RoleViewer, Why: "the medium's identity and the zone's last import (FR-052, R-28): reading, like every other inventory view", Method: "GET", Path: "/api/v1/media"},
+	{Pattern: "POST /api/v1/media/verify", Floor: auth.RoleOperator, Why: "re-hashing a whole medium is work, not a read (FR-054); the FR-054 waivers inside it need admin, enforced in the handler", Method: "POST", Path: "/api/v1/media/verify", Body: `{}`},
+	{Pattern: "POST /api/v1/media/import", Floor: auth.RoleOperator, Why: "pushing a transported medium into the zone registry (FR-052), audited (FR-094); the waivers need admin, enforced in the handler", Method: "POST", Path: "/api/v1/media/import", Body: `{}`},
 	{Pattern: "GET /api/v1/network", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/network"},
 	{Pattern: "PUT /api/v1/network/certificate", Floor: auth.RoleAdmin, Method: "PUT", Path: "/api/v1/network/certificate", Body: `{"certificate":"","key":""}`},
 	{Pattern: "GET /api/v1/retriever", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/retriever"},
@@ -273,6 +276,10 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	})
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{})
 	api.RegisterOCILayout(restAPI, svc, queue)
+	// FR-052: registered without an engine, like the two above — the
+	// matrix probes the gate, and every row is decided before the
+	// handler runs.
+	api.RegisterMedia(restAPI, &api.MediaOptions{})
 	api.RegisterOpenAPI(restAPI)
 	rec.mux.Handle("/api/v1/", restAPI.Handler())
 

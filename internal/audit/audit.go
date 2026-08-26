@@ -160,6 +160,19 @@ const (
 	// ActionLayoutImport is the inbound half of ActionLayoutExport: a
 	// medium's content entering this store.
 	ActionLayoutImport = "layout.import"
+	// ActionMediaImport is a destination-side media import (FR-052): the
+	// actor is the authenticated identity or the local invocation, the
+	// target the transported store. Recorded because it is the moment
+	// content from outside the zone enters the zone's registry, which is
+	// the event FR-094 exists for.
+	ActionMediaImport = "media.import"
+
+	// ActionMediaOverride is an administrator waiving one FR-054 guard on
+	// a media import — the zone-identity refusal or the R-28 freshness
+	// refusal. Both requirements name the audit record explicitly, and it
+	// carries the guard as its target so the trail says WHICH barrier was
+	// lowered and not merely that one was.
+	ActionMediaOverride = "media.override"
 
 	// ActionServerCertReplace is a replacement of the listener's own
 	// certificate from the administration surfaces (FR-082). The
