@@ -81,7 +81,7 @@ func TestExportImportRoundTripThroughTheCLI(t *testing.T) {
 	source, want := seedStoreRoot(t)
 	out := filepath.Join(t.TempDir(), "payload.tar")
 
-	if _, err := run(t, "export", "--storage-root", source, "--output", out, "--json"); err != nil {
+	if _, err := run(t, "export", "--storage-root", source, out, "--output", "json"); err != nil {
 		t.Fatalf("export: %v", err)
 	}
 	if _, err := os.Stat(out); err != nil {
@@ -89,7 +89,7 @@ func TestExportImportRoundTripThroughTheCLI(t *testing.T) {
 	}
 
 	destination := t.TempDir()
-	if _, err := run(t, "import", "--storage-root", destination, out, "--json"); err != nil {
+	if _, err := run(t, "import", "--storage-root", destination, out, "--output", "json"); err != nil {
 		t.Fatalf("import: %v", err)
 	}
 
@@ -119,7 +119,7 @@ func TestExportDryRunWritesNothingAndReportsTheProjection(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "payload.tar")
 
-	stdout, _, err := runSplit(t, "export", "--storage-root", source, "--output", out, "--dry-run", "--json")
+	stdout, _, err := runSplit(t, "export", "--storage-root", source, out, "--dry-run", "--output", "json")
 	if err != nil {
 		t.Fatalf("dry run: %v", err)
 	}
@@ -149,14 +149,14 @@ func TestExportRefusesAnExistingDestinationWithItsOwnCode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := run(t, "export", "--storage-root", source, "--output", out)
+	_, err := run(t, "export", "--storage-root", source, out)
 	if err == nil {
 		t.Fatal("the export replaced an existing destination")
 	}
 	if code := taxonomyCode(t, err); code != taxonomy.CodeLayoutTarget {
 		t.Errorf("code = %s, want %s", code, taxonomy.CodeLayoutTarget)
 	}
-	if _, err := run(t, "export", "--storage-root", source, "--output", out, "--overwrite"); err != nil {
+	if _, err := run(t, "export", "--storage-root", source, out, "--overwrite"); err != nil {
 		t.Fatalf("explicit overwrite: %v", err)
 	}
 }

@@ -86,11 +86,11 @@ auto-descriptif :
 Pour l'interopérabilité, le store (ou une sélection de recipes) peut aussi
 être exporté vers — et importé depuis — le format standard **OCI image
 layout**, en répertoire ou en tar unique, lisible par `skopeo`, `oras` et
-`crane`. La forme de commande prévue par la décision de conception :
+`crane` :
 
 ```bash
-tobby export --format oci-layout --output /media/usb/payload.tar   # aller
-tobby import --format oci-layout /media/usb/payload.tar            # retour
+tobby export --format oci-layout /media/usb/payload.tar   # aller
+tobby import --format oci-layout /media/usb/payload.tar   # retour
 ```
 
 L'export au layout ne porte que les artefacts — journaux et état de synchro

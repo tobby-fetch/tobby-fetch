@@ -33,9 +33,17 @@ The OpenAPI 3.1 document is embedded in the binary and served by the
 instance itself:
 
 ```
-GET /api/v1/openapi.yaml        # the raw document (role: viewer)
-GET /api-docs                   # the built-in viewer page (any signed-in role)
+GET /api/v1/openapi.yaml            # the raw document (role: viewer)
+GET /api/v1/cli-output.schema.json  # the CLI's --output json schemas (role: viewer)
+GET /api-docs                       # the built-in viewer page (any signed-in role)
 ```
+
+The second document is the other half of the machine contract: the JSON
+Schema of what `tobby <command> --output json` writes (SRS FR-066,
+amendment R-08), one entry per reporting command. It is published beside
+the OpenAPI one, and served by the same instance, because an automation
+that drives Tobby uses both — see the
+[CLI reference](../../reference/cli/#report-format).
 
 A build-time test cross-checks the document against the registered routes:
 an endpoint cannot ship undocumented, and the document cannot describe an
@@ -77,7 +85,7 @@ The surface today (from the served OpenAPI document):
 
 | Area | Endpoints |
 |---|---|
-| Contract | `GET /api/v1/openapi.yaml` |
+| Contract | `GET /api/v1/openapi.yaml`, `GET /api/v1/cli-output.schema.json` |
 | Content | `GET /api/v1/content` (search, filters, pagination), `GET /api/v1/content/{repo}`, `GET /api/v1/content/{repo}/-/tags/{tag}` |
 | Unit import | `POST /api/v1/import/inspect`, `POST /api/v1/import` |
 | Tasks | `GET /api/v1/tasks`, `GET /api/v1/tasks/{id}`, `GET /api/v1/tasks/{id}/logs` |

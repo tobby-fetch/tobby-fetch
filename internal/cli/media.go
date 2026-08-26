@@ -5,7 +5,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -61,17 +60,21 @@ roots present on the medium are ignored.`,
 // mediaFlags are the flags both media subcommands share.
 type mediaFlags struct {
 	common            commonFlags
+	report            *reportFlag
 	zone              string
-	output            string
 	allowZoneMismatch bool
 	allowStale        bool
 }
 
+func newMediaFlags() *mediaFlags {
+	return &mediaFlags{report: newReportFlag(outputText, outputJSON)}
+}
+
 func (f *mediaFlags) register(cmd *cobra.Command) {
 	f.common.register(cmd)
+	f.report.register(cmd)
 	fs := cmd.Flags()
 	fs.StringVar(&f.zone, "zone", "", "identity of the zone this instance serves (default: the configured zone)")
-	fs.StringVar(&f.output, "output", "text", `report format: "text" or "json"`)
 	// The two waivable guards of FR-054, one flag each and never a
 	// combined one: an operator waiving the zone check has not thereby
 	// decided anything about freshness, and a single --force would let
@@ -94,6 +97,13 @@ func (f *mediaFlags) register(cmd *cobra.Command) {
 // does not know which zone it serves cannot tell whether a medium is
 // addressed to it).
 func (f *mediaFlags) load(cmd *cobra.Command) (config.Config, error) {
+	// The report format is checked first: a mistyped --output is a usage
+	// error (exit 2) whatever else is missing, and reporting a
+	// configuration problem for a command line the parser already
+	// rejected sends the operator to the wrong file.
+	if err := f.report.validate(cmd); err != nil {
+		return config.Config{}, err
+	}
 	cfg, err := f.common.loadFor(cmd, config.ScopeMedia)
 	if err != nil {
 		return config.Config{}, err
@@ -113,17 +123,11 @@ func (f *mediaFlags) load(cmd *cobra.Command) (config.Config, error) {
 				", or \"zone:\" in the configuration file (FR-052)",
 		})
 	}
-	if f.output != "text" && f.output != "json" {
-		return config.Config{}, &usageError{
-			err:  fmt.Errorf("--output %q: expected \"text\" or \"json\"", f.output),
-			hint: "see '" + cmd.CommandPath() + " --help'",
-		}
-	}
 	return cfg, nil
 }
 
 func newMediaVerifyCmd() *cobra.Command {
-	flags := &mediaFlags{}
+	flags := newMediaFlags()
 	cmd := &cobra.Command{
 		Use:   "verify",
 		Short: "Re-verify a transported store without pushing anything",
@@ -154,7 +158,7 @@ identity, freshness), 4 a verification failure.`,
 }
 
 func newMediaImportCmd() *cobra.Command {
-	flags := &mediaFlags{}
+	flags := newMediaFlags()
 	cmd := &cobra.Command{
 		Use:   "import",
 		Short: "Verify a transported store, then push what it cleared into the zone",
@@ -203,7 +207,7 @@ func runMediaVerify(cmd *cobra.Command, cfg *config.Config, flags *mediaFlags) e
 	if err != nil {
 		return err
 	}
-	if err := writeReport(cmd, flags.output, rep); err != nil {
+	if err := writeReport(cmd, flags.report, rep); err != nil {
 		return err
 	}
 	if refusal := engine.MediaRefusal(rep); refusal != nil {
@@ -257,7 +261,7 @@ func runMediaImport(cmd *cobra.Command, cfg *config.Config, flags *mediaFlags) e
 
 	// The report is printed whatever happened: a refused import is
 	// exactly when an operator needs to read it.
-	if err := writeImportReport(cmd, flags.output, task); err != nil {
+	if err := writeImportReport(cmd, flags.report, task); err != nil {
 		return err
 	}
 	// FR-056: the medium's log is flushed at the task boundary, which on
@@ -451,14 +455,12 @@ func (o *mediaOp) close() {
 	}
 }
 
-// writeReport renders a verification report on stdout.
-func writeReport(cmd *cobra.Command, format string, rep *media.Report) error {
-	out := cmd.OutOrStdout()
-	if format == "json" {
-		enc := json.NewEncoder(out)
-		enc.SetIndent("", "  ")
-		return enc.Encode(rep)
+// writeReport renders a verification report.
+func writeReport(cmd *cobra.Command, report *reportFlag, rep *media.Report) error {
+	if report.json() {
+		return writeJSON(cmd, rep)
 	}
+	out := report.human(cmd)
 	if rep.Media != nil {
 		_, _ = fmt.Fprintf(out, "medium %s addressed to zone %s, resolved %s, produced by tobby %s\n",
 			rep.Media.MediaID, rep.Media.Zone, rep.Media.ResolvedAt.Format(time.RFC3339), rep.Media.ProducedBy.Version)
@@ -497,13 +499,11 @@ func writeReport(cmd *cobra.Command, format string, rep *media.Report) error {
 
 // writeImportReport renders what an import did, from the task the runner
 // filled — the same items the UI and the API read (FR-061).
-func writeImportReport(cmd *cobra.Command, format string, task *tasks.Task) error {
-	out := cmd.OutOrStdout()
-	if format == "json" {
-		enc := json.NewEncoder(out)
-		enc.SetIndent("", "  ")
-		return enc.Encode(task)
+func writeImportReport(cmd *cobra.Command, report *reportFlag, task *tasks.Task) error {
+	if report.json() {
+		return writeJSON(cmd, task)
 	}
+	out := report.human(cmd)
 	agg := task.Aggregate()
 	_, _ = fmt.Fprintf(out, "import %s: %d done, %d skipped, %d failed\n",
 		task.Status, agg.Done, agg.Skipped, agg.Failed)

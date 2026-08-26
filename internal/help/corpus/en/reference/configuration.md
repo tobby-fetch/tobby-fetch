@@ -34,6 +34,12 @@ case — `network.proxy.url` becomes `TOBBY_NETWORK_PROXY_URL`. Each
 supported variable is declared explicitly in the code (`internal/config/env.go`);
 the full list appears in the key tables below.
 
+Two `TOBBY_*` variables are **not** configuration keys and appear in no
+table below: `TOBBY_INSTANCE_URL` and `TOBBY_API_TOKEN`, which tell a
+command *which running instance to drive* and *with what credential* — see
+[`tobby sync`](../../reference/cli/#tobby-sync). They configure a client,
+not an instance, so an instance never reads them.
+
 Value syntax in the environment:
 
 - **Booleans**: `true`/`1` and `false`/`0`.

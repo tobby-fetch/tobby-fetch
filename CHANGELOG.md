@@ -194,6 +194,61 @@ starting with `v0.1.0`.
   the gap serves normally, because it never went through a mirror
   synchronization and carries no media manifest.
 
+- **A command line under a stable contract (R-08, FR-066 amendment).** An
+  automation can depend on this CLI across versions, and four promises say
+  what that means. `--output json` on every command that reports anything,
+  spelled the same way everywhere — three milestone-5 lots had each
+  written their own `--output` or `--json` — with the machine document
+  ALONE on standard output and every log, prompt, progress line and audit
+  record on standard error (B-010, which this closes for good). The
+  documents have a published JSON Schema, shipped in the binary beside the
+  OpenAPI one and served at `GET /api/v1/cli-output.schema.json`. An
+  exhaustive exit-code table, GENERATED from `internal/taxonomy` and
+  carried verbatim by the reference pages, covered by the project's
+  semantic-versioning promise: removing a code or renumbering one is a
+  breaking change, and a test fails the build in both directions — a code
+  the table does not list, or a row nothing can produce. A guaranteed
+  non-interactive mode: no command prompts, none requires a terminal, and
+  the whole command tree is run with a pipe on standard input to prove it.
+  And `--wait` on every command that starts a task on an instance.
+- **`tobby sync` triggers a synchronization (FR-014, FR-066).** It was a
+  usage error without `--dry-run`, because the store is held open for
+  writing by whoever serves it and a second process cannot open it too.
+  The right answer was never to open the store: the command now DRIVES the
+  instance through `POST /api/v1/sync` — the endpoint behind the
+  "Synchronize" button — and says so in its first line of help. `--wait`
+  follows the task to a terminal state and exits on the TASK's outcome, so
+  a policy refusal on the instance is exit `3` on the command line;
+  `--prune` and `--prune=false` are distinct from saying nothing at all.
+  The instance is named by `--instance`, `TOBBY_INSTANCE_URL`, or nothing
+  at all when the command runs on the instance's own host. The API token
+  comes from `TOBBY_API_TOKEN` or `--token-file` and is deliberately not a
+  flag: flag values are visible in the process table (NFR-015).
+- `TBY-REG-008`: an ingredient asking for a platform the source index does
+  not publish. It was a bare `fmt.Errorf` that settled as `TBY-SRV-001` —
+  "an internal error occurred", whose corrective action is to search the
+  logs for a correlation identifier — for a mistake in the operator's own
+  recipe (found while fixing B-020). The message now names both sides of
+  the comparison the fix requires: the selectors that matched nothing, and
+  the platforms the index actually carries.
+
+### Changed
+
+- `tobby export` takes its destination as a POSITIONAL argument
+  (`tobby export /media/usb/payload.tar`), symmetric with `tobby import
+  <path>`, and `--output` names the report format there as everywhere
+  else. ADR-0006 is amended in place: the spelling of a flag is not the
+  decision it carries, but the document has to stay true.
+- `tobby export --json` and `tobby import --json` become `--output json`,
+  the one spelling of the contract. Both commands landed in this
+  unreleased series, so no published interface changes.
+- The audit record of `tobby user add` and `tobby user passwd` moves from
+  standard output to standard error, where every other structured log of
+  the CLI already goes. Stdout now carries the report, and a log record
+  interleaved with a JSON document makes both unparseable. Collecting the
+  trail means redirecting stderr, as `tobby fileset pack` already
+  required.
+
 ### Security
 
 - An imported layout is treated as untrusted data (NFR-011): archive

@@ -649,6 +649,14 @@ const (
 	// verified the same way whatever this host serves, and demanding a
 	// mode would make an operator invent one to inspect a disk.
 	ScopeMedia
+	// ScopeNetwork validates what a command that drives a RUNNING
+	// instance needs (`tobby sync` without --dry-run, FR-014/FR-066): the
+	// outbound edge — proxy, trust roots — and the listen address it uses
+	// to address a local instance. It requires no mode and no store: the
+	// command opens neither, it calls /api/v1 on the process that holds
+	// them, and demanding a storage root would make an operator name a
+	// directory this command never touches.
+	ScopeNetwork
 )
 
 // Load builds the effective configuration: defaults, overlaid with the YAML

@@ -157,9 +157,16 @@ func Execute() int {
 		var te *taxonomy.Error
 		var ue *usageError
 		var xe *exitError
+		var rp *remoteProblem
 		switch {
 		case errors.As(err, &xe):
 			// The report said everything; the code carries the verdict.
+		case errors.As(err, &rp):
+			// An instance's own refusal, printed as it was received: this
+			// build cannot re-render a problem document (it carries
+			// sentences, not parameters) and must not guess at one. The
+			// code inside still decides the exit class, below.
+			fmt.Fprint(os.Stderr, rp.Text())
 		case errors.As(err, &te):
 			fmt.Fprint(os.Stderr, taxonomy.Text(cliLang(), te))
 		case errors.As(err, &ue):

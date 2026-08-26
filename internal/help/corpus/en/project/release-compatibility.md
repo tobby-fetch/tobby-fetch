@@ -85,13 +85,12 @@ names both versions in play — and the escape hatch is standard OCI
 tooling: the store exports and imports as an OCI image layout that skopeo,
 oras and crane read (FR-051). At worst, your content is never captive.
 
-:::note[Upcoming — milestone 5]
-The CLI contract gets its final piece with R-08: documented `--output json`
-on every command, the published exit-code table formally covered by
-SemVer, and guaranteed non-interactive operation. The exit codes and
-taxonomy above are already stable; R-08 adds the machine-readable output.
-Track it on the [project status](../../discover/status/) page.
-:::
+The CLI carries its own contract under the same promise (R-08): `--output
+json` on every command that reports anything, with a published JSON
+Schema; the [exit-code table](../../reference/cli/#exit-codes), generated
+from the code and covered by SemVer — removing a code or renumbering one
+is a breaking change; and guaranteed non-interactive operation. Each of
+the four is held by a test that walks the real command tree.
 
 ## How defects are tracked today
 

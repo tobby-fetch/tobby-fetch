@@ -5,7 +5,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -39,18 +38,17 @@ const formatOCILayout = "oci-layout"
 
 func newExportCmd() *cobra.Command {
 	flags := &commonFlags{}
+	report := newReportFlag(outputText, outputJSON)
 	var (
 		format     string
-		output     string
 		directory  bool
 		overwrite  bool
 		dryRun     bool
-		asJSON     bool
 		recipes    []string
 		repository []string
 	)
 	cmd := &cobra.Command{
-		Use:   "export --output <path>",
+		Use:   "export <path>",
 		Short: "Export the store to a standard OCI image layout (FR-051)",
 		Long: `Write the local store — or a selection of it — as a standard OCI image
 layout, readable by skopeo, oras and crane.
@@ -72,12 +70,19 @@ full repository and tag, which is what skopeo matches
 reference on its last colon and therefore addresses entries by digest
 ("oras manifest fetch --oci-layout <path>@<digest>").
 
+The destination is a positional argument, symmetric with "tobby import
+<path>": --output names the report FORMAT on every Tobby command (R-08),
+and one flag cannot mean two things.
+
 Run it against a stopped instance, or use POST /api/v1/oci-layout/export
 on a running one: two processes writing one storage directory is one
 process too many.`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkFormat(format); err != nil {
+				return err
+			}
+			if err := report.validate(cmd); err != nil {
 				return err
 			}
 			svc, closeStore, err := openInteropService(cmd, flags)
@@ -88,7 +93,7 @@ process too many.`,
 
 			req := &interop.ExportRequest{
 				Selector:  interop.Selector{Recipes: recipes, Repositories: repository},
-				Output:    output,
+				Output:    args[0],
 				Format:    ocilayout.FormatTar,
 				Overwrite: overwrite,
 			}
@@ -96,33 +101,29 @@ process too many.`,
 				req.Format = ocilayout.FormatDirectory
 			}
 			if dryRun {
-				return runExportPlan(cmd, svc, req, asJSON)
+				return runExportPlan(cmd, svc, req, report)
 			}
-			return runExport(cmd, svc, req, asJSON)
+			return runExport(cmd, svc, req, report)
 		},
 	}
 	fs := cmd.Flags()
 	fs.StringVar(&format, "format", formatOCILayout, "interoperability format (only "+formatOCILayout+" today)")
-	fs.StringVar(&output, "output", "", "destination path of the export (required)")
 	fs.BoolVar(&directory, "directory", false, "write the layout as a directory instead of a single tar")
 	fs.BoolVar(&overwrite, "overwrite", false, "replace the destination if it already exists")
 	fs.BoolVar(&dryRun, "dry-run", false, "report what the export would contain and how big it would be, writing nothing")
-	fs.BoolVar(&asJSON, "json", false, "print the report as JSON")
 	fs.StringArrayVar(&recipes, "recipe", nil, `export one recipe and everything it manages ("name" or "name@version"); repeatable`)
 	fs.StringArrayVar(&repository, "repository", nil, "export one relocated repository; repeatable")
-	if err := cmd.MarkFlagRequired("output"); err != nil {
-		panic("cli: marking --output required: " + err.Error())
-	}
+	report.register(cmd)
 	flags.register(cmd)
 	return cmd
 }
 
 func newImportCmd() *cobra.Command {
 	flags := &commonFlags{}
+	report := newReportFlag(outputText, outputJSON)
 	var (
 		format     string
 		repository string
-		asJSON     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "import <path>",
@@ -152,6 +153,9 @@ on a running one.`,
 			if err := checkFormat(format); err != nil {
 				return err
 			}
+			if err := report.validate(cmd); err != nil {
+				return err
+			}
 			svc, closeStore, err := openInteropService(cmd, flags)
 			if err != nil {
 				return err
@@ -159,13 +163,13 @@ on a running one.`,
 			defer closeStore()
 			return runImport(cmd, svc, &interop.ImportRequest{
 				Input: args[0], Repository: repository,
-			}, asJSON)
+			}, report)
 		},
 	}
 	fs := cmd.Flags()
 	fs.StringVar(&format, "format", formatOCILayout, "interoperability format (only "+formatOCILayout+" today)")
 	fs.StringVar(&repository, "repository", "", "repository the entries belong to, for layouts that name only a tag")
-	fs.BoolVar(&asJSON, "json", false, "print the report as JSON")
+	report.register(cmd)
 	flags.register(cmd)
 	return cmd
 }
@@ -203,7 +207,7 @@ func openInteropService(cmd *cobra.Command, flags *commonFlags) (*interop.Servic
 }
 
 // cliLogger builds the command's logger on stderr: machine output stays
-// on stdout, so `tobby export --json | jq` composes (B-010).
+// on stdout, so `tobby export … --output json | jq` composes (B-010).
 func cliLogger(w io.Writer, level string) *slog.Logger {
 	lvl := slog.LevelInfo
 	if level == "debug" {
@@ -226,12 +230,12 @@ type exportPlanReport struct {
 	Missing          []string `json:"missing,omitempty"`
 }
 
-func runExportPlan(cmd *cobra.Command, svc *interop.Service, req *interop.ExportRequest, asJSON bool) error {
+func runExportPlan(cmd *cobra.Command, svc *interop.Service, req *interop.ExportRequest, report *reportFlag) error {
 	plan, projection, err := svc.Plan(cmd.Context(), req)
 	if err != nil {
 		return err
 	}
-	report := exportPlanReport{
+	doc := exportPlanReport{
 		Format:           string(projection.Format),
 		Manifests:        projection.Manifests,
 		Blobs:            projection.Blobs,
@@ -241,18 +245,19 @@ func runExportPlan(cmd *cobra.Command, svc *interop.Service, req *interop.Export
 		LargestFileBytes: projection.LargestFileBytes,
 	}
 	for _, ref := range plan.Refs {
-		report.References = append(report.References, ref.String())
+		doc.References = append(doc.References, ref.String())
 	}
-	report.Missing = missingLines(plan.Missing)
-	if asJSON {
-		return printJSON(cmd, report)
+	doc.Missing = missingLines(plan.Missing)
+	if report.json() {
+		return writeJSON(cmd, doc)
 	}
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%d references, %d manifests, %d blobs\n",
-		len(report.References), report.Manifests, report.Blobs)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%d bytes to write, largest single file %d bytes\n",
-		report.TotalBytes, report.LargestFileBytes)
-	for _, line := range report.Missing {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "missing: %s\n", line)
+	w := report.human(cmd)
+	_, _ = fmt.Fprintf(w, "%d references, %d manifests, %d blobs\n",
+		len(doc.References), doc.Manifests, doc.Blobs)
+	_, _ = fmt.Fprintf(w, "%d bytes to write, largest single file %d bytes\n",
+		doc.TotalBytes, doc.LargestFileBytes)
+	for _, line := range doc.Missing {
+		_, _ = fmt.Fprintf(w, "missing: %s\n", line)
 	}
 	return nil
 }
@@ -269,7 +274,7 @@ type exportReport struct {
 	Missing          []string `json:"missing,omitempty"`
 }
 
-func runExport(cmd *cobra.Command, svc *interop.Service, req *interop.ExportRequest, asJSON bool) error {
+func runExport(cmd *cobra.Command, svc *interop.Service, req *interop.ExportRequest, report *reportFlag) error {
 	logger := cliLogger(cmd.ErrOrStderr(), "info")
 	event := &audit.Event{
 		Actor: audit.ActorLocal, Action: audit.ActionLayoutExport,
@@ -284,17 +289,17 @@ func runExport(cmd *cobra.Command, svc *interop.Service, req *interop.ExportRequ
 	event.Outcome = audit.OutcomeSuccess
 	audit.Log(cmd.Context(), logger, event)
 
-	report := exportReport{
+	doc := exportReport{
 		Output: res.Output, Format: string(req.Format), References: res.Refs,
 		Manifests: res.Manifests, Blobs: res.Blobs, Bytes: res.Bytes,
 		LargestFileBytes: res.LargestFileBytes, Missing: missingLines(res.Missing),
 	}
-	if asJSON {
-		return printJSON(cmd, report)
+	if report.json() {
+		return writeJSON(cmd, doc)
 	}
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s: %d references, %d manifests, %d blobs, %d bytes\n",
-		report.Output, report.References, report.Manifests, report.Blobs, report.Bytes)
-	for _, line := range report.Missing {
+	_, _ = fmt.Fprintf(report.human(cmd), "%s: %d references, %d manifests, %d blobs, %d bytes\n",
+		doc.Output, doc.References, doc.Manifests, doc.Blobs, doc.Bytes)
+	for _, line := range doc.Missing {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "missing: %s\n", line)
 	}
 	return nil
@@ -320,7 +325,7 @@ type importEntryLine struct {
 	Error     string `json:"error,omitempty"`
 }
 
-func runImport(cmd *cobra.Command, svc *interop.Service, req *interop.ImportRequest, asJSON bool) error {
+func runImport(cmd *cobra.Command, svc *interop.Service, req *interop.ImportRequest, report *reportFlag) error {
 	logger := cliLogger(cmd.ErrOrStderr(), "info")
 	event := &audit.Event{
 		Actor: audit.ActorLocal, Action: audit.ActionLayoutImport,
@@ -335,7 +340,7 @@ func runImport(cmd *cobra.Command, svc *interop.Service, req *interop.ImportRequ
 	event.Outcome = audit.OutcomeSuccess
 	audit.Log(cmd.Context(), logger, event)
 
-	report := importReport{
+	doc := importReport{
 		Input: req.Input, Manifests: res.Manifests, Blobs: res.Blobs,
 		Bytes: res.Bytes, Ignored: res.Ignored, Missing: missingLines(res.Missing),
 		Failed: res.Failed(),
@@ -346,26 +351,26 @@ func runImport(cmd *cobra.Command, svc *interop.Service, req *interop.ImportRequ
 		if e.Err != nil {
 			line.Error = e.Err.Error()
 		}
-		report.Entries = append(report.Entries, line)
+		doc.Entries = append(doc.Entries, line)
 	}
-	if asJSON {
-		if err := printJSON(cmd, report); err != nil {
+	if report.json() {
+		if err := writeJSON(cmd, doc); err != nil {
 			return err
 		}
 	} else {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s: %d entries (%d failed), %d manifests, %d blobs, %d bytes\n",
-			req.Input, len(report.Entries), report.Failed, report.Manifests, report.Blobs, report.Bytes)
-		for _, entry := range report.Entries {
+		_, _ = fmt.Fprintf(report.human(cmd), "%s: %d entries (%d failed), %d manifests, %d blobs, %d bytes\n",
+			req.Input, len(doc.Entries), doc.Failed, doc.Manifests, doc.Blobs, doc.Bytes)
+		for _, entry := range doc.Entries {
 			if entry.Error != "" {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "failed: %s: %s\n", entry.Reference, entry.Error)
 			}
 		}
 	}
-	if report.Failed > 0 {
+	if doc.Failed > 0 {
 		// FR-066 exit codes: an import that lost entries is an
 		// operational failure, and a script must be able to branch on it
 		// without parsing prose.
-		return fmt.Errorf("%d of %d entries could not be imported", report.Failed, len(report.Entries))
+		return fmt.Errorf("%d of %d entries could not be imported", doc.Failed, len(doc.Entries))
 	}
 	return nil
 }
@@ -384,12 +389,4 @@ func missingLines(missing []ocilayout.Missing) []string {
 		out = append(out, m.Reason+" "+m.Ref.Repo+" "+subject)
 	}
 	return out
-}
-
-// printJSON writes v to stdout: machine output on stdout, human feedback
-// on stderr (B-010).
-func printJSON(cmd *cobra.Command, v any) error {
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
 }

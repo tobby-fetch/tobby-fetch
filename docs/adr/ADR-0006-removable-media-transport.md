@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted — 2026-07-11
+Accepted — 2026-07-11 · Amended 2026-08-26 (export destination as a
+positional argument: `--output` names the report FORMAT on every command)
 
 ## Context
 
@@ -53,9 +54,18 @@ layout** (as a directory or single tar), for interoperability with `skopeo`,
 `oras`, and `crane`:
 
 ```bash
-tobby export --format oci-layout --output /media/usb/payload.tar   # outbound
-tobby import --format oci-layout /media/usb/payload.tar            # inbound
+tobby export --format oci-layout /media/usb/payload.tar   # outbound
+tobby import --format oci-layout /media/usb/payload.tar   # inbound
 ```
+
+*Amendment 2026-08-26 (R-08).* The export destination is a **positional
+argument**, symmetric with the import source, and no longer `--output`.
+The stable command-line contract of FR-066's R-08 amendment gives
+`--output` one meaning on every command — the report FORMAT, `text` or
+`json` — and one flag cannot mean two things. The spelling of a flag is
+not the decision this ADR carries; the decision is that the interop format
+is the standard OCI image layout and that it is reachable from the command
+line. That is unchanged.
 
 ### Integrity
 

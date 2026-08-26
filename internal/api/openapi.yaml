@@ -42,6 +42,23 @@ paths:
                 type: string
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/cli-output.schema.json:
+    get:
+      summary: >-
+        JSON Schema of the documents the command line writes under
+        --output json (FR-066 amendment R-08), published alongside this
+        document. Role viewer.
+      responses:
+        "200":
+          description: >-
+            The embedded JSON Schema 2020-12 document. One entry of $defs
+            per reporting command, keyed by the command path.
+          content:
+            application/schema+json:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v1/content:
     get:
       summary: >-

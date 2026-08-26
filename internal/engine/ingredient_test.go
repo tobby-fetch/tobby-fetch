@@ -287,15 +287,17 @@ func errDetail(it *tasks.Item) string {
 // TestFailedIngredientIsLoggedWithItsCause is B-021: an ingredient that
 // fails must leave a trail an operator can follow.
 //
-// The failure fixture is deliberately the most opaque one the engine
-// produces — an absent platform, which carries no taxonomy entry of its
-// own and settles as TBY-SRV-001, whose corrective action is literally
-// "follow the correlation identifier in the logs" (FR-090). Before the
-// fix that instruction led nowhere: the item recorded the code and
-// nothing else, and the ingredient goroutine emitted no record at all,
-// at any level. The test therefore asserts both halves of the trail —
-// the log line with the FR-090 correlation fields, and the cause carried
-// on the item so the task detail and /api/v1/tasks/{id} can show it.
+// The failure fixture is an absent platform. It was chosen because it was
+// the most opaque failure the engine produced — a bare fmt.Errorf that
+// settled as TBY-SRV-001, whose corrective action is literally "follow
+// the correlation identifier in the logs" (FR-090), an instruction that
+// led nowhere: the item recorded the code and nothing else, and the
+// ingredient goroutine emitted no record at all, at any level. R-08 has
+// since given that condition its own entry (TBY-REG-008), which removes
+// the opacity but not the requirement: whatever the code, the failure
+// must reach the logs with its correlation fields AND reach the item with
+// what it was about, so the task detail and /api/v1/tasks/{id} can show
+// it (FR-061).
 func TestFailedIngredientIsLoggedWithItsCause(t *testing.T) {
 	src := newRegistry(t)
 	dst := openStore(t)
@@ -324,14 +326,20 @@ func TestFailedIngredientIsLoggedWithItsCause(t *testing.T) {
 	if it.Status != tasks.StatusFailed || it.Error == nil {
 		t.Fatalf("item = %+v, want failed", it)
 	}
-	if it.Error.Code != taxonomy.CodeInternal {
-		t.Fatalf("item code = %s, want the opaque %s this test is about", it.Error.Code, taxonomy.CodeInternal)
+	if it.Error.Code != taxonomy.CodePlatformMissing {
+		t.Fatalf("item code = %s, want %s", it.Error.Code, taxonomy.CodePlatformMissing)
 	}
-	// The cause travels with the item, as a field of its own: the code
-	// stays the code (the taxonomy is untouched), the technical detail
-	// rides beside it so every surface can show it (FR-061).
-	if !strings.Contains(it.Error.Detail, "linux/riscv64") {
-		t.Errorf("item error detail = %q, want the absent platform named", it.Error.Detail)
+	// What the failure was about travels with the item — as the entry's
+	// parameters here, since the message is re-rendered per reader
+	// (FR-063), and as ItemError.Detail whenever the failure wraps a
+	// technical cause. Either way every surface can name the platform.
+	if got, _ := it.Error.Params["platforms"].(string); !strings.Contains(got, "linux/riscv64") {
+		t.Errorf("item error params = %v, want the absent platform named", it.Error.Params)
+	}
+	// And the actionable half: what the index DOES publish, because the
+	// fix is a comparison between the two.
+	if got, _ := it.Error.Params["available"].(string); !strings.Contains(got, "linux/amd64") {
+		t.Errorf("item error params = %v, want the platforms the index publishes", it.Error.Params)
 	}
 
 	// The log line, with the correlation fields the corrective action of
@@ -340,7 +348,7 @@ func TestFailedIngredientIsLoggedWithItsCause(t *testing.T) {
 	for _, want := range []string{
 		"ingredient synchronization failed",
 		"recipe=opaque", "ingredient=app",
-		"code=" + string(taxonomy.CodeInternal), "linux/riscv64",
+		"code=" + string(taxonomy.CodePlatformMissing), "linux/riscv64",
 	} {
 		if !strings.Contains(logs, want) {
 			t.Errorf("logs lack %q (B-021, FR-090):\n%s", want, logs)
