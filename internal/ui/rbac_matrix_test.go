@@ -97,6 +97,8 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "POST /recipes/sync", Floor: auth.RoleOperator, Why: "triggering a synchronization is an operator action (FR-014)", Method: "POST", Path: "/recipes/sync"},
 	{Pattern: "GET /recipes/publish", Floor: auth.RoleOperator, Why: "the publication form (R-40): only a role that can publish is offered one", Method: "GET", Path: "/recipes/publish"},
 	{Pattern: "POST /recipes/publish", Floor: auth.RoleOperator, Why: "publishing writes into another zone's cookbook (R-40); the write is audited (FR-094)", Method: "POST", Path: "/recipes/publish", Form: "reference=&document="},
+	{Pattern: "GET /recipes/plan", Floor: auth.RoleOperator, Why: "the plan form (FR-055/R-04): only a role that can trigger a synchronization is offered a simulation of one", Method: "GET", Path: "/recipes/plan"},
+	{Pattern: "POST /recipes/plan", Floor: auth.RoleOperator, Why: "a plan mutates nothing, but it makes this instance reach out to every registry the submitted Retriever names", Method: "POST", Path: "/recipes/plan", Form: "retriever=&document="},
 	{Pattern: "GET /recipes/{recipe}/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/recipes/no-such-recipe/mapping"},
 	{Pattern: "GET /account", Floor: auth.RoleViewer, Why: "self-service: every authenticated role manages its own account (R-34)", Method: "GET", Path: "/account"},
 	{Pattern: "POST /account/password", Floor: auth.RoleViewer, Method: "POST", Path: "/account/password", Form: "current=x&new=&confirm="},
@@ -133,6 +135,7 @@ var apiMatrix = []rbacRoute{
 	{Pattern: "GET /api/v1/recipes", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/recipes"},
 	{Pattern: "GET /api/v1/recipes/{recipe}/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/recipes/no-such-recipe/mapping"},
 	{Pattern: "POST /api/v1/sync", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/sync"},
+	{Pattern: "POST /api/v1/plan", Floor: auth.RoleOperator, Why: "a plan mutates nothing, but it makes the instance open outbound connections to every registry the submitted Retriever names (FR-055/R-04)", Method: "POST", Path: "/api/v1/plan", Body: `{}`},
 	{Pattern: "POST /api/v1/recipes/publish", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/recipes/publish", Body: `{"reference":"","document":""}`},
 	{Pattern: "GET /api/v1/network", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/network"},
 	{Pattern: "PUT /api/v1/network/certificate", Floor: auth.RoleAdmin, Method: "PUT", Path: "/api/v1/network/certificate", Body: `{"certificate":"","key":""}`},
@@ -239,6 +242,7 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	// and without a certificate: the matrix probes the GATE, and every
 	// row here is decided before the handler runs.
 	api.RegisterPublish(restAPI, nil)
+	api.RegisterPlan(restAPI, &api.PlanOptions{})
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{})
 	api.RegisterOpenAPI(restAPI)
 	rec.mux.Handle("/api/v1/", restAPI.Handler())
@@ -461,6 +465,7 @@ func TestRBACMatrixMirrorsUIFloors(t *testing.T) {
 		{"GET /recipes", "GET /api/v1/recipes"},
 		{"POST /recipes/sync", "POST /api/v1/sync"},
 		{"POST /recipes/publish", "POST /api/v1/recipes/publish"},
+		{"POST /recipes/plan", "POST /api/v1/plan"},
 		{"GET /admin/network", "GET /api/v1/network"},
 		{"POST /admin/network/certificate", "PUT /api/v1/network/certificate"},
 		{"GET /admin/retriever", "GET /api/v1/retriever"},

@@ -51,6 +51,7 @@ var pageFiles = []string{
 	"import",
 	"login",
 	"recipe-mapping",
+	"recipe-plan",
 	"recipe-publish",
 	"recipes",
 	"task-detail",

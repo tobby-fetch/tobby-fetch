@@ -369,6 +369,62 @@ paths:
                     $ref: "#/components/schemas/Task"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/plan:
+    post:
+      summary: >-
+        Plan a synchronization without performing it (FR-055 amendment
+        R-04): the complete report of what a run would do — version
+        resolution (FR-021), per-digest statuses (FR-026), deduplicated
+        volumes and the free-space and filesystem verdicts (FR-055),
+        projected prune (FR-045), and the policy verdicts reachable
+        without a transfer (FR-030 allow-list, FR-033 recipe signatures).
+        The operation writes nothing to the store, pushes nothing, and
+        does not advance the passthrough refresh schedule (FR-013).
+        Mirror of the /recipes/plan screen. Role operator, because a plan
+        opens outbound connections to every registry the Retriever names.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                retriever:
+                  type: string
+                  description: >-
+                    A candidate Retriever source instead of the configured
+                    one: a file path readable by the instance, an HTTP(S)
+                    URL, or an OCI reference (FR-010 forms).
+                document:
+                  type: string
+                  description: >-
+                    A candidate Retriever supplied inline as YAML text.
+                    Wins over "retriever". Nothing is written to disk.
+                skip_destination:
+                  type: boolean
+                  description: >-
+                    Keep the plan strictly local; the promotion
+                    destination is not contacted.
+      responses:
+        "200":
+          description: >-
+            The plan report. The status is 200 whatever the outcome: a
+            plan that reports a policy refusal answered the question it
+            was asked. The verdict is "plan.outcome", and "exit_code" is
+            the process exit code the CLI would have used for it
+            (FR-066): 0 nothing to do, 5 changes planned, 3 refused by
+            policy, 4 verification failed, 1 failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan:
+                    $ref: "#/components/schemas/Plan"
+                  exit_code:
+                    type: integer
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v1/retriever:
     get:
       summary: >-
@@ -817,6 +873,332 @@ components:
           schema:
             $ref: "#/components/schemas/Problem"
   schemas:
+    Plan:
+      type: object
+      description: >-
+        The side-effect-free report of a synchronization that has not run
+        (FR-055 amendment R-04). Nothing in it is localized: a report is
+        stored and re-rendered in the reader's language, so problems
+        travel as stable taxonomy codes with their parameters (R-03) and
+        sizes travel as raw byte counts (ADR-0015 §7).
+      properties:
+        mode:
+          type: string
+          description: The instance's operating mode (FR-001).
+        source:
+          type: string
+          description: The Retriever the plan ran over.
+        source_is_candidate:
+          type: boolean
+          description: >-
+            The plan ran over a caller-supplied candidate rather than the
+            instance's configured Retriever.
+        zone:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        destination:
+          type: string
+          description: The promotion target host; absent when none is configured.
+        outcome:
+          type: string
+          enum:
+            - up-to-date
+            - changes-planned
+            - policy-refused
+            - verification-failed
+            - failed
+        recipes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanRecipe"
+        totals:
+          $ref: "#/components/schemas/PlanTotals"
+        policy:
+          type: object
+          description: >-
+            The FR-030 allow-list in force and its verdict on every host
+            the plan would contact, stated positively so that "no
+            refusal" and "evaluated and passed" are distinguishable.
+          properties:
+            allowlist_declared:
+              type: boolean
+            allowlist_patterns:
+              type: array
+              items:
+                type: string
+            hosts:
+              type: array
+              items:
+                type: object
+                properties:
+                  host:
+                    type: string
+                  allowed:
+                    type: boolean
+                  role:
+                    type: string
+                    enum: [source, cookbook, destination]
+        prune:
+          type: object
+          description: >-
+            The projected FR-045 prune. "evaluated" is false — with a
+            reason — when the projection was deliberately not computed;
+            a plan whose recipes did not all resolve never proposes
+            deleting content, because a transient registry error would
+            otherwise read as "this is no longer wanted".
+          properties:
+            evaluated:
+              type: boolean
+            reason:
+              type: string
+            total_bytes:
+              type: integer
+              format: int64
+            repositories:
+              type: array
+              items:
+                type: object
+                properties:
+                  repo:
+                    type: string
+                  recipe:
+                    type: string
+                  bytes:
+                    type: integer
+                    format: int64
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreflightCheck"
+        problems:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanProblem"
+    PlanProblem:
+      type: object
+      description: >-
+        One failure of a plan, as a stable taxonomy code with its
+        parameters — never a rendered sentence (R-03).
+      properties:
+        code:
+          type: string
+        class:
+          type: string
+          enum: [operational, policy, verification]
+        subject:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+    PlanRecipe:
+      type: object
+      properties:
+        name:
+          type: string
+        requested:
+          type: string
+          description: The version expression from the Retriever (FR-021).
+        resolved:
+          type: string
+          description: The concrete tag it resolved to (FR-021).
+        digest:
+          type: string
+        cookbook:
+          type: string
+        trust_scope:
+          type: string
+        signature:
+          type: string
+          enum: [verified, unsigned-admitted, refused, not-evaluated]
+          description: >-
+            The FR-033 verdict on the recipe itself, which is reachable
+            without pulling any ingredient content.
+        total_bytes:
+          type: integer
+          format: int64
+        transfer_bytes:
+          type: integer
+          format: int64
+          description: >-
+            Deduplicated by digest WITHIN this recipe. Per-recipe figures
+            do not add up to the totals when two recipes share a layer:
+            the shared layer crosses the wire once.
+        largest_file_bytes:
+          type: integer
+          format: int64
+        problem:
+          $ref: "#/components/schemas/PlanProblem"
+        ingredients:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanIngredient"
+    PlanIngredient:
+      type: object
+      properties:
+        name:
+          type: string
+        kind:
+          type: string
+        ref:
+          type: string
+          description: The nominal reference the recipe names.
+        effective:
+          type: string
+          description: >-
+            The endpoint actually contacted when source substitution
+            applies (FR-036); absent when it does not.
+        repo:
+          type: string
+          description: The relocated repository the content lands in (FR-035).
+        version:
+          type: string
+        digest:
+          type: string
+        status:
+          type: string
+          enum: [new, outdated, up-to-date, unknown, not-probed]
+          description: The FR-026 verdict against the local store.
+        push_status:
+          type: string
+          enum: [new, outdated, up-to-date, unknown, not-probed]
+          description: >-
+            The FR-026 verdict against the configured destination;
+            "not-probed" when there is none, or when the plan stopped
+            before contacting it.
+        total_bytes:
+          type: integer
+          format: int64
+        transfer_bytes:
+          type: integer
+          format: int64
+        largest_file_bytes:
+          type: integer
+          format: int64
+        problem:
+          $ref: "#/components/schemas/PlanProblem"
+    PlanTotals:
+      type: object
+      description: >-
+        The aggregate FR-055 asks to be displayed at trigger time. Byte
+        counts are deduplicated by digest across the whole plan and net of
+        what the local store already holds, except total_bytes, which is
+        the gross figure.
+      properties:
+        recipes:
+          type: integer
+        ingredients:
+          type: integer
+        new:
+          type: integer
+        outdated:
+          type: integer
+        up_to_date:
+          type: integer
+        total_bytes:
+          type: integer
+          format: int64
+        transfer_bytes:
+          type: integer
+          format: int64
+        largest_file_bytes:
+          type: integer
+          format: int64
+        store_bytes:
+          type: integer
+          format: int64
+        projected_store_bytes:
+          type: integer
+          format: int64
+          description: >-
+            The store's on-disk size once the transfer lands. It ignores
+            the prune on purpose: a prune runs after the synchronization
+            (FR-045), so the peak the volume must survive is the unpruned
+            one.
+        push_upper_bound_bytes:
+          type: integer
+          format: int64
+          description: >-
+            An upper bound on what a promotion would move, not a
+            measurement: it sums the artifacts the destination does not
+            hold at the pinned digest without asking it blob by blob. The
+            differential push of FR-028 moves less whenever a shared
+            layer is already there.
+        push_evaluated:
+          type: boolean
+    PreflightCheck:
+      type: object
+      description: >-
+        One FR-055 space and filesystem verdict. refusal_code carries the
+        taxonomy code of a refusal (TBY-STO-004 insufficient space,
+        TBY-STO-005 file too large for the filesystem) and is absent when
+        the operation may start.
+      properties:
+        target:
+          type: string
+          enum: [store, archive]
+        path:
+          type: string
+        filesystem:
+          type: object
+          properties:
+            type:
+              type: string
+              description: >-
+                The filesystem as the platform names it, or the raw magic
+                number on Linux when this build does not know it.
+            identified:
+              type: boolean
+              description: >-
+                True only when the platform named the filesystem AND this
+                build knows its file-size limit. False is the honest
+                default and never means "capable".
+            max_file_size:
+              type: integer
+              format: int64
+              description: Zero means unknown — never unlimited.
+            detection:
+              type: string
+              description: The mechanism that produced the type.
+            note:
+              type: string
+        space:
+          type: object
+          properties:
+            free_bytes:
+              type: integer
+              format: int64
+            total_bytes:
+              type: integer
+              format: int64
+            known:
+              type: boolean
+        margin_percent:
+          type: integer
+        reserved_bytes:
+          type: integer
+          format: int64
+        usable_bytes:
+          type: integer
+          format: int64
+        projected_bytes:
+          type: integer
+          format: int64
+        largest_file_bytes:
+          type: integer
+          format: int64
+        shortfall_bytes:
+          type: integer
+          format: int64
+          description: The exact number of bytes missing; zero when it fits.
+        warnings:
+          type: array
+          items:
+            type: string
+            enum: [filesystem-unidentified, space-unknown]
+        refusal_code:
+          type: string
     Publication:
       type: object
       description: >-

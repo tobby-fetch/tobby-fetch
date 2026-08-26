@@ -47,6 +47,9 @@ type UI struct {
 	// publisher backs the R-40 publication screen; nil on an instance
 	// wired without one, which renders the form inert.
 	publisher Publisher
+	// planner backs the FR-055/R-04 plan screen; nil renders its form
+	// inert, the way a missing publisher does.
+	planner Planner
 	// serverCert backs the FR-082 network screen: what the listener
 	// presents, and — through its own Destination — where a replacement
 	// goes. Asking the certificate rather than carrying the configured
@@ -109,6 +112,9 @@ type Options struct {
 	// Publisher publishes recipe documents into a cookbook (R-40). Nil
 	// leaves the publication screen readable and its form inert.
 	Publisher Publisher
+	// Planner produces the side-effect-free plan of FR-055's R-04
+	// amendment. Nil leaves the plan screen readable and its form inert.
+	Planner Planner
 	// ServerCert is the certificate the listener presents (FR-082). Nil
 	// on an instance serving plain HTTP — the screen says so rather than
 	// showing an empty certificate.
@@ -147,6 +153,7 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		cookbook:          opts.Cookbook,
 		interval:          opts.Interval,
 		publisher:         opts.Publisher,
+		planner:           opts.Planner,
 		serverCert:        opts.ServerCert,
 		egress:            opts.Egress,
 	}
@@ -219,6 +226,13 @@ func (u *UI) Mount(rt Router) {
 	// the two patterns differ in segment count and cannot collide.
 	mux.Handle("GET /recipes/publish", operator(u.recipePublishScreen))
 	mux.Handle("POST /recipes/publish", operator(u.recipePublishSubmit))
+	// Plan mode (FR-055 amendment R-04): the simulation of a
+	// synchronization, side-effect-free, over the configured Retriever or
+	// a candidate one. Operator-gated like the trigger it simulates —
+	// a plan mutates nothing, but it makes this instance reach out to
+	// every registry the submitted document names.
+	mux.Handle("GET /recipes/plan", operator(u.planScreen))
+	mux.Handle("POST /recipes/plan", operator(u.planSubmit))
 	mux.Handle("GET /recipes/{recipe}/mapping", app(u.recipeMapping))
 
 	// Account self-service (R-34, FR-061): every authenticated role,
