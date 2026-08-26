@@ -101,11 +101,7 @@ All records are **Accepted**. Each link opens the canonical text on GitHub.
 | [ADR-0012](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0012-observability.md) | Observability & operations: structured logs, OpenMetrics, health probes | 2026-07-11 | JSON logs with stable correlation keys, an OpenMetrics endpoint, liveness/readiness probes and graceful shutdown. |
 | [ADR-0013](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0013-ingredient-relocation-destination-naming.md) | Ingredient relocation and destination naming | 2026-08-03 | The deterministic naming convention: `docker.io/x` becomes `<zone-registry>/docker.io/x`, canonical hosts, port `:` written `_`. |
 | [ADR-0014](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0014-crucible-test-infrastructure-incus.md) | Crucible test infrastructure: Incus | 2026-08-04 | The acceptance crucible: real multi-zone topologies on Incus, scenarios per milestone, raw reports kept. |
-
-One further record, **ADR-0015 — Web UI invariants: canonical URLs,
-reserved prefixes, htmx doctrine** (accepted 2026-08-12), is referenced
-throughout the code; its publication into `docs/adr/` is pending, so it has
-no stable link yet.
+| [ADR-0015](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0015-ui-invariants.md) | Web UI invariants: canonical URLs, reserved prefixes, htmx doctrine | 2026-08-12 | The rules every UI contribution applies: canonical URL scheme with the `/-/` separator, reserved path prefixes, and the htmx usage doctrine. |
 
 The requirements ↔ mechanisms ↔ proofs mapping built on top of these
 documents is in [Compliance](../../project/compliance/), and the acceptance

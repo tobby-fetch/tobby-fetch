@@ -26,6 +26,7 @@ successor.
 | [ADR-0012](ADR-0012-observability.md) | Observability & operations: structured logs, OpenMetrics, health probes | Accepted |
 | [ADR-0013](ADR-0013-ingredient-relocation-destination-naming.md) | Ingredient relocation and destination naming | Accepted |
 | [ADR-0014](ADR-0014-crucible-test-infrastructure-incus.md) | Crucible test infrastructure: Incus | Accepted |
+| [ADR-0015](ADR-0015-ui-invariants.md) | Web UI invariants: canonical URLs, reserved prefixes, htmx doctrine | Accepted |
 
 ## Statuses
 
