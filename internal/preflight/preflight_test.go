@@ -357,23 +357,31 @@ func TestRealFAT32Volume(t *testing.T) {
 	if _, err := exec.LookPath("hdiutil"); err != nil {
 		t.Skip("hdiutil is not available")
 	}
-	image := filepath.Join(t.TempDir(), "fat32.dmg")
+	dir := t.TempDir()
+	image := filepath.Join(dir, "fat32.dmg")
+	// An explicit mount point rather than /Volumes/<name>: two runs of
+	// this test in one process (the anti-flaky `-count=2`) would otherwise
+	// race for the same path, and the second would silently inspect the
+	// first one's leftovers.
+	mount := filepath.Join(dir, "mnt")
+	if err := os.MkdirAll(mount, 0o750); err != nil {
+		t.Fatal(err)
+	}
 	//nolint:gosec // G204: the only variable argument is a path this test just built under its own t.TempDir()
 	out, err := exec.Command("hdiutil", "create", "-quiet",
 		"-size", "16m", "-fs", "MS-DOS", "-volname", "TOBBYFAT", image).CombinedOutput()
 	if err != nil {
 		t.Skipf("hdiutil create failed (%v): %s", err, out)
 	}
-	//nolint:gosec // G204: same path, same provenance
-	out, err = exec.Command("hdiutil", "attach", "-quiet", "-nobrowse", image).CombinedOutput()
+	//nolint:gosec // G204: same paths, same provenance
+	out, err = exec.Command("hdiutil", "attach", "-quiet", "-nobrowse", "-mountpoint", mount, image).CombinedOutput()
 	if err != nil {
 		t.Skipf("hdiutil attach failed (%v): %s", err, out)
 	}
-	mount := "/Volumes/TOBBYFAT"
-	t.Cleanup(func() { _ = exec.Command("hdiutil", "detach", "-quiet", "-force", mount).Run() })
-	if _, serr := os.Stat(mount); serr != nil {
-		t.Skipf("the FAT32 image did not mount at %s: %v", mount, serr)
-	}
+	t.Cleanup(func() {
+		//nolint:gosec // G204: the mount point this test created
+		_ = exec.Command("hdiutil", "detach", "-quiet", "-force", mount).Run()
+	})
 
 	fs, space, err := preflight.System.Inspect(mount)
 	if err != nil {
