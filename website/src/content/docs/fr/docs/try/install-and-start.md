@@ -86,7 +86,7 @@ L'instance sert l'interface web et l'API sur `http://localhost:8080` et
 refuse l'accès anonyme par défaut — connectez-vous avec le compte que le
 quickstart vient de créer.
 
-<!-- TODO: capture : écran de connexion d'une instance neuve -->
+![L'écran de connexion d'une instance neuve — jamais d'interface ouverte](../../../../../assets/docs/fr-try-signin.png)
 
 ## Un premier tour
 
@@ -100,7 +100,7 @@ d'arborescence de dépôts. Les segments de chemin sont un fil d'Ariane :
 cliquez-en un pour restreindre la liste à ce préfixe. Votre store est vide
 pour l'instant — l'écran le dit sans détour, et l'étape 2 le remplit.
 
-<!-- TODO: capture : écran Contenu avec un store peuplé, fil d'Ariane visible -->
+![L'écran Contenu dans docker.io/library/alpine, le fil d'Ariane montre le chemin relocalisé](../../../../../assets/docs/fr-try-content-store.png)
 
 ### Recherche et filtres
 
@@ -116,7 +116,7 @@ distingue visuellement les genres : **image de conteneur**, **chart
 Helm**, **ensemble de fichiers**, **recipe**, et **artefact OCI**
 générique. On sait ce qu'un dépôt contient sans l'ouvrir.
 
-<!-- TODO: capture : liste de contenu montrant plusieurs types côte à côte -->
+![La liste de contenu : une image de conteneur, un chart Helm et un artefact de recipe côte à côte, groupés par hôte source](../../../../../assets/docs/fr-try-content-kinds.png)
 
 ### Copiez l'URL — c'est l'appel API
 

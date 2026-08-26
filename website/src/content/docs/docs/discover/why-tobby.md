@@ -119,7 +119,7 @@ recipes travel with their content, so the zone can prove what it holds.
 Start with [the passthrough overview](../../passthrough/overview/), or
 [try a first promotion](../../try/first-promotion/) in ten minutes.
 
-<!-- TODO: screenshot: recipes screen with per-ingredient sync status -->
+![The per-recipe mapping screen: each ingredient with its relocated path, tag, digest and local presence](../../../../assets/docs/recipe-mapping.png)
 
 **Crossing the air gap.** The same declaration drives a mirror workstation:
 it synchronizes the selected recipes onto a self-contained store, an operator

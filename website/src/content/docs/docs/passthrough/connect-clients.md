@@ -79,7 +79,7 @@ relocated repository, tag, and pinned digest (FR-065):
 - **API**: `GET /api/v1/recipes/{recipe}/mapping` — the same data as
   JSON, one entry per resolved version, ingredients included.
 
-<!-- TODO: screenshot: the per-recipe mapping table with copy buttons -->
+![The per-recipe mapping table: upstream reference to relocated zone path, with copy buttons](../../../../assets/docs/recipe-mapping.png)
 
 ## containerd mirrors for K3s and RKE2
 

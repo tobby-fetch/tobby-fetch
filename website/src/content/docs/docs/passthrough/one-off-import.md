@@ -27,7 +27,7 @@ inspect-before-import flow:
    whether the store already holds it. The button states what it will
    do — "Import (2 platforms, ~180 MB)" — before you press it.
 
-<!-- TODO: screenshot: /import step 2, platform rows with per-platform status and the sized import button -->
+![Unit import, step 2: inspection result with one row per platform, digests, sizes, status against the store, and the sized import button](../../../../assets/docs/import-step2.png)
 
 The screen is addressable: `/import?ref=…` pre-fills the form and
 triggers the inspection on load, which is also how "retry" on a failed

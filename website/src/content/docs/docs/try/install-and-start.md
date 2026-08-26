@@ -83,7 +83,7 @@ The instance serves the web UI and the API on `http://localhost:8080` and
 refuses anonymous access by default — sign in with the account quickstart
 just created.
 
-<!-- TODO: screenshot: sign-in screen on a fresh instance -->
+![The sign-in screen of a fresh instance — never an open UI](../../../../assets/docs/try-signin.png)
 
 ## A first tour
 
@@ -97,7 +97,7 @@ Path segments are breadcrumbs: click one to narrow the listing to that
 prefix. Your store is empty right now — the screen says so plainly, and
 step 2 fills it.
 
-<!-- TODO: screenshot: Content screen with a populated store, breadcrumb visible -->
+![The content screen inside docker.io/library/alpine, breadcrumb showing the relocated path](../../../../assets/docs/try-content-store.png)
 
 ### Search and filters
 
@@ -113,7 +113,7 @@ kinds apart visually: **container image**, **Helm chart**, **file set**,
 **recipe**, and generic **OCI artifact**. You can tell what a repository
 holds without opening it.
 
-<!-- TODO: screenshot: content listing showing several kinds side by side -->
+![The content listing: a container image, a Helm chart and a recipe artifact side by side, grouped by source host](../../../../assets/docs/try-content-kinds.png)
 
 ### Copy the URL — it is the API call
 

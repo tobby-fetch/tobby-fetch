@@ -162,7 +162,7 @@ every attempt is [audited](../../security/audit-log/), succeed or fail. On
 an instance started without a publishing destination, the form is shown
 inert rather than accepting a submission that could not go anywhere.
 
-<!-- TODO: screenshot: /recipes/publish success state with digest and cosign command -->
+![The publish screen after a successful publication: digest and ready-to-copy cosign command](../../../../assets/docs/publish-success.png)
 
 ## Sign with cosign
 

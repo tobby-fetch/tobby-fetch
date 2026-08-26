@@ -142,7 +142,7 @@ is an explicit step separate from writing the files. Every replacement,
 and every refused attempt, is audited with the certificate fingerprint
 as its target (FR-094).
 
-<!-- TODO: screenshot: /admin/network showing a self-signed posture with fingerprint and the replacement form -->
+![The network administration screen: TLS posture with certificate fingerprint and the replacement form](../../../../assets/docs/admin-network.png)
 
 Next: give the instance something to promote —
 [the zone Retriever and the cascade](../../passthrough/retriever-cascade/).

@@ -241,8 +241,8 @@ available through the [API](../../reference/api/):
   download and not an editor: it is the natural starting point for
   authoring the next version.
 
-<!-- TODO: screenshot: /recipes list with verification badges -->
-<!-- TODO: screenshot: recipe document section on a content page (YAML, digest, copy/download) -->
+![The recipes screen: each recipe with its signature verification badge](../../../../assets/docs/try-recipes-verified.png)
+![The recipe document on its content page: YAML body, digest, copy and download actions](../../../../assets/docs/recipe-document.png)
 
 ## Where to go next
 

@@ -59,7 +59,7 @@ thing you stand up yourself is a throwaway cookbook registry on loopback.
 | Piece | Role |
 |---|---|
 | `docker.io` | The upstream registry. The image already lives there; nothing is pushed to it. |
-| A cookbook registry (`:5000`) | An ordinary OCI registry holding your signed recipe. Any registry you can push to works — here, a throwaway local one. |
+| A cookbook registry (`:5001`) | An ordinary OCI registry holding your signed recipe. Any registry you can push to works — here, a throwaway local one. |
 | Your instance (`:8080`) | The one from step 1: secured, with a trust key and a Retriever. It does the promoting. |
 | A `cosign` key pair | Signs the recipe. The public key becomes your instance's trust root. |
 
@@ -71,8 +71,12 @@ any registry you can push to. If you already have one (ghcr.io, Harbor,
 throwaway registry on loopback does fine:
 
 ```sh
-docker run -d --rm --name cookbook -p 5000:5000 registry:2
+docker run -d --rm --name cookbook -p 5001:5000 registry:2
 ```
+
+The host port is 5001, not 5000: on macOS the AirPlay receiver squats
+port 5000 and answers 403 in the registry's place — a classic trap of
+local-registry tutorials.
 
 ## 2. Pin the image
 
@@ -109,9 +113,6 @@ spec:
       ref: docker.io/library/alpine   # nominal reference, no tag
       version: 3.22.1
       digest: sha256:<the digest imagetools printed>
-      # Only these platforms are transferred. The origin index is
-      # preserved as-is, so the pinned digest stays valid.
-      platforms: [linux/amd64, linux/arm64]
 ```
 
 Concepts — recipes, cookbooks, retrievers — are covered in
@@ -125,8 +126,8 @@ published with different content is refused. The throwaway registry
 speaks plain HTTP, which needs an explicit per-host opt-in:
 
 ```sh
-export TOBBY_REGISTRIES_INSECURE=127.0.0.1:5000
-tobby recipe push alpine.yaml 127.0.0.1:5000/cookbook/alpine:3.22.1
+export TOBBY_REGISTRIES_INSECURE=127.0.0.1:5001
+tobby recipe push alpine.yaml 127.0.0.1:5001/cookbook/alpine:3.22.1
 ```
 
 The published digest goes to stdout, ready for signing. Signing stays
@@ -136,7 +137,7 @@ outside Tobby — it never holds a private key:
 cosign generate-key-pair
 cosign sign --key cosign.key --yes --allow-insecure-registry \
   --use-signing-config=false --tlog-upload=false \
-  "127.0.0.1:5000/cookbook/alpine@<the digest recipe push printed>"
+  "127.0.0.1:5001/cookbook/alpine@<the digest recipe push printed>"
 ```
 
 The two flags `--use-signing-config=false --tlog-upload=false` keep the
@@ -156,7 +157,7 @@ metadata:
   name: demo-zone
 
 spec:
-  cookbook: 127.0.0.1:5000/cookbook
+  cookbook: 127.0.0.1:5001/cookbook
   recipes:
     - name: alpine
       version: "3.22.1"
@@ -182,7 +183,7 @@ trust:
       keyFile: ./cosign.pub
 
 registries:
-  insecure: ["127.0.0.1:5000"]
+  insecure: ["127.0.0.1:5001"]
 ```
 
 Then restart:
@@ -208,8 +209,8 @@ and checks it against the pinned digest — transferring only what the zone
 is missing. The **Recipes** screen then shows the recipe, its resolved
 version and its verification verdict.
 
-<!-- TODO: screenshot: Tasks screen with the sync task and its live log -->
-<!-- TODO: screenshot: Recipes screen showing the verified recipe -->
+![The task detail: sync items with per-item status and the raw JSON log, run identifier included](../../../../assets/docs/task-detail.png)
+![The recipes screen showing the promoted recipe, signature verified](../../../../assets/docs/try-recipes-verified.png)
 
 Re-run the sync: it completes without transferring anything — the zone
 already matches its desired state.
@@ -223,6 +224,10 @@ authenticates with the same account the interface uses:
 docker login 127.0.0.1:8080    # the account created by quickstart
 docker pull 127.0.0.1:8080/docker.io/library/alpine:3.22.1
 ```
+
+If your Docker daemon runs inside a VM (Rancher Desktop, some Colima
+setups), its `127.0.0.1` is the VM, not your machine — use your host's
+LAN address in both commands instead.
 
 The pull succeeds, digest intact: the image was carried, verified, and
 served — never rewritten, never re-signed. The path spells out where the
@@ -274,9 +279,9 @@ docker tag docker.io/library/alpine:3.22.1 127.0.0.1:8092/docker.io/library/alpi
 docker push 127.0.0.1:8092/docker.io/library/alpine:3.22.1
 ```
 
-Adapt the recipe: pin the digest `docker push` printed, and drop the
-`platforms:` line — what you pushed is a single-platform manifest, not an
-index. Publish and sign it against
+Adapt the recipe: pin the digest `docker push` printed — what you pushed
+is a single-platform manifest, so its digest differs from the origin
+index's. Publish and sign it against
 `127.0.0.1:8092/cookbook/alpine:3.22.1` exactly as above, point the
 Retriever's `cookbook` there, and replace the `registries` block of your
 `tobby.yaml` with:

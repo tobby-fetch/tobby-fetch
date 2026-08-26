@@ -60,7 +60,7 @@ boucle locale.
 | Élément | Rôle |
 |---|---|
 | `docker.io` | Le registre amont. L'image y vit déjà ; rien n'y est poussé. |
-| Un registre cookbook (`:5000`) | Un registre OCI ordinaire qui héberge votre recipe signée. N'importe quel registre où vous pouvez pousser convient — ici, un registre local jetable. |
+| Un registre cookbook (`:5001`) | Un registre OCI ordinaire qui héberge votre recipe signée. N'importe quel registre où vous pouvez pousser convient — ici, un registre local jetable. |
 | Votre instance (`:8080`) | Celle de l'étape 1 : sécurisée, avec sa clé de confiance et son Retriever. C'est elle qui promeut. |
 | Une paire de clés `cosign` | Signe la recipe. La clé publique devient la racine de confiance de votre instance. |
 
@@ -72,8 +72,12 @@ n'importe quel registre où vous pouvez pousser. Si vous en avez déjà un
 Pour le parcours, un registre jetable en boucle locale suffit :
 
 ```sh
-docker run -d --rm --name cookbook -p 5000:5000 registry:2
+docker run -d --rm --name cookbook -p 5001:5000 registry:2
 ```
+
+Le port hôte est 5001 et non 5000 : sur macOS, le récepteur AirPlay occupe
+le port 5000 et répond 403 à sa place — un grand classique des tutoriels
+de registry locale.
 
 ## 2. Épingler l'image
 
@@ -110,9 +114,6 @@ spec:
       ref: docker.io/library/alpine   # référence nominale, sans tag
       version: 3.22.1
       digest: sha256:<le digest affiché par imagetools>
-      # Seules ces plateformes sont transférées. L'index d'origine est
-      # préservé tel quel, donc le digest épinglé reste valable.
-      platforms: [linux/amd64, linux/arm64]
 ```
 
 Les concepts — recipes, cookbooks, retrievers — sont couverts dans
@@ -126,8 +127,8 @@ contrôlée : un document qui n'est pas une recipe valide, pas entièrement
 jetable parle HTTP simple, ce qui exige un accord explicite par hôte :
 
 ```sh
-export TOBBY_REGISTRIES_INSECURE=127.0.0.1:5000
-tobby recipe push alpine.yaml 127.0.0.1:5000/cookbook/alpine:3.22.1
+export TOBBY_REGISTRIES_INSECURE=127.0.0.1:5001
+tobby recipe push alpine.yaml 127.0.0.1:5001/cookbook/alpine:3.22.1
 ```
 
 Le digest publié sort sur stdout, prêt pour la signature. Signer reste
@@ -137,7 +138,7 @@ hors de Tobby — il ne détient jamais de clé privée :
 cosign generate-key-pair
 cosign sign --key cosign.key --yes --allow-insecure-registry \
   --use-signing-config=false --tlog-upload=false \
-  "127.0.0.1:5000/cookbook/alpine@<le digest affiché par recipe push>"
+  "127.0.0.1:5001/cookbook/alpine@<le digest affiché par recipe push>"
 ```
 
 Les deux drapeaux `--use-signing-config=false --tlog-upload=false`
@@ -159,7 +160,7 @@ metadata:
   name: zone-demo
 
 spec:
-  cookbook: 127.0.0.1:5000/cookbook
+  cookbook: 127.0.0.1:5001/cookbook
   recipes:
     - name: alpine
       version: "3.22.1"
@@ -185,7 +186,7 @@ trust:
       keyFile: ./cosign.pub
 
 registries:
-  insecure: ["127.0.0.1:5000"]
+  insecure: ["127.0.0.1:5001"]
 ```
 
 Puis redémarrez :
@@ -212,8 +213,8 @@ votre racine de confiance, puis tire l'image directement depuis
 que ce qui manque à la zone. L'écran **Recipes** montre alors la recipe,
 sa version résolue et son verdict de vérification.
 
-<!-- TODO: capture : écran Tâches avec la tâche de sync et son journal en direct -->
-<!-- TODO: capture : écran Recipes montrant la recipe vérifiée -->
+![Le détail de tâche : les items de la synchronisation avec leur statut et le journal JSON brut, identifiant de run inclus](../../../../../assets/docs/fr-task-detail.png)
+![L'écran Recipes montrant la recipe promue, signature vérifiée](../../../../../assets/docs/fr-try-recipes-verified.png)
 
 Relancez la synchronisation : elle se termine sans rien transférer — la
 zone correspond déjà à son état désiré.
@@ -227,6 +228,10 @@ Docker s'authentifie avec le même compte que l'interface :
 docker login 127.0.0.1:8080    # le compte créé par le quickstart
 docker pull 127.0.0.1:8080/docker.io/library/alpine:3.22.1
 ```
+
+Si votre daemon Docker tourne dans une VM (Rancher Desktop, certains
+montages Colima), son `127.0.0.1` est la VM, pas votre machine — utilisez
+l'adresse LAN de votre hôte dans les deux commandes.
 
 Le pull réussit, digest intact : l'image a été transportée, vérifiée et
 servie — jamais réécrite, jamais re-signée. Le chemin dit d'où vient le
@@ -279,9 +284,9 @@ docker tag docker.io/library/alpine:3.22.1 127.0.0.1:8092/docker.io/library/alpi
 docker push 127.0.0.1:8092/docker.io/library/alpine:3.22.1
 ```
 
-Adaptez la recipe : épinglez le digest affiché par `docker push`, et
-retirez la ligne `platforms:` — ce que vous avez poussé est un manifeste
-mono-plateforme, pas un index. Publiez-la et signez-la contre
+Adaptez la recipe : épinglez le digest affiché par `docker push` — ce que
+vous avez poussé est un manifeste mono-plateforme, son digest diffère donc
+de celui de l'index d'origine. Publiez-la et signez-la contre
 `127.0.0.1:8092/cookbook/alpine:3.22.1` exactement comme ci-dessus,
 pointez le `cookbook` du Retriever dessus, et remplacez le bloc
 `registries` de votre `tobby.yaml` par :

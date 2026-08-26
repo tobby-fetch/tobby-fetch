@@ -36,7 +36,7 @@ to return to the configured value); it persists in the state directory,
 survives restarts, wins over `sync.interval`, and is audited as a
 sensitive configuration change (FR-094).
 
-<!-- TODO: screenshot: /admin/retriever showing the configured source, the interval and its override -->
+![The retriever administration screen: configured source, interval and its runtime override](../../../../assets/docs/admin-retriever.png)
 
 At each cycle the instance resolves every listed recipe from the
 cookbook, verifies its signature against the configured trust roots
