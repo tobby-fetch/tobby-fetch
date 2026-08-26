@@ -290,16 +290,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// served read-only under /files/. Refreshed after every sync.
 	fsrv := fileserve.NewServer(storeBlobs{st: st}, filepath.Join(cfg.Storage.Root, "meta", "fileserve"), fileserve.Limits{}, logger)
 	refreshFileSets := func(runCtx context.Context) {
-		sets, err := resolveFileSets(runCtx, st, cfg)
-		if err != nil {
-			logger.LogAttrs(runCtx, slog.LevelWarn, "fileset resolution failed",
-				slog.String("error", err.Error()))
-			return
-		}
-		if err := fsrv.Sync(runCtx, sets); err != nil {
-			logger.LogAttrs(runCtx, slog.LevelWarn, "fileset extraction failed",
-				slog.String("error", err.Error()))
-		}
+		syncFileSets(runCtx, fsrv, st, cfg, logger)
 	}
 	refreshFileSets(ctx)
 	queue.Register(tasks.TypeSync, func(runCtx context.Context, t *tasks.Task, taskLogger *slog.Logger, save func()) error {
@@ -509,6 +500,29 @@ func filesAuth(a *auth.Authenticator, anonymous map[string]bool, next http.Handl
 		}
 		next.ServeHTTP(w, r.WithContext(auth.WithIdentity(r.Context(), id)))
 	})
+}
+
+// syncFileSets resolves the declared FileSets and hands what resolved to
+// the server.
+//
+// A FileSet that did not resolve is reported and skipped, never fatal to
+// the others: resolveFileSets already documents that content which has
+// not arrived yet is not an instance failure, but the caller used to
+// abandon the whole refresh on the joined error — so one declaration
+// waiting for its recipe kept every other FileSet, packed ones included,
+// out of /files/. Found by running the FR-048 flow end to end against a
+// configuration declaring both a packed FileSet and one still to come.
+func syncFileSets(ctx context.Context, fsrv *fileserve.Server, st *store.Store, cfg *config.Config, logger *slog.Logger) {
+	sets, err := resolveFileSets(ctx, st, cfg)
+	if err != nil {
+		logger.LogAttrs(ctx, slog.LevelWarn, "fileset resolution failed",
+			slog.Int("resolved", len(sets)),
+			slog.String("error", err.Error()))
+	}
+	if err := fsrv.Sync(ctx, sets); err != nil {
+		logger.LogAttrs(ctx, slog.LevelWarn, "fileset extraction failed",
+			slog.String("error", err.Error()))
+	}
 }
 
 // resolveFileSets maps the files.filesets configuration onto concrete
