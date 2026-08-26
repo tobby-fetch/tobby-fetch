@@ -31,6 +31,14 @@ import (
 // segments are invalid in OCI names).
 const tasksDir = "_tobby/tasks"
 
+// pendingCapacity bounds the worker's hand-off channel. It is a buffer,
+// not the queue's real depth: what is waiting to run lives in q.tasks
+// with StatusPending, and the channel only carries the ids the worker has
+// not picked up yet. Create refuses beyond it — "queue is full", with no
+// trace left (2026-08 audit) — because a caller told to retry later is a
+// better answer than an unbounded backlog.
+const pendingCapacity = 256
+
 // Runner executes one task type. It mutates t's items as it progresses and
 // calls save() after every meaningful step so an interruption never loses
 // more than one step (FR-029). The returned error is the task-level
@@ -50,6 +58,14 @@ type Queue struct {
 	tasks   map[string]*Task
 	runners map[string]Runner
 	pending chan string
+	// resuming is the FR-029 backlog: the tasks Open found active, oldest
+	// first, waiting for the worker to reach them (B-019). It is a slice
+	// and not the channel on purpose — the channel is bounded and nothing
+	// consumes it during Open, so re-queuing through it wedged startup on
+	// any store carrying more active tasks than it holds. Nothing bounds
+	// this backlog either, and nothing should: these tasks already exist
+	// on disk, and refusing to remember them would be losing them.
+	resuming []string
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -86,7 +102,7 @@ func Open(storeRoot string, logger *slog.Logger, opts ...QueueOption) (*Queue, e
 		logger:  logger,
 		tasks:   map[string]*Task{},
 		runners: map[string]Runner{},
-		pending: make(chan string, 256),
+		pending: make(chan string, pendingCapacity),
 		Now:     time.Now,
 	}
 	for _, opt := range opts {
@@ -118,16 +134,21 @@ func Open(storeRoot string, logger *slog.Logger, opts ...QueueOption) (*Queue, e
 		}
 		q.tasks[t.ID] = &t
 	}
-	// Persist the resumed marker, oldest first, and re-queue.
+	// Persist the resumed marker, oldest first, and hand the whole set to
+	// the worker's backlog — never to the channel (B-019): the worker
+	// only starts after Open returns, so a blocking send on a bounded
+	// channel made a store with more active tasks than it holds wedge the
+	// instance at startup. Retention could not save it either: FR-029
+	// owns active tasks and they are deliberately never purged.
 	sort.Slice(resumed, func(i, j int) bool {
 		return q.tasks[resumed[i]].Created.Before(q.tasks[resumed[j]].Created)
 	})
 	for _, id := range resumed {
 		q.persist(q.tasks[id])
-		q.pending <- id
 		logger.LogAttrs(context.Background(), slog.LevelInfo, "task resumed after interruption",
 			slog.String("task_id", id), slog.String("run_id", q.tasks[id].RunID))
 	}
+	q.resuming = resumed
 	// Retention applies to what was just reloaded too: an instance that
 	// accumulated history before the policy existed (or with a larger
 	// keep) trims it on the next start, not only as new tasks arrive.
@@ -249,9 +270,21 @@ func (q *Queue) HasPending(taskType string) bool {
 
 // Start runs the worker until ctx is canceled. A task interrupted by
 // shutdown stays running on disk and resumes on the next Open.
+//
+// The FR-029 resume backlog is drained first and before the channel
+// (B-019): those tasks were created before anything this process
+// accepted, and running them first is the order Open used to obtain by
+// filling the channel ahead of any caller.
 func (q *Queue) Start(ctx context.Context) {
 	go func() {
 		for {
+			if ctx.Err() != nil {
+				return
+			}
+			if id, ok := q.nextResuming(); ok {
+				q.execute(ctx, id)
+				continue
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -260,6 +293,21 @@ func (q *Queue) Start(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// nextResuming pops the oldest task of the resume backlog (B-019).
+func (q *Queue) nextResuming() (string, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.resuming) == 0 {
+		return "", false
+	}
+	id := q.resuming[0]
+	// The consumed head is cleared so the backing array does not pin the
+	// whole set of identifiers for as long as one is left to run.
+	q.resuming[0] = ""
+	q.resuming = q.resuming[1:]
+	return id, true
 }
 
 // execute runs one task through its registered runner. The runner works
