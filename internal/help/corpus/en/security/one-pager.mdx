@@ -1,0 +1,97 @@
+---
+title: The security model on one page
+description: The five commitments Tobby makes, the status of every security feature, and what the threat model does and does not cover — printable, sendable as-is.
+sidebar:
+  order: 1
+---
+
+import StatusTable from "../../../../components/StatusTable.astro";
+
+This page is written to be sent as-is to a CISO or a security auditor.
+Every claim carries its requirement number ([SRS](../../reference/srs-adr/))
+and its delivery status. Nothing on this page is aspirational unless
+explicitly marked as upcoming.
+
+## The five commitments
+
+**1 — Tobby signs nothing.**
+Tobby transports content; it never creates authenticity. It holds no
+signing key, in any mode, ever. Signatures are produced upstream by the
+organization's qualification pipeline and only *verified* by Tobby
+(FR-033, ADR-0007 — delivered v0.3.0). The verifier is deliberately
+verify-only code.
+
+**2 — The destination's trust roots are the only authority.**
+Verification always runs against the public keys configured on the
+*receiving* instance. Trust roots found on transport media are ignored by
+requirement (FR-054): compromising a media never compromises the
+destination's trust anchor. Delivered for the verification engine
+(v0.3.0); the media path itself ships with milestone 5.
+
+**3 — The media manifest is integrity, not trust.**
+The inventory written on removable media (paths, sizes, digests, zone
+identity) detects corruption and incompleteness. It is deliberately
+unsigned — see commitment 1 — and is never what makes content
+trustworthy: only recipe signatures verified against the destination's
+trust roots do that (FR-054, ADR-0006). Model specified and published;
+implementation at milestone 5. See
+[media security](../../air-gap/media-security/).
+
+**4 — Secure by default.**
+Authentication is on by default in both modes (FR-075 — delivered
+v0.4.0). Every security-reducing setting is an explicit opt-in, visible
+in the configuration report, logged, audit-logged, and — where it changes
+what a user faces — announced by a permanent UI banner. No default or
+omitted setting weakens the instance.
+
+**5 — No undeclared outbound connection.**
+Tobby makes no network connection the operator did not configure: no
+telemetry, no crash reporting, no update check (NFR-019 — delivered
+v0.1.x). This is proven, not promised: every acceptance run starts with
+an egress canary that must fail from the isolated zone, and e2e runs
+behind an egress-capturing proxy record connections to configured
+endpoints only. See [tests and proofs](../../project/tests-and-proofs/).
+
+## Security feature status
+
+The table below is rendered from the same data file as the
+[project status](../../discover/status/) page — a single source of truth,
+never a second hand-maintained table.
+
+<StatusTable securityOnly />
+
+## Threats covered and not covered
+
+Covered today, with the detail pages that substantiate each line:
+
+- Unsigned or tampered content — blocked at import and before push (FR-033): [content trust](../../security/content-trust/).
+- Content pulled from or pushed to an unapproved registry — refused before any transfer (FR-030): [content trust](../../security/content-trust/).
+- Unauthenticated or under-privileged access to any surface (FR-074, FR-075): [authentication and RBAC](../../security/auth-rbac/).
+- Secrets leaking through logs, errors, or configuration dumps (NFR-015): [secrets](../../security/secrets/).
+- Hidden network behavior (NFR-019): [threat model](../../security/threat-model/).
+- Untraceable security actions (FR-094): [audit log](../../security/audit-log/).
+
+Covered at milestone 5: tampered or stale removable media (FR-054),
+secrets travelling on media (R-16). Covered at milestone 6: known CVEs in
+transported content (FR-031), authentication brute-force hardening beyond
+the per-origin throttling shipped in v0.4.2 (R-14).
+
+Not covered by design, stated plainly: Tobby does not qualify upstream
+content, does not purge destination registries, and its audit log is
+operational evidence rather than a signed trust anchor
+([limits](../../discover/limits/), [threat model](../../security/threat-model/)).
+
+## Vulnerability scanning
+
+Policy-driven Trivy scanning — severity thresholds, blocking or advisory,
+with an offline vulnerability database transported by Tobby itself —
+arrives at milestone 6 (FR-031, FR-032, ADR-0008). Until it ships there
+is deliberately no scanning page in this documentation; track the line on
+the [project status](../../discover/status/) page.
+
+## Verify these claims
+
+The build chain behind the binary you run — SLSA Build L3 provenance,
+bit-for-bit reproducible builds, signed SBOMs (NFR-004, NFR-005, NFR-006,
+ADR-0011) — is independently checkable:
+[verify a release](../../project/verify-a-release/).

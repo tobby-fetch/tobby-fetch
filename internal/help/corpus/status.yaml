@@ -1,0 +1,398 @@
+# Single source of truth for every status badge on the documentation site.
+# Rendered by src/components/StatusTable.astro on:
+#   - docs/discover/status        (full table)
+#   - docs/security/one-pager     (rows with `security: true`)
+# One edit per milestone release keeps the whole site honest.
+#
+# status: available | partial | upcoming
+# milestone: the milestone that delivers (or completes) the feature;
+#            omitted when the feature is fully available.
+# security: true marks rows shown on the security one-pager.
+updated: "2026-08-25"
+version: "v0.4.2"
+features:
+  # ── Milestone 1 — Foundations (delivered, v0.1.x) ──────────────────────
+  - id: "1.1"
+    en: Secure build chain (reproducible, SLSA L3, signed SBOM)
+    fr: Chaîne de build sécurisée (reproductible, SLSA L3, SBOM signé)
+    status: available
+    security: true
+  - id: "1.2"
+    en: Operable application foundation (layered config, JSON logs, probes, metrics)
+    fr: Socle applicatif exploitable (config en couches, logs JSON, sondes, métriques)
+    status: available
+  - id: "R-09"
+    en: End-to-end run identifier
+    fr: Identifiant de run de bout en bout
+    status: partial
+    milestone: 5
+    security: true
+    note:
+      en: Run ID in logs shipped; media manifest and destination reuse land with milestone 5.
+      fr: Volet logs livré ; manifeste du média et reprise côté destination au jalon 5.
+  - id: "R-12"
+    en: Security audit log
+    fr: Journal d'audit de sécurité
+    status: partial
+    milestone: 6
+    security: true
+    note:
+      en: Foundation plus authentication and token events shipped; media overrides at milestone 5, scan events at milestone 6.
+      fr: Socle et événements authentification/tokens livrés ; overrides média au jalon 5, scan au jalon 6.
+  - id: "1.3"
+    en: Embedded OCI registry with canonical relocation layout
+    fr: Registry OCI embarquée et rangement canonique
+    status: available
+  - id: "1.4"
+    en: Recipe / Retriever format specification (Apache-2.0)
+    fr: Spécification du format Recipe / Retriever (Apache-2.0)
+    status: available
+    note:
+      en: Public draft, v1alpha1, separate repository.
+      fr: Brouillon public, v1alpha1, dépôt séparé.
+  - id: "1.5"
+    en: Five-level test pyramid and blocking quality gates
+    fr: Pyramide de tests à 5 niveaux et gates bloquantes
+    status: available
+  - id: "1.6"
+    en: "Crucible: disposable replica of the target environment"
+    fr: "Crucible : réplique jetable de l'environnement cible"
+    status: available
+
+  # ── Milestone 2 — User-experience preview (delivered, v0.2.x) ──────────
+  - id: "2.1"
+    en: Server-rendered web UI, bilingual EN/FR, no Node
+    fr: Interface web rendue serveur, bilingue EN/FR, zéro Node
+    status: available
+  - id: "2.2"
+    en: Content browsing (repositories, tags, platforms, digests)
+    fr: Navigation du contenu (dépôts, tags, plateformes, digests)
+    status: available
+  - id: "R-03"
+    en: Actionable error taxonomy (TBY-* codes, bilingual)
+    fr: Taxonomie d'erreurs actionnables (codes TBY-*, bilingue)
+    status: available
+  - id: "R-06"
+    en: Search and filters with strict UI/API parity
+    fr: Recherche et filtres, parité stricte UI/API
+    status: available
+  - id: "2.3"
+    en: On-demand unit import with platform selection
+    fr: Import unitaire à la demande avec sélection de plateformes
+    status: available
+  - id: "2.4"
+    en: Persistent task tracking with logs and resumption
+    fr: Suivi des tâches persistant, journaux et reprise
+    status: available
+  - id: "2.5"
+    en: Versioned REST API /api/v1 with self-served OpenAPI
+    fr: API REST versionnée /api/v1 avec OpenAPI embarquée
+    status: available
+  - id: "R-01"
+    en: Secure guided first start (no open UI, tool-computed hashes)
+    fr: Premier démarrage sécurisé et guidé (UI jamais ouverte)
+    status: available
+    security: true
+
+  # ── Milestone 3 — Recipe engine (delivered, v0.3.x) ────────────────────
+  - id: "R-34"
+    en: Interactive first start (tobby quickstart)
+    fr: Premier démarrage interactif (tobby quickstart)
+    status: available
+  - id: "R-35"
+    en: System packages (.deb/.rpm/.apk) as release assets
+    fr: Paquets systèmes (.deb/.rpm/.apk) en assets de release
+    status: available
+  - id: "3.1"
+    en: Strict recipe and retriever validation (SDK, unknown field = rejection)
+    fr: Validation stricte des recipes et retrievers (SDK, champ inconnu = rejet)
+    status: available
+  - id: "3.2"
+    en: All four ingredient kinds (ContainerImage, HelmChart, OCIArtifact, FileSet)
+    fr: Les 4 types d'ingrédients (ContainerImage, HelmChart, OCIArtifact, FileSet)
+    status: available
+  - id: "3.3"
+    en: Version resolution and per-digest differential sync
+    fr: Résolution de versions et différentiel par digest
+    status: available
+  - id: "R-23"
+    en: FileSet packaging guide (reproducible archives, standard tooling)
+    fr: Guide d'empaquetage FileSet (archives reproductibles, outillage standard)
+    status: available
+  - id: "3.4"
+    en: Cosign signature verification at entry (trust roots, scopes, both layouts)
+    fr: Vérification cosign à l'entrée (trust roots, scopes, les deux formats)
+    status: available
+    security: true
+  - id: "R-26"
+    en: Store format compatibility guarantee across versions
+    fr: Compatibilité du format de store entre versions
+    status: available
+  - id: "R-10"
+    en: recipe lint and cookbook publication guide
+    fr: recipe lint et guide de publication vers un cookbook
+    status: available
+  - id: "3.5"
+    en: Source-to-destination mapping table and zone cascade
+    fr: Table de correspondance et cascade entre zones
+    status: available
+  - id: "3.6"
+    en: FileSet HTTP serving — OS package repository (/files/)
+    fr: Service HTTP des FileSets — dépôt de paquets OS (/files/)
+    status: available
+
+  # ── Milestone 4 — Passthrough (delivered, v0.4.x) ──────────────────────
+  - id: "4.1"
+    en: Continuous promotion service between connected zones
+    fr: Service de promotion continue entre zones connectées
+    status: available
+  - id: "4.2"
+    en: Registry allowlist, refused before any transfer
+    fr: Liste blanche de registries, refus avant tout transfert
+    status: available
+    security: true
+  - id: "4.3"
+    en: Authentication and RBAC, secure by default (basic, tokens, three roles)
+    fr: Authentification et RBAC sécurisés par défaut (basic, tokens, trois rôles)
+    status: available
+    security: true
+  - id: "R-29"
+    en: Fine-grained resume of large downloads (HTTP Range)
+    fr: Reprise fine des gros téléchargements (HTTP Range)
+    status: available
+  - id: "R-36"
+    en: Recipe publication from the CLI (tobby recipe push)
+    fr: Publication de recipe en CLI (tobby recipe push)
+    status: available
+  - id: "R-37"
+    en: Recipe document visible in the interface (digest, copy, download)
+    fr: Recipe visible dans l'interface (digest, copie, téléchargement)
+    status: available
+  - id: "R-40"
+    en: Recipe import from the interface
+    fr: Import de recipe depuis l'interface
+    status: available
+  - id: "R-39"
+    en: "recipe cook: recipe-authoring tooling"
+    fr: "recipe cook : outillage d'écriture des recipes"
+    status: upcoming
+    note:
+      en: In development in the recipe-spec repository.
+      fr: En développement dans le dépôt recipe-spec.
+  - id: "4.4"
+    en: "Enterprise network: authenticated proxies, private PKI, server TLS"
+    fr: "Réseau d'entreprise : proxys authentifiés, PKI privée, TLS serveur"
+    status: available
+    security: true
+  - id: "4.5"
+    en: Reference deployment (hardened Helm chart and raw manifests)
+    fr: Déploiement de référence (chart Helm durci et manifests bruts)
+    status: available
+
+  # ── Milestone 5 — Mirror & air-gap (upcoming, v0.5.x) ──────────────────
+  - id: "5.1"
+    en: Mirror synchronization onto a transportable store
+    fr: Synchronisation miroir sur store transportable
+    status: upcoming
+    milestone: 5
+  - id: "R-02"
+    en: "Media screen: guided operator journey with per-step verdicts"
+    fr: "Écran Média : parcours opérateur guidé, verdicts par étape"
+    status: upcoming
+    milestone: 5
+    security: true
+  - id: "5.2"
+    en: "Pre-flight checks: deduplicated volume vs media space, filesystem refusals"
+    fr: "Pré-vol : volume dédupliqué vs espace du média, refus de systèmes de fichiers"
+    status: upcoming
+    milestone: 5
+  - id: "R-05"
+    en: Embedded offline documentation and troubleshooting (/help)
+    fr: Documentation et dépannage embarqués hors-ligne (/help)
+    status: upcoming
+    milestone: 5
+  - id: "R-08"
+    en: Stable CLI contract (--output json, published exit codes)
+    fr: Contrat CLI stable (--output json, codes de sortie publiés)
+    status: upcoming
+    milestone: 5
+  - id: "R-04"
+    en: "Plan mode: full dry-run without side effects"
+    fr: "Mode plan : simulation complète sans effet de bord"
+    status: upcoming
+    milestone: 5
+  - id: "R-28"
+    en: Media identity and freshness (stale media refused by default)
+    fr: Identité et fraîcheur des supports (média antérieur refusé par défaut)
+    status: upcoming
+    milestone: 5
+    security: true
+  - id: "R-16"
+    en: Secrets never travel on the transportable store
+    fr: Les secrets ne voyagent jamais sur le store transportable
+    status: upcoming
+    milestone: 5
+    security: true
+  - id: "5.3"
+    en: Zone identity guard and media inventory
+    fr: Garde d'identité de zone et inventaire du média
+    status: upcoming
+    milestone: 5
+    security: true
+  - id: "R-19"
+    en: Fine-grained blocking on a tampered medium (per-recipe verdicts)
+    fr: Blocage au juste grain sur support altéré (verdicts par recipe)
+    status: upcoming
+    milestone: 5
+    security: true
+  - id: "5.4"
+    en: Destination-side operation (full re-verification, then differential push)
+    fr: Opération côté zone isolée (re-vérification complète puis push différentiel)
+    status: upcoming
+    milestone: 5
+    security: true
+  - id: "5.5"
+    en: OCI image layout export/import and audited store reset
+    fr: Export/import OCI image layout et remise à zéro auditée du store
+    status: upcoming
+    milestone: 5
+  - id: "R-33"
+    en: Transit store housekeeping (retriever-aligned cleanup, disk threshold)
+    fr: Store de transit maîtrisé (nettoyage aligné sur le Retriever, seuil disque)
+    status: upcoming
+    milestone: 5
+  - id: "5.6"
+    en: Windows workstation for the mirror journey (winget, Scoop)
+    fr: Poste Windows pour le parcours miroir (winget, Scoop)
+    status: upcoming
+    milestone: 5
+
+  # ── Milestone 6 — Hardened controls & enterprise identity (v0.6.x) ─────
+  - id: "6.1"
+    en: Vulnerability scanning with policy (Trivy, blocking or advisory)
+    fr: Analyse de vulnérabilités avec politique (Trivy, bloquante ou consultative)
+    status: upcoming
+    milestone: 6
+    security: true
+  - id: "R-13"
+    en: Guaranteed freshness of the vulnerability database
+    fr: Fraîcheur garantie de la base de vulnérabilités
+    status: upcoming
+    milestone: 6
+    security: true
+  - id: "R-14"
+    en: Authentication hardening (rate limiting, session and token expiry)
+    fr: Durcissement de l'authentification (limitation de tentatives, expirations)
+    status: partial
+    milestone: 6
+    security: true
+    note:
+      en: Failed-authentication rate limiting shipped in v0.4.2; session and token expiry land with milestone 6.
+      fr: Limitation des échecs d'authentification livrée en v0.4.2 ; expirations de session et de token au jalon 6.
+  - id: "6.2"
+    en: Offline vulnerability database, carried by Tobby itself
+    fr: Base de vulnérabilités hors-ligne, transportée par Tobby lui-même
+    status: upcoming
+    milestone: 6
+    security: true
+  - id: "R-25"
+    en: Tobby updates through its own channel, across the air gap
+    fr: Mise à jour de Tobby par son propre canal, à travers l'air-gap
+    status: upcoming
+    milestone: 6
+    security: true
+  - id: "R-22"
+    en: Reduced-trust content stays visibly marked everywhere
+    fr: Le contenu admis en confiance réduite reste visible partout
+    status: upcoming
+    milestone: 6
+    security: true
+  - id: "R-20"
+    en: Continuity when the enterprise directory is down
+    fr: Continuité quand l'annuaire d'entreprise est en panne
+    status: upcoming
+    milestone: 6
+    security: true
+  - id: "6.3"
+    en: "Enterprise identity: OIDC, then SAML 2.0"
+    fr: "Identité d'entreprise : OIDC puis SAML 2.0"
+    status: upcoming
+    milestone: 6
+    security: true
+  - id: "R-07"
+    en: Printable transfer report (bilingual, marked as unsigned aid)
+    fr: Bordereau de transfert imprimable (bilingue, marqué aide non signée)
+    status: upcoming
+    milestone: 6
+  - id: "R-31"
+    en: On-demand store integrity verification with timestamped report
+    fr: Vérification d'intégrité du store à la demande, rapport horodaté
+    status: upcoming
+    milestone: 6
+    security: true
+
+  # ── Milestone 7 — Finishing, documentation & acceptance (v0.7.x → 1.0) ─
+  - id: "7.1"
+    en: UI polish and consumption aids (mapping exports, registries.yaml snippet)
+    fr: Finition de l'interface et aides à la consommation (exports mapping, registries.yaml)
+    status: upcoming
+    milestone: 7
+  - id: "7.2"
+    en: Complete bilingual documentation (EN/FR, CI-checked completeness)
+    fr: Documentation bilingue complète (EN/FR, complétude vérifiée en CI)
+    status: upcoming
+    milestone: 7
+  - id: "R-30"
+    en: One-step redacted diagnostic bundle
+    fr: Bundle de diagnostic expurgé en un geste
+    status: upcoming
+    milestone: 7
+    security: true
+  - id: "R-11"
+    en: Integration and monitoring kit (signed OpenAPI, metrics reference, alerts)
+    fr: Kit d'intégration et de supervision (OpenAPI signée, métriques, alertes)
+    status: upcoming
+    milestone: 7
+  - id: "R-32"
+    en: Clock-sanity detection in isolated zones
+    fr: Cohérence d'horloge en zone isolée
+    status: upcoming
+    milestone: 7
+    security: true
+  - id: "R-27"
+    en: Instance backup and tested rebuild procedure
+    fr: Sauvegarde et reconstruction d'instance testée
+    status: upcoming
+    milestone: 7
+  - id: "R-15"
+    en: Scoped, expiring vulnerability exceptions (VEX-convergent)
+    fr: Dérogations de vulnérabilités ciblées et bornées (convergence VEX)
+    status: upcoming
+    milestone: 7
+    security: true
+  - id: "7.3"
+    en: Hardening proven by tests (fuzzing, CSRF, OCI conformance suite)
+    fr: Durcissement prouvé par les tests (fuzzing, CSRF, conformité OCI)
+    status: upcoming
+    milestone: 7
+    security: true
+  - id: "R-21"
+    en: Documented emergency path (scoped, visible, organization-signed)
+    fr: Voie d'urgence encadrée (périmètre déclaré, visible, signée par l'organisation)
+    status: upcoming
+    milestone: 7
+    security: true
+    note:
+      en: Documentation-only feature; no code path.
+      fr: Feature purement documentaire ; aucun chemin de code.
+  - id: "R-17"
+    en: Per-content provenance and trust class, visible everywhere
+    fr: Provenance et confiance visibles contenu par contenu
+    status: upcoming
+    milestone: 7
+    security: true
+  - id: "7.4"
+    en: Adversarial acceptance and version 1.0 (spec frozen at v1)
+    fr: Recette contradictoire et version 1.0 (spec gelée en v1)
+    status: upcoming
+    milestone: 7
