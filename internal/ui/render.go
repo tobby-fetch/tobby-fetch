@@ -153,6 +153,13 @@ type ErrView struct {
 	Action      string
 	HelpAnchor  string
 	Correlation string
+	// Detail is the verbatim technical cause of a persisted failure
+	// (B-021), never localized and only ever set where one was recorded —
+	// the task surfaces. What/Cause/Action above stay the catalog's
+	// localized triple; this is the line that says what the registry, the
+	// parser or the filesystem actually answered, and without it a
+	// TBY-SRV-001 row explains nothing at all.
+	Detail string
 	// Status is the HTTP status, shown on full error pages.
 	Status int
 }

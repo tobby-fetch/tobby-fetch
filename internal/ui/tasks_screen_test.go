@@ -6,6 +6,7 @@ package ui
 import (
 	"context"
 	"encoding/json"
+	"html"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -512,5 +513,91 @@ func TestBlobProgressRendering(t *testing.T) {
 	}
 	if blobViews(&tasks.Item{}) != nil {
 		t.Error("an item with no tracked blob produced rows")
+	}
+}
+
+// TestFailedItemCauseReachesBothSurfaces is B-021 on the reading side:
+// the technical cause recorded on a failed item must be visible to the
+// operator, and visible identically through the screen and through
+// /api/v1/tasks/{id} (FR-061). The code alone answered "an internal
+// error occurred" and sent the reader to logs that, on the sync path,
+// held nothing.
+func TestFailedItemCauseReachesBothSurfaces(t *testing.T) {
+	u, q, st := newTestUIWithQueue(t)
+	uiMux := mount(u)
+	c := login(t, uiMux, "alexis", "pw-admin")
+
+	// One real platform and one digest that is simply not there: the
+	// upstream registry's own refusal is the cause under test.
+	ref := seedImportUpstream(t, "linux/amd64")
+	startQueue(t, q)
+	rep := inspectRef(t, u, ref)
+	created, err := q.Create(tasks.TypeUnitImport, ref, "alexis", []tasks.Item{
+		{Name: "linux/amd64", Digest: rep["linux/amd64"]},
+		{Name: "linux/arm64", Digest: "sha256:" + strings.Repeat("ab", 32)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := waitSettled(t, q, created.ID)
+
+	var detail string
+	for i := range task.Items {
+		if task.Items[i].Status == tasks.StatusFailed {
+			detail = task.Items[i].Error.Detail
+		}
+	}
+	if detail == "" {
+		t.Fatal("the failed item carries no technical cause (B-021)")
+	}
+
+	restAPI := api.New(u.authn, slog.New(slog.DiscardHandler))
+	api.RegisterTasks(restAPI, q, st, time.Second, nil)
+	apiMux := http.NewServeMux()
+	apiMux.Handle("/api/v1/", restAPI.Handler())
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/tasks/"+task.ID, http.NoBody)
+	r.SetBasicAuth("lecteur", "pw-view")
+	wAPI := httptest.NewRecorder()
+	apiMux.ServeHTTP(wAPI, r)
+	if wAPI.Code != http.StatusOK {
+		t.Fatalf("api = %d: %s", wAPI.Code, wAPI.Body.String())
+	}
+	var resp struct {
+		Task struct {
+			Items []struct {
+				Status string `json:"status"`
+				Error  *struct {
+					Code   string `json:"code"`
+					Detail string `json:"detail"`
+				} `json:"error"`
+			} `json:"items"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal(wAPI.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	var apiDetail string
+	for _, it := range resp.Task.Items {
+		if it.Error != nil {
+			apiDetail = it.Error.Detail
+		}
+	}
+	if apiDetail != detail {
+		t.Errorf("api item detail = %q, want %q", apiDetail, detail)
+	}
+
+	// On the screen the cause must sit INSIDE the item's error block, not
+	// merely somewhere on the page: the raw log view happens to quote it
+	// too, and an operator reading a failed row should not have to go
+	// mining a log transcript for the sentence that explains the row
+	// right in front of them.
+	body := get(t, uiMux, c, "/tasks/"+task.ID, nil).Body.String()
+	_, after, found := strings.Cut(body, `<details class="t-errrow">`)
+	if !found {
+		t.Fatal("the failed item has no error block on the detail screen")
+	}
+	block, _, _ := strings.Cut(after, "</details>")
+	if !strings.Contains(block, html.EscapeString(detail)) {
+		t.Errorf("the item's error block never shows the cause %q (B-021, FR-061):\n%s", detail, block)
 	}
 }

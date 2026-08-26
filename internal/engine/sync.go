@@ -271,16 +271,32 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 				// share a slot, so the slice needs no lock of its own.
 				records[i] = rec
 			}
+			var te *taxonomy.Error
+			if err != nil {
+				te = e.mapError(err, ing.Ref)
+			}
 			sink.update(func(t *tasks.Task) bool {
 				item := itemFor(t, itemName)
-				if err != nil {
+				if te != nil {
 					item.Status = tasks.StatusFailed
-					item.Error = tasks.FromTaxonomy(e.mapError(err, ing.Ref))
+					item.Error = tasks.FromTaxonomy(te)
 				} else {
 					t.Resolutions = append(t.Resolutions, res)
 				}
 				return true
 			})
+			if te != nil {
+				// B-021: this path recorded the code on the item and said
+				// nothing anywhere else — unlike "recipe entry failed"
+				// above and "promotion refused" on the push side. Several
+				// codes, TBY-SRV-001 first among them, answer "follow the
+				// correlation identifier in the logs" (FR-090), which is
+				// only an answer if a record exists to be found.
+				logger.LogAttrs(ctx, slog.LevelWarn, "ingredient synchronization failed",
+					slog.String("ingredient", ing.Name), slog.String("item", itemName),
+					slog.String("digest", ing.Digest), slog.String("code", string(te.Code())),
+					slog.String("error", err.Error()))
+			}
 		}(i, ing, itemName)
 	}
 	wg.Wait()

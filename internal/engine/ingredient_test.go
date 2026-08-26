@@ -4,7 +4,9 @@
 package engine
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -210,6 +212,70 @@ func TestSyncMissingPlatform(t *testing.T) {
 	it := itemByName(t, task, "partial@1.0.0/app")
 	if it.Status != tasks.StatusFailed || it.Error == nil {
 		t.Errorf("item = %+v, want failed on the absent platform (FR-022)", it)
+	}
+}
+
+// TestFailedIngredientIsLoggedWithItsCause is B-021: an ingredient that
+// fails must leave a trail an operator can follow.
+//
+// The failure fixture is deliberately the most opaque one the engine
+// produces — an absent platform, which carries no taxonomy entry of its
+// own and settles as TBY-SRV-001, whose corrective action is literally
+// "follow the correlation identifier in the logs" (FR-090). Before the
+// fix that instruction led nowhere: the item recorded the code and
+// nothing else, and the ingredient goroutine emitted no record at all,
+// at any level. The test therefore asserts both halves of the trail —
+// the log line with the FR-090 correlation fields, and the cause carried
+// on the item so the task detail and /api/v1/tasks/{id} can show it.
+func TestFailedIngredientIsLoggedWithItsCause(t *testing.T) {
+	src := newRegistry(t)
+	dst := openStore(t)
+	kp := newKeyPair(t)
+
+	idx := seedIndex(t, src, "library/app", "1.0.0", v1.Platform{OS: "linux", Architecture: "amd64"})
+	yaml := cookedRecipeYAML(t, "opaque", "1.0.0", []spec.Ingredient{{
+		Name: "app", Kind: spec.IngredientContainerImage,
+		Ref: src.addr + "/library/app", Version: "1.0.0", Digest: idx.digest,
+		Platforms: []string{"linux/amd64", "linux/riscv64"},
+	}})
+	manDig := publishRecipe(t, src.st, "cookbook/opaque", "1.0.0", yaml)
+	signManifest(t, src.st, "cookbook/opaque", manDig, kp)
+
+	retr := retrieverFile(t, testZone, src.addr+"/cookbook", []spec.RecipeSelector{
+		{Name: "opaque", Version: "1.0.0"},
+	})
+	var logBuf bytes.Buffer
+	eng := New(dst, newRemotes(t, nil), trustFor(t, nil, kp), retr, "", syncCfg())
+	task := &tasks.Task{ID: "tsk_b021", RunID: "run_b021", Type: tasks.TypeSync, Status: tasks.StatusRunning}
+	if err := runSyncTask(t, eng, task, slog.New(slog.NewTextHandler(&logBuf, nil))); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	it := itemByName(t, task, "opaque@1.0.0/app")
+	if it.Status != tasks.StatusFailed || it.Error == nil {
+		t.Fatalf("item = %+v, want failed", it)
+	}
+	if it.Error.Code != taxonomy.CodeInternal {
+		t.Fatalf("item code = %s, want the opaque %s this test is about", it.Error.Code, taxonomy.CodeInternal)
+	}
+	// The cause travels with the item, as a field of its own: the code
+	// stays the code (the taxonomy is untouched), the technical detail
+	// rides beside it so every surface can show it (FR-061).
+	if !strings.Contains(it.Error.Detail, "linux/riscv64") {
+		t.Errorf("item error detail = %q, want the absent platform named", it.Error.Detail)
+	}
+
+	// The log line, with the correlation fields the corrective action of
+	// TBY-SRV-001 sends the operator looking for (FR-090).
+	logs := logBuf.String()
+	for _, want := range []string{
+		"ingredient synchronization failed",
+		"recipe=opaque", "ingredient=app",
+		"code=" + string(taxonomy.CodeInternal), "linux/riscv64",
+	} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("logs lack %q (B-021, FR-090):\n%s", want, logs)
+		}
 	}
 }
 

@@ -30,6 +30,7 @@
 "error.what_label": "Quoi"
 "error.cause_label": "Cause probable"
 "error.action_label": "Action corrective"
+"error.detail_label": "Cause rapportée"
 "error.help_link": "Aide sur {{.Code}}"
 "error.back_home": "Retour au tableau de bord"
 "error.back_content": "Parcourir le contenu"

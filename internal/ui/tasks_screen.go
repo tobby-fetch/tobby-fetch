@@ -172,6 +172,21 @@ type taskBlobView struct {
 	Done    bool
 }
 
+// itemErrView localizes a persisted task failure and carries its
+// technical cause through (B-021): the what/cause/action triple is
+// rebuilt from the catalog in the viewer's language (ADR-0015 §4), the
+// Detail is the verbatim wrapped error — the same string the FR-090 log
+// record carries under the correlation identifier shown beside it.
+//
+// It stays local to the task surfaces rather than folded into errView:
+// only persisted failures record a cause, and a taxonomy error raised
+// on any other screen has no business exposing its internals.
+func itemErrView(lang string, ie *tasks.ItemError, correlation string) *ErrView {
+	v := errView(lang, ie.Taxonomy(correlation))
+	v.Detail = ie.Detail
+	return v
+}
+
 // blobViews renders an item's tracked blobs.
 func blobViews(it *tasks.Item) []taskBlobView {
 	if len(it.Blobs) == 0 {
@@ -242,12 +257,12 @@ func (u *UI) taskDetail(w http.ResponseWriter, r *http.Request) {
 		DownloadHref: "/api/v1/tasks/" + t.ID + "/logs?format=raw",
 	}
 	if t.Error != nil {
-		data.TaskErr = errView(lang, t.Error.Taxonomy(t.RunID))
+		data.TaskErr = itemErrView(lang, t.Error, t.RunID)
 	}
 	for _, it := range t.Items {
 		iv := taskItemView{Item: it, State: string(it.Status), LargeBlobs: blobViews(&it)}
 		if it.Error != nil {
-			iv.Err = errView(lang, it.Error.Taxonomy(t.RunID))
+			iv.Err = itemErrView(lang, it.Error, t.RunID)
 		}
 		data.Items = append(data.Items, iv)
 	}

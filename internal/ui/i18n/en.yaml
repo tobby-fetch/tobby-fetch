@@ -30,6 +30,7 @@
 "error.what_label": "What"
 "error.cause_label": "Probable cause"
 "error.action_label": "Corrective action"
+"error.detail_label": "Reported cause"
 "error.help_link": "Help on {{.Code}}"
 "error.back_home": "Back to the dashboard"
 "error.back_content": "Browse the content"

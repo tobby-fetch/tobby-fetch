@@ -247,14 +247,37 @@ func (it *Item) TrackBlobDone(dgst string) {
 type ItemError struct {
 	Code   taxonomy.Code  `json:"code"`
 	Params map[string]any `json:"params,omitempty"`
+	// Detail is the underlying technical cause, verbatim (B-021).
+	//
+	// It is a field of its OWN, beside the code and never in place of
+	// it: the code is the stable contract (R-03) and the taxonomy stays
+	// untouched, while the detail is the one thing the taxonomy cannot
+	// carry — what the source registry, the parser or the filesystem
+	// actually said. Without it a TBY-SRV-001 item states that an
+	// internal error occurred and stops there, which is precisely the
+	// dead end B-021 reported.
+	//
+	// Deliberately NOT localized: it is the wrapped Go error, the same
+	// string the FR-090 log record carries, so the two can be matched
+	// character for character. Never a rendered sentence — the
+	// localized what/cause/action still come from the catalog at
+	// display time (ADR-0015 §4).
+	Detail string `json:"detail,omitempty"`
 }
 
-// FromTaxonomy converts a taxonomy error for persistence.
+// FromTaxonomy converts a taxonomy error for persistence, wrapped cause
+// included (B-021). The taxonomy keeps that cause for logs only; dropping
+// it here was what left a failed item carrying a code an operator could
+// read but not act on.
 func FromTaxonomy(e *taxonomy.Error) *ItemError {
 	if e == nil {
 		return nil
 	}
-	return &ItemError{Code: e.Code(), Params: e.ParamsMap()}
+	ie := &ItemError{Code: e.Code(), Params: e.ParamsMap()}
+	if cause := e.Unwrap(); cause != nil {
+		ie.Detail = cause.Error()
+	}
+	return ie
 }
 
 // Taxonomy rebuilds the renderable error.

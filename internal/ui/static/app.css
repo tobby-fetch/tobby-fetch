@@ -478,6 +478,12 @@ code {
   color: var(--tobby-muted); font-weight: 600; padding-top: 0.15rem;
 }
 .t-error-block dd { margin: 0; }
+/* B-021: the verbatim cause reported by the source. Long, monospaced and
+   untranslated — it wraps anywhere rather than widening the block. */
+.t-error-block dd.t-error-detail {
+  font-family: var(--tobby-font-mono); font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
 /* Footer: "Aide sur TBY-XXX-NNN" link + correlation chip (run_id). */
 .t-error-block-foot {
   display: flex; align-items: center; flex-wrap: wrap; gap: 0.8rem;

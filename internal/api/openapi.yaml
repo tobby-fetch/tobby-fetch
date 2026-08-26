@@ -1267,6 +1267,14 @@ components:
         params:
           type: object
           additionalProperties: true
+        detail:
+          type: string
+          description: >-
+            The verbatim technical cause reported by the source, when one
+            was recorded. Never localized and never a substitute for the
+            code: several codes — TBY-SRV-001 first among them — answer
+            "follow the correlation identifier in the logs" (FR-090), and
+            this is the same string the matching log record carries.
     RecipeRecord:
       type: object
       description: >-
