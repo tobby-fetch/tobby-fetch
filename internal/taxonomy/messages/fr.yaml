@@ -103,6 +103,10 @@
 "TBY-REG-007.cause": "Pour {{.reference}} : {{.detail}}. Le registre source, ou un cache placé devant lui, n'honore pas les plages d'octets de manière cohérente."
 "TBY-REG-007.action": "Relancez la tâche : le transfert repart de la dernière position vérifiée, ou de zéro si le contenu de la source a changé. Si cela se reproduit sur la même source, mettez transfer.resumeThreshold à 0 pour désactiver la reprise intra-blob sur cette instance, et vérifiez le proxy cache éventuel sur le chemin vers ce registre."
 
+"TBY-REG-008.what": "L'index de la source ne porte pas une plateforme demandée par la recipe."
+"TBY-REG-008.cause": "Pour {{.reference}}, aucun enfant de l'index ne correspond à {{.platforms}} ; l'index publie {{.available}}. Un sélecteur de plateforme s'écrit os/arch avec un variant FACULTATIF (RECIPE-SPEC §7.1) : un variant omis correspond à n'importe lequel, un variant nommé doit correspondre exactement."
+"TBY-REG-008.action": "Confrontez la liste platforms de l'ingrédient à ce que la source publie réellement (docker manifest inspect, ou le rapport d'inspection d'un import unitaire) et corrigez-la. Tobby n'abandonne jamais silencieusement une plateforme demandée."
+
 "TBY-REG-005.what": "La référence n'existe pas sur le registre source."
 "TBY-REG-005.cause": "{{.reference}} est introuvable — nom ou tag erroné, ou supprimée en amont."
 "TBY-REG-005.action": "Vérifiez le nom du dépôt et le tag sur le registre source, puis corrigez la référence."
@@ -270,3 +274,24 @@
 "TBY-SRV-003.what": "L'instance est injoignable."
 "TBY-SRV-003.cause": "La connexion réseau est tombée, ou l'instance redémarre."
 "TBY-SRV-003.action": "Vérifiez votre liaison réseau et réessayez ; la page reprend dès que l'instance répond."
+
+# Table des codes de sortie (FR-066, amendement R-08). Ce ne sont pas des
+# codes d'erreur : ce sont les lignes du contrat de ligne de commande
+# publié, rendues par ExitCodeTable dans les pages de référence et
+# couvertes par la promesse de versionnement sémantique.
+"exit.column.code": "Code"
+"exit.column.name": "Nom"
+"exit.column.meaning": "Signification"
+
+"exit.ok.title": "Succès"
+"exit.ok.meaning": "La commande a fait ce qui était demandé."
+"exit.failure.title": "Échec opérationnel"
+"exit.failure.meaning": "Erreur réseau, stockage ou interne — tout ce qui a échoué sans verdict de politique ni de vérification. Tous les codes de la classe opérationnelle sortent ici, ainsi qu'une commande qui a déclenché une tâche que l'instance a ensuite fait échouer."
+"exit.usage.title": "Erreur d'usage"
+"exit.usage.meaning": "Drapeau erroné, commande inconnue, ou commande à qui l'on demande ce qu'elle ne peut pas honorer. Le message porte l'indication `see 'tobby … --help'` désignant la commande dont l'analyse a échoué."
+"exit.policy.title": "Refus de politique"
+"exit.policy.meaning": "Refusé par une politique ou une autorisation explicite : liste blanche de registres, rôles, refus de démarrage sécurisés par défaut, immutabilité d'un tag de recipe, les deux garde-fous de média levables par un administrateur."
+"exit.verification.title": "Échec de vérification"
+"exit.verification.meaning": "Un contrôle d'intégrité ou d'authenticité a échoué : signatures, digests épinglés, types d'artefact, sommes de contrôle du média. La classe la plus sévère, et la seule qu'aucune levée ne rouvre."
+"exit.changes-planned.title": "Changements prévus"
+"exit.changes-planned.meaning": "Une exécution sans effet de bord a trouvé du travail à faire — `tobby sync --dry-run` sur un Retriever porteur de changements. C'est un succès qui a quelque chose à dire, pour qu'une barrière d'intégration puisse s'y brancher sans y voir une compilation cassée."

@@ -103,6 +103,10 @@
 "TBY-REG-007.cause": "For {{.reference}}: {{.detail}}. The source registry, or a cache in front of it, does not honor byte ranges consistently."
 "TBY-REG-007.action": "Retry the task: the transfer restarts from the last verified position, or from the beginning if the source content changed. If it recurs on the same source, set transfer.resumeThreshold to 0 to disable in-blob resumption for this instance, and check any caching proxy on the path to that registry."
 
+"TBY-REG-008.what": "The source index does not carry a platform the recipe asks for."
+"TBY-REG-008.cause": "For {{.reference}}, no child of the index matches {{.platforms}}; the index publishes {{.available}}. A platform selector is os/arch with an OPTIONAL variant (RECIPE-SPEC §7.1): an omitted variant matches any, a named one must match exactly."
+"TBY-REG-008.action": "Confront the platforms list of the ingredient with what the source actually publishes (docker manifest inspect, or the inspection report of a unit import) and correct it. Tobby never silently drops a platform that was asked for."
+
 "TBY-REG-005.what": "The reference does not exist on the source registry."
 "TBY-REG-005.cause": "{{.reference}} was not found — wrong name or tag, or it was deleted upstream."
 "TBY-REG-005.action": "Check the repository name and the tag on the source registry, then correct the reference."
@@ -270,3 +274,23 @@
 "TBY-SRV-003.what": "The instance is unreachable."
 "TBY-SRV-003.cause": "The network connection dropped, or the instance is restarting."
 "TBY-SRV-003.action": "Check your network link and retry; the page resumes as soon as the instance answers."
+
+# Exit-code table (FR-066 amendment R-08). Not error codes: the rows of
+# the published command-line contract, rendered by ExitCodeTable into the
+# reference pages and covered by the semantic-versioning promise.
+"exit.column.code": "Code"
+"exit.column.name": "Name"
+"exit.column.meaning": "Meaning"
+
+"exit.ok.title": "Success"
+"exit.ok.meaning": "The command did what was asked."
+"exit.failure.title": "Operational failure"
+"exit.failure.meaning": "Network, storage or internal error — everything that failed without a policy or a verification verdict. Every code of the operational class exits here, and so does a command that started a task the instance then failed."
+"exit.usage.title": "Usage error"
+"exit.usage.meaning": "Bad flag, unknown command, or a command asked for something it cannot honour. The message carries a `see 'tobby … --help'` hint naming the command that misparsed."
+"exit.policy.title": "Policy refusal"
+"exit.policy.meaning": "Refused by explicit policy or authorization: registry allow-list, roles, secure-by-default startup refusals, immutable recipe tags, the two waivable media guards."
+"exit.verification.title": "Verification failure"
+"exit.verification.meaning": "A failed integrity or authenticity check: signatures, pinned digests, artifact types, media checksums. The most severe class, and the one no override reopens."
+"exit.changes-planned.title": "Changes planned"
+"exit.changes-planned.meaning": "A side-effect-free run found work to do — `tobby sync --dry-run` over a Retriever with pending changes. A success with something to say, so a gate can branch on it without treating it as a broken build."

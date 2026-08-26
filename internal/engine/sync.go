@@ -710,11 +710,13 @@ func selectPlatforms(desc *remote.Descriptor, ing *spec.Ingredient) (map[string]
 	// selector may legitimately match several children.
 	matched := make(map[string]bool, len(ing.Platforms))
 	selected := map[string]bool{}
+	var available []string
 	for i := range man.Manifests {
 		child := &man.Manifests[i]
 		if child.Platform == nil {
 			continue
 		}
+		available = append(available, platformLabel(child.Platform.OS, child.Platform.Architecture, child.Platform.Variant))
 		for _, want := range ing.Platforms {
 			if !importer.MatchesPlatform(want, child.Platform.OS, child.Platform.Architecture, child.Platform.Variant) {
 				continue
@@ -731,9 +733,41 @@ func selectPlatforms(desc *remote.Descriptor, ing *spec.Ingredient) (map[string]
 	}
 	if len(missing) > 0 {
 		sort.Strings(missing)
-		return nil, fmt.Errorf("platforms %s not present in the source index of %s", strings.Join(missing, ", "), ing.Ref)
+		sort.Strings(available)
+		// A code of its own rather than the bare error this used to be
+		// (R-08, found while fixing B-020): an unpublished platform is
+		// the operator's own document to fix, and TBY-SRV-001 sent them
+		// to the logs instead. The available list is in the message
+		// because the fix is a comparison — "linux/arm64" against
+		// "linux/arm64/v8" is unreadable without both sides.
+		return nil, taxonomy.New(taxonomy.CodePlatformMissing, taxonomy.Params{
+			"reference": ing.Ref,
+			"platforms": strings.Join(missing, ", "),
+			"available": platformList(available),
+		})
 	}
 	return selected, nil
+}
+
+// platformLabel renders one index child the way RECIPE-SPEC §7.1 writes a
+// selector, so the refusal shows the two sides in the same notation.
+func platformLabel(os, arch, variant string) string {
+	label := os + "/" + arch
+	if variant != "" {
+		label += "/" + variant
+	}
+	return label
+}
+
+// platformList renders the children an index actually carries. An index
+// whose every child is platform-less (an attestation-only index, or a
+// malformed one) yields no labels at all, and "publishes " followed by
+// nothing reads as a truncated message rather than as a fact.
+func platformList(available []string) string {
+	if len(available) == 0 {
+		return "no platform-tagged child at all"
+	}
+	return strings.Join(available, ", ")
 }
 
 // storeRecipeArtifact copies the recipe artifact and its attached

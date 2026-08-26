@@ -4,7 +4,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -26,77 +25,106 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/ui/format"
 )
 
-// `tobby sync --dry-run` — plan mode on the command line (FR-055
-// amendment R-04, FR-066).
+// `tobby sync` — the two synchronization commands FR-066 asks for, on one
+// verb.
 //
-// The command exists for the gate: a merge request that changes a
-// Retriever should be able to ask "what would this do" and get an answer
-// a pipeline can branch on, with no instance running and nothing written
-// anywhere. Its exit codes are the contract — 0 nothing to do, 5 changes
-// planned, 3 refused by policy, 4 verification failed, 1 the plan could
-// not complete — and `--output json` is the machine form of the same
-// report (R-08).
+// `--dry-run` is plan mode (FR-055 amendment R-04): the gate. A merge
+// request that changes a Retriever asks "what would this do" and gets an
+// answer a pipeline can branch on, with no instance running and nothing
+// written anywhere. Its exit codes are the contract — 0 nothing to do, 5
+// changes planned, 3 refused by policy, 4 verification failed, 1 the plan
+// could not complete.
 //
-// `--dry-run` is required at this milestone, and the refusal without it
-// says so rather than pretending. Triggering a real synchronization from
-// the command line (FR-066) means opening the store for WRITING, which a
-// second process cannot do while an instance is serving from it; the
-// live trigger therefore goes through that instance — POST /api/v1/sync
-// or the button beside it — and the command-line trigger lands with the
-// media automation work.
+// Without `--dry-run` the command is the FR-014 manual trigger, and it
+// works by DRIVING the instance rather than by doing the work itself.
+// That is not a shortcut: a synchronization writes to the store, and the
+// store is open for writing in the process that serves it — a second
+// process cannot open it too. So the command posts to /api/v1/sync, the
+// same endpoint the "Synchronize" button uses, and `--wait` follows the
+// task it created to its end (R-08). An operator who reads the help
+// learns this in the first sentence, because the alternative is pointing
+// it at a host where nothing runs and concluding that the tool is broken.
 
 func newSyncCmd() *cobra.Command {
 	flags := &commonFlags{}
+	instance := &instanceFlags{}
+	wait := &waitFlag{}
+	report := newReportFlag(outputText, outputJSON)
 	var (
 		dryRun    bool
 		retriever string
-		output    string
 		skipDest  bool
+		prune     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Plan a synchronization without performing it (--dry-run)",
-		Long: `Simulate the next synchronization and report everything it would do,
-without writing one byte anywhere.
+		Short: "Trigger a synchronization on a running instance, or plan one (--dry-run)",
+		Long: `Trigger the next synchronization, or simulate it.
 
-The report covers the resolved versions of every recipe, the per-digest
-status of every ingredient against the local store, the deduplicated
-volume to transfer, the projected store size against the target's free
-space and filesystem capability, the content a prune would remove, and
-the policy verdicts that need no transfer — the registry allow-list and
-the recipes' own signatures.
+WITHOUT --dry-run this command drives a RUNNING instance: it calls
+POST /api/v1/sync — the endpoint behind the "Synchronize" button — and
+reports the task the instance created. It does not synchronize by itself
+and never opens the store, because the instance serving that store holds
+it open for writing and a second writer is exactly what the format
+forbids. Point it at the instance with --instance, TOBBY_INSTANCE_URL, or
+nothing at all when it runs on the instance's own host, where the
+configured listen address is enough.
 
-Nothing is written to the store, nothing is pushed, and the automatic
+Authenticate with a static API token (operator role): TOBBY_API_TOKEN, or
+--token-file. The token is deliberately not a flag — a flag value is
+visible in the process table.
+
+With --wait the command blocks until the task reaches a terminal state and
+exits on the task's own outcome, so a pipeline has something to wait for
+other than a sleep.
+
+WITH --dry-run nothing is contacted and nothing is written: the plan runs
+here, against the store directory, and reports everything a
+synchronization would do — the resolved versions of every recipe, the
+per-digest status of every ingredient against the local store, the
+deduplicated volume to transfer, the projected store size against the
+target's free space and filesystem capability, the content a prune would
+remove, and the policy verdicts that need no transfer. The automatic
 reconciliation cadence of a passthrough instance is left exactly where it
 was.
 
 Exit codes, for use as a gate:
 
-  0  nothing to do
-  5  changes are planned
+  0  the synchronization succeeded, or the plan found nothing to do
+  5  changes are planned (--dry-run only)
   3  refused by policy (a registry outside the allow-list)
   4  verification failed (a recipe signature no trust root validates)
-  1  the plan could not complete
+  1  the run or the plan could not complete
   2  usage error
 
 Examples:
 
+  tobby sync --wait
+  tobby sync --instance https://tobby.example:8443 --prune --wait --output json
   tobby sync --dry-run
   tobby sync --dry-run --retriever ./retriever.yaml --output json
 `,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if !dryRun {
-				return &usageError{
-					err: fmt.Errorf("this command only runs with --dry-run: triggering a real synchronization needs the serving instance " +
-						"(the \"Synchronize\" button, or POST /api/v1/sync), because the store cannot be opened for writing by a second process"),
-					hint: "see '" + cmd.CommandPath() + " --help'",
-				}
+			if err := report.validate(cmd); err != nil {
+				return err
 			}
-			if output != "text" && output != "json" {
-				return &usageError{
-					err:  fmt.Errorf("--output accepts \"text\" or \"json\", not %q", output),
-					hint: "see '" + cmd.CommandPath() + " --help'",
+			if !dryRun {
+				return runSyncTrigger(cmd, flags, instance, wait, report, syncTriggerOptions{
+					prune:      prune,
+					pruneGiven: cmd.Flags().Changed("prune"),
+				})
+			}
+			for _, flag := range []string{"wait", "wait-timeout", "instance", "token-file", "request-timeout", "prune"} {
+				if cmd.Flags().Changed(flag) {
+					// A plan contacts no instance and starts no task, so
+					// these flags cannot mean anything here. Saying so is
+					// the point: silently ignoring --wait on a --dry-run
+					// would let a pipeline believe it waited.
+					return &usageError{
+						err:  fmt.Errorf("--%s has no meaning with --dry-run: a plan starts no task and drives no instance", flag),
+						hint: "see '" + cmd.CommandPath() + " --help'",
+					}
 				}
 			}
 			cfg, err := flags.load(cmd)
@@ -105,15 +133,22 @@ Examples:
 			}
 			return runPlan(cmd, &cfg, planFlags{
 				retriever:       retriever,
-				output:          output,
+				report:          report,
 				skipDestination: skipDest,
 			})
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "report what a synchronization would do, without doing any of it")
 	cmd.Flags().StringVar(&retriever, "retriever", "", "plan a candidate Retriever instead of the configured one (file path, HTTP(S) URL, or OCI reference)")
-	cmd.Flags().StringVar(&output, "output", "text", `report format: "text" or "json"`)
 	cmd.Flags().BoolVar(&skipDest, "skip-destination", false, "do not contact the promotion destination")
+	// Absent and false are different instructions, which is why the API
+	// body takes a pointer: absent means "do what this instance does by
+	// default", --prune=false means "this run must not remove anything".
+	cmd.Flags().BoolVar(&prune, "prune", false,
+		"remove content no recipe reaches any more (default: the instance's own setting; --prune=false forbids it for this run)")
+	report.register(cmd)
+	instance.register(cmd)
+	wait.register(cmd)
 	flags.register(cmd)
 	return cmd
 }
@@ -121,7 +156,7 @@ Examples:
 // planFlags carries the command's own options.
 type planFlags struct {
 	retriever       string
-	output          string
+	report          *reportFlag
 	skipDestination bool
 }
 
@@ -187,10 +222,8 @@ func runPlan(cmd *cobra.Command, cfg *config.Config, f planFlags) error {
 		return err
 	}
 
-	if f.output == "json" {
-		enc := json.NewEncoder(cmd.OutOrStdout())
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(plan); err != nil {
+	if f.report.json() {
+		if err := writeJSON(cmd, plan); err != nil {
 			return err
 		}
 	} else {

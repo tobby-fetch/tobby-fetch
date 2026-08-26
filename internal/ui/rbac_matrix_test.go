@@ -137,6 +137,7 @@ var uiMatrix = []rbacRoute{
 // has an endpoint an operator can call, and no more.
 var apiMatrix = []rbacRoute{
 	{Pattern: "GET /api/v1/openapi.yaml", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/openapi.yaml"},
+	{Pattern: "GET /api/v1/cli-output.schema.json", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/cli-output.schema.json"},
 	{Pattern: "GET /api/v1/content", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/content"},
 	{Pattern: "GET /api/v1/content/{repo...}", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/content/no/such/repo"},
 	{Pattern: "DELETE /api/v1/content/{repo...}", Floor: auth.RoleAdmin, Method: "DELETE", Path: "/api/v1/content/no/such/repo"},

@@ -78,12 +78,11 @@ self-describing:
 
 For interoperability, the store (or a selection of recipes) can also be
 exported to — and imported from — the standard **OCI image layout**, as a
-directory or a single tar, readable by `skopeo`, `oras` and `crane`. The
-planned command shape from the design decision:
+directory or a single tar, readable by `skopeo`, `oras` and `crane`:
 
 ```bash
-tobby export --format oci-layout --output /media/usb/payload.tar   # outbound
-tobby import --format oci-layout /media/usb/payload.tar            # inbound
+tobby export --format oci-layout /media/usb/payload.tar   # outbound
+tobby import --format oci-layout /media/usb/payload.tar   # inbound
 ```
 
 The layout export carries artifacts only — logs and sync state are

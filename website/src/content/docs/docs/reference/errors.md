@@ -333,6 +333,23 @@ on these same anchors. Track it on the
   any caching proxy on the path.
 - **Fixable offline:** no (source-side; the `resumeThreshold: 0` workaround is local) · **Blocks:** the task concerned
 
+### TBY-REG-008
+
+- **What happened:** the source index does not carry a platform the recipe
+  asks for.
+- **Probable cause:** for *\<reference\>*, no child of the index matches
+  *\<platforms\>*; the index publishes *\<available\>*. A platform
+  selector is `os/arch` with an **optional** variant (RECIPE-SPEC §7.1): an
+  omitted variant matches any, a named one must match exactly. Registries
+  commonly describe their arm64 child as `linux/arm64` with variant `v8`,
+  so a selector naming a variant the source does not publish matches
+  nothing.
+- **Corrective action:** confront the `platforms` list of the ingredient
+  with what the source actually publishes (`docker manifest inspect`, or
+  the inspection report of a unit import) and correct it. Tobby never
+  silently drops a platform that was asked for.
+- **Fixable offline:** no (the truth lives in the source index) · **Blocks:** the ingredient concerned
+
 ## Policy refusals (TBY-POL)
 
 ### TBY-POL-001

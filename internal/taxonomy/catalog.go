@@ -116,6 +116,15 @@ const (
 	// Operational, not a verification verdict: nothing has been proven
 	// wrong about the content — the conversation about it broke.
 	CodeRangeUnusable Code = "TBY-REG-007"
+	// CodePlatformMissing is an ingredient asking for a platform the
+	// source index does not carry (FR-022, RECIPE-SPEC §7.1). It used to
+	// be a bare fmt.Errorf, so an operator whose recipe named one
+	// platform too many read TBY-SRV-001 — "an internal error occurred",
+	// whose corrective action is to search the logs for a correlation
+	// identifier — for a mistake in their own document (found while
+	// fixing B-020). Operational and not a policy refusal: nothing was
+	// forbidden, the content asked for is simply not published.
+	CodePlatformMissing Code = "TBY-REG-008"
 
 	// CodeNotAllowlisted is the pre-transfer allowlist refusal (FR-030).
 	// Reserved: emitter lands at milestone 4.
@@ -349,6 +358,11 @@ var catalog = map[Code]Entry{
 	CodeRangeUnusable: {Code: CodeRangeUnusable, Class: ClassOperational, HTTPStatus: http.StatusBadGateway, Params: []string{"reference", "detail"}},
 
 	CodeVersionResolve: {Code: CodeVersionResolve, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "constraint", "detail"}},
+
+	// 422 like CodeVersionResolve, and for the same reason: the request is
+	// well formed and permitted, the recipe simply names something the
+	// source does not publish.
+	CodePlatformMissing: {Code: CodePlatformMissing, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "platforms", "available"}},
 
 	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "fingerprints"}},
 	CodeDigestMismatch: {Code: CodeDigestMismatch, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "expected", "actual"}},

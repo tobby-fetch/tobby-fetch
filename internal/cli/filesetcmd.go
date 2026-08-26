@@ -5,7 +5,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -35,16 +34,9 @@ func newFileSetCmd() *cobra.Command {
 	return cmd
 }
 
-// packOutput selects the report format (R-08: a stable machine contract
-// on every command that reports anything).
-const (
-	outputText = "text"
-	outputJSON = "json"
-)
-
 func newFileSetPackCmd() *cobra.Command {
 	flags := &commonFlags{}
-	var output string
+	report := newReportFlag(outputText, outputJSON)
 	cmd := &cobra.Command{
 		Use:   "pack <directory> <name>:<version>",
 		Short: "Package a local directory as a FileSet imported in the store",
@@ -75,11 +67,8 @@ file and restart the instance. The command prints the block to add.
   tobby fileset pack ./apt-repo debs:1.0.0`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if output != outputText && output != outputJSON {
-				return &usageError{
-					err:  fmt.Errorf("unknown --output %q: use %q or %q", output, outputText, outputJSON),
-					hint: "see '" + cmd.CommandPath() + " --help'",
-				}
+			if err := report.validate(cmd); err != nil {
+				return err
 			}
 			name, version, err := splitPackTarget(args[1])
 			if err != nil {
@@ -92,16 +81,15 @@ file and restart the instance. The command prints the block to add.
 			if err != nil {
 				return err
 			}
-			return runFileSetPack(cmd, &cfg, args[0], name, version, output)
+			return runFileSetPack(cmd, &cfg, args[0], name, version, report)
 		},
 	}
 	flags.register(cmd)
-	cmd.Flags().StringVar(&output, "output", outputText,
-		`report format: "text" or "json" (the JSON document is the only thing on stdout)`)
+	report.register(cmd)
 	return cmd
 }
 
-func runFileSetPack(cmd *cobra.Command, cfg *config.Config, source, name, version, output string) error {
+func runFileSetPack(cmd *cobra.Command, cfg *config.Config, source, name, version string, report *reportFlag) error {
 	// The command writes into the store directly (ADR-0005), so it works
 	// on a host with no instance running — which is the air-gapped case
 	// this feature exists for. Against a running instance the writes are
@@ -125,10 +113,8 @@ func runFileSetPack(cmd *cobra.Command, cfg *config.Config, source, name, versio
 	}
 	auditPack(cmd.Context(), cmd.ErrOrStderr(), res.Reference+":"+res.Version, audit.OutcomeSuccess)
 
-	if output == outputJSON {
-		enc := json.NewEncoder(cmd.OutOrStdout())
-		enc.SetIndent("", "  ")
-		return enc.Encode(res)
+	if report.json() {
+		return writeJSON(cmd, res)
 	}
 	reportPack(cmd.ErrOrStderr(), res)
 	// The digest alone on stdout: the command composes into a script

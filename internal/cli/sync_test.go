@@ -60,22 +60,31 @@ func TestPlanExitCodesAreDistinct(t *testing.T) {
 	}
 }
 
-// TestSyncWithoutDryRunIsAUsageError: the command refuses rather than
-// pretending. Exit 2, and a message that says where the live trigger is.
-func TestSyncWithoutDryRunIsAUsageError(t *testing.T) {
-	err := execute(t, "sync")
-	if err == nil {
-		t.Fatal("`tobby sync` without --dry-run was accepted")
-	}
-	if got := exitCodeFor(err); got != taxonomy.ExitUsage {
-		t.Errorf("exit code = %d, want %d (usage)", got, taxonomy.ExitUsage)
-	}
-	var ue *usageError
-	if !errors.As(err, &ue) {
-		t.Fatalf("error %T is not a usageError", err)
-	}
-	if !strings.Contains(ue.Error(), "--dry-run") || !strings.Contains(ue.Error(), "/api/v1/sync") {
-		t.Errorf("the refusal does not point anywhere useful: %s", ue.Error())
+// TestPlanRefusesTheTriggerFlags: --dry-run and the flags of the live
+// trigger are two different commands sharing one verb, and mixing them is
+// a usage error rather than a silent no-op. A pipeline that wrote
+// `tobby sync --dry-run --wait` must be told it waited for nothing, not
+// left believing it waited.
+func TestPlanRefusesTheTriggerFlags(t *testing.T) {
+	for _, flag := range []string{"--wait", "--instance"} {
+		args := []string{"sync", "--dry-run", flag}
+		if flag == "--instance" {
+			args = append(args, "https://tobby.example")
+		}
+		err := execute(t, args...)
+		if err == nil {
+			t.Fatalf("`tobby sync --dry-run %s` was accepted", flag)
+		}
+		if got := exitCodeFor(err); got != taxonomy.ExitUsage {
+			t.Errorf("%s: exit code = %d, want %d (usage)", flag, got, taxonomy.ExitUsage)
+		}
+		var ue *usageError
+		if !errors.As(err, &ue) {
+			t.Fatalf("%s: error %T is not a usageError", flag, err)
+		}
+		if !strings.Contains(ue.Error(), "--dry-run") {
+			t.Errorf("%s: the refusal does not say why: %s", flag, ue.Error())
+		}
 	}
 }
 

@@ -11,7 +11,7 @@ cause probable, l'action corrective — rendu à l'identique par l'interface
 web, la CLI et l'API (en documents « problem » RFC 9457). Les codes font
 partie du contrat produit : **un code n'est jamais renuméroté ni
 réutilisé**, et sa classe détermine le
-[code de sortie CLI](../../reference/cli/#exit-codes).
+[code de sortie du processus](#codes-de-sortie).
 
 Cette page est produite depuis le catalogue de la taxonomie embarqué dans
 le binaire (`internal/taxonomy`). Chaque code a son propre titre : l'ancre
@@ -40,6 +40,34 @@ mêmes ancres. À suivre sur la page
   dérogations à chaud sont réservées à l'admin, auditées, et se situent
   toutes deux à l'import d'un média : la zone qui ne correspond pas
   (TBY-MED-006) et le garde-fou de fraîcheur (TBY-MED-007).
+
+## Codes de sortie
+
+La classe d'un code décide du code de sortie du processus : c'est la
+projection en ligne de commande de cette taxonomie (FR-066, amendement
+R-08). **La table ci-dessous est produite depuis le code**
+(`internal/taxonomy`), et un test fait échouer la compilation dès que les
+deux divergent — dans les deux sens : un code que la table n'énumère pas,
+ou une ligne que rien ne peut produire.
+
+Elle est couverte par la promesse de versionnement sémantique du projet :
+retirer un code ou en renuméroter un est un changement cassant. La colonne
+`Nom` est le nom machine stable de la ligne ; il fait partie du contrat et
+n'est jamais traduit.
+
+<!-- generated:exit-codes -->
+| Code | Nom | Signification |
+|---|---|---|
+| `0` | `ok` | **Succès** — La commande a fait ce qui était demandé. |
+| `1` | `failure` | **Échec opérationnel** — Erreur réseau, stockage ou interne — tout ce qui a échoué sans verdict de politique ni de vérification. Tous les codes de la classe opérationnelle sortent ici, ainsi qu'une commande qui a déclenché une tâche que l'instance a ensuite fait échouer. |
+| `2` | `usage` | **Erreur d'usage** — Drapeau erroné, commande inconnue, ou commande à qui l'on demande ce qu'elle ne peut pas honorer. Le message porte l'indication `see 'tobby … --help'` désignant la commande dont l'analyse a échoué. |
+| `3` | `policy` | **Refus de politique** — Refusé par une politique ou une autorisation explicite : liste blanche de registres, rôles, refus de démarrage sécurisés par défaut, immutabilité d'un tag de recipe, les deux garde-fous de média levables par un administrateur. |
+| `4` | `verification` | **Échec de vérification** — Un contrôle d'intégrité ou d'authenticité a échoué : signatures, digests épinglés, types d'artefact, sommes de contrôle du média. La classe la plus sévère, et la seule qu'aucune levée ne rouvre. |
+| `5` | `changes-planned` | **Changements prévus** — Une exécution sans effet de bord a trouvé du travail à faire — `tobby sync --dry-run` sur un Retriever porteur de changements. C'est un succès qui a quelque chose à dire, pour qu'une barrière d'intégration puisse s'y brancher sans y voir une compilation cassée. |
+<!-- /generated:exit-codes -->
+
+La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
+`--output json`, mode non interactif — reste en anglais jusqu'au jalon 7.
 
 ## Authentification et comptes (TBY-AUTH)
 
@@ -342,6 +370,24 @@ mêmes ancres. À suivre sur la page
   `transfer.resumeThreshold: 0` pour désactiver la reprise intra-blob, et
   vérifiez le proxy cache éventuel sur le chemin.
 - **Remédiable hors-ligne :** non (côté source ; le contournement `resumeThreshold: 0` est local) · **Bloque :** la tâche concernée
+
+### TBY-REG-008
+
+- **Quoi :** l'index de la source ne porte pas une plateforme demandée par
+  la recipe.
+- **Cause probable :** pour *\<référence\>*, aucun enfant de l'index ne
+  correspond à *\<plateformes\>* ; l'index publie *\<disponibles\>*. Un
+  sélecteur de plateforme s'écrit `os/arch` avec un variant **facultatif**
+  (RECIPE-SPEC §7.1) : un variant omis correspond à n'importe lequel, un
+  variant nommé doit correspondre exactement. Les registres décrivent
+  couramment leur enfant arm64 comme `linux/arm64` avec le variant `v8` :
+  un sélecteur nommant un variant que la source ne publie pas ne
+  correspond à rien.
+- **Action corrective :** confrontez la liste `platforms` de l'ingrédient à
+  ce que la source publie réellement (`docker manifest inspect`, ou le
+  rapport d'inspection d'un import unitaire) et corrigez-la. Tobby
+  n'abandonne jamais silencieusement une plateforme demandée.
+- **Remédiable hors-ligne :** non (la vérité est dans l'index de la source) · **Bloque :** l'ingrédient concerné
 
 ## Refus de politique (TBY-POL)
 
