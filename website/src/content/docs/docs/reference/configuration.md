@@ -52,6 +52,7 @@ Value syntax in the environment:
 | Key | Type | Default | Env | Purpose |
 |---|---|---|---|---|
 | `mode` | `passthrough` \| `mirror` | *(none — required to serve)* | `TOBBY_MODE` | The operating mode. There is deliberately no default: an instance must state what it is. |
+| `zone` | string | *(none)* | `TOBBY_ZONE` | This instance's zone identity — the `metadata.name` of the Retriever that serves the zone. A source-side instance reads it from the Retriever it resolves and needs nothing here; a **destination-side** instance has no Retriever, its content arrives on a medium, and without this key it cannot tell whether a medium is addressed to it. `tobby media verify` and `tobby media import` refuse to run without it. |
 | `storage.root` | path | *(none — required to serve)* | `TOBBY_STORAGE_ROOT` | The self-contained store: artifacts, recipes, task history and logs all live under it. |
 | `storage.basePrefix` | repository path | *(none)* | `TOBBY_STORAGE_BASE_PREFIX` | Optional relocation base prefix, applied identically to every ingredient of the instance. |
 | `state.root` | path | *(none — required unless auth is disabled)* | `TOBBY_STATE_ROOT` | The instance state: accounts, tokens, trust-root cache, partial downloads. **Strictly outside the store** — secrets never travel on the media, and this directory is the single backup target. A state root inside the storage root (or the reverse) is refused. |
@@ -142,6 +143,10 @@ served under `/files/<name>/`.
 |---|---|---|---|---|
 | `ui.themeOverride` | path | *(none)* | `TOBBY_UI_THEME_OVERRIDE` | Operator stylesheet served after the embedded design tokens: rebranding without rebuild. The default tokens pass WCAG AA; overrides carry that responsibility. |
 | `ui.showUpcoming` | bool | `false` | `TOBBY_UI_SHOW_UPCOMING` | Renders future-milestone navigation entries as inert, labeled placeholders (demo mode). Production navigation shows only what works. |
+| `logging.media.file` | store-relative path | `_tobby/logs/operations.log` | *(file only)* | Where the operation log is written **on the transport medium** (mirror mode only): the return audit channel, so whoever receives the medium can read what was done with it. The path must lie outside the media manifest's coverage — under `_tobby/` — and the instance refuses to start otherwise: a log inside coverage invalidates, line by line, the inventory the destination verifies. |
+| `logging.media.maxSize` | size | `10MiB` | *(file only)* | Size-based rotation threshold of that log. |
+| `logging.media.keep` | int | `3` | *(file only)* | How many rotated generations to keep. Bounds the log at `maxSize × (keep + 1)` on a medium whose whole point is to carry gigabytes of content. |
+| `logging.media.disabled` | bool | `false` | *(file only)* | Turns the medium's log off. Explicit and never a default: a medium arriving without one cannot be audited by whoever receives it. |
 | `logging.level` | string | `info` | `TOBBY_LOGGING_LEVEL` | `debug`, `info`, `warn`, or `error`. |
 | `shutdown.gracePeriod` | duration | `30s` | `TOBBY_SHUTDOWN_GRACE_PERIOD` | Drain budget after SIGTERM/SIGINT. |
 

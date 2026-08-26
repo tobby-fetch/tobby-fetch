@@ -24,6 +24,9 @@ tobby
 ├── quickstart     Guided first start: answer a few questions, get a serving instance
 ├── config
 │   └── dump       Print the effective configuration (secrets redacted)
+├── media
+│   ├── verify     Re-verify a transported store without pushing anything
+│   └── import     Verify a transported store, then push what it cleared
 ├── recipe
 │   └── push       Validate a recipe and publish it to a cookbook
 ├── user
@@ -41,7 +44,7 @@ applies between the [UI and the API](../../reference/api/).
 ## Common flags
 
 Every command that loads the layered configuration (`serve`, `config dump`,
-`recipe push`, `user add|list|passwd`) accepts the same set of flags. A flag
+`media verify|import`, `recipe push`, `user add|list|passwd`) accepts the same set of flags. A flag
 is the highest configuration layer: it overrides the matching environment
 variable and file key (see the
 [configuration reference](../../reference/configuration/)).
@@ -121,6 +124,81 @@ captures exactly what the instance would run with. This is the control tool
 the corrective action of [`TBY-CFG-001`](../../reference/errors/#tby-cfg-001)
 points at. Details in the
 [configuration reference](../../reference/configuration/).
+
+### tobby media verify
+
+```
+tobby media verify [flags]
+```
+
+Re-verifies a store that arrived on a physical medium and reports, without
+pushing anything and **without writing to the store** — not even the
+medium's own operation log.
+
+The medium is untrusted until proven otherwise, so the order is fixed by
+SRS FR-054: the manifest's completeness and checksums first, then the
+recipes' signatures against **this** instance's trust roots, then every
+ingredient against its pinned digest. Trust roots present on the medium are
+ignored.
+
+The report names, for every refusal, both why and **which file**. A recipe
+whose signature verifies and whose every reachable file matches its pinned
+digest is pushable; any other is blocked whole, with no override, and its
+neighbours on the same medium are unaffected. A missing or unreadable
+manifest and an altered recipe graph block the medium as a whole with no
+override; a medium addressed to another zone or older than the last one
+imported here block it too, and those two an administrator may waive.
+
+| Flag | Purpose |
+|---|---|
+| `--zone` | The zone this instance serves. Required — from the flag, `TOBBY_ZONE`, or `zone:` in the configuration file. |
+| `--output text\|json` | `json` emits the verification report itself on stdout, the same document the API returns. |
+| `--allow-zone-mismatch` | Proceed on a medium addressed to another zone. On `verify` this only previews what a waived import would do. |
+| `--allow-stale` | Proceed on a medium older than the last one imported for this zone. |
+
+```sh
+tobby media verify --storage-root /mnt/usb --zone production
+tobby media verify --storage-root /mnt/usb --zone production --output json | jq .verdict
+```
+
+Exit codes: `0` every delivery is pushable, `3` refused by policy (zone
+identity, freshness), `4` a verification failure.
+
+### tobby media import
+
+```
+tobby media import [flags]
+```
+
+Verifies a transported store and pushes what verification cleared into the
+zone registry (SRS FR-052). The order is not a sequence of steps, it is the
+guarantee: nothing is pushed, served or written before the whole medium has
+been re-verified.
+
+What crosses then goes through the same controls a passthrough promotion
+goes through — the registry allow-list and the recipe signatures, re-checked
+over the exact bytes about to leave — only what the destination is missing
+moves, and the signed recipes land in the zone's own cookbook with their
+signatures. Content the medium carries that no verified recipe reaches is
+reported and never pushed.
+
+The operation journals itself onto the medium, under `_tobby/logs/`,
+outside the manifest's coverage: the return audit channel of the transfer.
+A completed import advances the per-zone freshness record, which is what
+makes re-importing last month's medium a refusal rather than a silent
+rollback.
+
+Takes the same flags as `media verify`, plus a configured
+`destination.registry` — verifying needs none, importing cannot proceed
+without one. Waiving a guard is an administrator's act and is recorded in
+the audit journal.
+
+```sh
+tobby media import --config /etc/tobby/config.yaml
+```
+
+Exit codes: `0` imported, `1` a push failed, `3` refused by policy, `4` a
+verification failure.
 
 ### tobby recipe push
 
