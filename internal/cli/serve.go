@@ -337,6 +337,22 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	srv.Handle(fileserve.RoutePrefix, filesAuth(authn, anonymous, fsrv.Handler()))
 
+	// The FileSets surface (FR-047 inventory, FR-048 packing), shared by
+	// the screen and the endpoints so the two give one answer (FR-061).
+	// The packer is confined to files.packRoots: reaching a directory of
+	// the host over the network takes a configuration entry, not just an
+	// administrator session, and no entry means no directory (FR-075).
+	// `tobby fileset pack` on the host builds its own, unconfined.
+	fileSets := &fileserve.Surface{
+		Catalog: storeCatalog{st: st},
+		Packer: fileserve.NewPacker(st, cfg.Storage.BasePrefix, logger,
+			fileserve.WithPackRoots(cfg.Files.PackRoots)),
+		Served:      fsrv.Enabled,
+		Declared:    declaredFileSets(cfg),
+		BasePrefix:  cfg.Storage.BasePrefix,
+		PackEnabled: len(cfg.Files.PackRoots) > 0,
+	}
+
 	// The versioned REST API (FR-060), strict UI parity (FR-061). Content
 	// browsing reads the store through its accessors (FR-062), never the
 	// HTTP loopback.
@@ -360,6 +376,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		KeyFile:  cfg.Server.TLS.KeyFile,
 		Egress:   egress,
 	})
+	api.RegisterFileSets(restAPI, fileSets)
 	api.RegisterOpenAPI(restAPI)
 	srv.Handle("/api/v1/", restAPI.Handler())
 
@@ -383,6 +400,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Cookbook:           destination.Cookbook(),
 		Interval:           interval,
 		Publisher:          publisher,
+		FileSets:           fileSets,
 		ServerCert:         serverCert,
 		Egress:             egress,
 	})
@@ -447,6 +465,54 @@ func syncTrigger(queue *tasks.Queue, source string, logger *slog.Logger) schedul
 		}
 		_, err := queue.Create(tasks.TypeSync, source, audit.ActorLocal, nil)
 		return err
+	}
+}
+
+// declaredFileSets flattens the files.filesets configuration for the
+// FR-047/FR-048 inventory.
+func declaredFileSets(cfg *config.Config) []fileserve.Declared {
+	out := make([]fileserve.Declared, 0, len(cfg.Files.FileSets))
+	for _, f := range cfg.Files.FileSets {
+		out = append(out, fileserve.Declared{
+			Name: f.Name, Ref: f.Ref, Version: f.Version, Anonymous: f.Anonymous,
+		})
+	}
+	return out
+}
+
+// storeCatalog adapts the embedded store to the inventory read surface.
+// The provenance is flattened here rather than in fileserve, which stays
+// free of the store's types.
+type storeCatalog struct{ st *store.Store }
+
+func (c storeCatalog) Repositories(ctx context.Context) ([]string, error) {
+	return c.st.Repositories(ctx)
+}
+
+func (c storeCatalog) Tags(ctx context.Context, repo string) ([]string, error) {
+	return c.st.Tags(ctx, repo)
+}
+
+// Provenance mirrors the rule the content screens apply (ui/content.go):
+// the live recipe graph wins over the recorded ledger, and content with
+// no record at all was pushed through /v2/ by a standard client.
+func (c storeCatalog) Provenance(repo string) string {
+	if len(c.st.ManagingRecipes(repo)) > 0 {
+		return fileserve.FromRecipe
+	}
+	p, ok := c.st.ProvenanceOf(repo)
+	if !ok {
+		return fileserve.FromSeed
+	}
+	switch {
+	case p.Class == store.ProvenanceRecipe:
+		return fileserve.FromRecipe
+	case p.Origin == store.OriginLocalPack:
+		return fileserve.FromManualImport
+	case p.Class == store.ProvenanceUnitImport:
+		return fileserve.FromUnitImport
+	default:
+		return fileserve.FromSeed
 	}
 }
 
