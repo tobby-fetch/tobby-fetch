@@ -55,6 +55,10 @@
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Corrigez le réglage indiqué (précédence : drapeaux, puis variables d'environnement TOBBY_*, puis fichier YAML), vérifiez le résultat avec `tobby config dump`, puis redémarrez."
 
+"TBY-CFG-002.what": "L'instance refuse de démarrer : un fichier de secret est configuré à l'intérieur du store transportable."
+"TBY-CFG-002.cause": "{{.paths}} se résout sous la racine du store {{.root}}. Le store est confié à un porteur puis branché sur une machine d'une autre zone : tout ce qui est dessous est réputé lu par quelqu'un d'autre — identifiants de registre, clés privées TLS, base d'utilisateurs locale et jetons statiques ne doivent jamais voyager dessus."
+"TBY-CFG-002.action": "Déplacez chaque fichier listé dans un répertoire hors du store — le répertoire d'état (`state.root`) est sa place — mettez le réglage à jour vers le nouvel emplacement, puis redémarrez l'instance. Un chemin qui se résout dans le store via un lien symbolique compte comme étant dedans : c'est le chemin résolu indiqué qui tranche."
+
 "TBY-NET-001.what": "La configuration du proxy sortant est inutilisable : l'instance refuse de démarrer."
 "TBY-NET-001.cause": "{{.setting}} vaut {{.proxy}}, qui n'est pas une URL de proxy exploitable (http:// ou https:// avec un hôte attendus)."
 "TBY-NET-001.action": "Corrigez {{.setting}} sous la forme http://proxy.example.com:3128, sans identifiants dans l'URL : ceux-ci relèvent de network.proxy.username et network.proxy.password, qui n'apparaissent jamais dans les journaux ni dans `tobby config dump`. Puis redémarrez."

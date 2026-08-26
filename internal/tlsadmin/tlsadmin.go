@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
+	"github.com/tobby-fetch/tobby-fetch/internal/secretfile"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
@@ -256,7 +257,7 @@ func Replace(certFile, keyFile string, certPEM, keyPEM []byte, now time.Time) (*
 	if err := writePEM(certFile, certPEM, 0o644); err != nil {
 		return nil, err
 	}
-	if err := writePEM(keyFile, keyPEM, 0o600); err != nil {
+	if err := writeKeyPEM(keyFile, keyPEM); err != nil {
 		return nil, err
 	}
 
@@ -269,12 +270,31 @@ func Replace(certFile, keyFile string, certPEM, keyPEM []byte, now time.Time) (*
 	return out, nil
 }
 
-// writePEM installs one document atomically: a temporary file in the
-// destination's own directory (so the rename stays on one filesystem),
-// flushed before it is renamed over the target. fallback is the mode used
-// when the target does not exist yet; an existing file keeps the mode the
-// operator gave it, because a deployment that made the certificate
-// world-readable on purpose must not silently lose that.
+// writeKeyPEM installs the private key, owner-only on both operating
+// systems of the validated scope (NFR-020, NFR-018).
+//
+// It is deliberately not writePEM with a stricter fallback. writePEM
+// inherits the mode of an existing target, which is right for the
+// certificate — a deployment that published it world-readable on purpose
+// must not silently lose that — and wrong for the key: inheriting means a
+// key file an operator once loosened stays loose through every
+// replacement, and a replacement is precisely the moment the instance
+// gets to state what the permissions must be. A private key has one
+// correct mode, so it does not take one as an argument.
+func writeKeyPEM(path string, data []byte) error {
+	if err := secretfile.Write(path, data); err != nil {
+		return taxonomy.New(taxonomy.CodeServerCertReplace,
+			taxonomy.Params{"detail": "writing " + path + ": " + err.Error()}).WithCause(err)
+	}
+	return nil
+}
+
+// writePEM installs one public document atomically: a temporary file in
+// the destination's own directory (so the rename stays on one
+// filesystem), flushed before it is renamed over the target. fallback is
+// the mode used when the target does not exist yet; an existing file keeps
+// the mode the operator gave it, because a deployment that made the
+// certificate world-readable on purpose must not silently lose that.
 func writePEM(path string, data []byte, fallback os.FileMode) error {
 	fail := func(err error) error {
 		return taxonomy.New(taxonomy.CodeServerCertReplace,

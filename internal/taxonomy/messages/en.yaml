@@ -55,6 +55,10 @@
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Fix the reported setting (precedence: flags, then TOBBY_* environment variables, then the YAML file), check the result with `tobby config dump`, then restart."
 
+"TBY-CFG-002.what": "The instance refuses to start: a secret file is configured inside the transportable store."
+"TBY-CFG-002.cause": "{{.paths}} resolves under the store root {{.root}}. The store is handed to a courier and plugged into a machine in another zone, so everything under it is assumed to be read by someone else — registry credentials, TLS private keys, the local user database and its static tokens must never travel on it."
+"TBY-CFG-002.action": "Move each listed file to a directory outside the store — the state directory (`state.root`) is the intended home — update the setting to the new location, then start the instance again. A path resolving inside the store through a symbolic link counts as inside: the reported resolved path is the one that decides."
+
 "TBY-NET-001.what": "The outbound proxy configuration is unusable, so the instance refuses to start."
 "TBY-NET-001.cause": "{{.setting}} is set to {{.proxy}}, which is not a usable forward-proxy URL (expected http:// or https:// with a host)."
 "TBY-NET-001.action": "Correct {{.setting}} to the form http://proxy.example.com:3128, keeping credentials out of the URL — they belong in network.proxy.username and network.proxy.password, which never appear in logs or in `tobby config dump`. Then restart."

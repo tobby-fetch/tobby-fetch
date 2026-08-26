@@ -140,6 +140,26 @@ type Sync struct {
 	// directory wins over it (package schedule). The override is a
 	// sensitive configuration change and is audited as one (FR-094).
 	Interval Duration `yaml:"interval"`
+	// Prune removes, at the end of each reconciliation cycle, the
+	// recipe-managed content the resolved Retriever no longer references
+	// (FR-045 amendment, R-33). The protected roots are the same as in
+	// mirror mode: unit imports (FR-023), the offline vulnerability
+	// database (FR-032), and anything pushed through /v2/ outside managed
+	// namespaces (UC3 seeding) — none of which is recipe-managed, so none
+	// of which is ever eligible.
+	//
+	// Default false, and deliberately so. A passthrough transit store is
+	// not a delivery unit, and shrinking it is never implied by a
+	// refresh: an operator who asked for fresher content has not asked
+	// for older content to be deleted. Enabling it is an explicit opt-in,
+	// reported at startup, on the retriever screen and its API mirror,
+	// and every removal is listed in the run logs (FR-053).
+	//
+	// Like Interval it applies in passthrough mode ONLY: mirror-mode
+	// prune is confirmed at trigger time with the list and the total size
+	// of what would go (FR-045), which is a different mechanism and not
+	// one a configuration flag may switch on unattended.
+	Prune bool `yaml:"prune,omitempty"`
 }
 
 // Preflight configures the checks that run before a synchronization or an
@@ -372,6 +392,19 @@ type Storage struct {
 	// BasePrefix is the optional relocation base prefix (FR-035), applied
 	// identically to every ingredient of the instance. Default: none.
 	BasePrefix string `yaml:"basePrefix,omitempty"`
+	// OccupancyThreshold is the on-disk footprint past which the store is
+	// reported as too full: a persistent warning on every UI page, the
+	// same fact on the API, and a metric that moves in both directions
+	// (FR-045 amendment, R-33).
+	//
+	// Zero — the default — means no threshold. Tobby cannot guess the
+	// size of the volume it was handed, and a made-up default would
+	// either cry wolf on a large one or stay silent on a small one; an
+	// unset threshold is reported as unset, never as satisfied. The
+	// setting exists because a passthrough instance reconciles unattended
+	// for months: without it, "the volume filled up" is discovered when
+	// the first write fails.
+	OccupancyThreshold Size `yaml:"occupancyThreshold,omitempty"`
 }
 
 // State locates the instance state directory: accounts and tokens today,
@@ -680,6 +713,12 @@ func (c *Config) validate(scope Scope) error {
 	}
 	if c.Preflight.SafetyMarginPercent < 0 || c.Preflight.SafetyMarginPercent >= 100 {
 		errs = append(errs, errors.New("preflight.safetyMarginPercent must be between 0 and 99: it is a share of the target's free space held back (FR-055); use \"preflight.disabled: true\" to remove the check itself"))
+	}
+	if c.Sync.Prune && c.Mode == ModeMirror {
+		errs = append(errs, errors.New("sync.prune applies in passthrough mode only: mirror-mode prune is confirmed at trigger time, with the list and total size of what would be removed (FR-045), and is not a setting that may run unattended"))
+	}
+	if c.Storage.OccupancyThreshold < 0 {
+		errs = append(errs, errors.New("storage.occupancyThreshold must not be negative: use 0 to leave the store occupancy unmonitored"))
 	}
 	if c.Tasks.KeepFinished < 0 {
 		errs = append(errs, errors.New("tasks.keepFinished must not be negative: use 0 to keep the whole task history"))

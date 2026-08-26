@@ -280,6 +280,12 @@ type Renderer struct {
 	// AnonymousFileSets names the FileSets served without authentication
 	// (FR-047 opt-in): a permanent warning banner, never silent.
 	AnonymousFileSets []string
+	// Occupancy reads the latest store-footprint sample (R-33). Unlike
+	// every other banner source it is a function rather than a value: the
+	// fact it carries changes while the instance runs, and the banner has
+	// to appear AND retract without a restart. Nil on an instance wired
+	// without a store.
+	Occupancy func() store.Occupancy
 }
 
 // NewRenderer parses the embedded templates.
@@ -339,6 +345,18 @@ func (rd *Renderer) view(r *http.Request, data any) *View {
 			Kind: "warning",
 			Text: v.T("banner.anonymous_filesets", "Names", strings.Join(rd.AnonymousFileSets, ", ")),
 		})
+	}
+	// Operational last, and persistent by construction: it is re-read on
+	// every page, so it goes away by itself when the store comes back
+	// under the threshold (R-33) — no dismissal, no restart.
+	if rd.Occupancy != nil {
+		if o := rd.Occupancy(); o.Exceeded {
+			v.Banners = append(v.Banners, Banner{
+				Kind: "warning",
+				Text: v.T("banner.store_occupancy",
+					"Used", v.FmtBytes(o.Bytes), "Threshold", v.FmtBytes(o.Threshold)),
+			})
+		}
 	}
 	return v
 }

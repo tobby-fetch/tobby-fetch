@@ -40,6 +40,9 @@ Domain metrics registered today:
 | `tobby_promotion_pushes_total` | counter | `result` = `pushed` \| `skipped` | Promotion outcomes. `skipped` is the healthy signal: a settled promotion between two zones is almost nothing but skips — "the destination is at the level the Retriever asks for" as a dashboard assertion. Both label values exist from the first scrape. |
 | `tobby_promotion_pushed_bytes_total` | counter | — | Bytes promotion actually moved; an already-synchronized recipe adds nothing (the differential, observed rather than assumed). |
 | `tobby_promotion_refusals_total` | counter | `code` | Pushes refused before transfer, by taxonomy code (`TBY-POL-001` allowlist, `TBY-SIG-001` pre-push signature re-verification, `TBY-DST-001` destination limits). |
+| `tobby_store_occupancy_bytes` | gauge | — | On-disk size of the store's deduplicated blob tree at the last sample; `0` while no `storage.occupancyThreshold` is configured and nothing is sampled. |
+| `tobby_store_occupancy_threshold_bytes` | gauge | — | The configured threshold; `0` means no threshold is set and the store is not monitored. |
+| `tobby_store_occupancy_exceeded` | gauge | — | `1` while the store exceeds its threshold, `0` otherwise. A gauge, not a counter, on purpose: clearing the condition must be as visible as raising it. All three exist from the first scrape. |
 
 The standard Go runtime and process collectors are registered alongside.
 
@@ -91,6 +94,12 @@ With the means of the current series:
 
 - **`readyz`** — readiness flips to 503 during startup and drain; a
   sustained 503 is an instance that cannot serve.
+- **`tobby_store_occupancy_exceeded == 1`** — the store is past the
+  threshold its operator set. Nothing bounds what an unattended
+  passthrough instance accumulates unless `sync.prune` is on, so this is
+  the alert that stands between "growing" and "the volume is full and
+  writes are failing". It falls back to `0` on its own once the store is
+  under the threshold again.
 - **`rate(tobby_promotion_refusals_total[…]) > 0`** — a promotion refusal
   is never routine: it is an allowlist violation, a signature that stopped
   verifying, or a destination limit. The `code` label says which; the logs

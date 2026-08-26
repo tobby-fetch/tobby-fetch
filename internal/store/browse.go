@@ -327,6 +327,9 @@ func (s *Store) Counts(ctx context.Context) (Counts, error) {
 		}
 		c.Tags += len(tags)
 	}
+	// The same measurement the occupancy threshold is compared against
+	// (R-33): the tile and the banner must never disagree about how full
+	// the store is.
 	c.PhysicalBytes, err = s.PhysicalBytes()
 	if err != nil {
 		return c, err
@@ -335,13 +338,16 @@ func (s *Store) Counts(ctx context.Context) (Counts, error) {
 }
 
 // PhysicalBytes is the on-disk size of the blob directory: real,
-// deduplicated bytes.
+// deduplicated bytes, unlike the logical sizes of RepoInfo.
 //
-// It is exposed on its own — Counts already returns it — because the
-// FR-055 pre-flight needs exactly this number and nothing else Counts
-// computes. Counts walks every repository and every tag to produce its
-// two counters, which on a large store is minutes of directory listings
-// for a figure the projected-size arithmetic does not use.
+// It is exposed on its own — Counts already returns it — because two
+// callers need exactly this number and nothing else Counts computes:
+// the FR-055 pre-flight arithmetic, and the R-33 occupancy threshold.
+// Counts walks every repository and every tag to produce its two
+// counters, which on a large store is minutes of directory listings for
+// a figure neither of them uses. One measurement also means the
+// dashboard tile and the occupancy banner can never disagree about how
+// full the store is.
 func (s *Store) PhysicalBytes() (int64, error) {
 	n, err := dirSize(filepath.Join(s.root, "docker", "registry", "v2", "blobs"))
 	if err != nil {

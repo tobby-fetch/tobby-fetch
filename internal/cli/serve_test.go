@@ -264,3 +264,93 @@ func TestServeRefusesWithoutAccount(t *testing.T) {
 		t.Errorf("exit code = %d, want %d (policy refusal)", got, taxonomy.ExitPolicy)
 	}
 }
+
+// TestServeRefusesSecretInStore is the NFR-020 acceptance: a credentials
+// file configured under the store root stops the instance before it
+// serves anything, and the refusal names the path so the operator can move
+// it. The store leaves the site on a medium — a credential on it is a
+// credential handed to whoever plugs the medium in next.
+func TestServeRefusesSecretInStore(t *testing.T) {
+	cfg := serveConfig(t)
+	cfg.Mode = config.ModeMirror
+	cfg.Server.Addr = "127.0.0.1:0"
+	creds := filepath.Join(cfg.Storage.Root, "secrets", ".dockerconfigjson")
+	if err := os.MkdirAll(filepath.Dir(creds), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(creds, []byte(`{"auths":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Registries.CredentialsFile = creds
+
+	err := runServe(context.Background(), &cfg)
+	var te *taxonomy.Error
+	if !errors.As(err, &te) || te.Code() != taxonomy.CodeSecretInStore {
+		t.Fatalf("runServe = %v, want %s", err, taxonomy.CodeSecretInStore)
+	}
+	if got := exitCodeFor(err); got != taxonomy.ExitPolicy {
+		t.Errorf("exit code = %d, want %d (policy refusal)", got, taxonomy.ExitPolicy)
+	}
+	text := taxonomy.Text("en", te)
+	if !strings.Contains(text, creds) {
+		t.Errorf("refusal does not name the offending path %s:\n%s", creds, text)
+	}
+	if !strings.Contains(text, "registries.credentialsFile") {
+		t.Errorf("refusal does not name the setting to change:\n%s", text)
+	}
+	// Actionable, not merely descriptive: the message says what to do.
+	if !strings.Contains(text, "state.root") {
+		t.Errorf("refusal does not say where the file belongs:\n%s", text)
+	}
+}
+
+// TestServeAcceptsSecretsOutsideStore is the other half: the very same
+// instance starts once the credentials file sits beside the store. Without
+// it the check above could pass by refusing every configuration.
+func TestServeAcceptsSecretsOutsideStore(t *testing.T) {
+	cfg := serveConfig(t)
+	cfg.Mode = config.ModeMirror
+	cfg.Server.Addr = "127.0.0.1:0"
+	cfg.Shutdown.GracePeriod = config.Duration(2 * time.Second)
+	creds := filepath.Join(cfg.State.Root, ".dockerconfigjson")
+	if err := os.WriteFile(creds, []byte(`{"auths":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Registries.CredentialsFile = creds
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- runServe(ctx, &cfg) }()
+	select {
+	case err := <-done:
+		t.Fatalf("instance refused a credentials file outside the store: %v", err)
+	case <-time.After(500 * time.Millisecond):
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("runServe = %v, want clean shutdown", err)
+	}
+}
+
+// TestPruneDefaultPerMode locks the FR-045 defaults, which differ on
+// purpose. A mirror store is the delivery unit and its operator confirms
+// against a projected list; a passthrough transit store is nobody's
+// delivery unit and nobody watches the loop.
+func TestPruneDefaultPerMode(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		mode       config.Mode
+		configured bool
+		want       bool
+	}{
+		{"mirror prunes by default", config.ModeMirror, false, true},
+		{"passthrough does not", config.ModePassthrough, false, false},
+		{"passthrough obeys sync.prune", config.ModePassthrough, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := pruneDefaultFor(tc.mode, tc.configured); got != tc.want {
+				t.Errorf("pruneDefaultFor(%s, %v) = %v, want %v", tc.mode, tc.configured, got, tc.want)
+			}
+		})
+	}
+}

@@ -33,14 +33,41 @@ belong to the state root, and the credentials file must sit outside the
 store too. The reference Helm chart mounts the two as separate volumes
 and refuses to render if they point at the same path.
 
-:::note[Upcoming — milestone 5]
-Today the separation is documented discipline plus the chart's guard.
-With milestone 5, it becomes enforced: an instance **refuses to start**
-if secret files reside inside the transportable store, with restrictive
-file permissions applied by default and the check itself covered by tests
-(R-16). Secrets never travel on media. Track it on the
-[project status](../../discover/status/) page.
-:::
+**The separation is enforced, not merely documented.** An instance
+**refuses to start** (`TBY-CFG-002`) when a configured secret path
+resolves inside the store: `state.root`, `registries.credentialsFile`, or
+`server.tls.keyFile`. The check resolves through the real filesystem —
+relative paths, `..`, and symbolic links included — so a path that reads
+as "outside" and lands inside is caught, and the refusal names both the
+setting and the path it resolved to (NFR-020).
+
+The proxy password has no file form and so has no path to check: it is a
+value in the configuration that cannot serialize itself
+([redaction by construction](#redaction-by-construction)). Trust roots and
+CA bundles are public keys, not secrets, and are deliberately allowed
+anywhere.
+
+### Permissions on the files Tobby creates
+
+| File | Unix | Windows |
+|---|---|---|
+| `accounts.yaml` (accounts, token digests) | `0600`, in a `0700` directory | access list granting the owning account only |
+| Generated self-signed TLS key | `0600` | access list granting the owning account only |
+| Replaced TLS private key | `0600` | access list granting the owning account only |
+| Replaced TLS **certificate** | keeps the mode it had (public by construction) | inherited |
+
+On Windows the Unix mode is not what enforces anything: `chmod` there maps
+the write bit onto the read-only attribute and discards the rest, so a
+file "created 0600" would be readable by every account the inherited
+access list admits. Tobby replaces the file's discretionary access list
+outright with a single entry naming the file's own owner, and marks it
+protected so the parent directory's inheritable entries are not merged
+back in. Both operating systems are in the validated scope (NFR-018).
+
+A private key whose file an operator once loosened comes back owner-only
+on the next replacement. The certificate beside it does not: it is public
+by construction, and a deployment that published it on purpose must not
+silently lose that.
 
 ## Hashes are computed by the tool
 

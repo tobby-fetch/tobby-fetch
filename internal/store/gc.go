@@ -13,6 +13,7 @@ import (
 	"time"
 
 	distribution "github.com/distribution/distribution/v3"
+	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
 )
 
@@ -97,15 +98,157 @@ func (s *Store) DeleteRepository(ctx context.Context, name string, logger *slog.
 func (s *Store) DeleteTag(ctx context.Context, name, tag string) error {
 	s.gcMu.Lock()
 	defer s.gcMu.Unlock()
+	if err := s.untag(ctx, name, tag); err != nil {
+		return err
+	}
+	_, err := s.sweep(ctx)
+	return err
+}
+
+// untag removes one tag without sweeping. Caller holds gcMu exclusively.
+//
+// A tag that is not there reports ErrNotFound. The storage driver answers
+// a missing tag with its own PathNotFoundError rather than the library's
+// ErrTagUnknown, which mapBrowseErr does not recognize — so without the
+// translation below, "this tag was already gone" would surface as a store
+// failure, and a prune computing candidates from a ledger would abort on
+// the first tag a concurrent removal had beaten it to.
+func (s *Store) untag(ctx context.Context, name, tag string) error {
 	repo, err := s.repository(ctx, name)
 	if err != nil {
 		return err
 	}
 	if err := repo.Tags(ctx).Untag(ctx, tag); err != nil {
+		var missing storagedriver.PathNotFoundError
+		if errors.As(err, &missing) {
+			return fmt.Errorf("%w: untagging %s:%s: %w", ErrNotFound, name, tag, err)
+		}
 		return mapBrowseErr("untagging "+name+":"+tag, err)
 	}
-	_, err = s.sweep(ctx)
-	return err
+	return nil
+}
+
+// TagRef names one tag of one repository — the unit the FR-045 prune
+// works in, because relocated repositories are shared across recipes and
+// only a tag belongs to exactly one of them.
+type TagRef struct {
+	Repo string
+	Tag  string
+}
+
+// PruneResult counts one prune: the tags unlinked, the repositories left
+// empty and removed with them, and the pieces of content the sweep
+// reclaimed or deferred — the same two numbers every other removal
+// reports, so that disk which has not come back is visible rather than
+// mysterious (FR-044 grace period).
+type PruneResult struct {
+	Tags            int
+	Repositories    int
+	ContentSwept    int
+	ContentDeferred int
+}
+
+// PruneTags unlinks the given tags, removes the repositories they leave
+// without any tag, and sweeps ONCE (FR-045).
+//
+// One lock and one sweep, rather than a DeleteTag per reference, is the
+// whole reason this exists: a sweep walks the entire blob tree, and a
+// prune aligned on a Retriever routinely drops dozens of tags at a time.
+// Doing it one at a time would turn a reconciliation cycle into dozens of
+// full tree walks under the exclusive lock — on a long-lived passthrough
+// instance, that is the reconciliation loop starving the registry it is
+// supposed to be filling.
+//
+// Unlike DeleteRepository it does NOT consult the recipe graph. That
+// guard exists to stop a surface removing content a recipe manages; prune
+// removes exactly that content, and the graph it would consult is the one
+// its caller has just updated. Deciding WHAT may go is the caller's job
+// (engine: provenance class, protected roots, reachability from the
+// resolved Retriever) — this is the mechanism, not the policy.
+//
+// A tag that is already gone is not an error: prune computes candidates
+// from a ledger, and a concurrent removal is a race prune should absorb
+// rather than fail on.
+func (s *Store) PruneTags(ctx context.Context, refs []TagRef, logger *slog.Logger) (PruneResult, error) {
+	var res PruneResult
+	if len(refs) == 0 {
+		return res, nil
+	}
+	s.gcMu.Lock()
+	defer s.gcMu.Unlock()
+
+	touched := make([]string, 0, len(refs))
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		err := s.untag(ctx, ref.Repo, ref.Tag)
+		switch {
+		case errors.Is(err, ErrNotFound):
+			// Already gone: nothing to remove, and nothing to report as a
+			// failure either.
+		case err != nil:
+			return res, err
+		default:
+			res.Tags++
+		}
+		if !seen[ref.Repo] {
+			seen[ref.Repo] = true
+			touched = append(touched, ref.Repo)
+		}
+	}
+
+	// A repository with no tag left is not content any more, it is an
+	// empty directory and a stale provenance entry the media manifest
+	// would still have to describe (FR-054). It goes with its tags.
+	for _, name := range touched {
+		empty, err := s.hasNoTags(ctx, name)
+		if err != nil {
+			return res, err
+		}
+		if !empty {
+			continue
+		}
+		dir := filepath.Join(s.root, "docker", "registry", "v2", "repositories", filepath.FromSlash(name))
+		if err := os.RemoveAll(dir); err != nil {
+			return res, fmt.Errorf("store: removing pruned repository %s: %w", name, err)
+		}
+		if err := s.dropProvenance(name); err != nil {
+			return res, err
+		}
+		res.Repositories++
+	}
+
+	swept, err := s.sweep(ctx)
+	if err != nil {
+		return res, err
+	}
+	res.ContentSwept, res.ContentDeferred = swept.Removed, swept.Deferred
+	logger.LogAttrs(ctx, slog.LevelInfo, "store pruned",
+		slog.Int("tags_removed", res.Tags),
+		slog.Int("repositories_removed", res.Repositories),
+		slog.Int("content_swept", res.ContentSwept),
+		slog.Int("content_deferred", res.ContentDeferred),
+		slog.String("requirement", "FR-045"))
+	return res, nil
+}
+
+// hasNoTags reports whether a repository carries no tag at all. Caller
+// holds gcMu.
+func (s *Store) hasNoTags(ctx context.Context, name string) (bool, error) {
+	repo, err := s.repository(ctx, name)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil // already gone
+	}
+	if err != nil {
+		return false, err
+	}
+	tags, err := repo.Tags(ctx).All(ctx)
+	if err != nil {
+		if errors.Is(mapBrowseErr("", err), ErrNotFound) {
+			return true, nil
+		}
+		return false, mapBrowseErr("listing tags of "+name, err)
+	}
+	return len(tags) == 0, nil
 }
 
 // RecipeManagedError refuses individual removal of recipe-managed content

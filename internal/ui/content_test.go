@@ -247,7 +247,7 @@ func TestContentUIAPIParity(t *testing.T) {
 	c := login(t, uiMux, "alexis", "pw-admin")
 
 	restAPI := api.New(u.authn, slog.New(slog.DiscardHandler))
-	api.RegisterContent(restAPI, st)
+	api.RegisterContent(restAPI, st, nil)
 	apiMux := http.NewServeMux()
 	apiMux.Handle("/api/v1/", restAPI.Handler())
 

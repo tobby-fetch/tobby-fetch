@@ -118,6 +118,13 @@ const (
 	// record of who put it there.
 	ActionFileSetPack = "fileset.pack"
 
+	// ActionPruneActive is emitted at startup while the passthrough prune
+	// is enabled by the explicit R-33 opt-in (FR-045 amendment) — the
+	// trail's counterpart of the retriever screen's own statement. An
+	// instance that deletes content on a timer must be answerable for
+	// when it was told to.
+	ActionPruneActive = "prune.active"
+
 	// ActionIntervalChange is a change to the promotion cadence of
 	// FR-013 — the sensitive configuration change FR-094 asks to be
 	// recorded. How often an instance reaches into a neighbouring zone is

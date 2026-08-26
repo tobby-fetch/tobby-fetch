@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -561,5 +562,44 @@ func TestAuthOverrideEmitsNoPerRequestAudit(t *testing.T) {
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPut, "/v2/x/blobs/uploads/", http.NoBody))
 	if buf.Len() != 0 {
 		t.Errorf("the FR-075 override audits per request: %s", buf.String())
+	}
+}
+
+// TestAccountsFileIsOwnerOnly is the NFR-020 acceptance on the local user
+// database: the file holds the argon2id hash of every account and the
+// digest of every static token, and its permissions are the last barrier
+// once someone has a shell on the host. The state directory around it is
+// no more open than the file inside it.
+func TestAccountsFileIsOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits do not carry the rule on Windows; the access list does")
+	}
+	dir := t.TempDir()
+	// The directory pre-exists world-readable: the state a deployment
+	// tool, an installer, or a restored backup can leave behind.
+	if err := os.Chmod(dir, 0o755); err != nil { //nolint:gosec // G302: deliberately loose — the fixture is the state Open must narrow
+		t.Fatal(err)
+	}
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddAccount("admin", RoleAdmin, "secret-password", t0); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Stat(filepath.Join(dir, accountsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("%s mode = %04o, want 0600", accountsFile, got)
+	}
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Errorf("state directory mode = %04o, want 0700", got)
 	}
 }

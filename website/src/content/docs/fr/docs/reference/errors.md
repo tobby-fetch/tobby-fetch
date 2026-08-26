@@ -184,6 +184,21 @@ mêmes ancres. À suivre sur la page
   [référence de configuration](../../reference/configuration/).
 - **Remédiable hors-ligne :** oui · **Bloque :** toute l'instance (refus de démarrage) ou la commande qui a chargé la configuration
 
+### TBY-CFG-002
+
+- **Ce qui s'est passé :** l'instance refuse de démarrer — un fichier de
+  secret est configuré à l'intérieur du store transportable.
+- **Cause probable :** `state.root`, `registries.credentialsFile` ou
+  `server.tls.keyFile` se résout sous `storage.root`. Le store est confié
+  à un porteur puis branché sur une machine d'une autre zone : tout ce qui
+  est dessous est réputé lu par quelqu'un d'autre (NFR-020).
+- **Action corrective :** déplacez chaque fichier listé hors du store — le
+  répertoire d'état est sa place — mettez le réglage à jour, puis
+  redémarrez. Le contrôle passe par le système de fichiers : un chemin qui
+  atteint le store via un lien symbolique compte comme étant dedans, et le
+  message indique le chemin résolu qui a tranché.
+- **Corrigeable hors ligne :** oui · **Bloque :** l'instance entière (refus au démarrage)
+
 ## Réseau sortant et TLS (TBY-NET)
 
 ### TBY-NET-001

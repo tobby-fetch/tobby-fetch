@@ -28,11 +28,13 @@ const (
 	EnvTransferResumeMin   = "TOBBY_TRANSFER_RESUME_THRESHOLD"
 	EnvRetrieverSource     = "TOBBY_RETRIEVER_SOURCE"
 	EnvStorageBasePrefix   = "TOBBY_STORAGE_BASE_PREFIX"
+	EnvStorageOccupancyMax = "TOBBY_STORAGE_OCCUPANCY_THRESHOLD"
 	EnvSyncParallelism     = "TOBBY_SYNC_PARALLELISM"
 	EnvSyncRetries         = "TOBBY_SYNC_RETRIES"
 	EnvSyncInterval        = "TOBBY_SYNC_INTERVAL"
 	EnvPreflightMargin     = "TOBBY_PREFLIGHT_SAFETY_MARGIN_PERCENT"
 	EnvPreflightDisabled   = "TOBBY_PREFLIGHT_DISABLED"
+	EnvSyncPrune           = "TOBBY_SYNC_PRUNE"
 	EnvTasksKeepFinished   = "TOBBY_TASKS_KEEP_FINISHED"
 	EnvLoggingLevel        = "TOBBY_LOGGING_LEVEL"
 	EnvShutdownGracePeriod = "TOBBY_SHUTDOWN_GRACE_PERIOD"
@@ -189,6 +191,13 @@ func applyEnv(cfg *Config, lookup func(string) (string, bool)) error {
 	if v, ok := lookup(EnvStorageBasePrefix); ok {
 		cfg.Storage.BasePrefix = v
 	}
+	if v, ok := lookup(EnvStorageOccupancyMax); ok {
+		sz, err := ParseSize(v)
+		if err != nil {
+			return fmt.Errorf("%s: %w", EnvStorageOccupancyMax, err)
+		}
+		cfg.Storage.OccupancyThreshold = sz
+	}
 	if v, ok := lookup(EnvSyncParallelism); ok {
 		n, err := strconv.Atoi(v)
 		if err != nil {
@@ -223,6 +232,14 @@ func applyEnv(cfg *Config, lookup func(string) (string, bool)) error {
 			return err
 		}
 		cfg.Preflight.Disabled = b
+	}
+
+	if v, ok := lookup(EnvSyncPrune); ok {
+		b, err := parseBool(EnvSyncPrune, v)
+		if err != nil {
+			return err
+		}
+		cfg.Sync.Prune = b
 	}
 	if v, ok := lookup(EnvTasksKeepFinished); ok {
 		n, err := strconv.Atoi(v)

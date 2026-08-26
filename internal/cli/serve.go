@@ -90,6 +90,20 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("storage root: %w", err)
 	}
 
+	// Secrets never travel (NFR-020, R-16). The store leaves the site on a
+	// medium; a secret configured inside it is a credential handed to
+	// whoever plugs the medium in next. Checked here rather than in
+	// config.validate because the verdict is a filesystem one — the
+	// directories have just been created, so a symlink pointing back into
+	// the store resolves for real — and because `tobby config dump` must
+	// stay usable on the very configuration being refused.
+	if offenders := cfg.SecretsInStore(); len(offenders) > 0 {
+		return taxonomy.New(taxonomy.CodeSecretInStore, taxonomy.Params{
+			"paths": config.FormatSecretPaths(offenders),
+			"root":  cfg.StoreRootResolved(),
+		})
+	}
+
 	// Authentication state (R-01): without the explicit FR-075 opt-out, the
 	// instance refuses to start until a local account exists — no surface is
 	// ever exposed open.
@@ -154,6 +168,30 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 				slog.String("error", cerr.Error()))
 		}
 	}()
+	// Store occupancy (FR-045 amendment, R-33): a passthrough instance
+	// reconciles unattended for months and nothing bounds what its
+	// transit store accumulates, so the operator's threshold is watched
+	// on its own cadence — the metric moves on every sample, the banner
+	// and the API read the latest one. Without a configured threshold the
+	// loop never starts and every surface reports "not monitored".
+	occupancy := store.NewOccupancyMonitor(st, cfg.Storage.OccupancyThreshold.Bytes(), logger)
+	occupancy.Observe(func(o store.Occupancy) {
+		reg.StoreBytes.Set(float64(o.Bytes))
+		reg.StoreThresholdBytes.Set(float64(o.Threshold))
+		exceeded := 0.0
+		if o.Exceeded {
+			exceeded = 1
+		}
+		reg.StoreOccupancyExceeded.Set(exceeded)
+	})
+	reg.StoreThresholdBytes.Set(float64(cfg.Storage.OccupancyThreshold.Bytes()))
+	if cfg.Storage.OccupancyThreshold > 0 {
+		go occupancy.Run(ctx)
+		logger.LogAttrs(ctx, slog.LevelInfo, "store occupancy monitored",
+			slog.String("threshold", cfg.Storage.OccupancyThreshold.String()),
+			slog.String("requirement", "FR-045"))
+	}
+
 	// The embedded registry serves the standard OCI Distribution API on the
 	// shared listener (FR-040); nested relocated repository names are
 	// first-class (ADR-0013). Reads need viewer, writes need operator
@@ -314,6 +352,23 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		})
 	}
 
+	// Prune to the Retriever (FR-045). The two modes default differently
+	// and both defaults are deliberate: a mirror store IS the delivery
+	// unit and its operator stands in front of the trigger, sees the list
+	// and the total size, and decides — so prune is on. A passthrough
+	// transit store is nobody's delivery unit and nobody watches the
+	// loop, so it prunes only when sync.prune says to.
+	//
+	// Either way it is stated on three channels at startup — the log, the
+	// audit trail, and the retriever screen with its API mirror — because
+	// an instance that deletes content is a posture, not a detail.
+	prunesByDefault := pruneDefaultFor(cfg.Mode, cfg.Sync.Prune)
+	eng.SetPruneDefault(prunesByDefault)
+	logger.LogAttrs(ctx, slog.LevelInfo, "prune to the Retriever",
+		slog.Bool("default", prunesByDefault),
+		slog.String("decided", pruneDecisionSite(cfg.Mode)),
+		slog.String("protected", "unit imports (FR-023), the offline vulnerability database (FR-032), and content seeded through /v2/ (UC3)"),
+		slog.String("requirement", "FR-045"))
 	eng.SetDestination(destination)
 	if destination != nil {
 		logger.LogAttrs(ctx, slog.LevelInfo, "promotion destination configured",
@@ -333,6 +388,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	queue.Register(tasks.TypeSync, func(runCtx context.Context, t *tasks.Task, taskLogger *slog.Logger, save func()) error {
 		err := eng.Runner()(runCtx, t, taskLogger, save)
 		refreshFileSets(runCtx)
+		// A cycle is the one moment the footprint moves by a lot — it
+		// fetched, and it may have pruned. Re-sampling here is what makes
+		// the warning retract when the store comes back under the
+		// threshold, instead of at the next tick (R-33).
+		occupancy.Refresh(runCtx)
 		return err
 	})
 	queue.Start(ctx)
@@ -346,7 +406,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	if cfg.Mode == config.ModePassthrough && cfg.Retriever.Source != "" {
-		sched := schedule.NewScheduler(interval, syncTrigger(queue, cfg.Retriever.Source, logger), logger)
+		sched := schedule.NewScheduler(interval, syncTrigger(queue, cfg.Retriever.Source, cfg.Sync.Prune, logger), logger)
 		go sched.Run(ctx)
 		logger.LogAttrs(ctx, slog.LevelInfo, "promotion scheduler started",
 			slog.Duration("interval", interval.Effective()),
@@ -400,7 +460,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	interopSvc.Register()
 
 	restAPI := api.New(authn, logger)
-	api.RegisterContent(restAPI, st)
+	api.RegisterContent(restAPI, st, occupancy)
 	api.RegisterTasks(restAPI, queue, st, time.Duration(cfg.Import.InspectTimeout), importPolicy)
 	api.RegisterAccounts(restAPI, accounts)
 	api.RegisterRecipes(restAPI, &api.RecipeOptions{
@@ -411,6 +471,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Destination:       destination.Host(),
 		Cookbook:          destination.Cookbook(),
 		Interval:          interval,
+		Prune:             eng.PrunesByDefault(),
+		Projector:         eng,
+		Occupancy:         occupancy,
 	})
 	api.RegisterPublish(restAPI, publisher)
 	api.RegisterPlan(restAPI, &api.PlanOptions{Planner: eng.Planner()})
@@ -450,6 +513,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		ServerCert:         serverCert,
 		Egress:             egress,
 		Interop:            interopSvc,
+		Occupancy:          occupancy,
+		PrunesToRetriever:  eng.PrunesByDefault(),
+		Projector:          eng,
 	})
 	webUI.Mount(srv.Mux())
 
@@ -460,6 +526,16 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			Actor:   audit.ActorLocal,
 			Action:  audit.ActionAuthOverride,
 			Target:  "instance",
+			Outcome: audit.OutcomeSuccess,
+			Origin:  audit.OriginLocal,
+		})
+	}
+
+	if cfg.Sync.Prune {
+		audit.Log(ctx, logger, &audit.Event{
+			Actor:   audit.ActorLocal,
+			Action:  audit.ActionPruneActive,
+			Target:  cfg.Retriever.Source,
 			Outcome: audit.OutcomeSuccess,
 			Origin:  audit.OriginLocal,
 		})
@@ -501,7 +577,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 // nothing: the pending task reads the latest desired state when it
 // finally runs. The skip is logged so an operator watching cycle times
 // drift past sync.interval sees the coalescence happen (FR-013).
-func syncTrigger(queue *tasks.Queue, source string, logger *slog.Logger) schedule.Trigger {
+func syncTrigger(queue *tasks.Queue, source string, prune bool, logger *slog.Logger) schedule.Trigger {
 	return func(ctx context.Context) error {
 		if queue.HasPending(tasks.TypeSync) {
 			logger.LogAttrs(ctx, slog.LevelInfo,
@@ -510,7 +586,10 @@ func syncTrigger(queue *tasks.Queue, source string, logger *slog.Logger) schedul
 				slog.String("requirement", "FR-013"))
 			return nil
 		}
-		_, err := queue.Create(tasks.TypeSync, source, audit.ActorLocal, nil)
+		// The scheduled cycle carries the configured decision explicitly:
+		// nothing about an unattended run may depend on a default read
+		// somewhere else at the moment it happens (FR-045).
+		_, err := queue.Create(tasks.TypeSync, source, audit.ActorLocal, nil, tasks.WithPrune(prune))
 		return err
 	}
 }
@@ -561,6 +640,36 @@ func (c storeCatalog) Provenance(repo string) string {
 	default:
 		return fileserve.FromSeed
 	}
+}
+
+// pruneDefaultFor answers what an unqualified synchronization does about
+// content the resolved Retriever no longer references (FR-045).
+//
+// Mirror mode prunes: the store IS the delivery unit, so a medium that
+// still carries what the zone stopped asking for is a medium that lies
+// about what it delivers — and the operator triggering it is standing
+// right there, shown the list and the total size before confirming.
+//
+// Passthrough mode takes sync.prune, which is off: a transit store is
+// nobody's delivery unit, nobody is watching the loop, and a store that
+// quietly shrinks between two cycles is one the zone below discovers has
+// lost content.
+func pruneDefaultFor(mode config.Mode, configured bool) bool {
+	if mode == config.ModeMirror {
+		return true
+	}
+	return configured
+}
+
+// pruneDecisionSite names WHERE the prune decision is made, so the
+// startup line says more than a boolean: in mirror mode an operator
+// confirms it per run against the list and the total size (FR-045), in
+// passthrough mode the configuration decides once and the loop obeys.
+func pruneDecisionSite(mode config.Mode) string {
+	if mode == config.ModeMirror {
+		return "at trigger time, against the projected list and total size"
+	}
+	return "by sync.prune, applied at every reconciliation cycle"
 }
 
 // storeBlobs adapts the embedded store to the fileserve read surface.

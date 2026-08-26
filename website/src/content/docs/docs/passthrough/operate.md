@@ -100,19 +100,46 @@ milestone 7. Track it on the [project status](../../discover/status/) page.
 
 ## Store growth, stated plainly
 
-Today, **nothing cleans the store automatically in passthrough mode.**
-Every synchronized version and every one-off import stays until an
-administrator removes unit-imported repositories by hand (FR-044) —
-recipe-managed content is not individually removable at all. A zone
-whose recipes track moving constraints accumulates every version they
-ever resolved. Size the store volume with that in mind, and monitor it.
+**By default, nothing cleans the store automatically in passthrough
+mode.** Every synchronized version and every one-off import stays until
+an administrator removes unit-imported repositories by hand (FR-044) —
+recipe-managed content is not individually removable at all. A zone whose
+recipes track moving constraints accumulates every version they ever
+resolved.
 
-:::note[Upcoming — milestone 5]
-Store cleanup arrives with R-33 (prune-to-Retriever extended to the
-passthrough transit store). Until then, growth is monotonic — that is a
-current limit, not a fine print. Track it on the
-[project status](../../discover/status/) page.
-:::
+That default is deliberate. A passthrough transit store is not a delivery
+unit, and an operator asking for fresher content has not asked for older
+content to be deleted: a reconciliation loop that quietly shrinks the
+store a zone pulls from is exactly the failure this default prevents.
+
+### Pruning to the Retriever
+
+Set `sync.prune: true` (or `TOBBY_SYNC_PRUNE=true`) and every
+reconciliation cycle removes the recipe-managed content the resolved
+Retriever no longer references. Three kinds of content are **never**
+eligible, because none of them is recipe-managed:
+
+- unit imports (FR-023),
+- the offline vulnerability database (FR-032),
+- anything pushed through `/v2/` outside managed namespaces (UC3 seeding).
+
+Two safeguards are worth knowing. A cycle in which **any** recipe failed
+to resolve prunes nothing and says so in the run log: content of a recipe
+that did not resolve is indistinguishable from content the Retriever
+dropped, and deleting on the strength of a network failure is not a
+trade this product makes. And every removed item is named — repository,
+tag, digest, and the recipe that brought it — in the run log of the
+cycle, not merely counted.
+
+### Watching the volume
+
+Set `storage.occupancyThreshold` (for example `500GiB`) and the instance
+says when it is over: a persistent warning on every UI page, the same
+fact on `GET /api/v1/content` and `GET /api/v1/retriever`, and the
+`tobby_store_occupancy_exceeded` metric. Crossing back under retracts all
+three — a warning that appears and never clears is a warning operators
+learn to ignore. Unset means unmonitored, which is reported as such and
+never as "within limits".
 
 :::note[Upcoming — milestone 5]
 A plan / dry-run mode for passthrough (R-04) — showing what a

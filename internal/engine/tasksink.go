@@ -52,3 +52,8 @@ func (s *taskSink) update(fn func(t *tasks.Task) (changed bool)) {
 // runID returns the task's correlation id (FR-090). It is immutable
 // after creation, so reading it takes no lock.
 func (s *taskSink) runID() string { return s.task.RunID }
+
+// prune reports what this run was asked to do about content the Retriever
+// no longer references (FR-045). Set at creation and never mutated, like
+// runID, so reading it takes no lock.
+func (s *taskSink) prune() bool { return s.task.Prune }

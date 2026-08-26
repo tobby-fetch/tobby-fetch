@@ -52,6 +52,7 @@ var registeredRoutes = []string{
 	"DELETE /api/v1/retriever/interval",
 	"POST /api/v1/store/reset",
 	"POST /api/v1/sync",
+	"GET /api/v1/sync/prune-preview",
 	"GET /api/v1/tasks",
 	"GET /api/v1/tasks/{id}",
 	"GET /api/v1/tasks/{id}/logs",

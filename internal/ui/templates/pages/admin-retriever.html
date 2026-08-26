@@ -106,6 +106,27 @@
   <p class="t-muted">{{.T "retriever.filesets_none"}}</p>
   {{end}}
 
+  {{/* FR-045 amendment (R-33). An instance that deletes content on a
+       timer says so where its posture is read, opt-in or not: "off" and
+       "not mentioned" must never render the same. */}}
+  <h2 class="t-kick">{{.T "retriever.prune_title"}}</h2>
+  {{if .Data.Prune}}
+  <p class="t-muted t-note">{{.T "retriever.prune_on"}}</p>
+  {{else}}
+  <p class="t-muted">{{.T "retriever.prune_off"}}</p>
+  {{end}}
+
+  <h2 class="t-kick">{{.T "retriever.occupancy_title"}}</h2>
+  {{if .Data.Occupancy.Monitored}}
+    {{if .Data.Occupancy.Exceeded}}
+    <p class="t-form-error" role="alert">{{.T "retriever.occupancy_over" "Used" (.FmtBytes .Data.Occupancy.Bytes) "Threshold" (.FmtBytes .Data.Occupancy.Threshold)}}</p>
+    {{else}}
+    <p class="t-muted t-note">{{.T "retriever.occupancy_within" "Used" (.FmtBytes .Data.Occupancy.Bytes) "Threshold" (.FmtBytes .Data.Occupancy.Threshold)}}</p>
+    {{end}}
+  {{else}}
+  <p class="t-muted">{{.T "retriever.occupancy_none"}}</p>
+  {{end}}
+
   <h2 class="t-kick">{{.T "retriever.last_sync_title"}}</h2>
   {{if .Data.HasLastSync}}
   <p>

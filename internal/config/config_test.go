@@ -669,3 +669,69 @@ func TestSecretTextMarshalingAndZero(t *testing.T) {
 		t.Errorf("slog text output misses the redaction marker: %s", logged.String())
 	}
 }
+
+// TestPruneAndOccupancySettings covers the two R-33 keys end to end: the
+// environment spelling, the defaults they override, and the one
+// combination the instance refuses.
+func TestPruneAndOccupancySettings(t *testing.T) {
+	t.Run("defaults are off", func(t *testing.T) {
+		cfg := Default()
+		if cfg.Sync.Prune {
+			t.Error("sync.prune defaults to true: shrinking a transit store must never be implied by a refresh (R-33)")
+		}
+		if cfg.Storage.OccupancyThreshold != 0 {
+			t.Errorf("storage.occupancyThreshold defaults to %s, want unset — Tobby cannot guess the size of the volume it was given",
+				cfg.Storage.OccupancyThreshold)
+		}
+	})
+
+	t.Run("settable by environment", func(t *testing.T) {
+		path := writeFile(t, "mode: passthrough\n")
+		t.Setenv(EnvSyncPrune, "true")
+		t.Setenv(EnvStorageOccupancyMax, "20GiB")
+		cfg, err := Load(path, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !cfg.Sync.Prune {
+			t.Error("sync.prune was not read from the environment")
+		}
+		if cfg.Storage.OccupancyThreshold != 20*GiB {
+			t.Errorf("storage.occupancyThreshold = %s, want 20GiB", cfg.Storage.OccupancyThreshold)
+		}
+	})
+
+	t.Run("prune is refused in mirror mode", func(t *testing.T) {
+		cfg := Default()
+		cfg.Mode = ModeMirror
+		cfg.Sync.Prune = true
+		err := cfg.Validate()
+		if err == nil || !strings.Contains(err.Error(), "passthrough mode only") {
+			t.Fatalf("Validate = %v, want a refusal: mirror-mode prune is confirmed at trigger time (FR-045)", err)
+		}
+		// The message says what the alternative is, not merely that the
+		// setting is wrong.
+		if !strings.Contains(err.Error(), "trigger time") {
+			t.Errorf("the refusal is not actionable: %v", err)
+		}
+	})
+
+	t.Run("prune is accepted in passthrough mode", func(t *testing.T) {
+		cfg := Default()
+		cfg.Mode = ModePassthrough
+		cfg.Sync.Prune = true
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("Validate = %v, want the passthrough opt-in accepted", err)
+		}
+	})
+
+	t.Run("a negative threshold is refused", func(t *testing.T) {
+		cfg := Default()
+		cfg.Mode = ModePassthrough
+		cfg.Storage.OccupancyThreshold = -1
+		err := cfg.Validate()
+		if err == nil || !strings.Contains(err.Error(), "occupancyThreshold") {
+			t.Fatalf("Validate = %v, want a refusal naming the setting", err)
+		}
+	})
+}

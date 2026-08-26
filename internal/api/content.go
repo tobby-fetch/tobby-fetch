@@ -21,8 +21,8 @@ import (
 
 // RegisterContent mounts the content endpoints on the API surface. Reading
 // the store needs the viewer role (ADR-0009).
-func RegisterContent(a *API, st *store.Store) {
-	c := &contentAPI{api: a, store: st}
+func RegisterContent(a *API, st *store.Store, occupancy *store.OccupancyMonitor) {
+	c := &contentAPI{api: a, store: st, occupancy: occupancy}
 	a.Handle("GET /api/v1/content", a.RequireRole(auth.RoleViewer, c.list))
 	a.Handle("GET /api/v1/content/{repo...}", a.RequireRole(auth.RoleViewer, c.detail))
 }
@@ -30,6 +30,22 @@ func RegisterContent(a *API, st *store.Store) {
 type contentAPI struct {
 	api   *API
 	store *store.Store
+	// occupancy is the store footprint against its configured threshold
+	// (R-33). It rides on the content listing because that is the API
+	// mirror of the screen the banner sits on, and because the banner is
+	// shown to every role: a viewer that sees the warning in the
+	// interface must be able to read the same fact from the API (FR-061).
+	occupancy *store.OccupancyMonitor
+}
+
+// contentOccupancy is the store footprint reported beside the listing.
+// Monitored is its own field: "no threshold configured" and "within the
+// threshold" are opposite statements and must never decode the same.
+type contentOccupancy struct {
+	Bytes          int64 `json:"bytes"`
+	ThresholdBytes int64 `json:"threshold_bytes"`
+	Monitored      bool  `json:"monitored"`
+	Exceeded       bool  `json:"exceeded"`
 }
 
 // contentRepoItem is one row of the repository listing.
@@ -46,6 +62,9 @@ type contentListResponse struct {
 	Page         int               `json:"page"`
 	TotalPages   int               `json:"totalPages"`
 	Total        int               `json:"total"`
+	// Occupancy carries the store-wide footprint against the configured
+	// threshold (R-33) — the API side of the persistent banner.
+	Occupancy contentOccupancy `json:"occupancy"`
 }
 
 // list serves GET /api/v1/content?q=&kind=&prefix=&page= (FR-061: the
@@ -62,6 +81,7 @@ func (c *contentAPI) list(w http.ResponseWriter, r *http.Request) {
 		Page:         page.Page,
 		TotalPages:   page.TotalPages,
 		Total:        page.Total,
+		Occupancy:    c.occupancyJSON(),
 	}
 	for _, repo := range page.Repos {
 		resp.Repositories = append(resp.Repositories, contentRepoItem{
@@ -69,6 +89,20 @@ func (c *contentAPI) list(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	c.api.JSON(w, http.StatusOK, resp)
+}
+
+// occupancyJSON renders the latest footprint sample.
+func (c *contentAPI) occupancyJSON() contentOccupancy {
+	if c.occupancy == nil {
+		return contentOccupancy{}
+	}
+	o := c.occupancy.Current()
+	return contentOccupancy{
+		Bytes:          o.Bytes,
+		ThresholdBytes: o.Threshold,
+		Monitored:      o.Monitored(),
+		Exceeded:       o.Exceeded,
+	}
 }
 
 // contentTag is one tag of the repository detail. Platforms counts the
