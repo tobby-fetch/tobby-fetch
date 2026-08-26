@@ -16,41 +16,63 @@ trustworthy in the first place. Tobby moves the content across those
 boundaries **without changing a byte of it**, and re-verifies everything on
 arrival.
 
-<svg viewBox="0 0 640 240" role="img" aria-label="Three zones — connected, restricted, air-gapped — with a Tobby instance carrying content across each boundary" style="width:100%;max-width:640px;height:auto;display:block;margin:1rem auto;font-family:var(--sl-font);">
+<svg viewBox="0 0 640 336" role="img" aria-label="Three independent deployment shapes: passthrough between two connected zones, a cascade of passthrough instances, and mirror instances exchanging a store on removable media — each carrying content from source registries to a restricted zone registry" style="width:100%;max-width:640px;height:auto;display:block;margin:1rem auto;font-family:var(--sl-font);">
   <defs>
     <marker id="wt-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" fill="var(--sl-color-gray-3)" />
     </marker>
   </defs>
-  <!-- zones -->
-  <rect x="8" y="30" width="196" height="170" rx="10" fill="none" stroke="var(--sl-color-gray-5)" stroke-dasharray="5 4" />
-  <rect x="222" y="30" width="196" height="170" rx="10" fill="none" stroke="var(--sl-color-gray-5)" stroke-dasharray="5 4" />
-  <rect x="436" y="30" width="196" height="170" rx="10" fill="none" stroke="var(--sl-color-gray-5)" stroke-dasharray="5 4" />
-  <text x="106" y="20" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-2)">Connected zone</text>
-  <text x="320" y="20" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-2)">Restricted zone</text>
-  <text x="534" y="20" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-2)">Air-gapped zone</text>
-  <!-- sources in connected zone -->
-  <rect x="28" y="48" width="156" height="34" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
-  <text x="106" y="69" text-anchor="middle" font-size="12" fill="var(--sl-color-gray-1)">Source registries</text>
-  <!-- tobby instances -->
-  <rect x="40" y="120" width="132" height="40" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
-  <text x="106" y="139" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-1)">Tobby</text>
-  <text x="106" y="153" text-anchor="middle" font-size="10" fill="var(--sl-color-gray-3)">store + registry</text>
-  <rect x="254" y="120" width="132" height="40" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
-  <text x="320" y="139" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-1)">Tobby</text>
-  <text x="320" y="153" text-anchor="middle" font-size="10" fill="var(--sl-color-gray-3)">store + registry</text>
-  <rect x="468" y="120" width="132" height="40" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
-  <text x="534" y="139" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-1)">Tobby</text>
-  <text x="534" y="153" text-anchor="middle" font-size="10" fill="var(--sl-color-gray-3)">store + registry</text>
-  <!-- flows -->
-  <line x1="106" y1="82" x2="106" y2="116" stroke="var(--sl-color-gray-3)" marker-end="url(#wt-arrow)" />
-  <line x1="172" y1="140" x2="250" y2="140" stroke="var(--sl-color-gray-3)" marker-end="url(#wt-arrow)" />
-  <text x="211" y="132" text-anchor="middle" font-size="10" fill="var(--sl-color-gray-3)">network</text>
-  <line x1="386" y1="140" x2="464" y2="140" stroke="var(--sl-color-gray-3)" stroke-dasharray="4 4" marker-end="url(#wt-arrow)" />
-  <text x="425" y="132" text-anchor="middle" font-size="10" fill="var(--sl-color-gray-3)">media</text>
-  <!-- verification note -->
-  <text x="320" y="186" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-2)">Same digests, same signatures — re-verified at every boundary</text>
-  <text x="320" y="222" text-anchor="middle" font-size="10" fill="var(--sl-color-gray-3)">passthrough: continuous promotion over the network · air-gap: removable media (milestone 5)</text>
+  <!-- row 1: passthrough, one hop -->
+  <text x="8" y="14" font-size="11" font-weight="600" fill="var(--sl-color-gray-2)">Passthrough — between two connected zones</text>
+  <rect x="8" y="24" width="120" height="40" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="68" y="41" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-1)">Source registries</text>
+  <text x="68" y="55" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">docker.io, ghcr, …</text>
+  <rect x="245" y="24" width="120" height="40" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="305" y="41" text-anchor="middle" font-size="11" font-weight="600" fill="var(--sl-color-gray-1)">Tobby</text>
+  <text x="305" y="55" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">passthrough</text>
+  <rect x="482" y="24" width="150" height="40" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="557" y="41" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-1)">Restricted zone registry</text>
+  <text x="557" y="55" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">docker · helm · oras</text>
+  <line x1="128" y1="44" x2="241" y2="44" stroke="var(--sl-color-gray-3)" marker-end="url(#wt-arrow)" />
+  <line x1="365" y1="44" x2="478" y2="44" stroke="var(--sl-color-gray-3)" marker-end="url(#wt-arrow)" />
+  <!-- row 2: cascade -->
+  <text x="8" y="119" font-size="11" font-weight="600" fill="var(--sl-color-gray-2)">Cascade — each zone feeds the next, recipes unchanged</text>
+  <rect x="8" y="129" width="120" height="40" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="68" y="146" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-1)">Source registries</text>
+  <text x="68" y="160" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">docker.io, ghcr, …</text>
+  <rect x="166" y="129" width="120" height="40" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="226" y="146" text-anchor="middle" font-size="11" font-weight="600" fill="var(--sl-color-gray-1)">Tobby</text>
+  <text x="226" y="160" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">passthrough</text>
+  <rect x="324" y="129" width="120" height="40" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="384" y="146" text-anchor="middle" font-size="11" font-weight="600" fill="var(--sl-color-gray-1)">Tobby</text>
+  <text x="384" y="160" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">passthrough</text>
+  <rect x="482" y="129" width="150" height="40" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="557" y="146" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-1)">Restricted zone registry</text>
+  <text x="557" y="160" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">docker · helm · oras</text>
+  <line x1="128" y1="149" x2="162" y2="149" stroke="var(--sl-color-gray-3)" marker-end="url(#wt-arrow)" />
+  <line x1="286" y1="149" x2="320" y2="149" stroke="var(--sl-color-gray-3)" marker-end="url(#wt-arrow)" />
+  <line x1="444" y1="149" x2="478" y2="149" stroke="var(--sl-color-gray-3)" marker-end="url(#wt-arrow)" />
+  <!-- row 3: mirror / air-gap -->
+  <text x="8" y="224" font-size="11" font-weight="600" fill="var(--sl-color-gray-2)">Air-gap (mirror) — the store travels on removable media · milestone 5</text>
+  <rect x="8" y="234" width="120" height="40" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="68" y="251" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-1)">Source registries</text>
+  <text x="68" y="265" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">docker.io, ghcr, …</text>
+  <rect x="166" y="234" width="120" height="40" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="226" y="251" text-anchor="middle" font-size="11" font-weight="600" fill="var(--sl-color-gray-1)">Tobby</text>
+  <text x="226" y="265" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">mirror — source side</text>
+  <rect x="324" y="234" width="120" height="40" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="384" y="251" text-anchor="middle" font-size="11" font-weight="600" fill="var(--sl-color-gray-1)">Tobby</text>
+  <text x="384" y="265" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">mirror — isolated side</text>
+  <rect x="482" y="234" width="150" height="40" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="557" y="251" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-1)">Isolated zone registry</text>
+  <text x="557" y="265" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">docker · helm · oras</text>
+  <line x1="128" y1="254" x2="162" y2="254" stroke="var(--sl-color-gray-3)" marker-end="url(#wt-arrow)" />
+  <line x1="286" y1="254" x2="320" y2="254" stroke="var(--sl-color-gray-3)" stroke-dasharray="4 4" marker-end="url(#wt-arrow)" />
+  <text x="303" y="246" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">media</text>
+  <line x1="444" y1="254" x2="478" y2="254" stroke="var(--sl-color-gray-3)" marker-end="url(#wt-arrow)" />
+  <!-- bottom note -->
+  <text x="320" y="308" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-2)">One tool, three deployment shapes — combine them as your zones require</text>
+  <text x="320" y="326" text-anchor="middle" font-size="10" fill="var(--sl-color-gray-3)">Same digests, same signatures — re-verified at every boundary</text>
 </svg>
 
 ## The pallet truck that signs nothing
