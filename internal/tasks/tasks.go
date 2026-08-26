@@ -35,12 +35,14 @@ const (
 	StatusSkipped Status = "skipped"
 )
 
-// The task types: unit import (FR-023, milestone 2) and recipe
-// synchronization (FR-014, milestone 3). Milestone 5 adds the media
-// operations.
+// The task types: unit import (FR-023, milestone 2), recipe
+// synchronization (FR-014, milestone 3), and the OCI image layout
+// export/import of the removable-media work (FR-051, milestone 5).
 const (
-	TypeUnitImport = "unit-import"
-	TypeSync       = "sync"
+	TypeUnitImport   = "unit-import"
+	TypeSync         = "sync"
+	TypeLayoutExport = "layout-export"
+	TypeLayoutImport = "layout-import"
 )
 
 // Task is one tracked operation.
@@ -70,6 +72,13 @@ type Task struct {
 	// traced (manifest annotations, report, logs), never the default.
 	VendorDependencies bool `json:"vendor_dependencies,omitempty"`
 
+	// Layout carries the parameters of an OCI image layout operation
+	// (FR-051). They are persisted rather than held by the caller because
+	// FR-029 re-runs an interrupted task from the file alone: an export
+	// whose format and selection lived only in the request that started
+	// it would resume as a different export.
+	Layout *Layout `json:"layout,omitempty"`
+
 	// Error is the task-level failure (when the operation could not even
 	// decompose into items — e.g. the inspection failed).
 	Error *ItemError `json:"error,omitempty"`
@@ -88,6 +97,23 @@ type Task struct {
 	// with the FR-026 status and the FR-036 effective endpoint when a
 	// substitution applied.
 	Resolutions []Resolution `json:"resolutions,omitempty"`
+}
+
+// Layout is the parameter set of an OCI image layout export or import
+// (FR-051). Written once at creation and read-only afterwards: the
+// runner never mutates it, which is why the task clone shares it.
+type Layout struct {
+	// Format is the shape of an export: "tar" or "directory".
+	Format string `json:"format,omitempty"`
+	// Recipes and Repositories narrow an export; both empty exports the
+	// whole store.
+	Recipes      []string `json:"recipes,omitempty"`
+	Repositories []string `json:"repositories,omitempty"`
+	// Repository places, on import, the entries a third-party layout
+	// names by tag alone.
+	Repository string `json:"repository,omitempty"`
+	// Overwrite allows an export to replace an existing destination.
+	Overwrite bool `json:"overwrite,omitempty"`
 }
 
 // Resolution is one row of the FR-021 report.

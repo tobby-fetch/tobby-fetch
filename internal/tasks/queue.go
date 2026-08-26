@@ -151,6 +151,16 @@ func WithVendorDependencies() TaskOption {
 	return func(t *Task) { t.VendorDependencies = true }
 }
 
+// WithLayout carries the parameters of an OCI image layout operation
+// (FR-051) onto the task, so a resumed run (FR-029) reads them back from
+// the persisted file rather than from a request that is long gone.
+func WithLayout(l *Layout) TaskOption {
+	return func(t *Task) {
+		cp := *l
+		t.Layout = &cp
+	}
+}
+
 // Create persists and enqueues a new task, returning it.
 func (q *Queue) Create(taskType, reference, actor string, items []Item, opts ...TaskOption) (*Task, error) {
 	q.mu.Lock()

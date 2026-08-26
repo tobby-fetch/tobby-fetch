@@ -156,6 +156,24 @@ const (
 	// check the store when the state disk is full sends them to the wrong
 	// machine — sometimes literally (R-16).
 	CodeResumeSpool Code = "TBY-STO-003"
+	// CodeResetConfirmation is a store reset submitted without the exact
+	// typed confirmation FR-046 requires. Distinct from a validation
+	// error: nothing about the request is malformed — the operator was
+	// asked to type a word and did not.
+	CodeResetConfirmation Code = "TBY-STO-004"
+
+	// CodeLayoutInvalid is a directory or archive that is not a usable
+	// OCI image layout (FR-051): no marker file, an index that does not
+	// parse, a blob that does not hash to the digest addressing it.
+	CodeLayoutInvalid Code = "TBY-LAY-001"
+	// CodeLayoutUnsafe is a layout archive carrying an entry that has no
+	// place in one — an absolute path, a traversal, a link (NFR-011). A
+	// verification failure, not an operational one: an archive shaped
+	// like that is not a damaged transfer, it is a hostile one.
+	CodeLayoutUnsafe Code = "TBY-LAY-002"
+	// CodeLayoutTarget is an export destination that already exists and
+	// was not explicitly allowed to be replaced.
+	CodeLayoutTarget Code = "TBY-LAY-003"
 
 	// CodeTaskNotFound is a task identifier unknown to this instance.
 	CodeTaskNotFound Code = "TBY-TSK-001"
@@ -223,6 +241,13 @@ var catalog = map[Code]Entry{
 	CodeStoreRead:   {Code: CodeStoreRead, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
 	CodeStoreWrite:  {Code: CodeStoreWrite, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
 	CodeResumeSpool: {Code: CodeResumeSpool, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"path", "detail"}},
+	// 422: the request is well formed, the confirmation is simply not the
+	// word the requirement asks for.
+	CodeResetConfirmation: {Code: CodeResetConfirmation, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"phrase"}},
+
+	CodeLayoutInvalid: {Code: CodeLayoutInvalid, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
+	CodeLayoutUnsafe:  {Code: CodeLayoutUnsafe, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "entry", "reason"}},
+	CodeLayoutTarget:  {Code: CodeLayoutTarget, Class: ClassOperational, HTTPStatus: http.StatusConflict, Params: []string{"path"}},
 
 	CodeTaskNotFound: {Code: CodeTaskNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound, Params: []string{"id"}},
 
