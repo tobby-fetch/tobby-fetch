@@ -18,8 +18,9 @@ This page is generated from the taxonomy catalog embedded in the binary
 guide (`/help#TBY-REG-003`) resolves.
 
 :::note[Upcoming — milestone 5]
-The embedded `/help` troubleshooting guide (R-05) and the media-related
-error codes (export, pre-flight, import verdicts) ship with milestone 5,
+The media verification verdicts (TBY-MED) are documented below. The
+embedded `/help` troubleshooting guide (R-05) and the remaining
+media-journey codes (export, pre-flight) ship with the rest of milestone 5,
 on these same anchors. Track it on the
 [project status](../../discover/status/) page.
 :::
@@ -32,11 +33,11 @@ on these same anchors. Track it on the
   authoring pipeline.
 - **Blocks** — the blast radius: the whole instance (startup refusal), one
   task or recipe, or just the request at hand.
-- **Override** — no code has a runtime override today. Policy refusals are
-  lifted by changing the audited configuration that enforces them
-  (allowlist, trust scopes, accounts); verification failures cannot be
-  overridden at all. The single runtime override — admin-only, audited, at
-  media import — arrives with milestone 5.
+- **Override** — policy refusals are lifted by changing the audited
+  configuration that enforces them (allowlist, trust scopes, accounts);
+  verification failures cannot be overridden at all. The only runtime
+  overrides are admin-only and audited, and both sit at media import: the
+  zone mismatch (TBY-MED-006) and the staleness guard (TBY-MED-007).
 
 ## Authentication and accounts (TBY-AUTH)
 
@@ -455,6 +456,157 @@ on these same anchors. Track it on the
   or set it to `0` to stream every blob straight to the store without
   spooling.
 - **Fixable offline:** yes · **Blocks:** the resumable transfers concerned
+
+## Removable-media transport (TBY-MED)
+
+The medium is a store that changed hands, so everything it says about
+itself is a claim until this side has re-hashed it. Four conditions block
+a medium as a whole; everything else is decided delivery by delivery, so
+a partially damaged medium still hands over its intact recipes.
+
+### TBY-MED-001
+
+- **What happened:** the medium carries no media manifest.
+- **Probable cause:** `meta/media.json` is absent — the store was not
+  produced by a completed mirror synchronization, or the copy onto the
+  medium was partial.
+- **Corrective action:** re-copy the store from the source instance, or
+  re-run the mirror synchronization that produces it.
+- **Fixable offline:** yes · **Blocks:** the whole medium, no override (verification class, exit 4)
+
+### TBY-MED-002
+
+- **What happened:** the media manifest cannot be read.
+- **Probable cause:** it is truncated, unparseable, or internally
+  inconsistent — a path escaping the store, a duplicated inventory entry,
+  a repository name that is not one.
+- **Corrective action:** re-copy the store from the source instance and
+  verify again.
+- **Fixable offline:** yes · **Blocks:** the whole medium, no override (verification class, exit 4)
+
+### TBY-MED-003
+
+- **What happened:** the media manifest uses an unsupported format version.
+- **Probable cause:** the medium declares a manifest layout this build does
+  not read; both versions are named.
+- **Corrective action:** use a Tobby release matching the medium on this
+  side, or re-produce the medium with the release running here.
+- **Fixable offline:** yes · **Blocks:** the whole medium (verification class, exit 4)
+
+### TBY-MED-004
+
+- **What happened:** the medium uses an unsupported store format version.
+- **Probable cause:** the store layout on the medium is of another major
+  series; both versions are named.
+- **Corrective action:** use a matching Tobby release, or move the content
+  through the OCI image layout with standard tooling.
+- **Fixable offline:** yes · **Blocks:** the whole medium (verification class, exit 4)
+
+### TBY-MED-005
+
+- **What happened:** the medium's recipe graph does not match its inventory.
+- **Probable cause:** `meta/recipes.json` was altered after the manifest was
+  written — the list of what the medium delivers has changed.
+- **Corrective action:** re-copy the store from the source instance. The
+  recipe graph is what every per-recipe verdict is computed from.
+- **Fixable offline:** yes · **Blocks:** the whole medium, no override (verification class, exit 4)
+
+### TBY-MED-006
+
+- **What happened:** the medium is addressed to another zone.
+- **Probable cause:** the manifest names a zone this instance does not
+  serve; both are named.
+- **Corrective action:** check that this is the medium intended for this
+  zone. An administrator may override the refusal; the override is
+  recorded in the audit journal.
+- **Fixable offline:** yes · **Blocks:** the whole medium, admin override available (policy class, exit 3)
+
+### TBY-MED-007
+
+- **What happened:** the medium is older than the last one imported for this
+  zone.
+- **Probable cause:** its resolution timestamp precedes the one recorded for
+  the zone's last completed import; both timestamps and the medium are
+  named. An anti-accident guard, not a security control — the manifest is
+  unsigned.
+- **Corrective action:** check that you plugged in the current medium. An
+  administrator may override the refusal — to restore an older delivery on
+  purpose, for instance; the override is audited.
+- **Fixable offline:** yes · **Blocks:** the whole medium, admin override available (policy class, exit 3)
+
+### TBY-MED-010
+
+- **What happened:** a file the recipe needs is missing from the medium.
+- **Probable cause:** the copy was partial, or the file was removed.
+- **Corrective action:** re-copy the store from the source instance.
+- **Fixable offline:** yes · **Blocks:** that recipe whole, no override (verification class, exit 4)
+
+### TBY-MED-011
+
+- **What happened:** a file on the medium has the wrong size.
+- **Probable cause:** it was truncated or altered after the manifest was
+  written; expected and actual sizes are named.
+- **Corrective action:** re-copy the store from the source instance.
+- **Fixable offline:** yes · **Blocks:** the recipe reaching that file, no override (verification class, exit 4)
+
+### TBY-MED-012
+
+- **What happened:** a file on the medium does not match its recorded digest.
+- **Probable cause:** the content was corrupted or tampered with in
+  transport; both digests are named.
+- **Corrective action:** re-copy the store from the source instance.
+- **Fixable offline:** yes · **Blocks:** the recipe reaching that file, no override (verification class, exit 4)
+
+### TBY-MED-013
+
+- **What happened:** a file the recipe needs is absent from the inventory.
+- **Probable cause:** the manifest does not cover everything the recipes
+  reach, so it cannot vouch for that file.
+- **Corrective action:** re-produce the medium from the source instance.
+- **Fixable offline:** yes · **Blocks:** that recipe whole, no override (verification class, exit 4)
+
+### TBY-MED-014
+
+- **What happened:** a manifest on the medium cannot be read.
+- **Probable cause:** the named file is not readable as an OCI manifest or
+  index, so what the recipe delivers cannot be established.
+- **Corrective action:** re-copy the store from the source instance.
+- **Fixable offline:** yes · **Blocks:** that recipe whole (verification class, exit 4)
+
+### TBY-MED-015
+
+- **What happened:** a blob on the medium is stored under the wrong digest.
+- **Probable cause:** its bytes do not hash to the digest its own path
+  claims — the content-addressed store disagrees with itself, whatever the
+  inventory says.
+- **Corrective action:** re-copy the store from the source instance.
+- **Fixable offline:** yes · **Blocks:** the recipe reaching that blob, no override (verification class, exit 4)
+
+### TBY-MED-020
+
+- **What happened:** a file on the medium is not covered by the inventory.
+- **Probable cause:** it was added after the manifest was written.
+- **Corrective action:** none needed to proceed — extraneous content is
+  never pushed. Investigate how it got there if you did not put it there.
+- **Fixable offline:** yes · **Blocks:** nothing (reported only)
+
+### TBY-MED-021
+
+- **What happened:** a file on the medium is reached by no recipe.
+- **Probable cause:** leftover content from an earlier delivery, most often.
+- **Corrective action:** none needed to proceed — content reachable from no
+  recipe is never pushed. Prune the source store to carry less.
+- **Fixable offline:** yes · **Blocks:** nothing (reported only)
+
+### TBY-MED-022
+
+- **What happened:** a bookkeeping file on the medium does not match its
+  recorded digest.
+- **Probable cause:** the store's own ledgers — other than the recipe graph,
+  which blocks globally — were altered after the manifest was written.
+- **Corrective action:** re-copy the store from the source instance if you
+  did not alter it deliberately. Nothing is pushed out of these files.
+- **Fixable offline:** yes · **Blocks:** nothing (reported only)
 
 ## Tasks (TBY-TSK)
 
