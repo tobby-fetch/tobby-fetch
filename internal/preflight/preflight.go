@@ -64,6 +64,15 @@ type Filesystem struct {
 	Note string `json:"note,omitempty"`
 }
 
+// Unbounded reports a filesystem whose ceiling is above anything a byte
+// count can express (exFAT, XFS, Btrfs, APFS, ZFS, ReFS). The surfaces
+// use it to say "no practical limit" rather than print the int64 maximum,
+// which reads as a very precise 8192 PiB and is nothing of the sort.
+//
+// It is still a stated ceiling in the arithmetic: the comparison that
+// decides a refusal is the same one every other filesystem gets.
+func (f Filesystem) Unbounded() bool { return f.Identified && f.MaxFileSize == maxHuge }
+
 // Space is the free-space picture of a target volume.
 type Space struct {
 	FreeBytes  int64 `json:"free_bytes"`

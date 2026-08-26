@@ -515,6 +515,7 @@
 "plan.pf_path": "Cible"
 "plan.pf_filesystem": "Système de fichiers"
 "plan.pf_max_file": "plus gros fichier : {{.Size}}"
+"plan.pf_max_file_none": "pas de limite pratique de taille de fichier"
 "plan.pf_unidentified": "non identifié"
 "plan.pf_free": "Espace libre"
 "plan.pf_space_unknown": "n'a pas pu être mesuré"

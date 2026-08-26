@@ -59,7 +59,10 @@
             <td class="t-mono" translate="no">{{.Path}}</td></tr>
         <tr><th scope="row">{{$.T "plan.pf_filesystem"}}</th>
             <td>
-              {{if .Filesystem.Identified}}
+              {{if .Filesystem.Unbounded}}
+              <span class="t-mono" translate="no">{{.Filesystem.Type}}</span>
+              <span class="t-muted">{{$.T "plan.pf_max_file_none"}}</span>
+              {{else if .Filesystem.Identified}}
               <span class="t-mono" translate="no">{{.Filesystem.Type}}</span>
               <span class="t-muted">{{$.T "plan.pf_max_file" "Size" ($.FmtBytes .Filesystem.MaxFileSize)}}</span>
               {{else}}

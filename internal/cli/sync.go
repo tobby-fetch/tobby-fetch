@@ -239,9 +239,12 @@ func writePlanText(w io.Writer, plan *engine.Plan) {
 		c := &plan.Checks[i]
 		out("\npre-flight (%s at %s)\n", c.Target, c.Path)
 		fs := "not identified"
-		if c.Filesystem.Identified {
+		switch {
+		case c.Filesystem.Unbounded():
+			fs = c.Filesystem.Type + ", no practical file-size limit"
+		case c.Filesystem.Identified:
 			fs = fmt.Sprintf("%s, largest file %s", c.Filesystem.Type, format.Bytes("en", c.Filesystem.MaxFileSize))
-		} else if c.Filesystem.Type != "" {
+		case c.Filesystem.Type != "":
 			fs = c.Filesystem.Type + " (limit unknown to this build)"
 		}
 		out("  filesystem:  %s\n", fs)

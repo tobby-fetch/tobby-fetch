@@ -514,6 +514,7 @@
 "plan.pf_path": "Target"
 "plan.pf_filesystem": "Filesystem"
 "plan.pf_max_file": "largest file: {{.Size}}"
+"plan.pf_max_file_none": "no practical file-size limit"
 "plan.pf_unidentified": "not identified"
 "plan.pf_free": "Free space"
 "plan.pf_space_unknown": "could not be measured"
