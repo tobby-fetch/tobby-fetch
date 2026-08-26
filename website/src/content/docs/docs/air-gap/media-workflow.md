@@ -28,7 +28,44 @@ for the operational detail.
 
 ## Two instances, one directory
 
-<!-- TODO: diagram: source instance (connected workstation) and destination instance (isolated zone), the removable medium crossing the gap through the decontamination station, the five steps annotated along the path, return logs travelling back on the same medium -->
+<svg viewBox="0 0 640 246" role="img" aria-label="A source instance on a connected workstation prepares, pre-flights and exports onto a removable medium; the medium crosses the decontamination station into the isolated zone, where the destination instance imports — verifies, then pushes to the zone registry — and writes its logs back onto the same medium" style="width:100%;max-width:640px;height:auto;display:block;margin:1rem auto;font-family:var(--sl-font);">
+  <defs>
+    <marker id="mw-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--sl-color-gray-3)" />
+    </marker>
+  </defs>
+  <!-- sides -->
+  <rect x="8" y="32" width="200" height="178" rx="10" fill="none" stroke="var(--sl-color-gray-5)" stroke-dasharray="5 4" />
+  <rect x="432" y="32" width="200" height="178" rx="10" fill="none" stroke="var(--sl-color-gray-5)" stroke-dasharray="5 4" />
+  <text x="108" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-2)">Connected side</text>
+  <text x="532" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-2)">Isolated zone</text>
+  <!-- source instance -->
+  <rect x="20" y="56" width="176" height="48" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="108" y="75" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-1)">Source instance</text>
+  <text x="108" y="90" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">1 prepare · 2 pre-flight · 3 export</text>
+  <!-- station -->
+  <rect x="264" y="60" width="112" height="40" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="320" y="77" text-anchor="middle" font-size="10.5" fill="var(--sl-color-gray-1)">Decontamination</text>
+  <text x="320" y="91" text-anchor="middle" font-size="10.5" fill="var(--sl-color-gray-1)">station</text>
+  <!-- destination instance -->
+  <rect x="444" y="56" width="176" height="48" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="532" y="75" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-1)">Destination instance</text>
+  <text x="532" y="90" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">5 import — verify, then push</text>
+  <!-- medium path -->
+  <line x1="196" y1="80" x2="260" y2="80" stroke="var(--sl-color-gray-3)" marker-end="url(#mw-arrow)" />
+  <line x1="376" y1="80" x2="440" y2="80" stroke="var(--sl-color-gray-3)" marker-end="url(#mw-arrow)" />
+  <text x="320" y="116" text-anchor="middle" font-size="10" fill="var(--sl-color-gray-2)">4 transport — removable medium</text>
+  <!-- return logs -->
+  <text x="320" y="140" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">return — destination logs on the same medium</text>
+  <line x1="440" y1="148" x2="200" y2="148" stroke="var(--sl-color-gray-3)" stroke-dasharray="4 4" marker-end="url(#mw-arrow)" />
+  <!-- zone registry -->
+  <rect x="460" y="166" width="144" height="36" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="532" y="188" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-1)">Zone registry</text>
+  <line x1="532" y1="104" x2="532" y2="162" stroke="var(--sl-color-gray-3)" marker-end="url(#mw-arrow)" />
+  <text x="540" y="140" font-size="9.5" fill="var(--sl-color-gray-3)">verified push</text>
+  <!-- caption -->
+  <text x="320" y="236" text-anchor="middle" font-size="10" fill="var(--sl-color-gray-2)">Trust material never travels with the content — the destination's trust roots are the only authority</text>
+</svg>
 
 The same application runs on both sides.
 

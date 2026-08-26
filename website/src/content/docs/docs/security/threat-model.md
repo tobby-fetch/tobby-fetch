@@ -77,6 +77,48 @@ reduced-trust content marker (R-22).
 
 ## Trust boundaries per mode
 
+<svg viewBox="0 0 640 206" role="img" aria-label="Trust boundaries: on the connected side, content from source registries is untrusted until Tobby verifies it; across the air gap, media is re-verified from scratch by the destination Tobby before clients receive verified content only — the destination's configured trust roots are the only authority" style="width:100%;max-width:640px;height:auto;display:block;margin:1rem auto;font-family:var(--sl-font);">
+  <defs>
+    <marker id="tm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--sl-color-gray-3)" />
+    </marker>
+  </defs>
+  <!-- sides -->
+  <rect x="8" y="58" width="240" height="112" rx="10" fill="none" stroke="var(--sl-color-gray-5)" stroke-dasharray="5 4" />
+  <rect x="296" y="58" width="336" height="112" rx="10" fill="none" stroke="var(--sl-color-gray-5)" stroke-dasharray="5 4" />
+  <text x="128" y="48" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-2)">Connected side</text>
+  <text x="464" y="48" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-2)">Isolated side</text>
+  <!-- trust boundaries -->
+  <line x1="138" y1="82" x2="138" y2="158" stroke="var(--sl-color-gray-3)" stroke-dasharray="3 3" />
+  <line x1="392" y1="82" x2="392" y2="158" stroke="var(--sl-color-gray-3)" stroke-dasharray="3 3" />
+  <line x1="518" y1="82" x2="518" y2="158" stroke="var(--sl-color-gray-3)" stroke-dasharray="3 3" />
+  <text x="138" y="74" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-2)">untrusted until verified</text>
+  <text x="392" y="74" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-2)">re-verified from scratch</text>
+  <text x="518" y="74" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-2)">verified content only</text>
+  <!-- boxes -->
+  <rect x="18" y="88" width="108" height="46" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="72" y="107" text-anchor="middle" font-size="10" fill="var(--sl-color-gray-1)">Source</text>
+  <text x="72" y="121" text-anchor="middle" font-size="10" fill="var(--sl-color-gray-1)">registries</text>
+  <rect x="152" y="88" width="84" height="46" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="194" y="107" text-anchor="middle" font-size="11" font-weight="600" fill="var(--sl-color-gray-1)">Tobby</text>
+  <text x="194" y="121" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">source side</text>
+  <rect x="308" y="88" width="72" height="46" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="344" y="115" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-1)">Media</text>
+  <rect x="406" y="88" width="100" height="46" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="456" y="107" text-anchor="middle" font-size="11" font-weight="600" fill="var(--sl-color-gray-1)">Tobby</text>
+  <text x="456" y="121" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">destination</text>
+  <rect x="532" y="88" width="88" height="46" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="576" y="115" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-1)">Clients</text>
+  <!-- flows -->
+  <line x1="126" y1="111" x2="148" y2="111" stroke="var(--sl-color-gray-3)" marker-end="url(#tm-arrow)" />
+  <line x1="236" y1="111" x2="304" y2="111" stroke="var(--sl-color-gray-3)" stroke-dasharray="4 4" marker-end="url(#tm-arrow)" />
+  <text x="272" y="102" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">air gap</text>
+  <line x1="380" y1="111" x2="402" y2="111" stroke="var(--sl-color-gray-3)" marker-end="url(#tm-arrow)" />
+  <line x1="506" y1="111" x2="528" y2="111" stroke="var(--sl-color-gray-3)" marker-end="url(#tm-arrow)" />
+  <!-- caption -->
+  <text x="320" y="196" text-anchor="middle" font-size="10.5" fill="var(--sl-color-gray-2)">One rule at every boundary: the destination's configured trust roots are the only authority</text>
+</svg>
+
 **Passthrough**: the instance sits between a more-exposed source zone and
 a more-protected destination zone. Boundary 1: everything fetched from
 upstream is untrusted until signature and digest verification. Boundary

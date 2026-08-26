@@ -88,6 +88,43 @@ End to end, a recipe passes through five hands:
 5. **Clients consume the content** from the zone —
    [Connect your clients](../../passthrough/connect-clients/).
 
+<svg viewBox="0 0 640 148" role="img" aria-label="Recipe lifecycle: a draft recipe.yaml is linted, cooked, published and signed into the cookbook; the Retriever names what the zone wants, Tobby resolves it each synchronization, verifies and promotes, and pushes ingredients and recipe differentially into the zone registry" style="width:100%;max-width:640px;height:auto;display:block;margin:1rem auto;font-family:var(--sl-font);">
+  <defs>
+    <marker id="rl-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--sl-color-gray-3)" />
+    </marker>
+  </defs>
+  <!-- retriever -->
+  <rect x="350" y="10" width="120" height="38" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="410" y="26" text-anchor="middle" font-size="11" font-weight="600" fill="var(--sl-color-gray-1)">Retriever</text>
+  <text x="410" y="41" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">what the zone wants</text>
+  <line x1="410" y1="48" x2="410" y2="66" stroke="var(--sl-color-gray-3)" marker-end="url(#rl-arrow)" />
+  <!-- chain -->
+  <rect x="8" y="70" width="130" height="48" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="73" y="90" text-anchor="middle" font-size="10.5" font-family="monospace" fill="var(--sl-color-gray-1)">recipe.yaml</text>
+  <text x="73" y="106" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">draft — editable</text>
+  <rect x="174" y="70" width="130" height="48" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="239" y="90" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-1)">Cookbook (OCI)</text>
+  <text x="239" y="106" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">immutable · signed</text>
+  <rect x="340" y="70" width="140" height="48" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="410" y="90" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-1)">Tobby</text>
+  <text x="410" y="106" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">verifies + promotes</text>
+  <rect x="506" y="70" width="126" height="48" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="569" y="90" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-1)">Zone registry</text>
+  <text x="569" y="106" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">ingredients + recipe</text>
+  <!-- arrows -->
+  <line x1="138" y1="94" x2="170" y2="94" stroke="var(--sl-color-gray-3)" marker-end="url(#rl-arrow)" />
+  <text x="156" y="62" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">lint · cook · publish · sign</text>
+  <line x1="304" y1="94" x2="336" y2="94" stroke="var(--sl-color-gray-3)" marker-end="url(#rl-arrow)" />
+  <text x="315" y="62" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">resolved each sync</text>
+  <line x1="480" y1="94" x2="502" y2="94" stroke="var(--sl-color-gray-3)" marker-end="url(#rl-arrow)" />
+  <text x="493" y="62" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">differential push</text>
+  <!-- draft / cooked -->
+  <line x1="156" y1="70" x2="156" y2="128" stroke="var(--sl-color-gray-5)" stroke-dasharray="3 3" />
+  <text x="73" y="140" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-2)">draft — freely edited</text>
+  <text x="403" y="140" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-2)">cooked — immutable, one signature attests the whole delivery</text>
+</svg>
+
 For a one-shot need — a single image, once — a recipe is overkill; see
 [Import one-off content](../../passthrough/one-off-import/) and what that
 choice means for provenance.

@@ -13,7 +13,46 @@ zone's registry, the one your clusters and hosts actually pull from.
 In between sits its own store and an embedded OCI registry, so the zone
 can also consume content straight from Tobby itself.
 
-<!-- TODO: diagram: source registries → tobby (store + embedded registry) → zone registry, with the Retriever document feeding the loop -->
+<svg viewBox="0 0 640 230" role="img" aria-label="Source registries feed a Tobby passthrough instance whose Retriever drives each cycle — re-read, reconcile, differential push — into the zone registry, which zone clients pull from" style="width:100%;max-width:640px;height:auto;display:block;margin:1rem auto;font-family:var(--sl-font);">
+  <defs>
+    <marker id="po-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--sl-color-gray-3)" />
+    </marker>
+  </defs>
+  <!-- retriever -->
+  <rect x="245" y="16" width="130" height="36" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="310" y="31" text-anchor="middle" font-size="11" font-weight="600" fill="var(--sl-color-gray-1)">Retriever</text>
+  <text x="310" y="44" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">desired state of the zone</text>
+  <line x1="310" y1="52" x2="310" y2="82" stroke="var(--sl-color-gray-3)" marker-end="url(#po-arrow)" />
+  <text x="320" y="70" font-size="9.5" fill="var(--sl-color-gray-3)">re-read each cycle</text>
+  <!-- sources -->
+  <rect x="16" y="93" width="130" height="44" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="81" y="112" text-anchor="middle" font-size="12" fill="var(--sl-color-gray-1)">Source registries</text>
+  <text x="81" y="126" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">direct or via proxy</text>
+  <!-- tobby -->
+  <rect x="230" y="88" width="160" height="54" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="310" y="109" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-1)">Tobby — passthrough</text>
+  <text x="310" y="124" text-anchor="middle" font-size="10" fill="var(--sl-color-gray-3)">store + embedded registry</text>
+  <!-- loop -->
+  <path d="M 288 146 C 272 176, 348 176, 334 148" fill="none" stroke="var(--sl-color-gray-3)" marker-end="url(#po-arrow)" />
+  <text x="310" y="192" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">each cycle: re-read → reconcile → push</text>
+  <!-- zone -->
+  <rect x="460" y="64" width="172" height="156" rx="10" fill="none" stroke="var(--sl-color-gray-5)" stroke-dasharray="5 4" />
+  <text x="546" y="54" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-2)">Zone</text>
+  <rect x="476" y="96" width="140" height="38" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="546" y="119" text-anchor="middle" font-size="12" fill="var(--sl-color-gray-1)">Zone registry</text>
+  <rect x="476" y="160" width="140" height="44" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="546" y="179" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-1)">Zone clients</text>
+  <text x="546" y="193" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">docker · containerd · helm</text>
+  <!-- flows -->
+  <line x1="146" y1="115" x2="226" y2="115" stroke="var(--sl-color-gray-3)" marker-end="url(#po-arrow)" />
+  <text x="186" y="107" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">fetch + verify</text>
+  <line x1="390" y1="115" x2="472" y2="115" stroke="var(--sl-color-gray-3)" marker-end="url(#po-arrow)" />
+  <text x="431" y="107" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">differential push</text>
+  <text x="431" y="129" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">recipes included</text>
+  <line x1="546" y1="134" x2="546" y2="156" stroke="var(--sl-color-gray-3)" marker-end="url(#po-arrow)" />
+  <text x="556" y="149" font-size="9.5" fill="var(--sl-color-gray-3)">pull</text>
+</svg>
 
 ## Continuous promotion
 

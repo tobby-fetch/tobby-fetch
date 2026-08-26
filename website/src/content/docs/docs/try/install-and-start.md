@@ -135,5 +135,5 @@ in the [API reference](../../reference/api/).
 
 ---
 
-**Next: [your first promotion](../first-promotion/)** — step 2 of 2. Two
-instances, one signed recipe, one `docker pull` at the end.
+**Next: [your first promotion](../first-promotion/)** — step 2 of 2. One
+signed recipe, a full promotion, one `docker pull` at the end.

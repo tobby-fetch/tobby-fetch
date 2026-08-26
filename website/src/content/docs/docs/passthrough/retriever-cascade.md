@@ -47,6 +47,52 @@ blocks the zone.
 
 ## The cascade: connected → restricted → more restricted
 
+<svg viewBox="0 0 640 226" role="img" aria-label="Three chained zones, each with a Tobby instance that re-verifies on entry and promotes into its zone registry; the same signed recipes flow from zone A to zone B to zone C, and the relocated path is identical in every zone" style="width:100%;max-width:640px;height:auto;display:block;margin:1rem auto;font-family:var(--sl-font);">
+  <defs>
+    <marker id="rc-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--sl-color-gray-3)" />
+    </marker>
+  </defs>
+  <!-- zones -->
+  <rect x="8" y="30" width="196" height="150" rx="10" fill="none" stroke="var(--sl-color-gray-5)" stroke-dasharray="5 4" />
+  <rect x="222" y="30" width="196" height="150" rx="10" fill="none" stroke="var(--sl-color-gray-5)" stroke-dasharray="5 4" />
+  <rect x="436" y="30" width="196" height="150" rx="10" fill="none" stroke="var(--sl-color-gray-5)" stroke-dasharray="5 4" />
+  <text x="106" y="20" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-2)">Zone A — upstream</text>
+  <text x="320" y="20" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-2)">Zone B — downstream</text>
+  <text x="534" y="20" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-2)">Zone C — further down</text>
+  <!-- tobby instances -->
+  <rect x="38" y="44" width="136" height="42" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="106" y="61" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-1)">Tobby</text>
+  <text x="106" y="76" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">re-verifies on entry</text>
+  <rect x="252" y="44" width="136" height="42" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="320" y="61" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-1)">Tobby</text>
+  <text x="320" y="76" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">re-verifies on entry</text>
+  <rect x="466" y="44" width="136" height="42" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="534" y="61" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-1)">Tobby</text>
+  <text x="534" y="76" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">re-verifies on entry</text>
+  <!-- zone registries -->
+  <rect x="28" y="116" width="156" height="44" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="106" y="133" text-anchor="middle" font-size="10.5" fill="var(--sl-color-gray-1)">zone registry</text>
+  <text x="106" y="148" text-anchor="middle" font-size="8.5" font-family="monospace" fill="var(--sl-color-gray-3)">…/docker.io/bitnami/wordpress</text>
+  <rect x="242" y="116" width="156" height="44" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="320" y="133" text-anchor="middle" font-size="10.5" fill="var(--sl-color-gray-1)">zone registry</text>
+  <text x="320" y="148" text-anchor="middle" font-size="8.5" font-family="monospace" fill="var(--sl-color-gray-3)">…/docker.io/bitnami/wordpress</text>
+  <rect x="456" y="116" width="156" height="44" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="534" y="133" text-anchor="middle" font-size="10.5" fill="var(--sl-color-gray-1)">zone registry</text>
+  <text x="534" y="148" text-anchor="middle" font-size="8.5" font-family="monospace" fill="var(--sl-color-gray-3)">…/docker.io/bitnami/wordpress</text>
+  <!-- flows -->
+  <line x1="106" y1="86" x2="106" y2="112" stroke="var(--sl-color-gray-3)" marker-end="url(#rc-arrow)" />
+  <line x1="320" y1="86" x2="320" y2="112" stroke="var(--sl-color-gray-3)" marker-end="url(#rc-arrow)" />
+  <line x1="534" y1="86" x2="534" y2="112" stroke="var(--sl-color-gray-3)" marker-end="url(#rc-arrow)" />
+  <line x1="174" y1="65" x2="248" y2="65" stroke="var(--sl-color-gray-3)" marker-end="url(#rc-arrow)" />
+  <text x="211" y="57" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">recipes</text>
+  <line x1="388" y1="65" x2="462" y2="65" stroke="var(--sl-color-gray-3)" marker-end="url(#rc-arrow)" />
+  <text x="425" y="57" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">recipes</text>
+  <!-- captions -->
+  <text x="320" y="202" text-anchor="middle" font-size="10.5" fill="var(--sl-color-gray-2)">The same signed recipes flow down unmodified — each instance re-verifies against its own trust roots</text>
+  <text x="320" y="219" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">Relocated paths are invariant: the same …/docker.io/… path in every zone, however many hops</text>
+</svg>
+
 Real topologies chain zones. The upstream zone promotes into its
 registry; the downstream zone's Tobby fetches **from that registry**
 even though the recipes — immutable, signed, bit-exact — keep naming the

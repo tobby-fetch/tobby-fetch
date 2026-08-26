@@ -141,4 +141,5 @@ d'API : un visualiseur sur `/api-docs`, le document OpenAPI brut sur
 ---
 
 **Suite : [votre première promotion](../first-promotion/)** — étape 2
-sur 2. Deux instances, une recipe signée, un `docker pull` à l'arrivée.
+sur 2. Une recipe signée, une promotion complète, un `docker pull` à
+l'arrivée.

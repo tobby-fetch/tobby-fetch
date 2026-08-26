@@ -29,7 +29,44 @@ revenez au jalon 5 pour le détail opérationnel.
 
 ## Deux instances, un répertoire
 
-<!-- TODO: diagram: instance source (poste connecté) et instance de destination (zone isolée), le média amovible traversant le sas via la station de décontamination, les cinq étapes annotées le long du chemin, les journaux de retour repartant sur le même média -->
+<svg viewBox="0 0 640 246" role="img" aria-label="Une instance source sur un poste connecté prépare, passe le pré-vol et exporte sur un média amovible ; le média traverse la station de décontamination vers la zone isolée, où l'instance de destination importe — vérifie, puis pousse vers la registry de zone — et écrit ses journaux en retour sur le même média" style="width:100%;max-width:640px;height:auto;display:block;margin:1rem auto;font-family:var(--sl-font);">
+  <defs>
+    <marker id="mwf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--sl-color-gray-3)" />
+    </marker>
+  </defs>
+  <!-- côtés -->
+  <rect x="8" y="32" width="200" height="178" rx="10" fill="none" stroke="var(--sl-color-gray-5)" stroke-dasharray="5 4" />
+  <rect x="432" y="32" width="200" height="178" rx="10" fill="none" stroke="var(--sl-color-gray-5)" stroke-dasharray="5 4" />
+  <text x="108" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-2)">Côté connecté</text>
+  <text x="532" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-2)">Zone isolée</text>
+  <!-- instance source -->
+  <rect x="20" y="56" width="176" height="48" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="108" y="75" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-1)">Instance source</text>
+  <text x="108" y="90" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">1 préparer · 2 pré-vol · 3 exporter</text>
+  <!-- station -->
+  <rect x="264" y="60" width="112" height="40" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="320" y="77" text-anchor="middle" font-size="10.5" fill="var(--sl-color-gray-1)">Station de</text>
+  <text x="320" y="91" text-anchor="middle" font-size="10.5" fill="var(--sl-color-gray-1)">décontamination</text>
+  <!-- instance de destination -->
+  <rect x="444" y="56" width="176" height="48" rx="8" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-accent)" stroke-width="1.5" />
+  <text x="532" y="75" text-anchor="middle" font-size="12" font-weight="600" fill="var(--sl-color-gray-1)">Instance de destination</text>
+  <text x="532" y="90" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">5 importer — vérifier, puis pousser</text>
+  <!-- trajet du média -->
+  <line x1="196" y1="80" x2="260" y2="80" stroke="var(--sl-color-gray-3)" marker-end="url(#mwf-arrow)" />
+  <line x1="376" y1="80" x2="440" y2="80" stroke="var(--sl-color-gray-3)" marker-end="url(#mwf-arrow)" />
+  <text x="320" y="116" text-anchor="middle" font-size="10" fill="var(--sl-color-gray-2)">4 transporter — média amovible</text>
+  <!-- journaux de retour -->
+  <text x="320" y="140" text-anchor="middle" font-size="9.5" fill="var(--sl-color-gray-3)">retour — journaux de la destination sur le même média</text>
+  <line x1="440" y1="148" x2="200" y2="148" stroke="var(--sl-color-gray-3)" stroke-dasharray="4 4" marker-end="url(#mwf-arrow)" />
+  <!-- registry de zone -->
+  <rect x="460" y="166" width="144" height="36" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
+  <text x="532" y="188" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-1)">Registry de zone</text>
+  <line x1="532" y1="104" x2="532" y2="162" stroke="var(--sl-color-gray-3)" marker-end="url(#mwf-arrow)" />
+  <text x="540" y="140" font-size="9.5" fill="var(--sl-color-gray-3)">push vérifié</text>
+  <!-- légende -->
+  <text x="320" y="236" text-anchor="middle" font-size="10" fill="var(--sl-color-gray-2)">Le matériel de confiance ne voyage jamais avec le contenu — les trust roots de la destination sont la seule autorité</text>
+</svg>
 
 La même application tourne des deux côtés.
 
