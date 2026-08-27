@@ -68,6 +68,11 @@ verified FileSets are served read-only under `/files/`, which is sufficient
 for apt/rpm repositories and bare-host bootstrap.
 **Justification:** an ad-hoc upload surface would bypass the recipe model
 and its entire verification chain.
+The one way local files enter a store is
+[`tobby fileset pack`](../../reference/cli/#tobby-fileset-pack), which reads
+a directory **of the instance host** — never a request body — is restricted
+to administrators, is confined to the directories `files.packRoots` names,
+and records what it produced as an unsigned manual import of local origin.
 
 ### One mode per instance, fixed at startup
 
@@ -96,17 +101,20 @@ Production scope is deliberately narrow (NFR-018):
 | OS | Support |
 |---|---|
 | Linux (amd64/arm64) | Full: service and workstation, packages and container image |
-| Windows | Mirror workstation journey — validated at milestone 5 |
+| Windows | Mirror workstation journey, validated in CI; passthrough is outside the validated scope |
 | macOS | Convenience tier: same reproducible build, no validated production scenario |
 
-:::note[Upcoming — milestone 5]
-The validated Windows mirror journey, with winget and Scoop distribution,
-ships with milestone 5. Track it on the
-[project status](../../discover/status/) page.
-:::
-
 **Consequence:** run production instances on Linux; use macOS builds for
-evaluation and authoring only.
+evaluation and authoring only. The per-capability detail is on
+[supported platforms](../../reference/platforms/).
+
+**Windows installation channels are not published.** The winget and Scoop
+manifests are rendered from each release's own checksums and attached to it,
+but neither destination index carries Tobby yet: submitting to
+`microsoft/winget-pkgs` is a reviewed human step and the Scoop bucket does
+not exist. **Consequence:** install the Windows workstation from the release
+archive, verified as described in
+[verify a release](../../project/verify-a-release/).
 
 ### FAT32 media are refused
 
@@ -116,7 +124,9 @@ filesystem, FAT32 explicitly among them, naming the limit in the error.
 large files (exFAT, ext4, NTFS).
 **Justification:** FAT32's 4 GiB file-size ceiling would truncate large
 blobs mid-transfer; refusing up front beats a corrupted store at the
-destination. (Pre-flight ships with milestone 5, with mirror mode.)
+destination. A filesystem this build knows no ceiling for is reported as
+**unidentified**, never as capable: the pre-flight check warns and lets the
+run proceed rather than claiming a guarantee it does not have.
 
 ### Single replica
 
@@ -131,11 +141,12 @@ stand-in use case), schedule upgrades accordingly.
 
 ## Not yet — known operational gaps
 
-- **Store growth in passthrough.** No automatic cleanup of the transit
-  store yet: content removed from the Retriever stays on disk until
-  retriever-aligned cleanup ships (R-33, milestone 5). Watch disk usage.
-- **No dry-run.** There is no plan mode yet to preview a synchronization
-  without side effects (R-04, milestone 5).
+- **Transit-store cleanup is off by default in passthrough.** Retriever-aligned
+  pruning exists (R-33) but `sync.prune` is `false` unless you set it: a
+  transit store is not a delivery unit, and refreshing it does not imply
+  shrinking it. Set `storage.occupancyThreshold` so the instance tells you
+  when the store outgrows its volume — unset means unmonitored, not "within
+  limits".
 - **No on-demand integrity check.** Full store verification with a
   timestamped report arrives with R-31 (milestone 6).
 - **No vulnerability scanning yet.** Scanning with a blocking or advisory

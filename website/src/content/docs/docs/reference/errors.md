@@ -17,13 +17,9 @@ This page is generated from the taxonomy catalog embedded in the binary
 `#tby-reg-003` is stable — the same anchors the in-instance troubleshooting
 guide (`/help#TBY-REG-003`) resolves.
 
-:::note[Upcoming — milestone 5]
-The media verification verdicts (TBY-MED) are documented below. The
-embedded `/help` troubleshooting guide (R-05) and the remaining
-media-journey codes (export, pre-flight) ship with the rest of milestone 5,
-on these same anchors. Track it on the
-[project status](../../discover/status/) page.
-:::
+A test walks the catalog and fails the build when a code has no section
+here, in either language — the catalog is the source of truth, this page is
+its published rendering.
 
 **How to read each entry:**
 

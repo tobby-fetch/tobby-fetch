@@ -141,11 +141,20 @@ three — a warning that appears and never clears is a warning operators
 learn to ignore. Unset means unmonitored, which is reported as such and
 never as "within limits".
 
-:::note[Upcoming — milestone 5]
-A plan / dry-run mode for passthrough (R-04) — showing what a
-synchronization *would* transfer before it does — ships with
-milestone 5.
-:::
+### Seeing it coming
+
+`tobby sync --dry-run` reports what the next synchronization would do
+without doing any of it: resolved versions, per-digest statuses, the
+deduplicated volume to transfer, the projected store size against the
+volume's free space, **and the content a prune would remove**. It writes
+nothing and does not touch the reconciliation schedule. The same report is
+on `POST /api/v1/plan` and on the `/recipes/plan` screen, where a candidate
+Retriever can be planned instead of the configured one — which is how you
+review a Retriever change before adopting it.
+
+Exit code `5` means "changes planned", distinct from `0` ("nothing to do"),
+so a pipeline can gate on it without treating a plan with work in it as a
+broken build. See the [CLI reference](../../reference/cli/#tobby-sync).
 
 :::note[Upcoming — milestone 6]
 On-demand integrity verification of the store through the UI and API

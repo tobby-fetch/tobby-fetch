@@ -71,8 +71,10 @@ SBOMs that [you can verify yourself](../../project/verify-a-release/).
 ## Reversibility: the exit costs nothing
 
 Adopting Tobby does not lock your content into anything. The store is
-standard OCI content served by a conformant registry, and milestone 5 adds
-OCI image layout export. Worst case, skopeo works on the store: every
+standard OCI content served by a conformant registry, and
+[`tobby export`](../../reference/cli/#tobby-export) writes it — or a
+selection of it — as a standard OCI image layout. Worst case, skopeo works
+directly on the store: every
 artifact can be copied out with standard tooling, signatures included.
 The [recipe format](https://tobby-fetch.github.io/recipe-spec/) is an open
 Apache-2.0 specification with JSON Schemas and a Go SDK, implementable by

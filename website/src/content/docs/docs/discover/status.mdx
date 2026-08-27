@@ -7,8 +7,8 @@ sidebar:
 
 import StatusTable from "../../../../components/StatusTable.astro";
 
-Tobby is released and under active development. Milestones 1–4 are delivered;
-the current release line is **v0.4.x**. The table below is rendered from a
+Tobby is released and under active development. Milestones 1–5 are delivered;
+the current release line is **v0.5.x**. The table below is rendered from a
 single data file (`status.yaml`) and feeds every status badge on this site —
 including the filtered security view on the
 [security one-pager](../../security/one-pager/). If a page and this table ever
@@ -29,23 +29,22 @@ features.
 | 1 — Foundations | v0.1.x | Delivered (v0.1.0, 2026-08-11) |
 | 2 — User-experience preview | v0.2.x | Delivered (v0.2.0, 2026-08-12) |
 | 3 — Recipe engine | v0.3.x | Delivered (v0.3.0, 2026-08-16) |
-| 4 — Passthrough | v0.4.x | Delivered (v0.4.0 → v0.4.2, current) |
-| 5 — Mirror & air-gap | v0.5.x | Upcoming |
+| 4 — Passthrough | v0.4.x | Delivered (v0.4.0 → v0.4.2) |
+| 5 — Mirror & air-gap | v0.5.x | Delivered (v0.5.0, current) |
 | 6 — Hardened controls & enterprise identity | v0.6.x | Upcoming |
 | 7 — Finishing, documentation & acceptance | v0.7.x → 1.0.0 | Upcoming |
 
-**Observed cadence.** The first four milestones shipped between 2026-08-11
-(v0.1.0) and 2026-08-18 (v0.4.0), followed by two hardening patches
+**Observed cadence.** The first five milestones shipped between 2026-08-11
+(v0.1.0) and 2026-08-27 (v0.5.0), with two hardening patches along the way
 (v0.4.1 on 2026-08-18, v0.4.2 on 2026-08-22). That is the cadence of the
 initial development phase, not a commitment: each milestone ships when its
 acceptance scenarios pass on the [crucible](../../project/tests-and-proofs/),
 not on a date.
 
-**Path to 1.0.** Three milestones remain: milestone 5 delivers the mirror
-and air-gap use case, milestone 6 adds vulnerability scanning with policy
-and enterprise identity (OIDC, then SAML), and milestone 7 closes with
-finishing work, complete bilingual documentation, and an adversarial
-acceptance run on the release candidate. Version 1.0.0 freezes the four
+**Path to 1.0.** Two milestones remain: milestone 6 adds vulnerability
+scanning with policy and enterprise identity (OIDC, then SAML), and
+milestone 7 closes with finishing work, complete bilingual documentation,
+and an adversarial acceptance run on the release candidate. Version 1.0.0 freezes the four
 public surfaces (CLI, API, configuration, storage layout) under SemVer —
 the [release and compatibility policy](../../project/release-compatibility/)
 is the canonical home for what is stable already and what freezes at 1.0.
@@ -56,6 +55,49 @@ Each milestone train has a raw acceptance report; they are published under
 [acceptance reports](../../project/acceptance-reports/). The full changelog
 lives in the repository
 ([CHANGELOG.md](https://github.com/tobby-fetch/tobby-fetch/blob/main/CHANGELOG.md)).
+
+### v0.5.0 — 2026-08-27 (milestone 5)
+
+Mirror and air-gap delivered: the second complete use case, from a mirror
+synchronization onto a transportable store to a verified push inside an
+isolated zone.
+
+- **The medium and its verification.** Every mirror synchronization writes a
+  [media manifest](../../air-gap/media-security/) — an inventory of every
+  covered file, the recipes fulfilled with their pinned digests, the zone
+  identity, the media identifier and the run. It is deliberately unsigned and
+  nothing rests on it; the destination re-derives authenticity from the
+  recipes' cosign signatures against its own trust roots and from every file's
+  own content address ([ADR-0016](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0016-media-manifest.md)).
+  Blocking is decided **per recipe** (R-19): a medium carrying two deliveries
+  where one arrived damaged still delivers the intact one.
+- **Operation on the isolated side** (FR-052): `tobby media verify`,
+  `tobby media import`, their `/api/v1/media` mirrors, and the guided
+  [Media screen](../../air-gap/import-destination/) — Verify, Report, Push,
+  with the Push control absent until a verdict clears a delivery.
+- **An unverified medium serves nothing.** A destination instance holding a
+  transported store withholds `/v2/` and `/files/` until verification clears
+  it, answering `403` with `TBY-MED-030` and the way out, while staying live
+  and ready so the screen that fixes the condition is reachable.
+- **Pre-flight and plan mode** (FR-055, R-04): volumes computed per recipe and
+  deduplicated by digest against the target's free space and filesystem
+  capability, and `tobby sync --dry-run` producing the full report of a
+  synchronization to come with no side effect and its own exit code.
+- **A command line under a stable contract** (R-08): `--output json`
+  everywhere, a [published exit-code table](../../reference/cli/#exit-codes)
+  generated from the code, `--wait`, and a guaranteed non-interactive mode.
+- **OCI image layout export and import** (FR-051), audited
+  [store reset](../../air-gap/manage-media/) (FR-046), retriever-aligned
+  pruning with a store occupancy threshold (R-33), and
+  `tobby fileset pack` (R-41).
+- **The documentation travels inside the binary** (R-05): `/help` serves this
+  whole corpus offline, in both languages, on an instance with no route to
+  anything.
+- **Windows is a validated platform, not a compiled one** (5.6): the mirror
+  journey runs end to end on a Windows CI runner, against a genuine FAT32
+  volume. Eight defects that first real run found are fixed. The winget and
+  Scoop manifests are built and attached to each release; neither channel is
+  published yet — see [supported platforms](../../reference/platforms/).
 
 ### v0.4.2 — 2026-08-22
 

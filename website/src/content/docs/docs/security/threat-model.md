@@ -7,8 +7,8 @@ sidebar:
 
 This page states what Tobby defends, against whom, and with which
 mechanism. Every control carries its requirement number and its delivery
-status; the milestone 5 media controls and milestone 6 scanning controls
-are marked as upcoming, not presented as delivered.
+status; the milestone 6 scanning and enterprise-identity controls are
+marked as upcoming, not presented as delivered.
 
 ## Assets
 
@@ -26,22 +26,34 @@ are marked as upcoming, not presented as delivered.
 
 ## Adversaries and what stops them
 
-**Tampered media** (air-gap path, milestone 5). An attacker with physical
-access to the transport media can alter or replace anything on it —
-including the manifest and any trust-root file placed there. Controls:
-destination-side verification of manifest completeness and checksums,
-then recipe signatures and pinned digests, before any push, serving, or
-local write; content not reachable from a verified recipe is never pushed
-and is reported; integrity failure blocks with no override; trust roots
-on the media are ignored (FR-054 — upcoming, milestone 5). The
-verification order and its rationale:
+**Tampered media** (air-gap path). An attacker with physical access to the
+transport media can alter or replace anything on it — including the
+manifest and any trust-root file placed there. Controls: destination-side
+verification of manifest completeness and checksums, then each recipe's
+files against their pinned digests and its cosign signature against
+*this* instance's trust roots, before any push, any serving and any local
+write; every covered file is checked against its own content address as
+well as against the inventory, so rewriting the unsigned inventory to
+agree with a corrupted blob changes nothing; content not reachable from a
+verified recipe is never pushed and is reported; an integrity or
+signature failure blocks the affected recipe whole, with no override for
+anyone; trust roots on the media are ignored (FR-054, R-19 — delivered
+v0.5.0). The verification order and its rationale:
 [media security](../../air-gap/media-security/).
 
-:::note[Upcoming — milestone 5]
-The removable-media controls above (FR-054, FR-055, R-16, R-19, R-28)
-ship with milestone 5. Track them on the
-[project status](../../discover/status/) page.
-:::
+**A medium from the wrong place or the wrong month.** A medium addressed
+to another zone, or older than the last one this zone imported, is refused
+before anything is read out of it (R-28). Both refusals are
+**anti-accident guards, not security controls** — the manifest is unsigned,
+so a hostile party can forge either field — which is exactly why they are
+the only two an administrator may waive, audited (FR-094), and why the
+recorded high-water mark never moves backwards when one is waived.
+
+**A client asking an unverified instance for content.** A destination
+instance holding a transported medium withholds `/v2/` and `/files/`
+until a verification has cleared the medium whole, answering `403` with
+`TBY-MED-030`. No role bypasses it, no setting reopens it, and no verdict
+survives a restart (FR-054 — delivered v0.5.0).
 
 **Compromised upstream registry.** A registry that serves altered content
 cannot make Tobby accept it: every ingredient is pinned by digest in a
@@ -125,7 +137,7 @@ upstream is untrusted until signature and digest verification. Boundary
 2: the destination registry only receives verified content (FR-028,
 FR-033).
 
-**Mirror** (milestone 5): three boundaries. The connected source
+**Mirror**: three boundaries. The connected source
 instance fetches and verifies as above; the media is untrusted the moment
 it leaves the source's custody; the destination instance re-verifies
 everything from its own trust roots (FR-052, FR-054) as if the media were
@@ -133,7 +145,7 @@ hostile — because it may have been.
 
 ## Network flows
 
-| Flow | Direction | Passthrough | Mirror (J5) |
+| Flow | Direction | Passthrough | Mirror |
 | --- | --- | --- | --- |
 | UI, `/api/v1`, `/v2/` registry, `/files/` | inbound | one listener, authenticated (FR-075), TLS-capable (FR-082) | same |
 | `/healthz`, `/readyz`, `/metrics` | inbound | unauthenticated, no instance content | same |
@@ -163,7 +175,8 @@ proxy that records every connection attempt (ADR-0014). See
 | No unconfigured egress | NFR-019, ADR-0012 | delivered v0.1.x, canary-proven |
 | Secret hygiene, CSRF, path traversal, escaping | NFR-011–NFR-015 | delivered |
 | Least privilege reference deployment | NFR-014 | delivered v0.4.0 |
-| Media verification before any push | FR-054, ADR-0006 | upcoming, milestone 5 |
-| Secrets never on media | R-16 | upcoming, milestone 5 |
+| Media verification before any push, serving or local write | FR-054, ADR-0006, ADR-0016 | delivered v0.5.0 |
+| Per-recipe blocking, no override on integrity or signature | R-19 | delivered v0.5.0 |
+| Secrets never on media, enforced at startup | R-16, NFR-020 | delivered v0.5.0 |
 | Trivy scanning with policy, offline DB | FR-031, FR-032, ADR-0008 | upcoming, milestone 6 |
 | OIDC then SAML | FR-070, FR-071 | upcoming, milestone 6 |

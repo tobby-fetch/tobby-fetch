@@ -8,8 +8,8 @@
 # milestone: the milestone that delivers (or completes) the feature;
 #            omitted when the feature is fully available.
 # security: true marks rows shown on the security one-pager.
-updated: "2026-08-25"
-version: "v0.4.2"
+updated: "2026-08-27"
+version: "v0.5.0"
 features:
   # ── Milestone 1 — Foundations (delivered, v0.1.x) ──────────────────────
   - id: "1.1"
@@ -24,12 +24,8 @@ features:
   - id: "R-09"
     en: End-to-end run identifier
     fr: Identifiant de run de bout en bout
-    status: partial
-    milestone: 5
+    status: available
     security: true
-    note:
-      en: Run ID in logs shipped; media manifest and destination reuse land with milestone 5.
-      fr: Volet logs livré ; manifeste du média et reprise côté destination au jalon 5.
   - id: "R-12"
     en: Security audit log
     fr: Journal d'audit de sécurité
@@ -37,7 +33,7 @@ features:
     milestone: 6
     security: true
     note:
-      en: Foundation plus authentication and token events shipped; media overrides at milestone 5, scan events at milestone 6.
+      en: Foundation, authentication, token and media-override events shipped; scan events at milestone 6.
       fr: Socle et événements authentification/tokens livrés ; overrides média au jalon 5, scan au jalon 6.
   - id: "1.3"
     en: Embedded OCI registry with canonical relocation layout
@@ -193,81 +189,84 @@ features:
   - id: "5.1"
     en: Mirror synchronization onto a transportable store
     fr: Synchronisation miroir sur store transportable
-    status: upcoming
-    milestone: 5
+    status: available
   - id: "R-02"
     en: "Media screen: guided operator journey with per-step verdicts"
     fr: "Écran Média : parcours opérateur guidé, verdicts par étape"
-    status: upcoming
-    milestone: 5
+    status: available
     security: true
   - id: "5.2"
     en: "Pre-flight checks: deduplicated volume vs media space, filesystem refusals"
     fr: "Pré-vol : volume dédupliqué vs espace du média, refus de systèmes de fichiers"
-    status: upcoming
-    milestone: 5
+    status: available
   - id: "R-05"
     en: Embedded offline documentation and troubleshooting (/help)
     fr: Documentation et dépannage embarqués hors-ligne (/help)
-    status: upcoming
-    milestone: 5
+    status: available
   - id: "R-08"
     en: Stable CLI contract (--output json, published exit codes)
     fr: Contrat CLI stable (--output json, codes de sortie publiés)
-    status: upcoming
-    milestone: 5
+    status: available
   - id: "R-04"
     en: "Plan mode: full dry-run without side effects"
     fr: "Mode plan : simulation complète sans effet de bord"
-    status: upcoming
-    milestone: 5
+    status: available
   - id: "R-28"
     en: Media identity and freshness (stale media refused by default)
     fr: Identité et fraîcheur des supports (média antérieur refusé par défaut)
-    status: upcoming
-    milestone: 5
+    status: available
     security: true
   - id: "R-16"
     en: Secrets never travel on the transportable store
     fr: Les secrets ne voyagent jamais sur le store transportable
-    status: upcoming
-    milestone: 5
+    status: available
     security: true
   - id: "5.3"
     en: Zone identity guard and media inventory
     fr: Garde d'identité de zone et inventaire du média
-    status: upcoming
-    milestone: 5
+    status: available
     security: true
   - id: "R-19"
     en: Fine-grained blocking on a tampered medium (per-recipe verdicts)
     fr: Blocage au juste grain sur support altéré (verdicts par recipe)
-    status: upcoming
-    milestone: 5
+    status: available
     security: true
   - id: "5.4"
     en: Destination-side operation (full re-verification, then differential push)
     fr: Opération côté zone isolée (re-vérification complète puis push différentiel)
-    status: upcoming
-    milestone: 5
+    status: available
     security: true
+  - id: "R-41"
+    en: Pack a directory into a served FileSet (tobby fileset pack)
+    fr: Empaqueter un répertoire en FileSet servi (tobby fileset pack)
+    status: available
   - id: "5.5"
     en: OCI image layout export/import and audited store reset
     fr: Export/import OCI image layout et remise à zéro auditée du store
-    status: upcoming
-    milestone: 5
+    status: available
   - id: "R-33"
     en: Transit store housekeeping (retriever-aligned cleanup, disk threshold)
     fr: Store de transit maîtrisé (nettoyage aligné sur le Retriever, seuil disque)
-    status: upcoming
-    milestone: 5
+    status: available
   - id: "5.6"
     en: Windows workstation for the mirror journey (winget, Scoop)
     fr: Poste Windows pour le parcours miroir (winget, Scoop)
-    status: upcoming
-    milestone: 5
+    status: partial
+    milestone: 6
+    note:
+      en: >-
+        The mirror journey is validated on a Windows CI runner and the single
+        binary is released for it. The winget and Scoop manifests are built and
+        attached to each release, but neither channel is published yet: both
+        destinations are indexes maintained by other people. Install from the
+        release archive meanwhile.
+      fr: >-
+        Le parcours miroir est validé sur un runner Windows et le binaire unique
+        est publié pour cette plateforme. Les manifestes winget et Scoop sont
+        construits et joints à chaque release, mais aucun des deux canaux n'est
+        encore publié : leurs destinations sont des index maintenus par
+        d'autres. Installez depuis l'archive de release en attendant.
 
-  # ── Milestone 6 — Hardened controls & enterprise identity (v0.6.x) ─────
   - id: "6.1"
     en: Vulnerability scanning with policy (Trivy, blocking or advisory)
     fr: Analyse de vulnérabilités avec politique (Trivy, bloquante ou consultative)

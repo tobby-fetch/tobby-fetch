@@ -7,7 +7,7 @@ sidebar:
 
 An auditor should be able to enumerate every secret an instance holds and
 verify where each one lives. This page is that inventory — exhaustive as
-of v0.4.x — followed by the mechanisms that keep secrets out of every
+of v0.5.x — followed by the mechanisms that keep secrets out of every
 output channel.
 
 ## Inventory

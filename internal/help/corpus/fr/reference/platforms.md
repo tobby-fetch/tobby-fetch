@@ -3,18 +3,7 @@ title: Plateformes supportées
 description: La matrice de fonctionnalités par système d'exploitation — ce qui est validé sous Linux, sous Windows et sous macOS, comment chacun est vérifié, et les comportements propres à chaque plateforme qu'un exploitant doit connaître.
 sidebar:
   order: 7
-  badge:
-    text: J5
-    variant: note
 ---
-
-:::note[À venir — jalon 5]
-Windows entre dans le périmètre d'exploitation validé avec le train de
-release v0.5.x. Tout ce que dit cette page est implémenté et joué en
-intégration continue aujourd'hui ; cela devient une promesse supportée
-quand ce train sort. Suivez-le sur la page
-[état du projet](../../discover/status/).
-:::
 
 Tobby est livré sous forme d'un binaire unique lié statiquement pour Linux
 et Windows, en amd64 et arm64, plus des binaires macOS en tier de confort
@@ -90,15 +79,24 @@ sur `ubuntu-latest`, `ubuntu-24.04-arm`, `macos-latest` et
 ### Installation
 
 Les binaires Windows sont portables : un unique `.exe`, sans dépendance
-d'exécution et sans installeur. Deux canaux sont préparés —
-[winget](https://learn.microsoft.com/windows/package-manager/) et
-[Scoop](https://scoop.sh/) — et tous deux installent le même artefact de
-release, épinglé par SHA-256. En attendant leur acceptation dans leurs
-index respectifs, téléchargez `tobby-windows-amd64.exe` ou
-`tobby-windows-arm64.exe` depuis la
+d'exécution et sans installeur.
+
+Téléchargez `tobby-windows-amd64.exe` ou `tobby-windows-arm64.exe` depuis la
 [page des releases](https://github.com/tobby-fetch/tobby-fetch/releases) et
 vérifiez-le comme décrit dans
-[Vérifier une release](../../project/verify-a-release/).
+[Vérifier une release](../../project/verify-a-release/). C'est le seul canal
+d'installation aujourd'hui.
+
+Deux canaux de gestionnaire de paquets sont **préparés mais non publiés** :
+[winget](https://learn.microsoft.com/windows/package-manager/) et
+[Scoop](https://scoop.sh/). Leurs manifestes sont produits par le workflow
+de release depuis les `SHA256SUMS` de cette exécution — chacun épingle donc
+l'artefact exact de sa release — et joints à la release en assets. Aucune
+des deux destinations ne porte Tobby à ce jour, et ce projet ne peut pas
+l'y mettre seul : la soumission à `microsoft/winget-pkgs` est une étape
+humaine revue, et le dépôt de bucket Scoop n'existe pas. `winget install
+tobby` et `scoop install tobby` ne fonctionnent donc pas ; les manifestes
+sont là pour qui exploite un index privé de l'un ou l'autre type.
 
 ### Les permissions sont une liste d'accès, pas des bits de mode
 

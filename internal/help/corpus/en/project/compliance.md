@@ -62,7 +62,7 @@ operator's supply chain.
 | Vulnerability handling and disclosure (21(2)(e)) | Published CVD process with patch releases for Tobby itself; policy-driven CVE scanning of the content Tobby moves, with an offline-updatable database | SECURITY.md; scanning: **upcoming (milestone 6)** | mixed — see cells |
 | Cryptography (21(2)(h)) | Sigstore/cosign verification, argon2id credential storage, TLS everywhere with private-CA support and no global "skip verify" | [Security one-pager](../../security/one-pager/), milestone-4 audit ("zero `InsecureSkipVerify`") | delivered |
 | Access control (21(2)(i)) | Authentication on by default, three-role RBAC on UI, API and registry, last-administrator invariant; enterprise identity (OIDC, SAML) | [Auth and RBAC](../../security/auth-rbac/); OIDC/SAML: **upcoming (milestone 6)** | mixed — see cells |
-| Logging and incident evidence (supports 21(2)(b)) | Stable-schema security audit log, end-to-end run ID; the audit trail crosses the air gap on the medium | [Audit log](../../security/audit-log/); media leg: **upcoming (milestone 5)** | mixed — see cells |
+| Logging and incident evidence (supports 21(2)(b)) | Stable-schema security audit log, end-to-end run ID; the audit trail crosses the air gap on the medium | [Audit log](../../security/audit-log/), [tracing a transfer](../../air-gap/traceability/) | delivered |
 
 ## Reading the table honestly
 

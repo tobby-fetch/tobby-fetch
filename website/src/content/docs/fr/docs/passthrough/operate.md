@@ -110,28 +110,65 @@ page [État du projet](../../discover/status/).
 
 ## La croissance du store, dite sans détour
 
-Aujourd'hui, **rien ne nettoie automatiquement le store en mode
-passthrough.** Chaque version synchronisée et chaque import unitaire
-reste jusqu'à ce qu'un administrateur retire à la main les dépôts
-importés unitairement (FR-044) — le contenu géré par des recipes n'est
-pas supprimable individuellement du tout. Une zone dont les recipes
-suivent des contraintes mouvantes accumule toutes les versions qu'elles
-ont un jour résolues. Dimensionnez le volume du store en conséquence, et
-surveillez-le.
+**Par défaut, rien ne nettoie automatiquement le store en mode
+passthrough.** Chaque version synchronisée et chaque import unitaire reste
+jusqu'à ce qu'un administrateur retire à la main les dépôts importés
+unitairement (FR-044) — le contenu géré par des recipes n'est pas
+supprimable individuellement. Une zone dont les recipes suivent des
+contraintes mouvantes accumule toutes les versions qu'elles ont un jour
+résolues.
 
-:::note[À venir — jalon 5]
-Le nettoyage du store arrive avec R-33 (le prune jusqu'au Retriever
-étendu au store de transit passthrough). D'ici là, la croissance est
-monotone — c'est une limite actuelle, pas une clause en petits
-caractères. À suivre sur la page
-[État du projet](../../discover/status/).
-:::
+Ce défaut est délibéré. Un store de transit passthrough n'est pas une unité
+de livraison, et un exploitant qui demande du contenu plus frais n'a pas
+demandé que le contenu ancien soit supprimé : une boucle de réconciliation
+qui rétrécit en silence le store dont une zone tire est exactement l'échec
+que ce défaut évite.
 
-:::note[À venir — jalon 5]
-Un mode plan / dry-run pour le passthrough (R-04) — montrant ce qu'une
-synchronisation *transférerait* avant qu'elle ne le fasse — arrive avec
-le jalon 5.
-:::
+### Le prune jusqu'au Retriever
+
+Posez `sync.prune: true` (ou `TOBBY_SYNC_PRUNE=true`) et chaque cycle de
+réconciliation retire le contenu géré par recipe que le Retriever résolu ne
+référence plus. Trois sortes de contenu ne sont **jamais** éligibles, parce
+qu'aucune n'est gérée par une recipe :
+
+- les imports unitaires (FR-023),
+- la base de vulnérabilités hors-ligne (FR-032),
+- tout ce qui est poussé par `/v2/` hors des espaces gérés (amorçage, UC3).
+
+Deux garde-fous méritent d'être connus. Un cycle où **une** recipe n'a pas
+pu être résolue ne prune rien et le dit dans le journal de la course : le
+contenu d'une recipe non résolue est indiscernable du contenu que le
+Retriever a retiré, et supprimer sur la foi d'une panne réseau n'est pas un
+compromis que ce produit accepte. Et chaque élément retiré est nommé —
+dépôt, tag, digest, et la recipe qui l'avait apporté — dans le journal du
+cycle, pas seulement compté.
+
+### Surveiller le volume
+
+Posez `storage.occupancyThreshold` (par exemple `500GiB`) et l'instance dit
+quand elle le dépasse : un avertissement permanent sur chaque page de
+l'interface, le même fait sur `GET /api/v1/content` et
+`GET /api/v1/retriever`, et la métrique `tobby_store_occupancy_exceeded`.
+Repasser en dessous rétracte les trois — un avertissement qui apparaît et ne
+s'efface jamais est un avertissement que les exploitants apprennent à
+ignorer. Non posé signifie non surveillé, ce qui est rapporté comme tel et
+jamais comme « dans les clous ».
+
+### Le voir venir
+
+`tobby sync --dry-run` rapporte ce que la prochaine synchronisation ferait
+sans en faire quoi que ce soit : versions résolues, statuts par digest,
+volume dédupliqué à transférer, taille projetée du store contre l'espace
+libre du volume, **et le contenu qu'un prune retirerait**. Rien n'est écrit
+et la cadence de réconciliation n'est pas touchée. Le même rapport est sur
+`POST /api/v1/plan` et sur l'écran `/recipes/plan`, où un Retriever candidat
+peut être planifié à la place de celui qui est configuré — c'est ainsi qu'on
+relit un changement de Retriever avant de l'adopter.
+
+Le code de sortie `5` signifie « des changements sont prévus », distinct de
+`0` (« rien à faire ») : une barrière d'intégration peut s'y brancher sans
+voir un plan chargé comme une compilation cassée. Voir la
+[référence CLI](../../reference/cli/).
 
 :::note[À venir — jalon 6]
 La vérification d'intégrité du store à la demande, depuis l'interface et

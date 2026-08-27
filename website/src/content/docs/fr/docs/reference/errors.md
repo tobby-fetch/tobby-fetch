@@ -18,13 +18,9 @@ le binaire (`internal/taxonomy`). Chaque code a son propre titre : l'ancre
 `#tby-reg-003` est stable — ce sont les mêmes ancres que résoudra le guide
 de dépannage embarqué (`/help#TBY-REG-003`).
 
-:::note[À venir — jalon 5]
-Les verdicts de vérification d'un média (TBY-MED) sont documentés
-ci-dessous. Le guide `/help` embarqué (R-05) et les codes restants du
-parcours média (export, pré-vol) arrivent avec le reste du jalon 5, sur ces
-mêmes ancres. À suivre sur la page
-[État du projet](../../discover/status/).
-:::
+Un test parcourt le catalogue et fait échouer la compilation dès qu'un code
+n'a pas sa section ici, dans l'une ou l'autre langue — le catalogue est la
+source de vérité, cette page en est le rendu publié.
 
 **Comment lire chaque entrée :**
 

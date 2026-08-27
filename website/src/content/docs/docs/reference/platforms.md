@@ -3,17 +3,7 @@ title: Supported platforms
 description: The feature matrix per operating system — what is validated on Linux, on Windows and on macOS, how each is verified, and the platform-specific behaviour an operator has to know about.
 sidebar:
   order: 7
-  badge:
-    text: J5
-    variant: note
 ---
-
-:::note[Upcoming — milestone 5]
-Windows enters the validated operating scope with the v0.5.x release train.
-Everything on this page is implemented and exercised in continuous
-integration today; it becomes a supported claim when that train ships.
-Track it on the [project status](../../discover/status/) page.
-:::
 
 Tobby ships as a single statically linked binary for Linux and Windows on
 amd64 and arm64, plus macOS binaries as a convenience tier (SRS NFR-001).
@@ -86,14 +76,24 @@ on `ubuntu-latest`, `ubuntu-24.04-arm`, `macos-latest` and
 ### Installing
 
 The Windows binaries are portable: a single `.exe` with no runtime
-dependency and no installer. Two channels are prepared —
-[winget](https://learn.microsoft.com/windows/package-manager/) and
-[Scoop](https://scoop.sh/) — and both install the same release artifact
-pinned by SHA-256. Until they are accepted into their respective indexes,
-download `tobby-windows-amd64.exe` or `tobby-windows-arm64.exe` from the
+dependency and no installer.
+
+Download `tobby-windows-amd64.exe` or `tobby-windows-arm64.exe` from the
 [releases page](https://github.com/tobby-fetch/tobby-fetch/releases) and
 verify it as described in
-[Verify a release](../../project/verify-a-release/).
+[Verify a release](../../project/verify-a-release/). That is the only
+installation channel today.
+
+Two package-manager channels are **prepared but not published**:
+[winget](https://learn.microsoft.com/windows/package-manager/) and
+[Scoop](https://scoop.sh/). Their manifests are rendered by the release
+workflow from that run's own `SHA256SUMS` — so each one pins the exact
+artifact of its release — and attached to the release as assets. Neither
+destination carries Tobby yet, and neither can be made to by this project
+alone: submitting to `microsoft/winget-pkgs` is a reviewed human step, and
+the Scoop bucket repository does not exist. `winget install tobby` and
+`scoop install tobby` therefore do not work; the manifests are there for
+whoever runs a private index of either kind.
 
 ### File permissions are an access list, not mode bits
 

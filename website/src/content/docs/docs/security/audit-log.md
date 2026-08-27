@@ -59,12 +59,22 @@ only, with the same compatibility discipline as the REST API
 | `token.create`, `token.revoke` | static token lifecycle (FR-072) | v0.4.x |
 | `import.create`, `sync.create`, `recipe.publish`, `content.delete` | content-affecting actions with their actor | v0.4.x |
 | `config.promotion_interval`, `config.server_certificate` | sensitive configuration changes on a running instance (FR-013, FR-082) | v0.4.x |
+| `media.import` | a transported medium pushed into the zone (FR-052) | v0.5.x |
+| `media.override` | one of the two waivable media guards, attempted or applied (FR-054) | v0.5.x |
+| `store.reset` | the confirmed store reset, including a refused confirmation (FR-046) | v0.5.x |
+| `layout.export`, `layout.import` | OCI image layout leaving or entering the store (FR-051) | v0.5.x |
+| `fileset.pack` | a host directory packed into the store as a FileSet (FR-048) | v0.5.x |
+| `prune.active` | startup while retriever-aligned pruning is on (FR-045) | v0.5.x |
 
-:::note[Upcoming — milestone 5]
-The media events join the catalogue with milestone 5: the audited
-zone-identity override on import (FR-054) and the confirmed store reset
-(FR-046). Milestone 6 adds scanning policy events (FR-031) and the
-authentication-hardening lifecycle events of R-14.
+The media events joined the catalogue with v0.5.0: the two audited waivers
+of a media import — a medium addressed to another zone and a medium older
+than the last one imported here — and the confirmed store reset (FR-046).
+Both the attempt and the applied waiver are recorded, with the actor and
+the network origin they came from.
+
+:::note[Upcoming — milestone 6]
+Scanning policy events (FR-031) and the authentication-hardening lifecycle
+events of R-14 join the catalogue with milestone 6.
 :::
 
 ## Durability — and the trail that crosses the air gap
@@ -73,10 +83,13 @@ In passthrough mode audit records go to stdout with everything else
 (FR-090): durability is your log collector's, which is where it belongs
 for a long-lived service.
 
-In mirror mode (milestone 5) the log file lives **on the transport
-media**, with size-based rotation and an explicit fsync at task
-boundaries — yanked media lose at most the task in progress (FR-053,
-FR-056). That file is not a convenience: it is the audit trail that
+In mirror mode the log file lives **on the transport media**, under
+`_tobby/logs/` and therefore outside the media manifest's coverage — a log
+written inside coverage would invalidate, line by line, the inventory the
+destination verifies. It has size-based rotation and an explicit fsync at
+task boundaries: yanked media lose at most the task in progress (FR-053,
+FR-056), which a test proves by killing the process outright. That file is
+not a convenience: it is the audit trail that
 physically crosses the air gap with the content, carrying the run ID that
 the destination instance reuses, so one synchronization is traceable from
 the connected side to the isolated side through the media (FR-090). See

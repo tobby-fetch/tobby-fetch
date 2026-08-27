@@ -105,8 +105,10 @@ Both cosign layouts verify, so recipes signed years apart coexist
   manifest, single layer holding the bundle JSON.
 
 In both cases the signature travels with the content — through
-registries, cascades, and (at milestone 5) on the media — which is what
-lets the destination re-verify everything from its own trust roots.
+registries, cascades, and on the media — which is what lets the
+destination re-verify everything from its own trust roots. Trust roots
+found on a medium are ignored: they arrived with the content they would be
+vouching for.
 
 ## Registry allowlist
 

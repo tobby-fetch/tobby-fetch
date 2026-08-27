@@ -26,16 +26,18 @@ Verification always runs against the public keys configured on the
 *receiving* instance. Trust roots found on transport media are ignored by
 requirement (FR-054): compromising a media never compromises the
 destination's trust anchor. Delivered for the verification engine
-(v0.3.0); the media path itself ships with milestone 5.
+(v0.3.0) and for the media path (v0.5.0), where a trust-root file planted
+on a medium is ignored — a test plants one to prove it.
 
 **3 — The media manifest is integrity, not trust.**
 The inventory written on removable media (paths, sizes, digests, zone
 identity) detects corruption and incompleteness. It is deliberately
 unsigned — see commitment 1 — and is never what makes content
 trustworthy: only recipe signatures verified against the destination's
-trust roots do that (FR-054, ADR-0006). Model specified and published;
-implementation at milestone 5. See
-[media security](../../air-gap/media-security/).
+trust roots do that (FR-054, ADR-0006, ADR-0016 — delivered v0.5.0). Each
+covered file is checked against its own content address as well as against
+the inventory, which is what keeps the unsigned inventory from being
+load-bearing. See [media security](../../air-gap/media-security/).
 
 **4 — Secure by default.**
 Authentication is on by default in both modes (FR-075 — delivered
@@ -70,11 +72,12 @@ Covered today, with the detail pages that substantiate each line:
 - Secrets leaking through logs, errors, or configuration dumps (NFR-015): [secrets](../../security/secrets/).
 - Hidden network behavior (NFR-019): [threat model](../../security/threat-model/).
 - Untraceable security actions (FR-094): [audit log](../../security/audit-log/).
+- Tampered, stale or misaddressed removable media — re-verified before any push, any serving and any local write (FR-054, R-19, R-28): [media security](../../air-gap/media-security/).
+- Secrets travelling on a medium — the instance refuses to start when a configured secret path resolves under the store root (NFR-020, R-16): [secrets](../../security/secrets/).
 
-Covered at milestone 5: tampered or stale removable media (FR-054),
-secrets travelling on media (R-16). Covered at milestone 6: known CVEs in
-transported content (FR-031), authentication brute-force hardening beyond
-the per-origin throttling shipped in v0.4.2 (R-14).
+Covered at milestone 6: known CVEs in transported content (FR-031),
+authentication brute-force hardening beyond the per-origin throttling
+shipped in v0.4.2 (R-14).
 
 Not covered by design, stated plainly: Tobby does not qualify upstream
 content, does not purge destination registries, and its audit log is

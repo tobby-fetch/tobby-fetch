@@ -188,7 +188,7 @@ docker run -d --name tobby --read-only \
 | Plateforme | Palier |
 | --- | --- |
 | Linux amd64 / arm64 | Périmètre de production validé : service passthrough, paquets, image de conteneur. |
-| Windows amd64 / arm64 | Binaire statique unique publié. Destiné au poste miroir du jalon 5 ; le mode passthrough sous Windows est hors du périmètre validé (NFR-018). |
+| Windows amd64 / arm64 | Binaire statique unique publié, et le parcours du poste miroir y est validé (NFR-018). Le mode passthrough sous Windows est hors du périmètre validé. Voir [plateformes supportées](../../reference/platforms/). |
 | macOS amd64 / arm64 | Palier de confort (NFR-001) : même chaîne reproductible, distribution via `brew install tobby-fetch/tap/tobby`, suite de tests complète en CI — mais aucun support de production impliqué. |
 
 Le store refuse les systèmes de fichiers qui ne peuvent pas contenir sa

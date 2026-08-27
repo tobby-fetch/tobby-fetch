@@ -18,6 +18,19 @@ re-acceptance (commit `377dfa6`), on a disposable bare-metal host created
 and destroyed within the same half hour — the hardening release was
 replayed rather than reasoned about.
 
+:::note[The milestone-5 report is not published yet]
+The milestone-5 scenario is in the repository —
+[`crucible/scenarios/m5/`](https://github.com/tobby-fetch/tobby-fetch/tree/main/crucible/scenarios/m5)
+— and it is the whole physical transfer: a real detachable block device, a
+network gap with no route rather than an unused one, real cosign signatures
+re-verified on the far side against *that* side's trust roots, two distinct
+deliveries so per-recipe blocking has something to decide, and a medium
+deliberately damaged between the two halves of the trip. Its raw report is
+published here, unedited, when the run that accepts the release has been
+made. This section is the place it will occupy; it is deliberately empty
+rather than filled with a summary of a run that has not been quoted.
+:::
+
 ## The reports
 
 ### [milestone-1-crucible-report.txt](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-1-crucible-report.txt) — foundations

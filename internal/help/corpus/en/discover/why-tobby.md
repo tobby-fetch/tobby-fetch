@@ -53,7 +53,7 @@ arrival.
   <line x1="286" y1="149" x2="320" y2="149" stroke="var(--sl-color-gray-3)" marker-end="url(#wt-arrow)" />
   <line x1="444" y1="149" x2="478" y2="149" stroke="var(--sl-color-gray-3)" marker-end="url(#wt-arrow)" />
   <!-- row 3: mirror / air-gap -->
-  <text x="8" y="224" font-size="11" font-weight="600" fill="var(--sl-color-gray-2)">Air-gap (mirror) — the store travels on removable media · milestone 5</text>
+  <text x="8" y="224" font-size="11" font-weight="600" fill="var(--sl-color-gray-2)">Air-gap (mirror) — the store travels on removable media</text>
   <rect x="8" y="234" width="120" height="40" rx="6" fill="var(--sl-color-gray-6)" stroke="var(--sl-color-gray-5)" />
   <text x="68" y="251" text-anchor="middle" font-size="11" fill="var(--sl-color-gray-1)">Source registries</text>
   <text x="68" y="265" text-anchor="middle" font-size="9" fill="var(--sl-color-gray-3)">docker.io, ghcr, …</text>
@@ -120,15 +120,11 @@ An instance runs in exactly one mode, chosen at startup.
 | Runs as | Long-lived containerized service (Kubernetes or another runtime) | Single binary on a workstation or transportable host |
 | Trigger | Periodic, configurable interval | Manual only — never unattended |
 | Transport | Differential network push to the zone registry | Physical carry of a self-contained store on removable media |
-| Status | **Available** (v0.4.x) | Upcoming — milestone 5 |
+| Status | **Available** (v0.4.x) | **Available** (v0.5.x) |
 
-:::note[Upcoming — milestone 5]
-Mirror mode ships with milestone 5. The media journey and its security model
-are already documented conceptually — see
-[the media workflow](../../air-gap/media-workflow/) and
-[the media security model](../../air-gap/media-security/) — and tracked on the
-[project status](../../discover/status/) page.
-:::
+Both modes are delivered. The media journey is described end to end in
+[the media workflow](../../air-gap/media-workflow/), with its security model
+on [the media security model](../../air-gap/media-security/).
 
 ## Three ways it earns its keep
 
@@ -148,8 +144,10 @@ it synchronizes the selected recipes onto a self-contained store, an operator
 carries the media across the gap, and the same application on the other side
 re-verifies everything — completeness, digests, signatures against the
 destination's trust roots — before a single byte reaches the zone registry.
-This is the milestone 5 use case; the journey is described end to end in
-[the air-gap section](../../air-gap/media-workflow/).
+The journey is described end to end in
+[the air-gap section](../../air-gap/media-workflow/), from
+[preparing the source workstation](../../air-gap/prepare-source/) to
+[importing on the isolated side](../../air-gap/import-destination/).
 
 **Seeding and standing in.** Because every instance is a conformant OCI
 registry, Tobby can bootstrap a brand-new environment — including serving OS

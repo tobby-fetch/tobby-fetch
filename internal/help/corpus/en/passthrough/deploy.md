@@ -182,7 +182,7 @@ docker run -d --name tobby --read-only \
 | Platform | Tier |
 | --- | --- |
 | Linux amd64 / arm64 | Validated production scope: passthrough service, packages, container image. |
-| Windows amd64 / arm64 | Single static binary published. Intended for the milestone-5 mirror workstation; passthrough on Windows is outside the validated scope (NFR-018). |
+| Windows amd64 / arm64 | Single static binary published, and the mirror workstation journey is validated on it (NFR-018). Passthrough on Windows is outside the validated scope. See [supported platforms](../../reference/platforms/). |
 | macOS amd64 / arm64 | Convenience tier (NFR-001): same reproducible chain, distributed via `brew install tobby-fetch/tap/tobby`, full test suite in CI — but no production support implied. |
 
 The store refuses filesystems that cannot hold its layout — FAT32 among
