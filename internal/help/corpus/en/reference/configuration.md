@@ -6,7 +6,7 @@ sidebar:
 ---
 
 This page documents the layered configuration as implemented in the current
-v0.4.x series (`internal/config/`). Every key below exists in the code
+v0.5.x series (`internal/config/`). Every key below exists in the code
 today.
 
 ## Layering
@@ -134,13 +134,14 @@ bypass. The full model is on
 | `trust.roots[]` | list | Trusted public keys (cosign, key-based). Each root has a `name` and exactly one of `key` (inline PEM), `keyFile`, `keyURL` (`https://` only, fetched and cached at configuration time — never at verification time). Multiple roots enable rotation by overlap. |
 | `trust.scopes[]` | list | Declared relaxation perimeters, evaluated in order, first match wins. Each scope has a `name`, `repositories` glob patterns on the recipe's **canonical nominal** cookbook path (`*` within a segment, `**` across; a port's `:` is written `_`), and must change something: `allowUnsigned: true` and/or a `roots` restriction. Relaxed scopes are reported on every surface, never silent. |
 
-### FileSet serving
+### FileSets
 
-Configuration file only. Disabled by default: only FileSets listed here are
-served under `/files/<name>/`.
+Configuration file only. Serving is disabled by default: only FileSets
+listed here are served under `/files/<name>/`.
 
 | Key | Type | Purpose |
 |---|---|---|
+| `files.packRoots` | list of absolute paths | Confines FileSet packing **as reached from the web interface and the API** (`POST /filesets/pack`, `POST /api/v1/filesets/pack`): those surfaces may pack a directory only if it sits under one of these paths. The default — no entry — refuses every path and hides the form, because reading an arbitrary host directory on request is a capability an instance should be *given*, not one it should have. A relative path is refused at startup. [`tobby fileset pack`](../../reference/cli/#tobby-fileset-pack) on the host itself is unaffected: whoever runs it already holds the filesystem's own rights. |
 | `files.filesets[].name` | URL segment | Serves under `/files/<name>/`. |
 | `files.filesets[].ref` | host + repository | The nominal ingredient reference of the FileSet — no tag or digest; the served content is whatever verified digest the store holds. |
 | `files.filesets[].version` | tag | Pins the served tag; empty serves the highest semver tag present locally. |

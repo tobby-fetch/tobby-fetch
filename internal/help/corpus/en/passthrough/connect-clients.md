@@ -193,6 +193,44 @@ Package-manager trust of the repository metadata is your distribution's
 mechanism; what Tobby guarantees is that the served tree came from a
 FileSet that passed signature verification on its way into the store.
 
+### Packing files that have no recipe
+
+Sometimes the files you need to serve have no upstream to fetch them from:
+a handful of vendor drivers, a locally built repository, a bundle handed
+over on a disk. `tobby fileset pack` turns a directory into a FileSet — a
+standard OCI image whose single layer is the directory's file tree — and
+imports it into the store, pinned by its digest:
+
+```sh
+tobby fileset pack ./apt-repo debs:1.0.0
+```
+
+Packing is reproducible: the same directory always produces the same
+digest, so packing twice transfers nothing the second time. Timestamps and
+ownership are deliberately not carried — only the file tree, its
+permissions and its symbolic links. The directory is refused, naming the
+entry, when it holds something a FileSet extraction would have to refuse
+anyway: a symbolic link leaving the directory, a setuid bit, a device node
+or a socket, or a name the image layer format reserves.
+
+Two limits, stated because they are the point:
+
+- **A packed FileSet is unsigned.** Tobby holds no signing key, so it is
+  recorded as a manual import of local origin and every listing says so.
+  It is content you vouch for, not content the trust roots vouch for.
+- **Serving it is a separate, explicit step.** Packing puts it in the
+  store; nothing is served until it is named under `files.filesets` and the
+  instance is restarted. The command prints the exact block to add.
+
+The command reads the host's filesystem with the rights of whoever runs it.
+The same operation on the interface and the API (`POST /filesets/pack`) is
+restricted to administrators **and** confined to the directories
+`files.packRoots` names — with no entry configured, the form is not offered
+at all. This is the only way local files enter a store, and it is
+deliberately not an upload endpoint.
+
+<!-- TODO: screenshot: the FileSets screen — the inventory of what is held and what is served, with the packing form -->
+
 Next: bring content in outside any recipe —
 [one-off imports](../../passthrough/one-off-import/) — or jump to
 [operating over time](../../passthrough/operate/).

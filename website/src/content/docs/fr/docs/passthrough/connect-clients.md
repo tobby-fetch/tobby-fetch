@@ -205,6 +205,48 @@ relève du mécanisme de votre distribution ; ce que Tobby garantit, c'est
 que l'arborescence servie provient d'un FileSet dont la signature a été
 vérifiée à l'entrée dans le store.
 
+### Empaqueter des fichiers qui n'ont pas de recipe
+
+Il arrive que les fichiers à servir n'aient aucun amont d'où les tirer :
+quelques pilotes constructeur, un dépôt construit localement, un lot remis
+sur un disque. `tobby fileset pack` transforme un répertoire en FileSet —
+une image OCI standard dont l'unique couche est l'arborescence du
+répertoire — et l'importe dans le store, épinglé par son digest :
+
+```sh
+tobby fileset pack ./apt-repo debs:1.0.0
+```
+
+L'empaquetage est reproductible : le même répertoire produit toujours le
+même digest, si bien qu'empaqueter deux fois ne transfère rien la seconde
+fois. Les horodatages et la propriété ne sont délibérément pas portés —
+seuls le sont l'arborescence, ses permissions et ses liens symboliques. Le
+répertoire est refusé, l'entrée nommée, dès qu'il contient ce qu'une
+extraction de FileSet devrait de toute façon refuser : un lien symbolique
+qui sort du répertoire, un bit setuid, un nœud de périphérique ou une
+socket, ou un nom réservé par le format de couche d'image.
+
+Deux limites, énoncées parce qu'elles sont le sujet :
+
+- **Un FileSet empaqueté n'est pas signé.** Tobby ne détient aucune clé de
+  signature : il est donc enregistré comme import manuel d'origine locale,
+  et chaque listing le dit. C'est du contenu dont vous répondez, pas du
+  contenu dont répondent les clés de confiance.
+- **Le servir est une étape explicite et distincte.** L'empaquetage le met
+  dans le store ; rien n'est servi tant qu'il n'est pas nommé sous
+  `files.filesets` et que l'instance n'a pas redémarré. La commande imprime
+  le bloc exact à ajouter.
+
+La commande lit le système de fichiers de l'hôte avec les droits de qui la
+lance. La même opération depuis l'interface et l'API
+(`POST /filesets/pack`) est réservée aux administrateurs **et** confinée
+aux répertoires que nomme `files.packRoots` — sans aucune entrée
+configurée, le formulaire n'est même pas proposé. C'est la seule façon dont
+des fichiers locaux entrent dans un store, et ce n'est délibérément pas un
+point d'envoi.
+
+<!-- TODO: screenshot: l'écran FileSets — l'inventaire de ce qui est détenu et de ce qui est servi, avec le formulaire d'empaquetage -->
+
 Ensuite : faire entrer du contenu hors de toute recipe —
 [imports ponctuels](../../passthrough/one-off-import/) — ou passer à
 [l'exploitation dans la durée](../../passthrough/operate/).

@@ -86,12 +86,44 @@ The surface today (from the served OpenAPI document):
 | Area | Endpoints |
 |---|---|
 | Contract | `GET /api/v1/openapi.yaml`, `GET /api/v1/cli-output.schema.json` |
-| Content | `GET /api/v1/content` (search, filters, pagination), `GET /api/v1/content/{repo}`, `GET /api/v1/content/{repo}/-/tags/{tag}` |
-| Unit import | `POST /api/v1/import/inspect`, `POST /api/v1/import` |
+| Content | `GET /api/v1/content` (search, filters, pagination), `GET /api/v1/content/{repo}`, `GET /api/v1/content/{repo}/-/tags/{tag}`, `DELETE /api/v1/content/{repo}` |
+| Unit import | `GET /api/v1/import/inspect`, `POST /api/v1/import` |
 | Tasks | `GET /api/v1/tasks`, `GET /api/v1/tasks/{id}`, `GET /api/v1/tasks/{id}/logs` |
-| Recipes and sync | `GET /api/v1/recipes`, `GET /api/v1/recipes/{recipe}/mapping`, `POST /api/v1/recipes/publish`, `POST /api/v1/sync`, `GET /api/v1/retriever`, `PUT /api/v1/retriever/interval` |
-| Accounts and tokens | `PUT /api/v1/account/password`, `GET/POST /api/v1/accounts`, `PATCH/DELETE /api/v1/accounts/{name}`, `GET/POST /api/v1/tokens`, `POST /api/v1/tokens/{name}/revoke` |
+| Recipes and sync | `GET /api/v1/recipes`, `GET /api/v1/recipes/{recipe}/mapping`, `POST /api/v1/recipes/publish`, `POST /api/v1/sync`, `GET /api/v1/sync/prune-preview`, `GET /api/v1/retriever`, `PUT/DELETE /api/v1/retriever/interval` |
+| Plan (side-effect-free) | `POST /api/v1/plan` |
+| Media journey | `GET /api/v1/media`, `GET /api/v1/media/verification`, `POST /api/v1/media/verify`, `POST /api/v1/media/import` |
+| FileSets | `GET /api/v1/filesets`, `POST /api/v1/filesets/pack` |
+| Interoperability and store | `POST /api/v1/oci-layout/plan`, `POST /api/v1/oci-layout/export`, `POST /api/v1/oci-layout/import`, `POST /api/v1/store/reset` |
+| Accounts and tokens | `POST /api/v1/account/password`, `GET/POST /api/v1/accounts`, `PATCH/DELETE /api/v1/accounts/{name}`, `GET/POST /api/v1/tokens`, `POST /api/v1/tokens/{name}/revoke` |
 | Network | `GET /api/v1/network`, `PUT /api/v1/network/certificate` |
+
+Three of those deserve a note, because their shape is not what a reader
+would guess from the path.
+
+- **`POST /api/v1/plan` answers `200` whatever the outcome.** A plan is a
+  report, not an attempt: the body is `{"plan": …, "exit_code": …}`, and the
+  `exit_code` member is the number
+  [`tobby sync --dry-run`](../../reference/cli/#tobby-sync) would have
+  returned. Branch on it, not on the status.
+- **The media journey is four endpoints, not a state machine.** *Report* is
+  the body `POST /api/v1/media/verify` returns — also `200` whatever the
+  verdict — and *Push* is `POST /api/v1/media/import`. `GET
+  /api/v1/media/verification` is the pollable state: the serving gate, the
+  verification in progress with its stage and byte counters, and the last
+  report. Asking for a second verification while one is walking the medium
+  answers `409`
+  ([`TBY-MED-031`](../../reference/errors/#tby-med-031)).
+- **Two members of the media request body require the `admin` role**, above
+  the endpoint's own operator floor: `allowZoneMismatch` and `allowStale`,
+  the two waivable guards. Sending either from a lower role is
+  [`TBY-AUTH-003`](../../reference/errors/#tby-auth-003), and both the
+  attempt and the applied waiver are audit-logged. Nothing waives an
+  integrity or signature verdict, for any role.
+
+On an instance that is not the destination side of a physical transfer, the
+four media endpoints answer
+[`TBY-CFG-001`](../../reference/errors/#tby-cfg-001) naming the missing
+`zone:` setting rather than pretending to have nothing to show.
 
 The `/-/` segment is the deterministic separator between a repository path
 — which may itself contain slashes — and its sub-resource (`tags`,

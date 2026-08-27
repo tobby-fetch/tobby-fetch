@@ -9,7 +9,7 @@ sidebar:
 ---
 
 One listener, two observation surfaces: `/metrics` (OpenMetrics) and the
-structured JSON logs on stdout. This page lists what the current v0.4.x
+structured JSON logs on stdout. This page lists what the current v0.5.x
 series actually exposes, extracted from `internal/metrics` and
 `internal/logging`.
 
@@ -57,6 +57,13 @@ The instance logs structured JSON to **stdout**, one object per line
 (`log/slog`, no third-party framework). Level is set by `logging.level`
 (default `info`).
 
+**In mirror mode the same records go to a file on the transport medium
+instead** — `_tobby/logs/operations.log` by default — because the medium is
+the audit channel of the transfer and whoever receives it has no access to
+the workstation's stdout. Same schema, same keys, plus a durability
+contract: fsync at every task boundary and size-based rotation. See
+[tracing a transfer](../../air-gap/traceability/).
+
 Stable keys on every record:
 
 | Key | Content |
@@ -70,7 +77,7 @@ fixed by the log schema and safe to build extraction rules on:
 
 | Key | Content |
 |---|---|
-| `run_id` | Identifies one synchronization run end to end. This is the identifier that will cross the air gap on the media manifest (see [Trace and prove a transfer](../../air-gap/traceability/)). |
+| `run_id` | Identifies one synchronization run end to end. It crosses the air gap on the media manifest and is reused by the destination instance (see [Trace and prove a transfer](../../air-gap/traceability/)). |
 | `task_id` | One tracked task. Shown as the correlation identifier alongside taxonomy errors, so an error on screen finds its log records. |
 | `recipe` | The recipe being processed. |
 | `ingredient` | The ingredient reference. |

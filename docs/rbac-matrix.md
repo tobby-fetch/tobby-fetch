@@ -54,6 +54,7 @@ possible at all.
 | `POST /import` | operator | |
 | `GET /recipes`, `GET /recipes/{recipe}/mapping` | viewer | |
 | `POST /recipes/sync` | operator | Triggering a synchronization is an operator action (FR-014). |
+| `GET /recipes/prune-preview` | operator | The projection of what a prune would remove, shown before the synchronization that would remove it (FR-045). Offered to the role that can trigger one. |
 | `GET /recipes/publish` | operator | The recipe publication form (R-40): only a role that can publish is offered one. |
 | `POST /recipes/publish` | operator | Publishing writes into another zone's cookbook (R-40). Audited as outbound writing (FR-094). |
 | `GET /recipes/plan` | operator | The plan form (FR-055 amendment R-04): only a role that can trigger a synchronization is offered a simulation of one. |
@@ -98,6 +99,7 @@ and `HEAD`, so a signed-in page can link to API documents.
 | Endpoint | Floor | Mirrors |
 | --- | --- | --- |
 | `GET /api/v1/openapi.yaml` | viewer | `/api-docs` |
+| `GET /api/v1/cli-output.schema.json` | viewer | the CLI's `--output json` schemas (R-08), served beside the OpenAPI document |
 | `GET /api/v1/content` | viewer | `GET /content` |
 | `GET /api/v1/content/{repo…}` | viewer | `GET /content/{repo…}` |
 | `DELETE /api/v1/content/{repo…}` | admin | `POST /content/{repo…}/-/delete` |
@@ -109,6 +111,7 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `GET /api/v1/recipes`, `/{recipe}/mapping` | viewer | `GET /recipes…` |
 | `POST /api/v1/sync` | operator | `POST /recipes/sync` |
 | `POST /api/v1/plan` | operator | `POST /recipes/plan` |
+| `GET /api/v1/sync/prune-preview` | operator | `GET /recipes/prune-preview` |
 | `POST /api/v1/recipes/publish` | operator | `POST /recipes/publish` |
 | `GET /api/v1/media` | viewer | the Media screen's summary (`GET /media`) |
 | `GET /api/v1/media/verification` | viewer | the serving gate and the verification in progress — what `GET /media` polls |
