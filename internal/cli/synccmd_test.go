@@ -52,7 +52,12 @@ func syncInstance(t *testing.T, itemError string, statuses ...string) (base stri
 		sent = append(sent, string(raw))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = io.WriteString(w, taskBody(statuses[0], ""))
+		// The envelope the real handler writes. This stub used to answer a
+		// bare task, which matched the client's mistake rather than the API
+		// — so the whole trigger passed its tests and could not work once
+		// pointed at an instance. A stub is a claim about the server; this
+		// one is now the claim /api/v1/sync actually makes.
+		_, _ = io.WriteString(w, `{"task":`+taskBody(statuses[0], "")+`}`)
 	})
 	mux.HandleFunc("GET /api/v1/tasks/tsk_1", func(w http.ResponseWriter, _ *http.Request) {
 		i := int(polls.Add(1))

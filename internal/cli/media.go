@@ -48,10 +48,11 @@ func newMediaCmd() *cobra.Command {
 		Long: `Operate on a store that arrived on a physical medium.
 
 The medium is untrusted until proven otherwise. Every subcommand here
-re-verifies it first — the manifest's completeness and checksums, then the
-recipes' signatures against THIS instance's trust roots, then every
-ingredient against its pinned digest — and only then acts on it. Trust
-roots present on the medium are ignored.`,
+re-verifies it first, and only then acts on it: the manifest's own
+integrity and the medium-wide conditions, then each delivery in turn —
+every file it reaches against its inventory entry AND against the digest
+it is stored under, then its signature against THIS instance's trust
+roots. Trust roots present on the medium are ignored.`,
 	}
 	cmd.AddCommand(newMediaVerifyCmd(), newMediaImportCmd())
 	return cmd

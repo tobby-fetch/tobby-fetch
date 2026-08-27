@@ -78,7 +78,10 @@ COSIGN="${COSIGN:-cosign}"
 
 report_start
 
-cleanup() {
+# Two different jobs, and conflating them cost a node run: releasing what a
+# previous run left behind must NOT touch this run's scratch directory,
+# which by then already holds the binary under test.
+release_leftovers() {
     for inst in $INSTANCES; do inc delete --force "$inst" 2>/dev/null || true; done
     for img in "$MEDIUM_IMG" "$SMALL_IMG" "$FAT_IMG"; do
         [ -f "$img" ] || continue
@@ -86,6 +89,10 @@ cleanup() {
             while read -r dev; do losetup -d "$dev" 2>/dev/null || true; done
         rm -f "$img"
     done
+}
+
+cleanup() {
+    release_leftovers
     rm -rf "$WORK"
 }
 
@@ -105,7 +112,7 @@ check "tooling available (skopeo $(skopeo --version | awk '{print $3}'), jq, cos
 check "built tobby for linux/$ARCH"
 
 # -- 2. Fresh instances and three block devices ------------------------------
-cleanup
+release_leftovers
 for spec in "tbc-m5-source tbc-connected-node" "tbc-m5-connected tbc-connected-node" \
             "tbc-m5-dest tbc-airgap-node" "tbc-m5-isolated tbc-airgap-node"; do
     set -- $spec
@@ -131,17 +138,20 @@ for inst in $INSTANCES; do
 done
 
 # root_owner: on-disk uids are host-view numbers, so the filesystems are
-# made with the host uid the container root maps to (m1's lesson).
+# made with the host uid the container root maps to (m1's lesson). FAT32
+# carries no ownership at all, so its mount decides instead: without
+# umask=0000 the guest cannot create the store directory and the
+# filesystem check never gets to run.
 inc exec tbc-m5-connected -- sh -c '
     apk add --no-cache e2fsprogs dosfstools util-linux >/dev/null 2>&1 || true
     base=$(awk "{print \$2; exit}" /proc/self/uid_map)
     mkfs.ext4 -q -E root_owner="$base:$base" /dev/sdb &&
-    mkfs.ext4 -q -E root_owner="$base:$base" /dev/sdc &&
+    mkfs.ext4 -q -m 0 -E root_owner="$base:$base" /dev/sdc &&
     mkfs.vfat -F 32 -n TOBBYFAT /dev/sdd >/dev/null &&
     mkdir -p /media/tobby /media/small /media/fat32 &&
     mount -t ext4 /dev/sdb /media/tobby &&
     mount -t ext4 /dev/sdc /media/small &&
-    mount -t vfat /dev/sdd /media/fat32
+    mount -t vfat -o umask=0000 /dev/sdd /media/fat32
 ' || fail "formatting and mounting the three media on the connected node"
 check "media formatted (ext4, ext4, FAT32) and mounted on the connected node"
 
@@ -207,7 +217,6 @@ kind: Retriever
 metadata:
   name: $ZONE
 spec:
-  zone: $ZONE
   cookbook: $SOURCE_IP:8080/cookbook
   recipes:
     - name: zone-app
@@ -263,9 +272,31 @@ check "the isolated zone's registry is serving on $DEST_IP:5000"
 # -- 5. Pre-flight refuses before a byte moves (FR-055) ----------------------
 # The undersized medium first. The refusal must arrive with nothing written:
 # a store that is half-filled and then refused is worse than either outcome.
+# The fixtures are synthetic images of a few kilobytes, so "a medium too
+# small for the delivery" has to be arranged rather than found. Two knobs
+# do it deterministically: the volume is filled to within 256 KiB — room
+# for the store's own skeleton, since a plan on a volume with no space at
+# all fails to OPEN the store before the pre-flight can refuse anything (an
+# observation of this run, and a fair one: FR-055 is about a medium too
+# small for the DELIVERY, not about a volume at zero) —
+# and the safety margin is turned up to 99 %, which is a real configurable
+# and reserves all but a hundredth of what is free. The arithmetic the
+# refusal performs is exactly the one it performs on a real delivery:
+# projected bytes against free space minus the reserve.
+# busybox truncate rejects a relative size, and ext4's root reserve is not
+# counted as available — so the ballast is sized from what df reports rather
+# than written until it fails and cut back.
+inc exec tbc-m5-connected -- sh -c '
+    avail=$(df -k /media/small | awk "NR==2{print \$4}")
+    dd if=/dev/zero of=/media/small/ballast bs=1k count=$((avail - 256)) >/dev/null 2>&1
+    sync
+' || fail "could not fill the undersized medium"
+FREE_KB=$(inc exec tbc-m5-connected -- sh -c "df -k /media/small | awk 'NR==2{print \$4}'")
+check "the undersized medium has ${FREE_KB} KiB free, of which the 99 % reserve leaves a hundredth"
+
 write_config tbc-m5-connected /media/small/store ""
 SMALL_PLAN=$(inc exec tbc-m5-connected -- sh -c \
-    'tobby sync --dry-run --output json 2>/dev/null' || true)
+    'TOBBY_PREFLIGHT_SAFETY_MARGIN_PERCENT=99 tobby sync --dry-run --output json 2>/dev/null' || true)
 echo "$SMALL_PLAN" | jq -e '[.checks[].refusal_code] | index("TBY-STO-004") != null' >/dev/null ||
     fail "an undersized medium was not refused by the pre-flight: $(echo "$SMALL_PLAN" | jq -c '.checks' 2>/dev/null)"
 echo "$SMALL_PLAN" | jq -e '[.checks[] | select(.refusal_code == "TBY-STO-004") | .shortfall_bytes] | max > 0' >/dev/null ||

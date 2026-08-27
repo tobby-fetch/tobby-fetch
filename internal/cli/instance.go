@@ -318,14 +318,18 @@ type taskEnvelope struct {
 
 // createSync triggers a synchronization and returns the created task.
 func (c *instanceClient) createSync(ctx context.Context, body any) (*tasks.Task, error) {
-	var task tasks.Task
-	if err := c.do(ctx, http.MethodPost, "/api/v1/sync", body, &task); err != nil {
+	// The envelope, like every other single-task response (FR-061). Decoding
+	// straight into a Task silently produced a zero value: the fields simply
+	// were not there, encoding/json said nothing, and the command failed on
+	// an empty id against an instance that had done exactly what was asked.
+	var env taskEnvelope
+	if err := c.do(ctx, http.MethodPost, "/api/v1/sync", body, &env); err != nil {
 		return nil, err
 	}
-	if task.ID == "" {
+	if env.Task == nil || env.Task.ID == "" {
 		return nil, errors.New("the instance accepted the trigger but named no task")
 	}
-	return &task, nil
+	return env.Task, nil
 }
 
 // getTask reads one task.
