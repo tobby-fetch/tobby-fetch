@@ -87,16 +87,26 @@ vérifiez-le comme décrit dans
 [Vérifier une release](../../project/verify-a-release/). C'est le seul canal
 d'installation aujourd'hui.
 
-Deux canaux de gestionnaire de paquets sont **préparés mais non publiés** :
-[winget](https://learn.microsoft.com/windows/package-manager/) et
-[Scoop](https://scoop.sh/). Leurs manifestes sont produits par le workflow
-de release depuis les `SHA256SUMS` de cette exécution — chacun épingle donc
-l'artefact exact de sa release — et joints à la release en assets. Aucune
-des deux destinations ne porte Tobby à ce jour, et ce projet ne peut pas
-l'y mettre seul : la soumission à `microsoft/winget-pkgs` est une étape
-humaine revue, et le dépôt de bucket Scoop n'existe pas. `winget install
-tobby` et `scoop install tobby` ne fonctionnent donc pas ; les manifestes
-sont là pour qui exploite un index privé de l'un ou l'autre type.
+Deux canaux de gestionnaire de paquets portent les mêmes binaires. Les deux
+manifestes sont produits par le workflow de release depuis les
+`SHA256SUMS` de cette exécution — chacun épingle donc l'artefact exact de
+sa release — et joints à la release en assets.
+
+**[Scoop](https://scoop.sh/) est publié**, et installe par utilisateur,
+sans droits d'administrateur — souvent le seul type d'installation qu'un
+poste managé autorise :
+
+```powershell
+scoop bucket add tobby https://github.com/tobby-fetch/scoop-bucket
+scoop install tobby
+```
+
+**[winget](https://learn.microsoft.com/windows/package-manager/) est en
+cours de revue.** Le jeu de manifestes de `tobby-fetch.tobby` est soumis à
+`microsoft/winget-pkgs` ; tant qu'il n'est pas fusionné, `winget install
+tobby` ne fonctionne pas. Cette dernière étape est une pull request sur un
+index communautaire relu par des gens extérieurs au projet, ce qui est la
+raison pour laquelle aucune release ne l'automatise.
 
 ### Les permissions sont une liste d'accès, pas des bits de mode
 

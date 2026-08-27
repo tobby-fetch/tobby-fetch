@@ -8,7 +8,7 @@
 # milestone: the milestone that delivers (or completes) the feature;
 #            omitted when the feature is fully available.
 # security: true marks rows shown on the security one-pager.
-updated: "2026-08-27"
+updated: "2026-08-28"
 version: "v0.5.0"
 features:
   # ── Milestone 1 — Foundations (delivered, v0.1.x) ──────────────────────
@@ -256,16 +256,18 @@ features:
     note:
       en: >-
         The mirror journey is validated on a Windows CI runner and the single
-        binary is released for it. The winget and Scoop manifests are built and
-        attached to each release, but neither channel is published yet: both
-        destinations are indexes maintained by other people. Install from the
-        release archive meanwhile.
+        binary is released for it. Scoop is published — `scoop bucket add tobby
+        https://github.com/tobby-fetch/scoop-bucket`. The winget manifest set is
+        submitted and waiting on review in an index maintained by other people,
+        so `winget install tobby` does not work yet; install with Scoop or from
+        the release archive meanwhile.
       fr: >-
         Le parcours miroir est validé sur un runner Windows et le binaire unique
-        est publié pour cette plateforme. Les manifestes winget et Scoop sont
-        construits et joints à chaque release, mais aucun des deux canaux n'est
-        encore publié : leurs destinations sont des index maintenus par
-        d'autres. Installez depuis l'archive de release en attendant.
+        est publié pour cette plateforme. Scoop est publié — `scoop bucket add
+        tobby https://github.com/tobby-fetch/scoop-bucket`. Le jeu de manifestes
+        winget est soumis et attend une revue dans un index maintenu par
+        d'autres, donc `winget install tobby` ne fonctionne pas encore :
+        installez avec Scoop ou depuis l'archive de release en attendant.
 
   - id: "6.1"
     en: Vulnerability scanning with policy (Trivy, blocking or advisory)

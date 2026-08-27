@@ -108,12 +108,12 @@ Production scope is deliberately narrow (NFR-018):
 evaluation and authoring only. The per-capability detail is on
 [supported platforms](../../reference/platforms/).
 
-**Windows installation channels are not published.** The winget and Scoop
-manifests are rendered from each release's own checksums and attached to it,
-but neither destination index carries Tobby yet: submitting to
-`microsoft/winget-pkgs` is a reviewed human step and the Scoop bucket does
-not exist. **Consequence:** install the Windows workstation from the release
-archive, verified as described in
+**`winget install tobby` does not work yet.** The manifest set for
+`tobby-fetch.tobby` is submitted to `microsoft/winget-pkgs` and waiting on
+review by people outside this project, which is why no release automates
+that step. **Consequence:** on Windows, install with `scoop install tobby`
+(the [Scoop bucket](https://github.com/tobby-fetch/scoop-bucket) is
+published) or from the release archive, verified as described in
 [verify a release](../../project/verify-a-release/).
 
 ### FAT32 media are refused

@@ -84,16 +84,25 @@ verify it as described in
 [Verify a release](../../project/verify-a-release/). That is the only
 installation channel today.
 
-Two package-manager channels are **prepared but not published**:
-[winget](https://learn.microsoft.com/windows/package-manager/) and
-[Scoop](https://scoop.sh/). Their manifests are rendered by the release
-workflow from that run's own `SHA256SUMS` — so each one pins the exact
-artifact of its release — and attached to the release as assets. Neither
-destination carries Tobby yet, and neither can be made to by this project
-alone: submitting to `microsoft/winget-pkgs` is a reviewed human step, and
-the Scoop bucket repository does not exist. `winget install tobby` and
-`scoop install tobby` therefore do not work; the manifests are there for
-whoever runs a private index of either kind.
+Two package-manager channels carry the same binaries. Both manifests are
+rendered by the release workflow from that run's own `SHA256SUMS`, so each
+pins the exact artifact of its release, and both are attached to the
+release as assets.
+
+**[Scoop](https://scoop.sh/) is published** and installs per user, with no
+administrator rights — frequently the only kind of install a managed
+workstation allows:
+
+```powershell
+scoop bucket add tobby https://github.com/tobby-fetch/scoop-bucket
+scoop install tobby
+```
+
+**[winget](https://learn.microsoft.com/windows/package-manager/) is under
+review.** The manifest set for `tobby-fetch.tobby` is submitted to
+`microsoft/winget-pkgs`; until it is merged, `winget install tobby` does
+not work. That last step is a pull request into a community index reviewed
+by people outside this project, which is why no release automates it.
 
 ### File permissions are an access list, not mode bits
 
