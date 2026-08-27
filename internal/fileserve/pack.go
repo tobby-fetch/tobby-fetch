@@ -636,10 +636,17 @@ func checkLinkTarget(name, target string) error {
 	if target == "" {
 		return &PackRejection{Path: name, Reason: "is a symbolic link with an empty target", Safety: true}
 	}
-	if strings.ContainsRune(target, 0) || strings.ContainsRune(target, '\\') {
-		return &PackRejection{Path: name, Reason: "is a symbolic link whose target contains a NUL byte or a backslash", Safety: true}
+	if strings.ContainsRune(target, 0) {
+		return &PackRejection{Path: name, Reason: "is a symbolic link whose target contains a NUL byte", Safety: true}
 	}
-	if strings.HasPrefix(target, "/") || filepath.IsAbs(target) || hasDriveLetter(target) {
+	// Classify on a separator-normalised copy, refuse on the raw one. On
+	// Windows os.Readlink hands back "..\..\" and "C:\Windows\..." for
+	// the very targets this function has the most useful things to say
+	// about, and a backslash check placed first answers "contains a
+	// backslash" — true, and the least helpful of the three sentences
+	// available. The operator wants to read "points outside the FileSet".
+	probe := strings.ReplaceAll(target, "\\", "/")
+	if strings.HasPrefix(probe, "/") || filepath.IsAbs(probe) || hasDriveLetter(probe) {
 		// filepath.IsAbs alone is not enough and cannot be: it answers
 		// with the rules of the platform this binary was BUILT for, and
 		// "C:/Windows/System32/config/SAM" is a relative path on Linux
@@ -650,9 +657,15 @@ func checkLinkTarget(name, target string) error {
 		// makes it so (B-025).
 		return &PackRejection{Path: name, Reason: "is a symbolic link to the absolute path " + target + ", which points outside the FileSet", Safety: true}
 	}
-	resolved := path.Join(path.Dir(name), target)
+	resolved := path.Join(path.Dir(name), probe)
 	if resolved == ".." || strings.HasPrefix(resolved, "../") {
 		return &PackRejection{Path: name, Reason: "is a symbolic link to " + target + ", which escapes the FileSet root", Safety: true}
+	}
+	// Nothing more specific applied, so a backslash left in the raw target
+	// is a literal one: legal in a Linux filename, a separator wherever
+	// this FileSet is extracted next. That asymmetry is the whole of B-025.
+	if strings.ContainsRune(target, '\\') {
+		return &PackRejection{Path: name, Reason: "is a symbolic link whose target contains a backslash, which is a path separator where this FileSet will be extracted", Safety: true}
 	}
 	return nil
 }

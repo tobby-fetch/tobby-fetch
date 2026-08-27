@@ -88,26 +88,56 @@ func grantsFullControl(mask windows.ACCESS_MASK) bool {
 	return mask == windows.GENERIC_ALL || mask&fileAllAccess == fileAllAccess
 }
 
+// hasForeignEntry reports whether any entry names someone other than the
+// owner — the shape a fixture has to reach before narrowing it proves
+// anything.
+func hasForeignEntry(aces []*windows.ACCESS_ALLOWED_ACE, owner *windows.SID) bool {
+	for _, ace := range aces {
+		if !sidOf(ace).Equals(owner) {
+			return true
+		}
+	}
+	return false
+}
+
 // assertOwnerOnly is the whole promise in one place: exactly one entry,
 // allowing everything, naming the object's own owner.
 func assertOwnerOnly(t *testing.T, path string) {
 	t.Helper()
 	owner, aces, protected, sddl := dacl(t, path)
 	t.Logf("%s: %s", path, sddl)
-	if len(aces) != 1 {
-		t.Fatalf("%s has %d access-list entries, want exactly 1 (the owner's): %s",
-			path, len(aces), sddl)
+	if len(aces) == 0 {
+		t.Fatalf("%s has an empty access list: %s", path, sddl)
 	}
-	ace := aces[0]
-	if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE {
-		t.Errorf("%s: the single entry has type %d, want ACCESS_ALLOWED (%d)",
-			path, ace.Header.AceType, windows.ACCESS_ALLOWED_ACE_TYPE)
+	// Every entry names the owner and nobody else — not "there is exactly
+	// one entry". A hardened DIRECTORY legitimately carries two: the one
+	// that governs the directory itself, and an INHERIT_ONLY copy so that
+	// files created inside start owner-only without every writer having to
+	// remember. Counting entries called that second one a leak; what makes
+	// a list owner-only is who appears in it.
+	effective := 0
+	for i, ace := range aces {
+		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE {
+			t.Errorf("%s: entry %d has type %d, want ACCESS_ALLOWED (%d): %s",
+				path, i, ace.Header.AceType, windows.ACCESS_ALLOWED_ACE_TYPE, sddl)
+			continue
+		}
+		if got := sidOf(ace); !got.Equals(owner) {
+			t.Errorf("%s: entry %d names %s, want the owner %s: %s", path, i, got, owner, sddl)
+			continue
+		}
+		if ace.Header.AceFlags&windows.INHERIT_ONLY_ACE != 0 {
+			continue // governs children, not this object
+		}
+		effective++
+		if !grantsFullControl(ace.Mask) {
+			t.Errorf("%s: the owner's entry grants 0x%08x, which is not full control: %s",
+				path, ace.Mask, sddl)
+		}
 	}
-	if got := sidOf(ace); !got.Equals(owner) {
-		t.Errorf("%s: the single entry names %s, want the owner %s", path, got, owner)
-	}
-	if !grantsFullControl(ace.Mask) {
-		t.Errorf("%s: the owner's entry grants 0x%08x, which is not full control", path, ace.Mask)
+	if effective != 1 {
+		t.Errorf("%s: %d entries govern the object itself, want exactly the owner's one: %s",
+			path, effective, sddl)
 	}
 	if !protected {
 		t.Errorf("%s: the access list is not PROTECTED — the parent's inheritable entries "+
@@ -263,10 +293,14 @@ func TestHardenNarrowsAnInheritedAccessList(t *testing.T) {
 	}
 
 	// The fixture is only a fixture if it took effect: prove the file
-	// really did inherit more than one entry before Harden narrows it.
-	if _, aces, _, sddl := dacl(t, path); len(aces) < 2 {
-		t.Fatalf("the inheritable Everyone entry did not propagate to %s (%d entries: %s): "+
-			"this test would prove nothing", path, len(aces), sddl)
+	// carries an entry naming somebody OTHER than its owner before Harden
+	// narrows it. Counting entries was the wrong question — the runner's
+	// inherited list is a single Everyone ACE, which is precisely the
+	// dangerous state this test needs and precisely what "fewer than two
+	// entries" rejected.
+	if owner, aces, _, sddl := dacl(t, path); !hasForeignEntry(aces, owner) {
+		t.Fatalf("the inheritable Everyone entry did not propagate to %s (%s): "+
+			"this test would prove nothing", path, sddl)
 	}
 	if err := Harden(path); err != nil {
 		t.Fatal(err)

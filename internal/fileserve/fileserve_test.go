@@ -848,8 +848,14 @@ func TestSyncRedoesInterruptedExtraction(t *testing.T) {
 	mustSync(t, s, set)
 
 	target := setDir(cacheDir, set)
-	before, err := os.Stat(target)
-	if err != nil {
+	// A witness inside the tree, rather than the directory's identity.
+	// os.SameFile compares inodes on Unix and a file index on Windows,
+	// where a freshly created directory can be reported as the same file —
+	// so identity answered "not redone" for an extraction that had been
+	// redone perfectly well. What the requirement is about is the CONTENT
+	// being laid down again, and this is how to watch that happen.
+	witness := filepath.Join(target, "witness-of-the-first-extraction")
+	if err := os.WriteFile(witness, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// Simulate an interrupted extraction: the completion marker is gone.
@@ -857,12 +863,8 @@ func TestSyncRedoesInterruptedExtraction(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustSync(t, s, set)
-	after, err := os.Stat(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if os.SameFile(before, after) {
-		t.Fatal("marker-less extraction was not redone")
+	if _, err := os.Stat(witness); !os.IsNotExist(err) {
+		t.Fatalf("marker-less extraction was not redone: the first extraction's tree survived (stat = %v)", err)
 	}
 	if _, err := os.Stat(filepath.Join(target, markerFile)); err != nil {
 		t.Fatalf("completion marker missing after re-extraction: %v", err)

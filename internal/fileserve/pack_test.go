@@ -355,9 +355,15 @@ func TestPackRefusesUnsafeTrees(t *testing.T) {
 			want:  "absolute path",
 		},
 		{
+			// A UNC path is an absolute path, and saying so is more use to
+			// the operator than naming the character it happens to start
+			// with. The backslash sentence is what is left for a target
+			// that is NOT absolute and NOT escaping — a literal backslash
+			// in a Linux filename, which becomes a separator wherever this
+			// FileSet is extracted (B-025).
 			name:  "symlink to a UNC share",
 			files: map[string]string{"ok.txt": "x", "escape": `-> \\attacker\share\payload`},
-			want:  "backslash",
+			want:  "points outside the FileSet",
 		},
 		{
 			name:  "backslash in a name",
