@@ -8,6 +8,8 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-27
+
 ### Added
 
 - **Mirror mode is a complete operating mode** (feature 5.1, FR-014,
@@ -977,7 +979,9 @@ import, track, browse, pull) behind authentication that is on by default.
 - Release chain groundwork for SLSA Build L3 provenance and signed
   artifacts.
 
-[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.2...v0.5.0
+[0.4.2]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.2.0...v0.3.0
