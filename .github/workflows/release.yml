@@ -27,16 +27,16 @@
 # read on our behalf, and putting a new version in front of their users is a
 # reviewed human act rather than a side effect of tagging.
 #
-# Both Windows jobs hand off GREEN today, and Scoop turns red the day that
-# means something. Red is worth having only while it is rare: a job that
-# failed on every release until somebody created a bucket would teach the
-# team to expect a red square on the release page and stop reading it, which
-# is precisely how the red that matters gets missed. So Scoop reads its token
-# to tell two states apart — no token means no bucket and nobody has asked
-# for one, which is a hand-off with a job summary; a token set means a bucket
-# exists and someone decided it should be fed, and a version rendered but not
-# delivered is then a real gap and fails the job. Winget ends green because
-# nothing is missing there either: the manifests are rendered, checked against this run's own
+# Both Windows jobs hand off GREEN, and Scoop turns red the day that means
+# something. Red is worth having only while it is rare: a job that failed on
+# every release would teach the team to expect a red square on the release
+# page and stop reading it, which is precisely how the red that matters gets
+# missed. The bucket at tobby-fetch/scoop-bucket exists and follows releases
+# through its own checkver/autoupdate, so nothing is left behind here and
+# nothing is red; SCOOP_BUCKET_TOKEN is the switch that says this chain owns
+# the bucket copy instead, and once it is set a rendered-but-undelivered
+# manifest is a real gap and fails the job. Winget ends green because nothing
+# is missing there either: the manifests are rendered, checked against this run's own
 # SHA256SUMS and attached, and what remains is a pull request into an index
 # whose reviewers do not work here. A job that failed on every release
 # forever would not say that; it would teach everyone to expect a red square
@@ -760,52 +760,50 @@ jobs:
       # Both branches below fail, for two different reasons, and both say so
       # out loud. The token is read only to tell those reasons apart — it is
       # never used to write anything, here or anywhere else in this file.
-      - name: Hand off, or fail loudly if a channel was left behind
+      - name: Hand off to the bucket, or fail loudly if it was left behind
         env:
           TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
         run: |
           if [ -z "${TOKEN}" ]; then
-            # Nothing was left behind: there is no bucket yet, and nobody has
-            # said there should be. Red here would fire on every release until
-            # someone creates one, which is the state that teaches a team to
-            # expect a red square on the release page and stop reading it —
-            # the same argument that makes the winget job hand off green.
-            echo "::warning::The Scoop manifest for ${VERSION} is rendered and attached to this"
-            echo "::warning::release as tobby.json. No bucket exists to publish it to yet."
+            # The bucket exists and follows releases on its own: the manifest
+            # carries checkver and autoupdate, and the bucket's own
+            # scoop-update workflow does the same read on demand. Nothing is
+            # left behind here, so nothing is red. Setting SCOOP_BUCKET_TOKEN
+            # is the switch that says "this chain pushes now" — see below.
+            echo "::notice::The Scoop manifest for ${VERSION} is rendered and attached to this release."
             {
-              echo "### Scoop manifest rendered — not published"
+              echo "### Scoop manifest rendered"
               echo
-              echo "\`tobby.json\` for ${VERSION} is attached to this release."
+              echo "\`tobby.json\` for ${VERSION} is attached to this release, with the"
+              echo "checksums this run built."
               echo
-              echo "To open the Scoop channel, once:"
-              echo
-              echo "1. Create \`tobby-fetch/scoop-bucket\` as a **public** repository with a \`bucket/\` directory."
-              echo "2. Commit the attached \`tobby.json\` as \`bucket/tobby.json\`."
-              echo "3. Mint a fine-grained token restricted to that repository, scope \`contents: write\`"
-              echo "   and nothing else, and store it as this repository's \`SCOOP_BUCKET_TOKEN\` secret."
-              echo
-              echo "From then on this job turns **red** whenever a release renders a manifest that"
-              echo "nobody committed — which is the state that actually deserves a red square."
+              echo "The bucket at [tobby-fetch/scoop-bucket](https://github.com/tobby-fetch/scoop-bucket)"
+              echo "follows releases itself — the manifest carries \`checkver\` and"
+              echo "\`autoupdate\`, and the bucket's **Update manifest** workflow performs"
+              echo "the same read on demand. One file, one owner."
               echo
               echo "Users install with:"
               echo
-              echo '```'
+              echo '```powershell'
               echo "scoop bucket add tobby https://github.com/tobby-fetch/scoop-bucket"
               echo "scoop install tobby"
               echo '```'
+              echo
+              echo "Set \`SCOOP_BUCKET_TOKEN\` only if this chain should push into the"
+              echo "bucket instead. It would then own the file, the bucket's own workflow"
+              echo "would become the recovery path rather than the route, and a release"
+              echo "that rendered a manifest nobody delivered would turn this job red."
             } >>"${GITHUB_STEP_SUMMARY}"
             exit 0
           fi
-          # The token exists, so a bucket exists and someone decided it should
-          # be fed. A version rendered and not delivered is now a real gap.
+          # The token exists, so someone decided this chain should feed the
+          # bucket. A version rendered and not delivered is now a real gap.
           echo "::error::The Scoop manifest for ${VERSION} is rendered and attached to the"
-          echo "::error::release as tobby.json — and nothing has been published."
-          echo "::error::SCOOP_BUCKET_TOKEN is set, but this workflow still writes to no bucket:"
-          echo "::error::the push step is deliberately not wired, because putting a version in"
-          echo "::error::front of a bucket's users is a reviewed human act. Commit the tobby.json"
-          echo "::error::attached to this release as bucket/tobby.json in"
-          echo "::error::tobby-fetch/scoop-bucket, or decide that this chain should push it and"
-          echo "::error::add that step here on purpose."
+          echo "::error::release as tobby.json — and this workflow pushed it nowhere."
+          echo "::error::SCOOP_BUCKET_TOKEN is set, which says this chain owns the bucket"
+          echo "::error::copy, but the push step is not wired. Either add it here on"
+          echo "::error::purpose, or remove the secret and let the bucket keep following"
+          echo "::error::releases through its own checkver/autoupdate workflow."
           exit 1
 
   # SLSA Build L3 provenance for the binaries, uploaded to the release by
