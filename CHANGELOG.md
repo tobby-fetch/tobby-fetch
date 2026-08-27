@@ -10,6 +10,114 @@ starting with `v0.1.0`.
 
 ### Added
 
+- **Mirror mode is a complete operating mode** (feature 5.1, FR-014,
+  FR-050, FR-054). A synchronization is triggered by hand — never by a
+  loop, and mirror mode builds no scheduler at all rather than leaving one
+  idle — and what it leaves behind is a self-contained store that is the
+  unit of transport: artifacts, recipes, operation logs, and the media
+  manifest that describes them.
+- **The media manifest** (FR-054). Every mirror synchronization ends by
+  writing `meta/media.json` into the store, after any prune, so the
+  inventory describes what the medium finally holds: the store and
+  manifest format versions, a media identifier, the zone the medium is
+  addressed to, the producing version and run, the Retriever resolution
+  timestamp, the fulfilled recipes with their pinned ingredients, and a
+  file-by-file inventory of paths, sizes and digests.
+
+  It is **unsigned, and nothing rests on it** — Tobby holds no private key
+  and could not sign one. Authenticity comes from the recipes' cosign
+  signatures verified against the *destination's* trust roots, and from
+  every ingredient matching its pinned digest; trust material found on the
+  medium is ignored. Verification therefore checks each covered file
+  against its inventory entry **and** against its own content address: an
+  attacker who corrupts a blob and rewrites the inventory to agree defeats
+  the first check and is caught by the second. Without that, an unsigned
+  manifest would be load-bearing, which is the one thing it must never be.
+  Recorded in `ADR-0016`.
+- **Blocking at the right granularity** (FR-054 amendment R-19). FR-054
+  read as a verdict on the whole medium while RECIPE-SPEC §12.3 required
+  failing closed per item, and the two are now the same sentence. The unit
+  is the **recipe**: one whose signature verifies and whose every reachable
+  object matches its pinned digest is pushable; one that fails either is
+  blocked whole, with no override, and named in the report with the file
+  that failed. A delivery that verified in part is not a delivery — but
+  withholding what failed is not the same as discarding what did not, so a
+  damaged medium still hands over its intact recipes. Four conditions stay
+  medium-wide, because per-recipe salvage means nothing for them: an
+  unusable manifest and an altered recipe graph, neither overridable; a
+  foreign zone and a stale medium, both overridable by an administrator and
+  audit-logged. RECIPE-SPEC §12.3 was amended to say this normatively,
+  since "the affected item" left two conforming implementations free to
+  behave in opposite ways on the same damaged medium.
+- **Media identity and freshness** (FR-052/FR-054 amendments, R-28). A
+  media identifier is minted with the store and stays stable across
+  re-synchronizations onto it, appearing in the manifest and in the logs on
+  both sides so an incident traces back to a physical object. The
+  destination remembers, per zone, the identifier and resolution timestamp
+  of the last medium it imported — in its **state** directory, never on the
+  medium — and refuses an older one by default, naming both timestamps.
+  These are anti-accident guards, not security controls: the manifest is
+  unsigned, so a hostile party can forge a timestamp. What they prevent is
+  an operator re-importing last month's disk and rolling a zone backwards.
+- **Pre-flight: does it fit, and will it go through** (feature 5.2,
+  FR-055). Before a synchronization or an export, the bytes to transfer are
+  computed per recipe and in total — deduplicated by digest, net of what
+  the target already holds — against the target's free space and its
+  filesystem's per-file ceiling. A projection above free space minus a
+  configurable safety margin (default 10 %) is refused before any transfer,
+  stating the shortfall in bytes (`TBY-STO-004`); a filesystem positively
+  identified as unable to hold the largest file to be written is refused
+  naming the limit (`TBY-STO-005`), single-tar exports included; an
+  unidentifiable filesystem warns rather than refuses. The file-size
+  ceiling is judged **before** free space, because a FAT32 volume with
+  terabytes free still cannot hold the blob and "not enough space" would
+  send an operator to buy a disk that fixes nothing. Detection is
+  deliberately honest per platform — `statfs` magic on Linux,
+  `f_fstypename` on macOS, `GetVolumeInformationW` on Windows — and a
+  filesystem this build knows no ceiling for is reported as unidentified,
+  never as capable.
+- **Plan mode: simulate before acting** (FR-055 amendment R-04). A
+  side-effect-free operation in both modes, from `tobby sync --dry-run`,
+  `POST /api/v1/plan` and the screen, over the configured Retriever or a
+  candidate document: resolved versions, per-digest statuses, deduplicated
+  volumes, projected prune, and the policy verdicts reachable without a
+  transfer. It writes nothing, pushes nothing, and does not advance a
+  passthrough instance's refresh schedule — a plan that moved the cadence
+  would turn a diagnostic into a side effect. Exit codes distinguish
+  nothing to do, changes planned, and refused by policy, so it works as a
+  CI gate.
+- **Prune to the Retriever** (FR-045, and R-33 for passthrough). Content a
+  recipe brought and the resolved Retriever no longer references is
+  removed: on by default in mirror mode, where the operator sees the list
+  and the total size before confirming, and opt-in in passthrough, where
+  nobody is watching the loop and a transit store is nobody's delivery
+  unit. Eligibility is a **positive** test — only recipe-provenance content
+  ever goes — which protects unit imports, seeded content and the offline
+  vulnerability database by construction rather than by a namespace list
+  that would have to be kept in step. A configurable store-occupancy
+  threshold raises a persistent banner and a metric, in both directions.
+- **Secrets never travel** (NFR-020, R-16). A configured secret path that
+  resolves under the store root makes the instance refuse to start, naming
+  the path — the store is handed to a courier and plugged into a machine in
+  another zone, so anything under it is assumed to be read by someone else.
+  Resolution follows the real filesystem, so a relative path, a `..`, a
+  symlink or a differently-cased spelling cannot slip past it. Secret files
+  are created owner-only: mode 0600 on Unix, a protected access list
+  granting the owning account alone on Windows.
+- **`tobby fileset pack`** (FR-048, R-41). A local directory becomes a
+  FileSet OCI image, imported through the unit-import path and servable
+  under `/files/` — with no HTTP write surface anywhere in the flow, which
+  is the whole point: the operator who needs to serve a handful of files
+  gets them served without an upload endpoint being reopened. Packing
+  refuses first what §14.5 refuses at extraction, where the operator can
+  still fix the tree. The layer tar is uncompressed so that the digest is a
+  pure function of the directory: a compressor's output is a function of
+  its version, and a gzip layer would produce new content from an unchanged
+  tree at the next toolchain bump. From the screen and the API, packing is
+  confined to the directories `files.packRoots` lists, and no entry means
+  no path — reading an arbitrary host directory on a network request is a
+  capability an instance is given, not one it holds.
+
 - **Windows is a validated platform, not a compiled one** (NFR-018,
   feature 5.6). `windows-latest` joins the CI test matrix and runs the
   whole suite under the race detector, twice — until now Windows was
@@ -189,8 +297,76 @@ starting with `v0.1.0`.
   `/api/v1/media`, and `GET /api/v1/media/verification` serves a machine
   the state the screen polls.
 
+- **A command line under a stable contract (R-08, FR-066 amendment).** An
+  automation can depend on this CLI across versions, and four promises say
+  what that means. `--output json` on every command that reports anything,
+  spelled the same way everywhere — three milestone-5 lots had each
+  written their own `--output` or `--json` — with the machine document
+  ALONE on standard output and every log, prompt, progress line and audit
+  record on standard error (B-010, which this closes for good). The
+  documents have a published JSON Schema, shipped in the binary beside the
+  OpenAPI one and served at `GET /api/v1/cli-output.schema.json`. An
+  exhaustive exit-code table, GENERATED from `internal/taxonomy` and
+  carried verbatim by the reference pages, covered by the project's
+  semantic-versioning promise: removing a code or renumbering one is a
+  breaking change, and a test fails the build in both directions — a code
+  the table does not list, or a row nothing can produce. A guaranteed
+  non-interactive mode: no command prompts, none requires a terminal, and
+  the whole command tree is run with a pipe on standard input to prove it.
+  And `--wait` on every command that starts a task on an instance.
+- **`tobby sync` triggers a synchronization (FR-014, FR-066).** It was a
+  usage error without `--dry-run`, because the store is held open for
+  writing by whoever serves it and a second process cannot open it too.
+  The right answer was never to open the store: the command now DRIVES the
+  instance through `POST /api/v1/sync` — the endpoint behind the
+  "Synchronize" button — and says so in its first line of help. `--wait`
+  follows the task to a terminal state and exits on the TASK's outcome, so
+  a policy refusal on the instance is exit `3` on the command line;
+  `--prune` and `--prune=false` are distinct from saying nothing at all.
+  The instance is named by `--instance`, `TOBBY_INSTANCE_URL`, or nothing
+  at all when the command runs on the instance's own host. The API token
+  comes from `TOBBY_API_TOKEN` or `--token-file` and is deliberately not a
+  flag: flag values are visible in the process table (NFR-015).
+- `TBY-REG-008`: an ingredient asking for a platform the source index does
+  not publish. It was a bare `fmt.Errorf` that settled as `TBY-SRV-001` —
+  "an internal error occurred", whose corrective action is to search the
+  logs for a correlation identifier — for a mistake in the operator's own
+  recipe (found while fixing B-020). The message now names both sides of
+  the comparison the fix requires: the selectors that matched nothing, and
+  the platforms the index actually carries.
+
 ### Fixed
 
+- **A synchronization's `platforms:` filter made arm64 unusable** (B-020).
+  Both readers of the `os/arch[/variant]` notation rendered each index
+  child back into a label and compared strings, which silently made the
+  optional variant mandatory — and registries publish their arm64 child
+  with variant `v8`, so `linux/arm64`, the spelling of RECIPE-SPEC's own
+  example, matched nothing and failed the ingredient. The same defect sat
+  behind a second door, the FileSet serving selector. One rule now lives in
+  one place, and RECIPE-SPEC §7.1 states it normatively: two independent
+  call sites getting it wrong the same way is an under-specified rule, not
+  two mistakes.
+- **A failed ingredient left no trail** (B-021). The item carried its
+  taxonomy code and nothing else: no log record at any level, and the
+  wrapped cause dropped on the way to persistence. For codes whose
+  corrective action is "follow the correlation identifier in the logs"
+  (FR-090), that instruction led to an empty result set. The ingredient
+  path now logs with its correlation fields, and the technical cause is a
+  field of its own beside the code — never localized, so it matches the log
+  record character for character.
+- **A restart with a long backlog wedged the task queue** (B-019).
+  Resuming sent every active task on a bounded channel that nothing drains
+  until after `Open` returns, so more than 256 of them blocked startup
+  indefinitely. Resumed tasks now go to a backlog the worker drains ahead
+  of the channel.
+- **One unresolved FileSet declaration hid all the others** (B-022). The
+  refresh abandoned the whole synchronization on the first resolution
+  failure, leaving `/files/` empty — including for FileSets already in the
+  store — with a single warning line as the only trace, while the function
+  it called documented the opposite intent. It now serves what resolved and
+  reports each failure. Found by running the packing flow end to end; no
+  unit test could see it, because each exercised one declaration at a time.
 - **The embedded registry could not write anything on Windows** (B-023).
   distribution's filesystem driver renames its temporary file over the
   target and only then closes it, which Unix allows and Windows answers
@@ -273,44 +449,6 @@ starting with `v0.1.0`.
   scenario m1 relies on: a store filled through `/v2/` and carried across
   the gap serves normally, because it never went through a mirror
   synchronization and carries no media manifest.
-
-- **A command line under a stable contract (R-08, FR-066 amendment).** An
-  automation can depend on this CLI across versions, and four promises say
-  what that means. `--output json` on every command that reports anything,
-  spelled the same way everywhere — three milestone-5 lots had each
-  written their own `--output` or `--json` — with the machine document
-  ALONE on standard output and every log, prompt, progress line and audit
-  record on standard error (B-010, which this closes for good). The
-  documents have a published JSON Schema, shipped in the binary beside the
-  OpenAPI one and served at `GET /api/v1/cli-output.schema.json`. An
-  exhaustive exit-code table, GENERATED from `internal/taxonomy` and
-  carried verbatim by the reference pages, covered by the project's
-  semantic-versioning promise: removing a code or renumbering one is a
-  breaking change, and a test fails the build in both directions — a code
-  the table does not list, or a row nothing can produce. A guaranteed
-  non-interactive mode: no command prompts, none requires a terminal, and
-  the whole command tree is run with a pipe on standard input to prove it.
-  And `--wait` on every command that starts a task on an instance.
-- **`tobby sync` triggers a synchronization (FR-014, FR-066).** It was a
-  usage error without `--dry-run`, because the store is held open for
-  writing by whoever serves it and a second process cannot open it too.
-  The right answer was never to open the store: the command now DRIVES the
-  instance through `POST /api/v1/sync` — the endpoint behind the
-  "Synchronize" button — and says so in its first line of help. `--wait`
-  follows the task to a terminal state and exits on the TASK's outcome, so
-  a policy refusal on the instance is exit `3` on the command line;
-  `--prune` and `--prune=false` are distinct from saying nothing at all.
-  The instance is named by `--instance`, `TOBBY_INSTANCE_URL`, or nothing
-  at all when the command runs on the instance's own host. The API token
-  comes from `TOBBY_API_TOKEN` or `--token-file` and is deliberately not a
-  flag: flag values are visible in the process table (NFR-015).
-- `TBY-REG-008`: an ingredient asking for a platform the source index does
-  not publish. It was a bare `fmt.Errorf` that settled as `TBY-SRV-001` —
-  "an internal error occurred", whose corrective action is to search the
-  logs for a correlation identifier — for a mistake in the operator's own
-  recipe (found while fixing B-020). The message now names both sides of
-  the comparison the fix requires: the selectors that matched nothing, and
-  the platforms the index actually carries.
 
 ### Changed
 
