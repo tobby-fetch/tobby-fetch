@@ -51,7 +51,12 @@ Commands:
 # install on a host where the binary could not run, instead of installing a
 # file that fails at first launch.
 MinimumOSVersion: 10.0.14393.0
-ReleaseNotesUrl: https://github.com/tobby-fetch/tobby-fetch/releases/tag/v0.0.0
+# ReleaseNotesUrl does NOT belong here. It is a field of the locale
+# manifest, where infraBuilder.tobby.locale.en-US.yaml already carries
+# it — release notes are prose, and prose is per-locale. Declared in
+# both files, `winget validate` refuses the whole set with
+# "Duplicate field found in the manifest. [ReleaseNotesUrl]", because
+# it reads the three files as one merged manifest.
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/tobby-fetch/tobby-fetch/releases/download/v0.0.0/tobby-windows-amd64.exe
