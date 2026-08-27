@@ -390,7 +390,12 @@ inc exec tbc-m5-connected -- sh -c 'tobby sync --wait' >/dev/null 2>&1 ||
 
 # -- 8. NFR-020: a secret under the store stops the instance dead ------------
 inc exec tbc-m5-connected -- sh -c '
-    pkill -f "tobby serve" || true
+    # [t]obby, not tobby: pkill -f matches full command lines, and the
+    # command line of the shell running this very pkill CONTAINS the
+    # pattern. Spelled plainly it kills its own parent, the scenario dies
+    # with SIGTERM and no failing check to point at. The bracket makes the
+    # pattern not match itself while still matching the process.
+    pkill -f "[t]obby serve" || true
     mkdir -p /media/tobby/store/creds
     printf "{\"auths\":{\"registry.example.com\":{}}}" >/media/tobby/store/creds/config.json
     sed -i "s#^registries:#registries:\n  credentialsFile: /media/tobby/store/creds/config.json#" /etc/tobby/config.yaml
@@ -414,10 +419,19 @@ check "NFR-020: a secret planted under the store makes the instance refuse to st
 # and named, and the second still crosses.
 BLOB=$(echo "$MANIFEST" | jq -r '.recipes[] | select(.name=="zone-app") | .ingredients[0].digest' | cut -d: -f2)
 inc exec tbc-m5-connected -- sh -c "
-    pkill -f 'tobby serve' || true
+    # [t]obby, not tobby: pkill -f matches full command lines, and the
+    # command line of the shell running this very pkill CONTAINS the
+    # pattern. Spelled plainly it kills its own parent, the scenario dies
+    # with SIGTERM and no failing check to point at. The bracket makes the
+    # pattern not match itself while still matching the process.
+    pkill -f '[t]obby serve' || true
     f=\$(find /media/tobby/store/docker/registry/v2/blobs/sha256 -path '*${BLOB}*' -name data | head -1)
     test -n \"\$f\" || exit 1
-    truncate -s -64 \"\$f\"
+    # Absolute size, not a relative one: busybox truncate refuses "-64"
+    # (the same refusal that silently under-filled the undersized medium
+    # earlier in this file).
+    sz=\$(wc -c <\"\$f\")
+    truncate -s \$((sz - 64)) \"\$f\"
 " || fail "could not truncate a blob of the first delivery"
 inc exec tbc-m5-connected -- sh -c 'sync && umount /media/tobby'
 inc config device remove tbc-m5-connected medium >/dev/null
@@ -446,11 +460,11 @@ ELSEWHERE=$(inc exec tbc-m5-isolated -- sh -c \
     'tobby media verify --zone zone-elsewhere --output json 2>/dev/null' || true)
 echo "$ELSEWHERE" | jq -e '.verdict == "blocked"' >/dev/null ||
     fail "FR-054: a medium addressed to another zone was not blocked"
-echo "$ELSEWHERE" | jq -e '[.blocks[].code] | index("TBY-MED-006") != null' >/dev/null ||
+echo "$ELSEWHERE" | jq -e '[(.blocks // [])[].code] | index("TBY-MED-006") != null' >/dev/null ||
     fail "FR-054: the zone refusal does not carry TBY-MED-006"
 WAIVED=$(inc exec tbc-m5-isolated -- sh -c \
     'tobby media verify --zone zone-elsewhere --allow-zone-mismatch --output json 2>/dev/null' || true)
-echo "$WAIVED" | jq -e '[.blocks[] | select(.code=="TBY-MED-006") | .overridden] | index(true) != null' >/dev/null ||
+echo "$WAIVED" | jq -e '[(.blocks // [])[] | select(.code=="TBY-MED-006") | .overridden] | index(true) != null' >/dev/null ||
     fail "FR-054: the administrator waiver did not clear the zone refusal"
 check "FR-054: a medium for another zone is blocked; the admin waiver clears it and is recorded"
 
@@ -479,10 +493,17 @@ check "FR-052/FR-034: the cleared delivery is in the zone registry and its cookb
 
 # A standard client, inside the isolated zone, pulls what was pushed. That
 # is the acceptance sentence of the milestone: not "Tobby says it worked".
+# The destination path is not the source path: ADR-0013 relocates every
+# ingredient under the canonical source host, with the port's colon folded
+# to an underscore because a colon is not legal in a repository name. The
+# scenario spells that out rather than hard-coding it, so a change to the
+# convention fails here instead of silently passing against a path nobody
+# reads.
+RELOCATED="$(printf '%s' "$SOURCE_IP:8080" | tr ':' '_')/library/tool"
 inc exec tbc-m5-isolated -- sh -c "
     wget -q -O /dev/null --header 'Accept: application/vnd.oci.image.index.v1+json' \
-        'http://$DEST_IP:5000/v2/$SOURCE_IP/library/tool/manifests/1.0.0'
-" || fail "a standard client inside the zone cannot pull the pushed content"
+        'http://$DEST_IP:5000/v2/$RELOCATED/manifests/1.0.0'
+" || fail "a standard client inside the zone cannot pull $RELOCATED"
 check "content pushed into the isolated zone is pullable there by a standard OCI client"
 
 # -- 14. The medium carries the operation log home (FR-053, FR-056) ---------
@@ -493,23 +514,50 @@ inc exec tbc-m5-isolated -- sh -c \
     fail "FR-054: the return-log path is inside the manifest's coverage"
 check "FR-053/FR-054: the return log is on the medium, outside the manifest's coverage"
 
-# -- 15. R-28: the same medium cannot roll the zone backwards ----------------
-# The register advanced on the completed import. Re-presenting the SAME
-# medium is the accident the guard exists for — an operator re-plugging
-# last month's disk — and it must be refused by default and waivable.
+# -- 15. R-28: an older medium cannot roll the zone backwards ---------------
+# Two halves, and the first is the one an operator leans on. Re-presenting
+# the SAME medium is not stale — equal is not older — because a push that
+# half-failed has to be retryable without an administrator in the room.
+SAME=$(inc exec tbc-m5-isolated -- sh -c 'tobby media verify --output json 2>/dev/null' || true)
+echo "$SAME" | jq -e '[(.blocks // [])[].code] | index("TBY-MED-007") == null' >/dev/null ||
+    fail "R-28: re-presenting the same medium was refused as stale; a retry is not a rollback"
+check "R-28: the same medium is not stale — an interrupted import can be retried"
+
+# The refusal itself. A medium is dated by its manifest and by nothing else,
+# so rewinding that date is what "an older medium" MEANS here — and the
+# manifest is deliberately not covered by its own inventory, which is why
+# this is possible at all. That is the honest shape of the guard: it is an
+# anti-accident control over an unsigned document, never a security one, and
+# the scenario exercises it as such rather than pretending otherwise.
+inc exec tbc-m5-isolated -- sh -c '
+    # The manifest is written pretty-printed, so the separator is ": " and
+    # not ":". A pattern without the space matches nothing, the medium goes
+    # through unchanged, and that reads exactly like the guard failing — so
+    # the rewind verifies itself before the verdict is asked for.
+    sed -i "s/\"resolvedAt\": \"20[0-9][0-9]-/\"resolvedAt\": \"2019-/g" /media/tobby/store/meta/media.json
+    grep -q "\"resolvedAt\": \"2019-" /media/tobby/store/meta/media.json
+' || fail "could not rewind the medium's own date"
 STALE=$(inc exec tbc-m5-isolated -- sh -c 'tobby media verify --output json 2>/dev/null' || true)
-echo "$STALE" | jq -e '[.blocks[].code] | index("TBY-MED-007") != null' >/dev/null ||
-    fail "R-28: a medium no newer than the zone's last import was not refused"
+echo "$STALE" | jq -e '[(.blocks // [])[].code] | index("TBY-MED-007") != null' >/dev/null ||
+    fail "R-28: a medium older than the zone's last import was not refused: $(echo "$STALE" | jq -c '[(.blocks // [])[].code]' 2>/dev/null)"
 echo "$STALE" | jq -e '.freshness.recorded != null and .freshness.resolved != null' >/dev/null ||
     fail "R-28: the refusal does not name both timestamps"
-check "R-28: a medium not newer than the zone's last import is refused, both timestamps named"
+WAIVED_STALE=$(inc exec tbc-m5-isolated -- sh -c 'tobby media verify --allow-stale --output json 2>/dev/null' || true)
+echo "$WAIVED_STALE" | jq -e '[(.blocks // [])[] | select(.code=="TBY-MED-007") | .overridden] | index(true) != null' >/dev/null ||
+    fail "R-28: the administrator waiver did not clear the staleness refusal"
+check "R-28: an older medium is refused naming both timestamps; the admin waiver clears it"
 
 # -- 16. FR-051: the interoperability exit is real --------------------------
 # skopeo runs on the crucible host, against the layout pulled off the node:
 # the point of this check is that a tool nobody here wrote can read what
 # Tobby wrote, so it must be that tool and not a library standing in.
+# The cleared delivery, not the whole store: by this point the medium is
+# damaged on purpose, and a whole-store export would fail on the manifest
+# this scenario truncated — which says nothing about interoperability. It is
+# also the realistic act, and the one R-19 argues for: you hand on what
+# verified.
 inc exec tbc-m5-isolated -- sh -c \
-    'tobby export /tmp/layout --directory --storage-root /media/tobby/store' >/dev/null 2>&1 ||
+    'rm -rf /tmp/layout && tobby export /tmp/layout --directory --recipe zone-tool@1.0.0 --storage-root /media/tobby/store' >/dev/null 2>&1 ||
     fail "FR-051: the OCI image layout export failed"
 inc file pull -r tbc-m5-isolated/tmp/layout "$WORK/" >/dev/null 2>&1 ||
     fail "could not retrieve the exported layout"
@@ -538,18 +586,30 @@ inc exec tbc-m5-isolated -- sh -c '
     mkdir -p /root/pool && printf "deb content\n" >/root/pool/README
     tobby fileset pack /root/pool zone-notes:1.0.0 --storage-root /media/tobby/store
 ' >/dev/null 2>&1 || fail "R-41: packing a local directory failed"
-for method in POST PUT PATCH DELETE; do
-    CODE=$(inc exec tbc-m5-isolated -- sh -c \
-        "wget -q -S -O /dev/null --method=$method http://127.0.0.1:8080/files/zone-notes/README 2>&1 | awk '/HTTP\//{print \$2; exit}'" || true)
-    [ "$CODE" = "405" ] || [ "$CODE" = "403" ] || [ "$CODE" = "404" ] ||
-        fail "R-41/FR-047: /files/ accepted $method (status $CODE) — no write surface may exist"
+# busybox wget speaks GET and POST-with-a-body and nothing else, so the
+# write methods are sent from the crucible host with curl. The host routes
+# to both bridges by construction — the air gap is between the two GUEST
+# networks, enforced by the ACL the canary proved, not between the host and
+# its own bridges.
+ISOLATED_IP=$(inc list tbc-m5-isolated -c 4 -f csv | awk '{print $1}' | head -1)
+for method in POST PUT PATCH DELETE MKCOL; do
+    CODE=$(curl -s -o /dev/null -w '%{http_code}' -X "$method" \
+        "http://$ISOLATED_IP:8080/files/zone-notes/README" || echo 000)
+    case "$CODE" in
+        405|403|404) ;;
+        *) fail "R-41/FR-047: /files/ answered $CODE to $method — no write surface may exist" ;;
+    esac
 done
 check "R-41: a directory packed on the isolated side becomes a FileSet; /files/ still accepts no write method"
 
 # -- 19. FR-046: the reset is the admin's, and it is typed ------------------
-RESET_CODE=$(inc exec tbc-m5-isolated -- sh -c \
-    "wget -q -S -O /dev/null --method=POST --body-data='{\"confirmation\":\"reset\"}' \
-     --header='Content-Type: application/json' http://127.0.0.1:8080/api/v1/store/reset 2>&1 | awk '/HTTP\//{print \$2; exit}'" || true)
+# curl again, for the same reason as the write-method probe above: this
+# needs a POST with a JSON body and a header, which busybox wget cannot
+# express, and a probe that never leaves the machine passes whatever the
+# server does.
+RESET_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+    -H 'Content-Type: application/json' -d '{"confirmation":"reset"}' \
+    "http://$ISOLATED_IP:8080/api/v1/store/reset" || echo 000)
 [ "$RESET_CODE" = "422" ] ||
     fail "FR-046: a reset with the wrong confirmation returned $RESET_CODE, want 422"
 check "FR-046: a reset without the exact typed confirmation is refused"
