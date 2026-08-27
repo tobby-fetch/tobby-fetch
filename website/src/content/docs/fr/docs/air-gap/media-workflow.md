@@ -3,9 +3,6 @@ title: Le parcours média de bout en bout
 description: Les cinq étapes stables d'un transfert par média amovible — préparer, pré-vol, exporter, transporter, importer — et qui agit à chacune.
 sidebar:
   order: 1
-  badge:
-    text: Partiel
-    variant: caution
 ---
 
 En mode miroir, un transfert est un répertoire. Tobby synchronise le contenu
@@ -15,17 +12,15 @@ vérifie puis le pousse dans la registry de zone. Déplacer le répertoire,
 c'est le transfert — il n'y a aucune étape d'empaquetage ou de dépaquetage
 propriétaire.
 
-:::caution[Conception actée, procédures au jalon 5]
-Le parcours ci-dessous — ses étapes, ce qui voyage, ce qui est vérifié et
-dans quel ordre — est acté et spécifié
-([ADR-0006](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0006-removable-media-transport.md),
-SRS FR-050 à FR-056). Le code qui l'exécute arrive avec le jalon 5 : les
-écrans, commandes et procédures pas à pas sont décrits sur
-[Cap sur le jalon 5](../../air-gap/milestone-5/) et suivis sur la page
-[État du projet](../../discover/status/). Utilisez cette page dès aujourd'hui
-pour concevoir votre procédure de site et votre dossier d'homologation ;
-revenez au jalon 5 pour le détail opérationnel.
-:::
+Cette page est la carte. Le détail opérationnel vit sur trois pages à côté
+d'elle : [préparer le poste source](../../air-gap/prepare-source/),
+[importer côté zone isolée](../../air-gap/import-destination/) et
+[gérer les supports dans la durée](../../air-gap/manage-media/). La
+conception derrière tout cela, c'est
+[ADR-0006](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0006-removable-media-transport.md)
+et
+[ADR-0016](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0016-media-manifest.md),
+SRS FR-050 à FR-056.
 
 ## Deux instances, un répertoire
 
@@ -97,7 +92,7 @@ noms n'aura pas à être renommée plus tard.
 | 2 | **Pré-vol** | Tobby calcule ce qui voyagerait et refuse les transferts impossibles avant qu'ils ne commencent. | operator |
 | 3 | **Exporter** | Une synchronisation déclenchée manuellement remplit le store transportable ; le manifeste de média est écrit en dernier. | operator |
 | 4 | **Transporter** | Le média traverse physiquement le sas, via les contrôles de gestion des supports du site. | procédure média du site (hors Tobby) |
-| 5 | **Importer** | L'instance de destination vérifie le média, puis pousse le contenu vérifié vers la registry de zone. | operator (admin pour l'unique dérogation auditée) |
+| 5 | **Importer** | L'instance de destination vérifie le média, puis pousse le contenu vérifié vers la registry de zone. | operator (admin pour les deux dérogations auditées) |
 
 ### 1 — Préparer
 
@@ -120,11 +115,8 @@ Checklist :
 - Le média est formaté avec un système de fichiers adapté (pas de FAT32)
   et, si votre site l'exige, chiffré au niveau de l'OS (LUKS, BitLocker).
 
-:::note[Conceptuel aujourd'hui]
-Le choix du mode et la configuration de l'instance existent aujourd'hui. La
-synchronisation miroir elle-même, et le refus de démarrer avec des secrets
-sous le store, arrivent avec le jalon 5.
-:::
+Détail complet :
+[préparer le poste source](../../air-gap/prepare-source/).
 
 ### 2 — Pré-vol
 
@@ -143,11 +135,11 @@ Checklist :
 - Les refus éventuels ont été résolus par un prune ou un média plus grand —
   pas en sautant le contrôle (il n'y a pas de contournement).
 
-:::note[À venir — jalon 5]
-Le calcul de pré-vol et ses refus explicites sont un comportement du
-jalon 5 (SRS FR-055), dry-run scriptable inclus. À suivre sur la page
-[État du projet](../../discover/status/).
-:::
+Un système de fichiers dont ce build ne connaît aucun plafond est rapporté
+comme **non identifié** plutôt que comme capable : c'est un avertissement,
+pas un refus. Le contrôle complet, ses deux refus et le dry-run scriptable
+qui l'accompagne sont sur
+[préparer le poste source](../../air-gap/prepare-source/).
 
 ### 3 — Exporter
 
@@ -168,10 +160,9 @@ Checklist :
   transfert.
 - Le média a été démonté proprement.
 
-:::note[À venir — jalon 5]
-La synchronisation miroir manuelle et le manifeste de média arrivent avec le
-jalon 5 (SRS FR-014, FR-054).
-:::
+Le manifeste est écrit **après tout prune** — c'est pour cela qu'il est la
+dernière écriture et pas simplement une écriture tardive. Voir
+[préparer le poste source](../../air-gap/prepare-source/).
 
 ### 4 — Transporter
 
@@ -208,9 +199,11 @@ Checklist :
 - L'identité de zone du média correspond à la zone de cette instance.
 - Les verdicts de vérification ont été relus par étape et par recipe.
 - Les recipes bloquées, s'il y en a, sont listées dans le rapport et
-  traitées selon votre procédure de site — la seule dérogation est la
-  dérogation admin auditée pour un désaccord d'identité de zone ; les échecs
-  d'intégrité n'en ont aucune.
+  traitées selon votre procédure de site. Deux refus seulement peuvent être
+  levés, par un administrateur et avec consignation à l'audit : un support
+  adressé à une autre zone, et un support plus ancien que le dernier importé
+  ici. Les échecs d'intégrité et de signature n'admettent aucune dérogation,
+  pour personne.
 - Le push est terminé ; le média de retour porte les journaux de la
   destination.
 
@@ -238,7 +231,10 @@ l'enchaînement guidé :
 Un désaccord de zone et un support plus ancien que le dernier importé ici sont
 les deux seuls refus qu'un administrateur peut lever, depuis l'étape Vérifier,
 avec consignation au journal d'audit. Les verdicts d'intégrité et de signature
-n'admettent aucune dérogation, pour personne.
+n'admettent aucune dérogation, pour personne. Pas à pas :
+[importer côté zone isolée](../../air-gap/import-destination/).
+
+<!-- TODO: screenshot: l'écran Média en cours de vérification — les trois étapes, la barre de progression en direct, et le bouton Pousser absent -->
 
 #### Un support non vérifié ne sert rien
 
@@ -268,5 +264,9 @@ destination configure.
 La registry de zone sert désormais le contenu. Y raccorder les clusters et
 les hôtes de la zone fonctionne exactement comme en mode passthrough — voir
 [Brancher vos clients](../../passthrough/connect-clients/).
+
+Les supports qui repartent pour un cycle de plus — identité, fraîcheur,
+prune, dimensionnement et remise à zéro — sont sur
+[gérer les supports dans la durée](../../air-gap/manage-media/).
 
 <!-- TODO: checklists imprimables par étape générées au build depuis cette page -->

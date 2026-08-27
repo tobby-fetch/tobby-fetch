@@ -2,10 +2,7 @@
 title: Tracer et prouver un transfert
 description: Comment un run ID suit un transfert à travers l'air gap, et comment le média porte lui-même la preuve dans les deux sens.
 sidebar:
-  order: 3
-  badge:
-    text: Partiel
-    variant: caution
+  order: 6
 ---
 
 Un transfert à travers l'air gap doit être prouvable après coup : ce qui a
@@ -34,36 +31,39 @@ Le même run ID traverse ensuite le sas :
 Un seul identifiant relie donc la préparation, la charge et l'import — à
 travers deux machines qui n'ont jamais partagé un réseau.
 
-:::note[À venir — jalon 5]
-Les journaux JSON corrélés et le run ID existent aujourd'hui (livrés avec le
-socle v0.1.x). Le manifeste de média qui enregistre le run ID, et sa
-réutilisation par l'instance de destination, arrivent avec le jalon 5 (SRS
-FR-054, FR-090). À suivre sur la page [État du projet](../../discover/status/).
-:::
-
 ## Des journaux JSON durables sur le média
 
 En mode miroir, les journaux d'opération ne partent pas sur stdout : ils
-sont écrits **dans un fichier à l'intérieur du store transporté** (chemin
-configurable), pour que la destination puisse auditer ce que contient le
-média et comment il a été produit (SRS FR-053).
+sont écrits **dans un fichier à l'intérieur du store transporté** —
+`_tobby/logs/operations.log` par défaut, `logging.media.file` pour en
+changer — pour que la destination puisse auditer ce que contient le média et
+comment il a été produit (SRS FR-053).
+
+Le chemin doit se situer **hors de la couverture du manifeste de média**,
+sous `_tobby/`, et l'instance refuse de démarrer sinon : un journal écrit
+dans la couverture invaliderait, ligne après ligne, l'inventaire même que la
+destination vérifie.
 
 Parce qu'un média amovible peut être arraché, le fichier de journal est tenu
 par un contrat de durabilité (SRS FR-056) :
 
 - un **fsync explicite à chaque frontière de tâche** — un média arraché ou
   défaillant perd au plus les entrées de la tâche en cours ;
-- une **rotation par taille** — le journal reste dans son budget configuré,
-  sur des supports où l'espace est disputé par construction.
+- une **rotation par taille** — `logging.media.maxSize` (10 Mio par défaut)
+  et `logging.media.keep` (3) bornent le journal à
+  `maxSize × (keep + 1)`, sur un support dont l'objet même est de porter des
+  gigaoctets de contenu.
+
+Le contrat de fsync est prouvé par exécution, pas affirmé : un processus tué
+brutalement juste après une tâche laisse les enregistrements de cette tâche
+lisibles sur le média.
+
+`logging.media.disabled: true` éteint le journal. C'est explicite et jamais
+un défaut — un média qui arrive sans journal ne peut pas être audité par qui
+le reçoit.
 
 Les journaux sont en JSON Lines aux clés stables : exploitables par votre
 SIEM ou par `jq`, sans deviner le format.
-
-:::note[À venir — jalon 5]
-Le journal en fichier sur le store de transport et son contrat de durabilité
-sont un comportement du jalon 5. Le schéma de journal et les champs de
-corrélation sont ceux qui sont déjà livrés aujourd'hui.
-:::
 
 ## Les événements de sécurité sur le même canal
 
@@ -91,8 +91,8 @@ Le média est un canal d'audit à double sens :
   filtrez sur le run ID et vous tenez l'histoire complète du transfert, les
   deux côtés inclus, sans qu'aucun lien réseau n'ait existé.
 
-En pratique : archivez le contenu de `logs/` du média (les deux sens) avec
-le dossier de transfert, indexé par run ID. Cette archive est votre preuve
+En pratique : archivez le contenu de `_tobby/logs/` du média (les deux sens)
+avec le dossier de transfert, indexé par run ID. Cette archive est votre preuve
 rejouable pour une revue de sécurité.
 
 Une limite honnête, dite clairement : comme le manifeste, les journaux ne
@@ -109,8 +109,9 @@ d'analyse — exportable en HTML ou en texte, et clairement marqué comme
 **aide non signée**.
 
 :::note[À venir — jalon 6]
-Le bordereau de transfert (R-07) arrive avec le jalon 6, une fois livré au
-jalon 5 l'écran Média dont il dérive. D'ici là, le run ID et les journaux
-sur média ci-dessus sont l'ossature de traçabilité sur laquelle bâtir une
-procédure papier.
+Le bordereau de transfert (R-07) arrive avec le jalon 6. L'
+[écran Média](../../air-gap/import-destination/) dont il dérive est livré ;
+d'ici à ce que le bordereau lui-même arrive, le run ID, le rapport de
+vérification (téléchargeable en JSON) et les journaux sur média ci-dessus
+sont l'ossature de traçabilité sur laquelle bâtir une procédure papier.
 :::

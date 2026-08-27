@@ -3,9 +3,6 @@ title: The media journey end to end
 description: The five stable steps of a removable-media transfer — prepare, pre-flight, export, transport, import — and who acts at each one.
 sidebar:
   order: 1
-  badge:
-    text: Partial
-    variant: caution
 ---
 
 In mirror mode, a transfer is a directory. Tobby synchronizes the content a
@@ -14,17 +11,15 @@ removable medium across the air gap, and a Tobby instance on the isolated
 side verifies it and pushes it into the zone registry. Moving the directory
 *is* the transfer — there is no bespoke packing or unpacking step.
 
-:::caution[Decided design, procedures at milestone 5]
-The journey below — its steps, what travels, what is verified and in which
-order — is decided and specified
-([ADR-0006](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0006-removable-media-transport.md),
-SRS FR-050 to FR-056). The code that runs it ships with milestone 5: screens,
-commands and step-by-step procedures are described on
-[Heading for milestone 5](../../air-gap/milestone-5/) and tracked on the
-[project status](../../discover/status/) page. Use this page today to design
-your site procedure and your accreditation file; come back at milestone 5
-for the operational detail.
-:::
+This page is the map. The operational detail lives on three pages beside it:
+[prepare the source workstation](../../air-gap/prepare-source/),
+[import on the isolated side](../../air-gap/import-destination/), and
+[managing media over time](../../air-gap/manage-media/). The design behind
+all of it is
+[ADR-0006](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0006-removable-media-transport.md)
+and
+[ADR-0016](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0016-media-manifest.md),
+SRS FR-050 to FR-056.
 
 ## Two instances, one directory
 
@@ -96,7 +91,7 @@ renaming later.
 | 2 | **Pre-flight** | Tobby computes what would travel and refuses impossible transfers before they start. | operator |
 | 3 | **Export** | A manually triggered synchronization fills the transportable store; the media manifest is written last. | operator |
 | 4 | **Transport** | The medium physically crosses the gap, through the site's media handling controls. | site media procedure (outside Tobby) |
-| 5 | **Import** | The destination instance verifies the medium, then pushes verified content to the zone registry. | operator (admin for the single audited override) |
+| 5 | **Import** | The destination instance verifies the medium, then pushes verified content to the zone registry. | operator (admin for the two audited waivers) |
 
 ### 1 — Prepare
 
@@ -115,11 +110,8 @@ Checklist:
 - The medium is formatted with a suitable filesystem (not FAT32) and, if
   your site requires it, encrypted at the OS level (LUKS, BitLocker).
 
-:::note[Conceptual today]
-Mode selection and instance configuration exist today. The mirror
-synchronization itself, and the enforced refusal to start with secrets under
-the store, ship with milestone 5.
-:::
+Full detail:
+[prepare the source workstation](../../air-gap/prepare-source/).
 
 ### 2 — Pre-flight
 
@@ -137,11 +129,10 @@ Checklist:
 - Refusals, if any, were resolved by pruning or a larger medium — not by
   skipping the check (there is no skip).
 
-:::note[Upcoming — milestone 5]
-The pre-flight computation and its explicit refusals are milestone 5
-behaviour (SRS FR-055), including a scriptable dry-run. Track it on the
-[project status](../../discover/status/) page.
-:::
+A filesystem this build knows no ceiling for is reported as **unidentified**
+rather than as capable: that is a warning, not a refusal. The whole check,
+its two refusals and the scriptable dry-run beside it are on
+[prepare the source workstation](../../air-gap/prepare-source/).
 
 ### 3 — Export
 
@@ -160,10 +151,9 @@ Checklist:
 - The run ID of the synchronization is recorded in your transfer paperwork.
 - The medium was cleanly unmounted.
 
-:::note[Upcoming — milestone 5]
-Manual mirror synchronization and the media manifest ship with milestone 5
-(SRS FR-014, FR-054).
-:::
+The manifest is written **after any prune**, which is why it is the last
+write and not merely a late one — see
+[prepare the source workstation](../../air-gap/prepare-source/).
 
 ### 4 — Transport
 
@@ -198,8 +188,10 @@ Checklist:
 - The medium's zone identity matches this instance's zone.
 - Verification verdicts were reviewed per step and per recipe.
 - Blocked recipes, if any, are listed in the report and handled per your
-  site procedure — the only override is the audited admin override for a
-  zone-identity mismatch; integrity failures have no override.
+  site procedure. Only two refusals can be waived, both by an administrator
+  and both audited: a medium addressed to another zone, and a medium older
+  than the last one imported here. Integrity and signature failures have no
+  override, for anyone.
 - The push completed; the returning medium carries the destination logs.
 
 #### The Media screen
@@ -224,7 +216,10 @@ guided sequence:
 
 A zone mismatch and a medium older than the last one imported here are the
 only two refusals an administrator may waive, from the Verify step, audited.
-Integrity and signature verdicts have no override, for anyone.
+Integrity and signature verdicts have no override, for anyone. Step by step:
+[import on the isolated side](../../air-gap/import-destination/).
+
+<!-- TODO: screenshot: the Media screen mid-verification — the three steps, the live progress bar, and the Push control absent -->
 
 #### An unverified medium serves nothing
 
@@ -253,5 +248,9 @@ apart by the zone identity, which only a destination instance configures.
 The zone registry now serves the content. Connecting the zone's clusters and
 hosts to it works exactly as in passthrough mode — see
 [Connect your clients](../../passthrough/connect-clients/).
+
+Media that come back for another cycle — identity, freshness, pruning,
+sizing, and starting a medium over — are on
+[managing media over time](../../air-gap/manage-media/).
 
 <!-- TODO: printable per-step checklists generated at build time from this page -->

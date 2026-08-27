@@ -2,10 +2,7 @@
 title: Tracing and proving a transfer
 description: How one run ID follows a transfer through the air gap, and how the medium itself carries the evidence in both directions.
 sidebar:
-  order: 3
-  badge:
-    text: Partial
-    variant: caution
+  order: 6
 ---
 
 An air-gap transfer must be provable after the fact: what crossed, when,
@@ -33,36 +30,37 @@ The same run ID then crosses the gap:
 One identifier therefore ties together the preparation, the payload and the
 import — across two machines that never shared a network.
 
-:::note[Upcoming — milestone 5]
-The correlated JSON logs and the run ID exist today (delivered with the
-v0.1.x foundation). The media manifest that records the run ID, and its
-reuse by the destination instance, ship with milestone 5 (SRS FR-054,
-FR-090). Track it on the [project status](../../discover/status/) page.
-:::
-
 ## Durable JSON logs on the medium
 
 In mirror mode, operation logs are not written to stdout: they are written
-**to a file inside the transported store** (path configurable), so the
-destination side can audit what the medium contains and how it was produced
-(SRS FR-053).
+**to a file inside the transported store** — `_tobby/logs/operations.log` by
+default, `logging.media.file` to change it — so the destination side can
+audit what the medium contains and how it was produced (SRS FR-053).
+
+The path must lie **outside the media manifest's coverage**, under
+`_tobby/`, and the instance refuses to start otherwise: a log written inside
+coverage would invalidate, line by line, the very inventory the destination
+verifies.
 
 Because a removable medium can be yanked, the log file is held to a
 durability contract (SRS FR-056):
 
 - an explicit **fsync at every task boundary** — a yanked or failing medium
   loses at most the entries of the task in progress;
-- **size-based rotation** — the log stays within its configured budget on
-  media where space is contended by design.
+- **size-based rotation** — `logging.media.maxSize` (10 MiB by default) and
+  `logging.media.keep` (3) bound the log at `maxSize × (keep + 1)` on a
+  medium whose whole point is to carry gigabytes of content.
+
+The fsync contract is tested by execution, not asserted: a process killed
+outright immediately after a task leaves that task's records readable on the
+medium.
+
+`logging.media.disabled: true` turns the log off. It is explicit and never a
+default — a medium arriving without one cannot be audited by whoever
+receives it.
 
 Logs are JSON Lines with stable keys: parseable by your SIEM or by `jq`,
 with no format guesswork.
-
-:::note[Upcoming — milestone 5]
-File-based logging on the transport store and its durability contract are
-milestone 5 behaviour. The log schema and correlation fields are the ones
-already shipping today.
-:::
 
 ## Security events on the same channel
 
@@ -89,8 +87,8 @@ The medium is a two-way audit channel:
   on the run ID and you hold the complete story of the transfer, both sides
   included, without any network link having existed.
 
-Practically: archive the medium's `logs/` content (both directions) with the
-transfer record, keyed by run ID. That archive is your replayable evidence
+Practically: archive the medium's `_tobby/logs/` content (both directions)
+with the transfer record, keyed by run ID. That archive is your replayable evidence
 for a security review.
 
 One honest limit, stated plainly: like the manifest, the logs are **not
@@ -106,8 +104,9 @@ verification report, scan results — exportable as HTML or text, and clearly
 marked as an **unsigned aid**.
 
 :::note[Upcoming — milestone 6]
-The transfer slip (R-07) ships with milestone 6, once the Media screen it
-derives from has shipped with milestone 5. Until then, the run ID and the
-media logs above are the traceability backbone to build a paper procedure
-on.
+The transfer slip (R-07) ships with milestone 6. The
+[Media screen](../../air-gap/import-destination/) it derives from is
+delivered; until the slip itself ships, the run ID, the verification report
+(downloadable as JSON) and the media logs above are the traceability
+backbone to build a paper procedure on.
 :::
