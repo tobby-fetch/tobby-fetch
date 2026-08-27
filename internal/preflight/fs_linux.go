@@ -66,9 +66,12 @@ func (systemInspector) Inspect(path string) (Filesystem, Space, error) {
 		return Filesystem{}, Space{}, fmt.Errorf("statfs %s: %w", target, err)
 	}
 
-	// st.Type is int64 on 64-bit and int32 on 32-bit Linux; the
-	// conversion is what makes both architectures build.
-	magic := int64(st.Type)
+	// st.Type and st.Bsize are int64 on every architecture this project
+	// releases for (linux/amd64 and linux/arm64). They are int32 on 32-bit
+	// Linux, where these two lines would stop compiling — which is the
+	// right way to find out, rather than a conversion that is dead on
+	// every build we actually ship and that `unconvert` flags as such.
+	magic := st.Type
 	name, known := linuxMagics[magic]
 	f := classify(name, "statfs(2) f_type")
 	if !known {
@@ -80,7 +83,7 @@ func (systemInspector) Inspect(path string) (Filesystem, Space, error) {
 	// f_bavail, not f_bfree: the blocks an ext filesystem reserves for
 	// root are free to the kernel and unavailable to the instance, and
 	// counting them would promise space a non-root process cannot have.
-	blockSize := int64(st.Bsize)
+	blockSize := st.Bsize
 	space := Space{
 		FreeBytes:  int64(st.Bavail) * blockSize, //nolint:gosec // G115: block counts of a real volume are orders of magnitude below the int64 range
 		TotalBytes: int64(st.Blocks) * blockSize, //nolint:gosec // G115: same

@@ -214,7 +214,7 @@
     {{if .Problem}}
     <p class="t-note">
       <span class="t-badge t-badge--failed" translate="no">{{.Problem.Code}}</span>
-      <a href="/help#{{.Problem.Code}}">{{$.T "plan.problem_help"}}</a>
+      <a href="/help#{{.Problem.Code}}" hx-boost="false">{{$.T "plan.problem_help"}}</a>
     </p>
     {{end}}
     {{if .Ingredients}}

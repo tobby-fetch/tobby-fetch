@@ -249,16 +249,17 @@ spec:
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
 `
 
-// newFakeInstanceHandler answers the two calls the trigger makes:
-// POST /api/v1/sync creates the task, GET /api/v1/tasks/{id} serves it
-// wrapped the way the API wraps a single task.
+// newFakeInstanceHandler answers the two calls the trigger makes, BOTH
+// wrapped the way the API wraps a single task. The POST used to answer a
+// bare one — the second stub in this package to make that false claim
+// about the server, and the reason B-031 shipped with a green suite.
 func newFakeInstanceHandler(t *testing.T, id, task string) http.Handler {
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/sync", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = io.WriteString(w, task)
+		_, _ = io.WriteString(w, `{"task":`+task+`}`)
 	})
 	mux.HandleFunc("GET /api/v1/tasks/"+id, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

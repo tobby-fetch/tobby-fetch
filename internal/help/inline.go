@@ -198,6 +198,22 @@ func (r *renderer) link(b *strings.Builder, s string, i int) int {
 			html.EscapeString(href), r.inline(text))
 		return next
 	}
+	// A link carrying a fragment leaves the boost alone (ADR-0015 §7, the
+	// remedy of B-004 and B-013). hx-boost cancels the navigation and swaps
+	// the body in, and the browser never performs the jump it would have
+	// done for a real navigation — so the reader lands at the top of an
+	// index of forty error codes instead of on the one they clicked.
+	//
+	// An earlier version of this file dropped these attributes as
+	// decoration, on the strength of a browser scenario that passed. The
+	// scenario passed because it asserted the URL, not where the viewport
+	// ended up; on CI's Chrome the reader stayed at the top. The check now
+	// measures the scroll position, and this attribute is what makes it
+	// pass.
+	if strings.Contains(href, "#") {
+		fmt.Fprintf(b, `<a href="%s" hx-boost="false">%s</a>`, html.EscapeString(href), r.inline(text))
+		return next
+	}
 	fmt.Fprintf(b, `<a href="%s">%s</a>`, html.EscapeString(href), r.inline(text))
 	return next
 }

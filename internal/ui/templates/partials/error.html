@@ -18,7 +18,7 @@
     {{if .Err.Detail}}<dt>{{.T "error.detail_label"}}</dt><dd class="t-error-detail" translate="no">{{.Err.Detail}}</dd>{{end}}
   </dl>
   <div class="t-error-block-foot">
-    <a href="{{.Err.HelpAnchor}}">{{.T "error.help_link" "Code" .Err.Code}}</a>
+    <a href="{{.Err.HelpAnchor}}" hx-boost="false">{{.T "error.help_link" "Code" .Err.Code}}</a>
     {{if .Err.Correlation}}<span class="t-chip t-chip--code" translate="no">{{.Err.Correlation}}</span>{{end}}
   </div>
 </div>

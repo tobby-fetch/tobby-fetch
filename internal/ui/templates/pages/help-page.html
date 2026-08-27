@@ -13,7 +13,7 @@
   <nav class="t-breadcrumb" aria-label="{{.T "help.breadcrumb_label"}}">
     <a href="/help">{{.T "help.title"}}</a>
     <span class="t-breadcrumb-sep">/</span>
-    <a href="/help#section-{{.Data.Section}}">{{.T (printf "help.section.%s" .Data.Section)}}</a>
+    <a href="/help#section-{{.Data.Section}}" hx-boost="false">{{.T (printf "help.section.%s" .Data.Section)}}</a>
     <span class="t-breadcrumb-sep">/</span>
     <span aria-current="page">{{.Data.Page.Title}}</span>
   </nav>
@@ -34,7 +34,7 @@
   <nav class="t-doc-toc" aria-label="{{.T "help.page_toc_label"}}">
     <p class="t-doc-toc-title">{{.T "help.page_toc_title"}}</p>
     <ul>
-      {{range .Data.Headings}}{{if eq .Level 2}}<li><a href="#{{.ID}}">{{.Text}}</a></li>{{end}}{{end}}
+      {{range .Data.Headings}}{{if eq .Level 2}}<li><a href="#{{.ID}}" hx-boost="false">{{.Text}}</a></li>{{end}}{{end}}
     </ul>
   </nav>
   {{end}}

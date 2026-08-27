@@ -64,7 +64,7 @@ func dacl(t *testing.T, path string) (owner *windows.SID, aces []*windows.ACCESS
 		t.Fatalf("%s has no access list at all: a NULL DACL grants full access to everyone", path)
 	}
 	aces = make([]*windows.ACCESS_ALLOWED_ACE, list.AceCount)
-	for i := uint16(0); i < list.AceCount; i++ {
+	for i := range list.AceCount {
 		if err := windows.GetAce(list, uint32(i), &aces[i]); err != nil {
 			t.Fatalf("reading entry %d of the access list of %s: %v", i, path, err)
 		}
@@ -76,6 +76,8 @@ func dacl(t *testing.T, path string) (owner *windows.SID, aces []*windows.ACCESS
 // of the ACE structure, which is why it is reached by pointer arithmetic
 // rather than by a field.
 func sidOf(ace *windows.ACCESS_ALLOWED_ACE) *windows.SID {
+	//nolint:gosec // G103: the documented way to reach a variable-length ACE's
+	// SID, explained above; there is no field to read instead.
 	return (*windows.SID)(unsafe.Pointer(uintptr(unsafe.Pointer(ace)) +
 		unsafe.Offsetof(ace.SidStart)))
 }
@@ -211,6 +213,7 @@ func makeUnwritable(t *testing.T, dir string) bool {
 	// Rather than inspect the token, ask the filesystem: if a file can
 	// still be created here, this fixture proves nothing.
 	probe := filepath.Join(dir, "privilege-probe")
+	//nolint:gosec // G304: a path this test just built under its own t.TempDir.
 	f, err := os.OpenFile(probe, os.O_CREATE|os.O_EXCL|os.O_WRONLY, Mode)
 	if err != nil {
 		return true

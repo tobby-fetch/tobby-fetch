@@ -88,7 +88,7 @@
 <div class="t-banner t-banner--{{.Kind}}" role="status">
   <span class="t-banner-icon" aria-hidden="true">{{if eq .Kind "danger"}}⚠{{else}}◈{{end}}</span>
   <span>{{.Text}}</span>
-  {{if .Code}}<span class="t-banner-code" translate="no">{{.Code}}</span> <a href="/help#{{.Code}}">{{$.T "error.help_link" "Code" .Code}}</a>{{end}}
+  {{if .Code}}<span class="t-banner-code" translate="no">{{.Code}}</span> <a href="/help#{{.Code}}" hx-boost="false">{{$.T "error.help_link" "Code" .Code}}</a>{{end}}
 </div>
 {{end}}
 </header>

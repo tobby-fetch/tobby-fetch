@@ -46,6 +46,19 @@ jobs:
         env:
           GOOS: windows
         run: go vet ./...
+      # And lint it. The job above is named "strict, zero suppressions" and
+      # has never analysed a single _windows.go or _darwin.go file, because
+      # golangci-lint only sees the files the current GOOS selects. Six real
+      # findings were sitting in the Windows sources when this step was
+      # added, in code the milestone-5 release had already shipped.
+      - name: Lint the Windows and macOS sources
+        run: |
+          for goos in windows darwin; do
+            echo "::group::golangci-lint (GOOS=$goos)"
+            GOOS="$goos" GOLANGCI_LINT_CACHE="$RUNNER_TEMP/glc-$goos" \
+              golangci-lint run || exit 1
+            echo "::endgroup::"
+          done
 
   test:
     name: Tests (race, anti-flaky, coverage floor)

@@ -55,6 +55,8 @@ func canonicalVolume(path string) string {
 
 	buf := make([]uint16, windows.MAX_PATH)
 	for {
+		//nolint:gosec // G115: len(buf) starts at MAX_PATH and only ever grows to what
+		// the call itself asked for; it cannot approach uint32.
 		n, err := windows.GetFinalPathNameByHandle(h, &buf[0], uint32(len(buf)), volumeNameDOS)
 		if err != nil {
 			return path

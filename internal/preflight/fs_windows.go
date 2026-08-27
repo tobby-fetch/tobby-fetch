@@ -48,6 +48,7 @@ func (systemInspector) Inspect(path string) (Filesystem, Space, error) {
 
 	// The volume root of the target path.
 	root := make([]uint16, windows.MAX_PATH+1)
+	//nolint:gosec // G115: a fixed MAX_PATH+1 buffer, far below uint32.
 	if err := windows.GetVolumePathName(p, &root[0], uint32(len(root))); err != nil {
 		return Filesystem{}, Space{}, fmt.Errorf("GetVolumePathNameW %s: %w", target, err)
 	}
@@ -55,6 +56,7 @@ func (systemInspector) Inspect(path string) (Filesystem, Space, error) {
 
 	f := Filesystem{Detection: "GetVolumeInformationW"}
 	fsName := make([]uint16, windows.MAX_PATH+1)
+	//nolint:gosec // G115: a fixed MAX_PATH+1 buffer, far below uint32.
 	err = windows.GetVolumeInformation(rootPtr, nil, 0, nil, nil, nil, &fsName[0], uint32(len(fsName)))
 	if err != nil {
 		// A volume that will not describe itself is reported as such: the
