@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -113,6 +114,10 @@ func TestSelfSignedFallbackIsGeneratedAndFingerprinted(t *testing.T) {
 	})
 
 	t.Run("the private key is not world readable", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("permission bits do not carry the rule on Windows; the access list does. " +
+				"The key is written through internal/secretfile, whose own Windows tests own the owner-only assertion")
+		}
 		info, serr := os.Stat(filepath.Join(state, selfSignedDir, selfSignedKey))
 		if serr != nil {
 			t.Fatal(serr)

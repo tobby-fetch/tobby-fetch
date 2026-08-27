@@ -31,6 +31,14 @@ import (
 // segments are invalid in OCI names).
 const tasksDir = "_tobby/tasks"
 
+// pendingCapacity bounds the worker's hand-off channel. It is a buffer,
+// not the queue's real depth: what is waiting to run lives in q.tasks
+// with StatusPending, and the channel only carries the ids the worker has
+// not picked up yet. Create refuses beyond it — "queue is full", with no
+// trace left (2026-08 audit) — because a caller told to retry later is a
+// better answer than an unbounded backlog.
+const pendingCapacity = 256
+
 // Runner executes one task type. It mutates t's items as it progresses and
 // calls save() after every meaningful step so an interruption never loses
 // more than one step (FR-029). The returned error is the task-level
@@ -45,11 +53,24 @@ type Queue struct {
 	// keepFinished bounds how many finished tasks the queue retains
 	// (WithRetention); 0 keeps everything.
 	keepFinished int
+	// boundary runs once per settled task (WithBoundary): the FR-056
+	// fsync point of the transport medium's log. Nil does nothing.
+	boundary func()
 
 	mu      sync.Mutex
 	tasks   map[string]*Task
 	runners map[string]Runner
 	pending chan string
+	// resuming is the FR-029 backlog: the tasks Open found active, oldest
+	// first, waiting for the worker to reach them (B-019). It is a slice
+	// and not the channel on purpose — the channel is bounded and nothing
+	// consumes it during Open, so re-queuing through it wedged startup on
+	// any store carrying more active tasks than it holds. Nothing bounds
+	// this backlog either, and nothing should: these tasks already exist
+	// on disk, and refusing to remember them would be losing them.
+	resuming []string
+	// worker tracks the goroutine Start launched, so Wait can await it.
+	worker sync.WaitGroup
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -72,6 +93,23 @@ func WithRetention(keep int) QueueOption {
 	return func(q *Queue) { q.keepFinished = keep }
 }
 
+// WithBoundary installs a callback the worker runs at every task
+// boundary — once a task has settled and every record it produced has
+// been written.
+//
+// It exists for FR-056: the operation log on a transport medium is
+// fsync'd here and nowhere else. The boundary is the granularity the
+// requirement fixes, and it belongs to the queue because the queue is
+// what knows when a task ended: an engine that flushed on its own last
+// line would miss the queue's own "task finished" record, which is
+// precisely the one an operator looks for.
+//
+// A boundary callback must not panic and must not block: it runs on the
+// single worker goroutine, between two tasks.
+func WithBoundary(f func()) QueueOption {
+	return func(q *Queue) { q.boundary = f }
+}
+
 // Open loads the queue from the store root, re-queuing interrupted tasks
 // (FR-029): a task found pending or running is marked Resumed and runs
 // again — the import pipeline is incremental by digest, so a re-run only
@@ -86,7 +124,7 @@ func Open(storeRoot string, logger *slog.Logger, opts ...QueueOption) (*Queue, e
 		logger:  logger,
 		tasks:   map[string]*Task{},
 		runners: map[string]Runner{},
-		pending: make(chan string, 256),
+		pending: make(chan string, pendingCapacity),
 		Now:     time.Now,
 	}
 	for _, opt := range opts {
@@ -118,16 +156,21 @@ func Open(storeRoot string, logger *slog.Logger, opts ...QueueOption) (*Queue, e
 		}
 		q.tasks[t.ID] = &t
 	}
-	// Persist the resumed marker, oldest first, and re-queue.
+	// Persist the resumed marker, oldest first, and hand the whole set to
+	// the worker's backlog — never to the channel (B-019): the worker
+	// only starts after Open returns, so a blocking send on a bounded
+	// channel made a store with more active tasks than it holds wedge the
+	// instance at startup. Retention could not save it either: FR-029
+	// owns active tasks and they are deliberately never purged.
 	sort.Slice(resumed, func(i, j int) bool {
 		return q.tasks[resumed[i]].Created.Before(q.tasks[resumed[j]].Created)
 	})
 	for _, id := range resumed {
 		q.persist(q.tasks[id])
-		q.pending <- id
 		logger.LogAttrs(context.Background(), slog.LevelInfo, "task resumed after interruption",
 			slog.String("task_id", id), slog.String("run_id", q.tasks[id].RunID))
 	}
+	q.resuming = resumed
 	// Retention applies to what was just reloaded too: an instance that
 	// accumulated history before the policy existed (or with a larger
 	// keep) trims it on the next start, not only as new tasks arrive.
@@ -149,6 +192,24 @@ type TaskOption func(*Task)
 // operation. Explicit and per-operation — never a default.
 func WithVendorDependencies() TaskOption {
 	return func(t *Task) { t.VendorDependencies = true }
+}
+
+// WithLayout carries the parameters of an OCI image layout operation
+// (FR-051) onto the task, so a resumed run (FR-029) reads them back from
+// the persisted file rather than from a request that is long gone.
+func WithLayout(l *Layout) TaskOption {
+	return func(t *Task) {
+		cp := *l
+		t.Layout = &cp
+	}
+}
+
+// WithPrune states what this synchronization does about content the
+// resolved Retriever no longer references (FR-045). Explicit at every
+// call site on purpose: a removal that happens because nobody passed an
+// option is a removal nobody decided.
+func WithPrune(enabled bool) TaskOption {
+	return func(t *Task) { t.Prune = enabled }
 }
 
 // Create persists and enqueues a new task, returning it.
@@ -249,9 +310,23 @@ func (q *Queue) HasPending(taskType string) bool {
 
 // Start runs the worker until ctx is canceled. A task interrupted by
 // shutdown stays running on disk and resumes on the next Open.
+//
+// The FR-029 resume backlog is drained first and before the channel
+// (B-019): those tasks were created before anything this process
+// accepted, and running them first is the order Open used to obtain by
+// filling the channel ahead of any caller.
 func (q *Queue) Start(ctx context.Context) {
+	q.worker.Add(1)
 	go func() {
+		defer q.worker.Done()
 		for {
+			if ctx.Err() != nil {
+				return
+			}
+			if id, ok := q.nextResuming(); ok {
+				q.execute(ctx, id)
+				continue
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -260,6 +335,35 @@ func (q *Queue) Start(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// Wait blocks until the worker started by Start has returned. It answers
+// immediately on a queue that was never started, and may be called more
+// than once.
+//
+// It exists because "the task is done" and "the queue has let go of its
+// files" were two different instants and only the first was observable
+// (B-026). The gap is invisible on Unix, where a file can be removed
+// while a handle is still open on it; on Windows it is the difference
+// between an operator being able to eject the transport medium after a
+// clean shutdown and being told the medium is in use (NFR-018, FR-093).
+// Waiting for the worker is the only way a caller can know the run
+// directory is quiescent.
+func (q *Queue) Wait() { q.worker.Wait() }
+
+// nextResuming pops the oldest task of the resume backlog (B-019).
+func (q *Queue) nextResuming() (string, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.resuming) == 0 {
+		return "", false
+	}
+	id := q.resuming[0]
+	// The consumed head is cleared so the backing array does not pin the
+	// whole set of identifiers for as long as one is left to run.
+	q.resuming[0] = ""
+	q.resuming = q.resuming[1:]
+	return id, true
 }
 
 // execute runs one task through its registered runner. The runner works
@@ -281,7 +385,16 @@ func (q *Queue) execute(ctx context.Context, id string) {
 	work := t.clone()
 	q.mu.Unlock()
 
+	// The FR-056 flush point, registered before the task's own log handle
+	// so that defers unwind in the order the requirement describes: the
+	// task's records are written and its file closed, and only then is
+	// the medium flushed to stable storage.
+	defer q.atBoundary()
 	taskLogger, closeLog := q.taskLogger(work)
+	// The deferred call is the backstop for the paths that do not reach a
+	// terminal state (a panic, a shutdown). Every path that PUBLISHES one
+	// closes the handle itself, first — see finish (B-026). closeLog is
+	// idempotent, so both can hold.
 	defer closeLog()
 
 	save := func() {
@@ -291,7 +404,7 @@ func (q *Queue) execute(ctx context.Context, id string) {
 	}
 
 	if runner == nil {
-		q.finish(t, work, taskLogger, taxonomy.New(taxonomy.CodeInternal, nil).
+		q.finish(t, work, taskLogger, closeLog, taxonomy.New(taxonomy.CodeInternal, nil).
 			WithCause(fmt.Errorf("no runner for task type %q", t.Type)))
 		return
 	}
@@ -300,16 +413,33 @@ func (q *Queue) execute(ctx context.Context, id string) {
 		// Graceful shutdown caught the task mid-run: leave it running on
 		// disk — the next start resumes it (FR-029). Never mark it failed
 		// for being interrupted.
-		save()
 		taskLogger.LogAttrs(context.Background(), slog.LevelInfo,
 			"task interrupted by shutdown, will resume")
+		closeLog()
+		save()
 		return
 	}
 	var te *taxonomy.Error
 	if err != nil && !errors.As(err, &te) {
 		te = taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err)
 	}
-	q.finish(t, work, taskLogger, te)
+	q.finish(t, work, taskLogger, closeLog, te)
+}
+
+// atBoundary runs the WithBoundary callback, behind the same kind of
+// barrier the runner gets: a durability hook that panicked would take
+// down a long-lived service over a flush.
+func (q *Queue) atBoundary() {
+	if q.boundary == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			q.logger.LogAttrs(context.Background(), slog.LevelError, "task boundary hook panicked",
+				slog.String("panic", fmt.Sprint(r)))
+		}
+	}()
+	q.boundary()
 }
 
 // runProtected invokes the runner behind a panic barrier (2026-08
@@ -370,9 +500,23 @@ func (q *Queue) publish(dst, src *Task) {
 
 // finish settles the task's final status: failed on a task-level error or
 // any failed item, done otherwise.
-func (q *Queue) finish(t, work *Task, logger *slog.Logger, te *taxonomy.Error) {
+// The order of the three steps below is the whole of B-026, and it is not
+// the order that reads most naturally.
+//
+// The terminal status is what every observer waits on — the UI poll, the
+// CLI's --wait, the retention purge, a test's settle helper — so
+// publishing it is a promise that the queue is finished with this task.
+// Publishing it while the task's own log file is still open makes that
+// promise false: on Unix nothing notices, because a file can be removed
+// or renamed out from under an open handle; on Windows the purge cannot
+// delete the log it was told to drop, and an instance that has just
+// reported a clean shutdown still holds the transport medium open
+// (NFR-018, FR-053, FR-093).
+//
+// So: write the last record, close the handle, and only then say it is
+// done.
+func (q *Queue) finish(t, work *Task, logger *slog.Logger, closeLog func(), te *taxonomy.Error) {
 	q.mu.Lock()
-	defer q.mu.Unlock()
 	if te != nil {
 		work.Error = FromTaxonomy(te)
 	}
@@ -382,7 +526,7 @@ func (q *Queue) finish(t, work *Task, logger *slog.Logger, te *taxonomy.Error) {
 		work.Status = StatusFailed
 	}
 	work.Finished = q.Now().UTC()
-	q.publish(t, work)
+	q.mu.Unlock()
 
 	attrs := []slog.Attr{
 		slog.String("task_id", work.ID),
@@ -395,6 +539,11 @@ func (q *Queue) finish(t, work *Task, logger *slog.Logger, te *taxonomy.Error) {
 		attrs = append(attrs, slog.String("error", te.Error()))
 	}
 	logger.LogAttrs(context.Background(), slog.LevelInfo, "task finished", attrs...)
+	closeLog()
+
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.publish(t, work)
 }
 
 // persist writes the task file atomically. Callers hold q.mu.
@@ -432,32 +581,14 @@ func (q *Queue) taskLogger(t *Task) (logger *slog.Logger, closeLog func()) {
 		return base.With(slog.String("task_id", t.ID), slog.String("run_id", t.RunID)),
 			func() {}
 	}
-	fileLogger := logging.New(f, slog.LevelDebug)
-	tee := slog.New(teeHandler{a: base.Handler(), b: fileLogger.Handler()}).
+	tee := logging.Tee(base, logging.New(f, slog.LevelDebug)).
 		With(slog.String("task_id", t.ID), slog.String("run_id", t.RunID))
-	return tee, func() { _ = f.Close() }
-}
-
-// teeHandler duplicates records to two handlers (instance stream + task
-// file).
-type teeHandler struct{ a, b slog.Handler }
-
-func (h teeHandler) Enabled(ctx context.Context, l slog.Level) bool {
-	return h.a.Enabled(ctx, l) || h.b.Enabled(ctx, l)
-}
-
-func (h teeHandler) Handle(ctx context.Context, r slog.Record) error { //nolint:gocritic // hugeParam: slog.Handler's fixed signature
-	err1 := h.a.Handle(ctx, r.Clone())
-	err2 := h.b.Handle(ctx, r)
-	return errors.Join(err1, err2)
-}
-
-func (h teeHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return teeHandler{a: h.a.WithAttrs(attrs), b: h.b.WithAttrs(attrs)}
-}
-
-func (h teeHandler) WithGroup(name string) slog.Handler {
-	return teeHandler{a: h.a.WithGroup(name), b: h.b.WithGroup(name)}
+	// Idempotent: execute closes the handle explicitly before it publishes
+	// a terminal status and again from a deferred backstop, and a double
+	// Close would otherwise report "file already closed" on the paths that
+	// took both (B-026).
+	var once sync.Once
+	return tee, func() { once.Do(func() { _ = f.Close() }) }
 }
 
 // Get returns a task by id. The copy is deep on the runner-mutated

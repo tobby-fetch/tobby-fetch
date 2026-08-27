@@ -24,7 +24,7 @@ func TestSyncTriggerCoalesces(t *testing.T) {
 		t.Fatal(err)
 	}
 	const source = "oci://cookbook.example/retriever:1"
-	trigger := syncTrigger(q, source, slog.New(slog.DiscardHandler))
+	trigger := syncTrigger(q, source, false, slog.New(slog.DiscardHandler))
 
 	// Worker not started: the first tick enqueues, the next ones coalesce.
 	for range 3 {

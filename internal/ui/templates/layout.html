@@ -34,12 +34,14 @@
     <a href="/content" {{if hasPrefix .Path "/content"}}aria-current="page"{{end}}>{{.T "nav.content"}}</a>
     <a href="/recipes" {{if hasPrefix .Path "/recipes"}}aria-current="page"{{end}}>{{.T "nav.recipes"}}</a>
     {{if .CanOperate}}<a href="/import" {{if eq .Path "/import"}}aria-current="page"{{end}}>{{.T "nav.import"}}</a>{{end}}
+    <a href="/filesets" {{if hasPrefix .Path "/filesets"}}aria-current="page"{{end}}>{{.T "nav.filesets"}}</a>
+    {{/* The Media screen (R-02) is reachable from every screen and on both
+         sides of a transfer: an operator holding a disk should not have to
+         know which kind of instance they are looking at to find it. */}}
+    <a href="/media" {{if hasPrefix .Path "/media"}}aria-current="page"{{end}}>{{.T "nav.media"}}</a>
     <a href="/tasks" {{if hasPrefix .Path "/tasks"}}aria-current="page"{{end}}>{{.T "nav.tasks"}}<span id="task-badge" hx-get="/tasks/badge" hx-trigger="load" hx-swap="outerHTML"></span></a>
     <a href="/help" {{if or (hasPrefix .Path "/help") (eq .Path "/about") (eq .Path "/api-docs")}}aria-current="page"{{end}}>{{.T "nav.help"}}</a>
     {{if .IsAdmin}}<a href="/admin/accounts" {{if hasPrefix .Path "/admin"}}aria-current="page"{{end}}>{{.T "nav.admin"}}</a>{{end}}
-    {{if .ShowUpcoming}}
-    <span class="t-nav-upcoming">{{.T "nav.media"}} — {{.T "nav.milestone" "N" 5}}</span>
-    {{end}}
   </nav>
 
   <form class="t-search" method="get" action="/content" role="search">
@@ -86,7 +88,7 @@
 <div class="t-banner t-banner--{{.Kind}}" role="status">
   <span class="t-banner-icon" aria-hidden="true">{{if eq .Kind "danger"}}⚠{{else}}◈{{end}}</span>
   <span>{{.Text}}</span>
-  {{if .Code}}<span class="t-banner-code" translate="no">{{.Code}}</span> <a href="/help#{{.Code}}">{{$.T "error.help_link" "Code" .Code}}</a>{{end}}
+  {{if .Code}}<span class="t-banner-code" translate="no">{{.Code}}</span> <a href="/help#{{.Code}}" hx-boost="false">{{$.T "error.help_link" "Code" .Code}}</a>{{end}}
 </div>
 {{end}}
 </header>

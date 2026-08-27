@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/secretfile"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
@@ -329,18 +330,21 @@ func loadPersistedSelfSigned(dir string) (*tls.Certificate, error) {
 }
 
 // persistSelfSigned writes the generated pair into the state directory,
-// the key readable by its owner only.
+// the key readable by its owner only (NFR-020).
 func persistSelfSigned(dir string, certPEM, keyPEM []byte) error {
 	fail := func(err error) error {
 		return taxonomy.New(taxonomy.CodeServerTLS, taxonomy.Params{"source": dir}).WithCause(err)
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := secretfile.MkdirAll(dir); err != nil {
 		return fail(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, selfSignedCert), certPEM, 0o644); err != nil { //nolint:gosec // G306: the certificate is public by definition; the key below is 0600
+	if err := os.WriteFile(filepath.Join(dir, selfSignedCert), certPEM, 0o644); err != nil { //nolint:gosec // G306: the certificate is public by definition; the key below is owner-only
 		return fail(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, selfSignedKey), keyPEM, 0o600); err != nil {
+	// The key goes through secretfile rather than a mode literal: 0600 is
+	// the Unix half of NFR-020, and on Windows it would leave the key
+	// readable by everything the inherited access list admits.
+	if err := secretfile.Write(filepath.Join(dir, selfSignedKey), keyPEM); err != nil {
 		return fail(err)
 	}
 	return nil

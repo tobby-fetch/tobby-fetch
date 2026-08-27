@@ -72,6 +72,10 @@ func TestVendoredAssetIntegrity(t *testing.T) {
 				t.Fatalf("read vendored file %q: %v", asset.File, err)
 			}
 
+			// The digest is over the bytes as checked out, so it holds only
+			// as long as the vendored .js and .css keep their LF endings on
+			// every platform. .gitattributes is what guarantees that; a
+			// checkout that lost it fails here on Windows (NFR-018).
 			sum := sha256.Sum256(data)
 			if got := hex.EncodeToString(sum[:]); got != asset.SHA256 {
 				t.Errorf("%s: sha256 mismatch\n  manifest: %s\n  computed: %s\nthe vendored file diverged from VENDORED.yaml (ADR-0010)",

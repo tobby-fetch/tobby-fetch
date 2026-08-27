@@ -42,6 +42,23 @@ paths:
                 type: string
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/cli-output.schema.json:
+    get:
+      summary: >-
+        JSON Schema of the documents the command line writes under
+        --output json (FR-066 amendment R-08), published alongside this
+        document. Role viewer.
+      responses:
+        "200":
+          description: >-
+            The embedded JSON Schema 2020-12 document. One entry of $defs
+            per reporting command, keyed by the command path.
+          content:
+            application/schema+json:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v1/content:
     get:
       summary: >-
@@ -136,6 +153,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ContentManifest"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/filesets:
+    get:
+      summary: >-
+        List the FileSets this instance holds or declares for serving —
+        Recipe-delivered and manually packed alike, with their provenance
+        (FR-047, FR-048). Mirror of the /filesets screen. Role viewer.
+      responses:
+        "200":
+          description: The FileSet inventory.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileSetList"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/filesets/pack:
+    post:
+      summary: >-
+        Package a directory of the instance host as a single-manifest
+        FileSet image and import it into the store, pinned by digest
+        (FR-048). No file is uploaded: the request names a path, and the
+        path must sit under files.packRoots. The result is unsigned and
+        recorded as a manual import. Mirror of the /filesets screen form.
+        Role admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FileSetPackRequest"
+      responses:
+        "201":
+          description: The packed FileSet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fileset:
+                    $ref: "#/components/schemas/PackedFileSet"
         default:
           $ref: "#/components/responses/Problem"
   /api/v1/import:
@@ -357,6 +416,25 @@ paths:
         discovers the items. Mirror of the screens' "Synchronize" button.
         Without a configured source the trigger answers TBY-CFG-001.
         Audited (FR-094). Role operator.
+
+        The optional body carries the FR-045 prune decision for this run.
+        Omitting it takes the instance default — on in mirror mode, where
+        the operator confirms against the projection below, off in
+        passthrough unless sync.prune says otherwise.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                prune:
+                  type: boolean
+                  description: >-
+                    Whether this run removes the recipe-managed content the
+                    resolved Retriever no longer references. Omit the field
+                    to take the instance default; false is an instruction
+                    to remove nothing, not an omission.
       responses:
         "201":
           description: The created task.
@@ -367,6 +445,81 @@ paths:
                 properties:
                   task:
                     $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/plan:
+    post:
+      summary: >-
+        Plan a synchronization without performing it (FR-055 amendment
+        R-04): the complete report of what a run would do — version
+        resolution (FR-021), per-digest statuses (FR-026), deduplicated
+        volumes and the free-space and filesystem verdicts (FR-055),
+        projected prune (FR-045), and the policy verdicts reachable
+        without a transfer (FR-030 allow-list, FR-033 recipe signatures).
+        The operation writes nothing to the store, pushes nothing, and
+        does not advance the passthrough refresh schedule (FR-013).
+        Mirror of the /recipes/plan screen. Role operator, because a plan
+        opens outbound connections to every registry the Retriever names.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                retriever:
+                  type: string
+                  description: >-
+                    A candidate Retriever source instead of the configured
+                    one: a file path readable by the instance, an HTTP(S)
+                    URL, or an OCI reference (FR-010 forms).
+                document:
+                  type: string
+                  description: >-
+                    A candidate Retriever supplied inline as YAML text.
+                    Wins over "retriever". Nothing is written to disk.
+                skip_destination:
+                  type: boolean
+                  description: >-
+                    Keep the plan strictly local; the promotion
+                    destination is not contacted.
+      responses:
+        "200":
+          description: >-
+            The plan report. The status is 200 whatever the outcome: a
+            plan that reports a policy refusal answered the question it
+            was asked. The verdict is "plan.outcome", and "exit_code" is
+            the process exit code the CLI would have used for it
+            (FR-066): 0 nothing to do, 5 changes planned, 3 refused by
+            policy, 4 verification failed, 1 failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan:
+                    $ref: "#/components/schemas/Plan"
+                  exit_code:
+                    type: integer
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/sync/prune-preview:
+    get:
+      summary: >-
+        What the next synchronization would remove if it pruned (FR-045):
+        the list and the total size an operator sees BEFORE confirming.
+        Mirror of the confirmation block on the /recipes trigger. A
+        Retriever that does not resolve answers a problem document rather
+        than an empty list — "nothing would go" and "I could not work out
+        what would go" must never read the same to a caller about to
+        confirm a removal. Role operator.
+      responses:
+        "200":
+          description: The projected removal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrunePreview"
         default:
           $ref: "#/components/responses/Problem"
   /api/v1/retriever:
@@ -706,6 +859,143 @@ paths:
                 $ref: "#/components/schemas/Publication"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/oci-layout/plan:
+    post:
+      summary: >-
+        What an export would contain and cost, writing nothing (FR-051,
+        FR-055). Mirror of the estimate button of /admin/oci-layout and of
+        `tobby export --dry-run`. Side-effect free by construction: the
+        destination is never opened. `largestFileBytes` is the size of the
+        biggest single file the export would write — the whole archive in
+        tar form, the biggest blob in directory form — which is the number
+        a target filesystem's per-file limit (FAT32's 4 GiB) is compared
+        with. Role admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LayoutExportRequest"
+      responses:
+        "200":
+          description: The projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LayoutProjection"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/oci-layout/export:
+    post:
+      summary: >-
+        Export the store, or a selection of it, to a standard OCI image
+        layout readable by skopeo, oras and crane (FR-051, ADR-0006).
+        Mirror of /admin/oci-layout and of `tobby export`. A recipe
+        selection carries its ingredients, the recipe artifact, and the
+        cosign signature artifacts of both in either published layout
+        (RECIPE-SPEC §12.2). The original index of a multi-platform image
+        travels unchanged, sparse platform sets included, so its pinned
+        digest survives (FR-042). Enqueues a task and answers it.
+        Audited (FR-094). Role admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LayoutExportRequest"
+      responses:
+        "201":
+          description: The enqueued export task.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/oci-layout/import:
+    post:
+      summary: >-
+        Import a standard OCI image layout into the store at identical
+        digests (FR-051). Mirror of /admin/oci-layout and of `tobby
+        import`. The layout is untrusted data: a manifest is accepted only
+        if its bytes hash to the digest addressing it, every blob is
+        committed against the digest its manifest pins, and an archive
+        carrying an absolute path, a traversal or a link is refused with
+        TBY-LAY-002 before anything is read (NFR-011). Compressed archives
+        are refused. Entries are independent: one that did not survive the
+        medium fails on its own task item. Enqueues a task and answers it.
+        Audited (FR-094). Role admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [input]
+              properties:
+                input:
+                  type: string
+                  description: The layout to read — a directory, or an uncompressed tar of one.
+                  examples: ["/media/usb/payload.tar"]
+                repository:
+                  type: string
+                  description: >-
+                    Where entries belong, for a layout that names them by
+                    tag alone (one produced by `skopeo copy`). A layout
+                    exported by Tobby names its repositories and needs
+                    nothing here.
+                  examples: ["docker.io/library/alpine"]
+      responses:
+        "201":
+          description: The enqueued import task.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/store/reset:
+    post:
+      summary: >-
+        Empty the store (FR-046). Mirror of /admin/store. Requires the
+        exact typed confirmation, which is a frozen untranslated phrase;
+        anything else answers TBY-STO-006 and is recorded as a denied
+        attempt. Removes every artifact and the ledgers describing them,
+        keeps the operation history and the task logs. The instance is
+        usable on an empty store when this returns. Audited (FR-094),
+        including on an instance running under the FR-075 authentication
+        override, where the entry records the unauthenticated context.
+        Role admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmation]
+              properties:
+                confirmation:
+                  type: string
+                  description: The exact confirmation phrase.
+                  examples: ["RESET"]
+      responses:
+        "200":
+          description: What the reset discarded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  repositories: { type: integer }
+                  bytes: { type: integer, format: int64 }
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v1/network:
     get:
       summary: >-
@@ -764,6 +1054,108 @@ paths:
                     $ref: "#/components/schemas/Certificate"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/media:
+    get:
+      summary: >-
+        What this instance knows about the transported store without
+        reading a byte of its content (FR-052): the zone identity it
+        serves, the store directory, the medium's own identifier (R-28)
+        and the last import recorded for the zone. Answered instantly —
+        verification is the expensive operation, and an operator decides
+        whether to spend it from here. An instance with no zone identity
+        answers TBY-CFG-001. Role viewer.
+      responses:
+        "200":
+          description: The medium and the zone's freshness record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaSummary"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/media/verification:
+    get:
+      summary: >-
+        The FR-054 serving gate and the media session behind it: whether
+        this instance is withholding its content surfaces, whether they
+        currently answer, the verification walking the medium right now
+        with its progress, and the last verdict reached — whichever
+        surface produced it, this endpoint, the Media screen or a media
+        import. It reads state and hashes nothing, which is what makes it
+        safe to poll: the Media screen asks it every two seconds while a
+        verification runs, and a caller's own tooling can do the same to
+        know when /v2/ opened. An instance that guards nothing answers
+        TBY-CFG-001. Role viewer.
+      responses:
+        "200":
+          description: The gate, the run in progress, and the last verdict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaVerification"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/media/verify:
+    post:
+      summary: >-
+        Re-verify a transported store and return the report, writing
+        nothing and pushing nothing (FR-054). Manifest completeness and
+        checksums first, then the recipes' signatures against THIS
+        instance's trust roots, then every ingredient against its pinned
+        digest; trust roots present on the medium are ignored. Answers 200
+        with the report whatever the verdict — a blocked medium is a
+        successful verification of a bad medium, and the report is what
+        says why. A POST rather than a GET because it re-hashes the whole
+        medium. The two waivers below need role admin and are audited
+        (FR-094); the endpoint itself is role operator.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MediaOverrides"
+      responses:
+        "200":
+          description: The verification report, whatever the verdict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaReport"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/media/import:
+    post:
+      summary: >-
+        Verify a transported store and push what verification cleared into
+        the zone registry (FR-052). The order is normative: nothing is
+        pushed, served or written before the whole medium has been
+        re-verified (FR-054). What crosses goes through the same
+        allow-list and signature checks a passthrough promotion goes
+        through (FR-030, FR-033), only what the destination is missing
+        moves (FR-028), and the signed recipes land in the zone's own
+        cookbook (FR-034). The operation is journalled onto the medium
+        itself, outside the manifest's coverage (FR-053). Content no
+        verified recipe reaches is reported and never pushed. Enqueues one
+        task and answers 201 with it. Audited (FR-094). The waivers need
+        role admin; the endpoint is role operator.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MediaOverrides"
+      responses:
+        "201":
+          description: The enqueued media-import task.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     basicAuth:
@@ -817,6 +1209,420 @@ components:
           schema:
             $ref: "#/components/schemas/Problem"
   schemas:
+    Plan:
+      type: object
+      description: >-
+        The side-effect-free report of a synchronization that has not run
+        (FR-055 amendment R-04). Nothing in it is localized: a report is
+        stored and re-rendered in the reader's language, so problems
+        travel as stable taxonomy codes with their parameters (R-03) and
+        sizes travel as raw byte counts (ADR-0015 §7).
+      properties:
+        mode:
+          type: string
+          description: The instance's operating mode (FR-001).
+        source:
+          type: string
+          description: The Retriever the plan ran over.
+        source_is_candidate:
+          type: boolean
+          description: >-
+            The plan ran over a caller-supplied candidate rather than the
+            instance's configured Retriever.
+        zone:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        destination:
+          type: string
+          description: The promotion target host; absent when none is configured.
+        outcome:
+          type: string
+          enum:
+            - up-to-date
+            - changes-planned
+            - policy-refused
+            - verification-failed
+            - failed
+        recipes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanRecipe"
+        totals:
+          $ref: "#/components/schemas/PlanTotals"
+        policy:
+          type: object
+          description: >-
+            The FR-030 allow-list in force and its verdict on every host
+            the plan would contact, stated positively so that "no
+            refusal" and "evaluated and passed" are distinguishable.
+          properties:
+            allowlist_declared:
+              type: boolean
+            allowlist_patterns:
+              type: array
+              items:
+                type: string
+            hosts:
+              type: array
+              items:
+                type: object
+                properties:
+                  host:
+                    type: string
+                  allowed:
+                    type: boolean
+                  role:
+                    type: string
+                    enum: [source, cookbook, destination]
+        prune:
+          type: object
+          description: >-
+            The projected FR-045 prune. "evaluated" is false — with a
+            reason — when the projection was deliberately not computed;
+            a plan whose recipes did not all resolve never proposes
+            deleting content, because a transient registry error would
+            otherwise read as "this is no longer wanted".
+          properties:
+            evaluated:
+              type: boolean
+            reason:
+              type: string
+            total_bytes:
+              type: integer
+              format: int64
+            repositories:
+              type: array
+              items:
+                type: object
+                properties:
+                  repo:
+                    type: string
+                  recipe:
+                    type: string
+                  bytes:
+                    type: integer
+                    format: int64
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreflightCheck"
+        problems:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanProblem"
+    PlanProblem:
+      type: object
+      description: >-
+        One failure of a plan, as a stable taxonomy code with its
+        parameters — never a rendered sentence (R-03).
+      properties:
+        code:
+          type: string
+        class:
+          type: string
+          enum: [operational, policy, verification]
+        subject:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+    PlanRecipe:
+      type: object
+      properties:
+        name:
+          type: string
+        requested:
+          type: string
+          description: The version expression from the Retriever (FR-021).
+        resolved:
+          type: string
+          description: The concrete tag it resolved to (FR-021).
+        digest:
+          type: string
+        cookbook:
+          type: string
+        trust_scope:
+          type: string
+        signature:
+          type: string
+          enum: [verified, unsigned-admitted, refused, not-evaluated]
+          description: >-
+            The FR-033 verdict on the recipe itself, which is reachable
+            without pulling any ingredient content.
+        total_bytes:
+          type: integer
+          format: int64
+        transfer_bytes:
+          type: integer
+          format: int64
+          description: >-
+            Deduplicated by digest WITHIN this recipe. Per-recipe figures
+            do not add up to the totals when two recipes share a layer:
+            the shared layer crosses the wire once.
+        largest_file_bytes:
+          type: integer
+          format: int64
+        problem:
+          $ref: "#/components/schemas/PlanProblem"
+        ingredients:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanIngredient"
+    PlanIngredient:
+      type: object
+      properties:
+        name:
+          type: string
+        kind:
+          type: string
+        ref:
+          type: string
+          description: The nominal reference the recipe names.
+        effective:
+          type: string
+          description: >-
+            The endpoint actually contacted when source substitution
+            applies (FR-036); absent when it does not.
+        repo:
+          type: string
+          description: The relocated repository the content lands in (FR-035).
+        version:
+          type: string
+        digest:
+          type: string
+        status:
+          type: string
+          enum: [new, outdated, up-to-date, unknown, not-probed]
+          description: The FR-026 verdict against the local store.
+        push_status:
+          type: string
+          enum: [new, outdated, up-to-date, unknown, not-probed]
+          description: >-
+            The FR-026 verdict against the configured destination;
+            "not-probed" when there is none, or when the plan stopped
+            before contacting it.
+        total_bytes:
+          type: integer
+          format: int64
+        transfer_bytes:
+          type: integer
+          format: int64
+        largest_file_bytes:
+          type: integer
+          format: int64
+        problem:
+          $ref: "#/components/schemas/PlanProblem"
+    PlanTotals:
+      type: object
+      description: >-
+        The aggregate FR-055 asks to be displayed at trigger time. Byte
+        counts are deduplicated by digest across the whole plan and net of
+        what the local store already holds, except total_bytes, which is
+        the gross figure.
+      properties:
+        recipes:
+          type: integer
+        ingredients:
+          type: integer
+        new:
+          type: integer
+        outdated:
+          type: integer
+        up_to_date:
+          type: integer
+        total_bytes:
+          type: integer
+          format: int64
+        transfer_bytes:
+          type: integer
+          format: int64
+        largest_file_bytes:
+          type: integer
+          format: int64
+        store_bytes:
+          type: integer
+          format: int64
+        projected_store_bytes:
+          type: integer
+          format: int64
+          description: >-
+            The store's on-disk size once the transfer lands. It ignores
+            the prune on purpose: a prune runs after the synchronization
+            (FR-045), so the peak the volume must survive is the unpruned
+            one.
+        push_upper_bound_bytes:
+          type: integer
+          format: int64
+          description: >-
+            An upper bound on what a promotion would move, not a
+            measurement: it sums the artifacts the destination does not
+            hold at the pinned digest without asking it blob by blob. The
+            differential push of FR-028 moves less whenever a shared
+            layer is already there.
+        push_evaluated:
+          type: boolean
+    PreflightCheck:
+      type: object
+      description: >-
+        One FR-055 space and filesystem verdict. refusal_code carries the
+        taxonomy code of a refusal (TBY-STO-004 insufficient space,
+        TBY-STO-005 file too large for the filesystem) and is absent when
+        the operation may start.
+      properties:
+        target:
+          type: string
+          enum: [store, archive]
+        path:
+          type: string
+        filesystem:
+          type: object
+          properties:
+            type:
+              type: string
+              description: >-
+                The filesystem as the platform names it, or the raw magic
+                number on Linux when this build does not know it.
+            identified:
+              type: boolean
+              description: >-
+                True only when the platform named the filesystem AND this
+                build knows its file-size limit. False is the honest
+                default and never means "capable".
+            max_file_size:
+              type: integer
+              format: int64
+              description: Zero means unknown — never unlimited.
+            detection:
+              type: string
+              description: The mechanism that produced the type.
+            note:
+              type: string
+        space:
+          type: object
+          properties:
+            free_bytes:
+              type: integer
+              format: int64
+            total_bytes:
+              type: integer
+              format: int64
+            known:
+              type: boolean
+        margin_percent:
+          type: integer
+        reserved_bytes:
+          type: integer
+          format: int64
+        usable_bytes:
+          type: integer
+          format: int64
+        projected_bytes:
+          type: integer
+          format: int64
+        largest_file_bytes:
+          type: integer
+          format: int64
+        shortfall_bytes:
+          type: integer
+          format: int64
+          description: The exact number of bytes missing; zero when it fits.
+        warnings:
+          type: array
+          items:
+            type: string
+            enum: [filesystem-unidentified, space-unknown]
+        refusal_code:
+          type: string
+
+    LayoutExportRequest:
+      type: object
+      description: >-
+        One OCI image layout export (FR-051). Both selection members empty
+        exports the whole store, which is the interoperability escape
+        hatch in its most useful form.
+      required: [output]
+      properties:
+        output:
+          type: string
+          description: >-
+            Destination path on the instance's host: the archive file to
+            write, or the directory to fill.
+          examples: ["/media/usb/payload.tar"]
+        format:
+          type: string
+          enum: [tar, directory]
+          default: tar
+          description: >-
+            The shape written there. A single uncompressed tar by default:
+            one file crosses a physical transfer more reliably than a
+            tree, and an uncompressed archive is what an import can read
+            back by seeking rather than inflating.
+        recipes:
+          type: array
+          items: { type: string }
+          description: >-
+            Recorded recipes to export, as "name" or "name@version". Each
+            carries its ingredients, its own artifact, and the cosign
+            signature artifacts of both.
+        repositories:
+          type: array
+          items: { type: string }
+          description: Relocated repository paths to export, with all their tags.
+        overwrite:
+          type: boolean
+          default: false
+          description: >-
+            Allow replacing an existing destination. Off by default: the
+            destination of an export is usually a medium somebody else
+            prepared, and replacing it answers TBY-LAY-003 otherwise.
+    LayoutProjection:
+      type: object
+      description: >-
+        What a planned export would contain and cost (FR-055). Byte counts
+        are raw; formatting is a UI concern.
+      properties:
+        format: { type: string, enum: [tar, directory] }
+        references:
+          type: array
+          items: { type: string }
+          description: The repository:tag pairs the selection resolved to.
+        manifests: { type: integer }
+        blobs: { type: integer }
+        files:
+          type: integer
+          description: Total number of files the export writes, index.json and oci-layout included.
+        contentBytes:
+          type: integer
+          format: int64
+          description: The payload total, blobs deduplicated by digest.
+        totalBytes:
+          type: integer
+          format: int64
+          description: What the export occupies on the medium, tar framing included.
+        largestFileBytes:
+          type: integer
+          format: int64
+          description: >-
+            The biggest single file the export writes — the whole archive
+            in tar form, the biggest blob in directory form. This is the
+            number a FAT32 target's 4 GiB per-file limit is compared with.
+        missing:
+          type: array
+          description: >-
+            What the selection named and the store does not hold. Reported
+            rather than fatal: a partially transferred multi-platform image
+            is missing platforms by construction, and the original index
+            travels unchanged so its pinned digest survives.
+            The reason is a stable untranslated label.
+          items:
+            type: object
+            properties:
+              repository: { type: string }
+              tag: { type: string }
+              digest: { type: string }
+              reason: { type: string, enum: [tag, platform, blob] }
     Publication:
       type: object
       description: >-
@@ -984,6 +1790,8 @@ components:
           type: integer
         total:
           type: integer
+        occupancy:
+          $ref: "#/components/schemas/StoreOccupancy"
     ContentRepo:
       type: object
       properties:
@@ -1046,6 +1854,119 @@ components:
               present:
                 type: boolean
                 description: False for a sparse-index entry absent locally.
+    FileSetList:
+      type: object
+      required: [filesets, packEnabled]
+      properties:
+        filesets:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileSet"
+        packEnabled:
+          type: boolean
+          description: >-
+            Whether files.packRoots names at least one directory. False
+            means this surface packs nothing: the answer is TBY-FIL-003
+            for every path (FR-075 — the capability is granted by
+            configuration, not by a session).
+    FileSet:
+      type: object
+      required: [name, reference, repository, versions, provenance, signed, declared, served, anonymous]
+      properties:
+        name:
+          type: string
+          description: The /files/<name>/ segment; empty when the FileSet is held but not declared for serving.
+        reference:
+          type: string
+          description: The nominal reference — the value of files.filesets[].ref.
+        repository:
+          type: string
+          description: Where the content sits in the store (relocated path, ADR-0013).
+        versions:
+          type: array
+          description: The tags held locally, ascending.
+          items:
+            type: string
+        version:
+          type: string
+          description: The tag the declaration pins, when it pins one.
+        digest:
+          type: string
+          description: The served image manifest; absent when the FileSet is not served.
+        provenance:
+          type: string
+          enum: [recipe, manual-import, unit-import, seed]
+          description: >-
+            How the content got here. "manual-import" is a FileSet packed
+            on this host (FR-048): unsigned, of local origin, and never
+            pruned (FR-045) because nothing would bring it back.
+        signed:
+          type: boolean
+          description: >-
+            False for a manual import, which can carry no signature —
+            Tobby holds no private key (ADR-0007).
+        declared:
+          type: boolean
+          description: Whether the FileSet appears in files.filesets.
+        served:
+          type: boolean
+          description: Whether the instance is serving it under /files/ right now.
+        anonymous:
+          type: boolean
+          description: Whether reads of it need no credentials (FR-047 opt-in).
+        url:
+          type: string
+          description: The base path it is served under; absent when it is not served.
+    FileSetPackRequest:
+      type: object
+      required: [source, name, version]
+      properties:
+        source:
+          type: string
+          description: >-
+            An absolute directory ON THE INSTANCE HOST. No file is
+            uploaded — FR-048 writes through the OCI import path only
+            (SRS §5.2) — and the path must sit under files.packRoots.
+        name:
+          type: string
+          description: >-
+            The FileSet name: one lowercase word, the last part of the
+            reference and the /files/<name>/ segment.
+        version:
+          type: string
+          description: The tag the packaged image carries.
+    PackedFileSet:
+      type: object
+      required: [name, reference, repository, version, digest, layerDigest, files, directories, symlinks, bytes, signed]
+      properties:
+        name:
+          type: string
+        reference:
+          type: string
+        repository:
+          type: string
+        version:
+          type: string
+        digest:
+          type: string
+          description: The pinned image manifest digest. Packing the same tree again yields this same digest.
+        layerDigest:
+          type: string
+          description: The uncompressed tar layer, which is also its diff_id.
+        files:
+          type: integer
+        directories:
+          type: integer
+        symlinks:
+          type: integer
+        bytes:
+          type: integer
+          format: int64
+        signed:
+          type: boolean
+          description: >-
+            Always false, and reported rather than omitted: a packed
+            FileSet can never be anything else (ADR-0007).
     ImportRequest:
       type: object
       required: [reference, platforms]
@@ -1267,6 +2188,14 @@ components:
         params:
           type: object
           additionalProperties: true
+        detail:
+          type: string
+          description: >-
+            The verbatim technical cause reported by the source, when one
+            was recorded. Never localized and never a substitute for the
+            code: several codes — TBY-SRV-001 first among them — answer
+            "follow the correlation identifier in the logs" (FR-090), and
+            this is the same string the matching log record carries.
     RecipeRecord:
       type: object
       description: >-
@@ -1358,8 +2287,88 @@ components:
             (FR-034): "<destination>/<cookbook>/<name>:<version>".
         interval:
           $ref: "#/components/schemas/Interval"
+        prune:
+          type: boolean
+          description: >-
+            Whether each reconciliation removes the recipe-managed content
+            this Retriever no longer references (FR-045 amendment,
+            sync.prune). Off by default: a transit store is not a delivery
+            unit, and shrinking it is never implied by a refresh. Unit
+            imports (FR-023), the offline vulnerability database (FR-032)
+            and content seeded through /v2/ are never eligible.
+        store_occupancy:
+          $ref: "#/components/schemas/StoreOccupancy"
         last_sync:
           $ref: "#/components/schemas/Task"
+    PrunePreview:
+      type: object
+      description: >-
+        The FR-045 trigger-time projection: what a prune would remove if it
+        ran now. It is a projection, not a promise — it is computed against
+        the Retriever as it resolves at this instant.
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              repo:
+                type: string
+                description: The relocated store repository path (FR-035).
+              tag:
+                type: string
+              digest:
+                type: string
+                description: The pinned digest the tag resolves to.
+              recipe:
+                type: string
+                description: >-
+                  The "name@version" of the recipe that brought the item and
+                  that the current Retriever no longer references.
+              bytes:
+                type: integer
+                description: The item's size, 0 when it could not be sized.
+        count:
+          type: integer
+        total_bytes:
+          type: integer
+          description: >-
+            The total the confirmation states. Logical sizes: a blob shared
+            with retained content is counted here and not reclaimed.
+    StoreOccupancy:
+      type: object
+      description: >-
+        The store's on-disk footprint against the configured threshold
+        (FR-045 amendment, storage.occupancyThreshold) — the API side of
+        the persistent occupancy warning in the interface.
+      properties:
+        bytes:
+          type: integer
+          description: >-
+            On-disk size of the deduplicated blob tree at the last sample;
+            0 while no threshold is configured and nothing is sampled.
+        threshold_bytes:
+          type: integer
+          description: The configured threshold; 0 when none is set.
+        monitored:
+          type: boolean
+          description: >-
+            Whether a threshold is configured at all. Its own field on
+            purpose: "no threshold configured" and "within the threshold"
+            are opposite statements and must not decode the same.
+        exceeded:
+          type: boolean
+          description: >-
+            Whether the store is over the threshold. Falls back to false
+            when the store comes back under it, so the condition retracts
+            as visibly as it appeared.
+        sampled_at:
+          type: string
+          format: date-time
+          description: >-
+            When the footprint was measured. Absent while nothing has been
+            sampled. Present only on the retriever response, which reports
+            the freshness of the figure it carries.
     Interval:
       type: object
       description: >-
@@ -1412,3 +2421,246 @@ components:
           format: date-time
         revoked:
           type: boolean
+    MediaSummary:
+      type: object
+      description: >-
+        The medium as this instance sees it before anything is done to it
+        (FR-052, R-28).
+      properties:
+        zone:
+          type: string
+          description: The identity of the zone this instance serves.
+        root:
+          type: string
+          description: The store directory the medium is.
+        mediaId:
+          type: string
+          description: >-
+            This store's own identity, minted when it was created and
+            stable across re-synchronizations onto it (R-28).
+        lastImport:
+          type: object
+          description: >-
+            The last completed import recorded for the zone. Absent when
+            the zone has never imported. A medium older than its
+            resolvedAt is refused by default.
+          properties:
+            mediaId: { type: string }
+            resolvedAt: { type: string, format: date-time }
+            importedAt: { type: string, format: date-time }
+            runId: { type: string }
+    MediaVerification:
+      type: object
+      description: >-
+        The serving gate of FR-054 — "verification SHALL precede any push,
+        any serving, and any local write" — and the verification session
+        behind it.
+      properties:
+        guarded:
+          type: boolean
+          description: >-
+            This instance withholds /v2/ and /files/ until the medium is
+            verified. True only on a destination side (a configured zone
+            identity) whose store carries a media manifest; a passthrough
+            instance and a source-side mirror both answer false and serve
+            unconditionally.
+        serving:
+          type: boolean
+          description: >-
+            /v2/ and /files/ currently answer. It opens on a verdict of
+            "pushable" and on nothing else: unlike the push decision,
+            which R-19 takes recipe by recipe, serving engages the store
+            as a whole. There is no setting that opens it without a
+            verification.
+        mediaId: { type: string }
+        running:
+          type: boolean
+          description: A verification is walking the medium right now.
+        startedAt: { type: string, format: date-time }
+        progress:
+          type: object
+          description: >-
+            The last progress notification of the run in flight (FR-054:
+            verification progress is displayed). Totals are the
+            inventory's declared volumetry — a claim from the medium,
+            useful for a progress bar and for nothing else.
+          properties:
+            stage:
+              type: string
+              enum: [inventory, manifest, recipes, extraneous]
+            recipe: { type: string }
+            files: { type: integer }
+            totalFiles: { type: integer }
+            bytes: { type: integer, format: int64 }
+            totalBytes: { type: integer, format: int64 }
+        report:
+          $ref: "#/components/schemas/MediaReport"
+        verdictAt: { type: string, format: date-time }
+        failure:
+          type: object
+          description: >-
+            Why the last run reached no verdict at all — a store that
+            cannot be opened, a missing zone identity. Distinct from a
+            blocked verdict, which IS a report. Code and parameters, never
+            a sentence, so every surface renders it in the reader's
+            language.
+          properties:
+            code: { type: string }
+            params: { type: object, additionalProperties: { type: string } }
+            at: { type: string, format: date-time }
+    MediaOverrides:
+      type: object
+      description: >-
+        The two FR-054 guards an administrator may waive. Both are
+        anti-accident guards over an UNSIGNED manifest, never security
+        controls — which is why they are waivable at all, and why each
+        waiver is named, recorded on the task and audited (FR-094). The
+        integrity and signature verdicts are not waivable by anyone.
+      properties:
+        allowZoneMismatch:
+          type: boolean
+          description: Proceed on a medium addressed to another zone.
+        allowStale:
+          type: boolean
+          description: >-
+            Proceed on a medium older than the last one imported for this
+            zone (R-28).
+    MediaReport:
+      type: object
+      description: >-
+        The result of verifying one transported store (FR-054). It carries
+        codes and parameters rather than sentences, so every surface
+        re-renders it in the reader's language (FR-063) long after the
+        fact, and it states for every refusal both why and WHICH FILE.
+      properties:
+        verdict:
+          type: string
+          enum: [pushable, partial, blocked]
+          description: >-
+            pushable — every delivery may be pushed; partial — some may
+            and some may not, which is the normal state of a medium
+            carrying several deliveries one of which did not survive the
+            trip (R-19); blocked — nothing may be pushed.
+        blocks:
+          type: array
+          description: >-
+            Medium-wide refusals. A waived one stays in the list with
+            overridden set: the report is also the evidence of what an
+            administrator waved through (FR-094).
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              params: { type: object, additionalProperties: { type: string } }
+              overridable:
+                type: boolean
+                description: >-
+                  Only the zone mismatch and the staleness guard ever are.
+                  An integrity verdict never is (R-19).
+              overridden: { type: boolean }
+        media:
+          type: object
+          description: >-
+            What the manifest says about the medium — claims, restated.
+            Absent when the manifest could not be read at all.
+          properties:
+            mediaId: { type: string }
+            zone: { type: string }
+            mediaFormat: { type: integer }
+            storeFormat: { type: integer }
+            resolvedAt: { type: string, format: date-time }
+            writtenAt: { type: string, format: date-time }
+            producedBy:
+              type: object
+              properties:
+                version: { type: string }
+                runId: { type: string }
+            totals:
+              $ref: "#/components/schemas/MediaTotals"
+        zone:
+          type: object
+          description: The zone-identity comparison that decided the global block.
+          properties:
+            expected: { type: string }
+            found: { type: string }
+            match: { type: boolean }
+        freshness:
+          type: object
+          description: >-
+            The R-28 comparison against the last completed import. Both
+            timestamps are always named: a refusal an operator cannot date
+            is a refusal they cannot act on.
+          properties:
+            resolved: { type: string, format: date-time }
+            recorded: { type: string, format: date-time }
+            recordedMediaId: { type: string }
+            stale: { type: boolean }
+        recipes:
+          type: array
+          description: One verdict per delivery, in manifest order.
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              version: { type: string }
+              cookbookRepo:
+                type: string
+                description: >-
+                  The nominal repository the trust decision was taken on
+                  (FR-036).
+              artifactRepo:
+                type: string
+                description: Where the artifact sits ON THE MEDIUM (FR-035).
+              digest: { type: string }
+              resolvedAt: { type: string, format: date-time }
+              pushable:
+                type: boolean
+                description: >-
+                  False means blocked whole, with no override: a recipe is
+                  one delivery, and a delivery that verified in part is not
+                  a delivery (RECIPE-SPEC §12.3, R-19).
+              reason:
+                type: object
+                description: Why, when pushable is false. Never absent in that case.
+                properties:
+                  code: { type: string }
+                  path:
+                    type: string
+                    description: >-
+                      The offending file, relative to the store root, in
+                      slash form. Empty only for a refusal about no file in
+                      particular (a signature that does not verify).
+                  params: { type: object, additionalProperties: { type: string } }
+              keyFingerprint:
+                type: string
+                description: The trust root that verified the signature.
+              trustScope:
+                type: string
+                description: >-
+                  The declared scope that decided the verdict, when one
+                  matched — a relaxation is always visible (FR-033).
+              unsigned: { type: boolean }
+              files: { type: integer }
+              bytes: { type: integer, format: int64 }
+        findings:
+          type: array
+          description: >-
+            Non-blocking observations: content the medium carries that
+            will never be pushed, and bookkeeping that does not match its
+            inventory entry (FR-054).
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              path: { type: string }
+              params: { type: object, additionalProperties: { type: string } }
+        checked:
+          $ref: "#/components/schemas/MediaTotals"
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+    MediaTotals:
+      type: object
+      description: A volumetry — files and bytes.
+      properties:
+        files: { type: integer }
+        bytes: { type: integer, format: int64 }

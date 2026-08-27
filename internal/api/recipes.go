@@ -12,8 +12,10 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -21,6 +23,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
@@ -52,6 +55,19 @@ type RecipeOptions struct {
 	// unattended runs — and the interval endpoints then answer that the
 	// setting does not apply rather than pretending to change it.
 	Interval *schedule.Interval
+	// Prune is what an unqualified trigger does about content the
+	// Retriever no longer references (FR-045): on in mirror mode, where
+	// the operator confirms it against a projected list, and off in
+	// passthrough unless sync.prune says otherwise.
+	Prune bool
+	// Projector computes the FR-045 trigger-time confirmation — the list
+	// and the total size of what a prune would remove. Nil on an
+	// instance wired without an engine; the endpoint then answers that
+	// it cannot project rather than an empty, reassuring list.
+	Projector PruneProjector
+	// Occupancy is the latest store-footprint sample against the
+	// configured threshold (R-33); nil on an instance with no threshold.
+	Occupancy *store.OccupancyMonitor
 	// Now injects the clock for the override's recorded timestamp.
 	Now func() time.Time
 }
@@ -69,6 +85,7 @@ func RegisterRecipes(a *API, o *RecipeOptions) {
 	a.Handle("GET /api/v1/recipes", a.RequireRole(auth.RoleViewer, rc.list))
 	a.Handle("GET /api/v1/recipes/{recipe}/mapping", a.RequireRole(auth.RoleViewer, rc.mapping))
 	a.Handle("POST /api/v1/sync", a.RequireRole(auth.RoleOperator, rc.sync))
+	a.Handle("GET /api/v1/sync/prune-preview", a.RequireRole(auth.RoleOperator, rc.prunePreview))
 	a.Handle("DELETE /api/v1/content/{repo...}", a.RequireRole(auth.RoleAdmin, rc.deleteRepo))
 	a.Handle("GET /api/v1/retriever", a.RequireRole(auth.RoleAdmin, rc.retriever))
 	a.Handle("PUT /api/v1/retriever/interval", a.RequireRole(auth.RoleAdmin, rc.setInterval))
@@ -145,8 +162,22 @@ func (rc *recipesAPI) sync(w http.ResponseWriter, r *http.Request) {
 		}))
 		return
 	}
+	prune := rc.opts.Prune
+	if body, rerr := io.ReadAll(io.LimitReader(r.Body, maxSyncBody)); rerr == nil && len(body) > 0 {
+		var req syncRequest
+		if uerr := json.Unmarshal(body, &req); uerr != nil {
+			rc.api.Problem(w, r, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
+				"file": "request body", "path": "prune",
+				"constraint": "the body must be a JSON object with an optional boolean \"prune\"",
+			}))
+			return
+		}
+		if req.Prune != nil {
+			prune = *req.Prune
+		}
+	}
 	id, _ := auth.IdentityFrom(r.Context())
-	task, err := rc.opts.Queue.Create(tasks.TypeSync, rc.opts.Source, id.Name, nil)
+	task, err := rc.opts.Queue.Create(tasks.TypeSync, rc.opts.Source, id.Name, nil, tasks.WithPrune(prune))
 	if err != nil {
 		rc.api.Problem(w, r, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))
 		return
@@ -158,6 +189,18 @@ func (rc *recipesAPI) sync(w http.ResponseWriter, r *http.Request) {
 		Outcome: audit.OutcomeSuccess,
 		Origin:  auth.ClientOrigin(r),
 	})
+	if prune {
+		// A run that removes content is its own trail entry (FR-094): the
+		// sync record says a cycle started, this one says it was allowed
+		// to delete, and after the fact those are different questions.
+		audit.Log(r.Context(), rc.api.logger, &audit.Event{
+			Actor:   id.Name,
+			Action:  audit.ActionPruneActive,
+			Target:  task.ID,
+			Outcome: audit.OutcomeSuccess,
+			Origin:  auth.ClientOrigin(r),
+		})
+	}
 	// Answer from a snapshot: the worker may already be mutating the
 	// queue's own copy of the task.
 	if snap, ok := rc.opts.Queue.Get(task.ID); ok {
@@ -237,6 +280,81 @@ func (rc *recipesAPI) provenance(repo string) (class store.ProvenanceClass, mana
 	return store.ProvenanceSeed, nil
 }
 
+// maxSyncBody bounds the optional trigger body: it carries one boolean,
+// and an unbounded read on an authenticated endpoint is a lever anyway.
+const maxSyncBody = 4 << 10
+
+// PruneProjector computes what a prune would remove right now. The engine
+// implements it; the interface exists so this package stays testable
+// without one and so the endpoint cannot reach an engine internal.
+type PruneProjector interface {
+	ProjectPrune(ctx context.Context) (engine.PruneProjection, error)
+}
+
+// syncRequest is the optional body of POST /api/v1/sync.
+//
+// Prune is a POINTER because absent and false are different instructions:
+// absent means "do what this instance does by default", false means "this
+// run must not remove anything". A plain bool would silently turn the
+// first into the second, which on a mirror instance is a prune the caller
+// never asked to skip.
+type syncRequest struct {
+	Prune *bool `json:"prune,omitempty"`
+}
+
+// prunePreviewResponse is the FR-045 trigger-time confirmation: the list
+// and the total size of what a prune would remove, so an operator decides
+// against facts rather than against a promise.
+type prunePreviewResponse struct {
+	Items      []prunePreviewItem `json:"items"`
+	Count      int                `json:"count"`
+	TotalBytes int64              `json:"total_bytes"`
+}
+
+type prunePreviewItem struct {
+	Repo   string `json:"repo"`
+	Tag    string `json:"tag"`
+	Digest string `json:"digest,omitempty"`
+	Recipe string `json:"recipe,omitempty"`
+	Bytes  int64  `json:"bytes"`
+}
+
+// prunePreview serves GET /api/v1/sync/prune-preview (FR-045): what the
+// next synchronization would remove if it pruned. Role operator, like the
+// trigger it informs. A Retriever that cannot be resolved is an error, not
+// an empty list: "nothing would go" and "I could not work out what would
+// go" must never read the same to something about to confirm a removal.
+func (rc *recipesAPI) prunePreview(w http.ResponseWriter, r *http.Request) {
+	if rc.opts.Projector == nil {
+		rc.api.Problem(w, r, taxonomy.New(taxonomy.CodeConfigInvalid, taxonomy.Params{
+			"detail": "this instance cannot project a prune: no Retriever engine is wired (retriever.source, FR-010)",
+		}))
+		return
+	}
+	projection, err := rc.opts.Projector.ProjectPrune(r.Context())
+	if err != nil {
+		// The engine already taxonomizes what it could not resolve; a bare
+		// error means an unexpected one, which is the internal code.
+		var te *taxonomy.Error
+		if !errors.As(err, &te) {
+			te = taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err)
+		}
+		rc.api.Problem(w, r, te)
+		return
+	}
+	resp := prunePreviewResponse{
+		Items:      make([]prunePreviewItem, 0, len(projection.Items)),
+		Count:      len(projection.Items),
+		TotalBytes: projection.TotalBytes,
+	}
+	for _, it := range projection.Items {
+		resp.Items = append(resp.Items, prunePreviewItem{
+			Repo: it.Repo, Tag: it.Tag, Digest: it.Digest, Recipe: it.Recipe, Bytes: it.Bytes,
+		})
+	}
+	rc.api.JSON(w, http.StatusOK, resp)
+}
+
 // retrieverResponse mirrors the /admin/retriever screen (FR-010, FR-033,
 // FR-047, FR-013).
 type retrieverResponse struct {
@@ -246,7 +364,25 @@ type retrieverResponse struct {
 	Destination        string    `json:"destination"`
 	Cookbook           string    `json:"cookbook"`
 	Interval           *interval `json:"interval,omitempty"`
-	LastSync           *taskJSON `json:"last_sync,omitempty"`
+	// Prune is the FR-045 opt-in: reconciliation removes the
+	// recipe-managed content this Retriever no longer references.
+	Prune bool `json:"prune"`
+	// StoreOccupancy is the footprint against the configured threshold
+	// (R-33) — the API side of the persistent banner (FR-061).
+	StoreOccupancy occupancyJSON `json:"store_occupancy"`
+	LastSync       *taskJSON     `json:"last_sync,omitempty"`
+}
+
+// occupancyJSON reports the store footprint against its threshold.
+// Monitored is a field of its own rather than "threshold is zero"
+// because "no threshold configured" and "within the threshold" are
+// opposite statements and must never decode the same.
+type occupancyJSON struct {
+	Bytes          int64  `json:"bytes"`
+	ThresholdBytes int64  `json:"threshold_bytes"`
+	Monitored      bool   `json:"monitored"`
+	Exceeded       bool   `json:"exceeded"`
+	SampledAt      string `json:"sampled_at,omitempty"`
 }
 
 // interval reports the FR-013 reconciliation cadence.
@@ -278,6 +414,8 @@ func (rc *recipesAPI) retriever(w http.ResponseWriter, _ *http.Request) {
 		Destination:        rc.opts.Destination,
 		Cookbook:           rc.opts.Cookbook,
 		Interval:           rc.intervalJSON(),
+		Prune:              rc.opts.Prune,
+		StoreOccupancy:     rc.occupancyJSON(),
 	}
 	if resp.RelaxedTrustScopes == nil {
 		resp.RelaxedTrustScopes = []string{}
@@ -292,6 +430,26 @@ func (rc *recipesAPI) retriever(w http.ResponseWriter, _ *http.Request) {
 		}
 	}
 	rc.api.JSON(w, http.StatusOK, resp)
+}
+
+// occupancyJSON renders the latest store-footprint sample. An instance
+// with no monitor reports Monitored false rather than a zeroed threshold
+// that would read like a satisfied one.
+func (rc *recipesAPI) occupancyJSON() occupancyJSON {
+	if rc.opts.Occupancy == nil {
+		return occupancyJSON{}
+	}
+	o := rc.opts.Occupancy.Current()
+	out := occupancyJSON{
+		Bytes:          o.Bytes,
+		ThresholdBytes: o.Threshold,
+		Monitored:      o.Monitored(),
+		Exceeded:       o.Exceeded,
+	}
+	if !o.SampledAt.IsZero() {
+		out.SampledAt = o.SampledAt.UTC().Format(time.RFC3339)
+	}
+	return out
 }
 
 // intervalJSON renders the cadence, nil when this instance has no

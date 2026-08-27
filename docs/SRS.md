@@ -515,6 +515,21 @@ with prune enabled, its exclusive content is gone and listed as pruned in the
 media log; seeded content and the vulnerability database survive a default prune;
 with prune disabled, the store is unchanged.
 
+*Amendment 2026-08-11 (R-33).* The same prune SHALL be available in passthrough
+mode, applied at each reconciliation cycle, with the same protected roots and
+the same non-eligible content as above; unlike mirror mode it is **opt-in**,
+because a passthrough transit store is not a delivery unit and shrinking it is
+never implied by a refresh. Independently of prune, Tobby SHALL expose a
+configurable store-occupancy threshold, raising a persistent UI warning and a
+metric when the store exceeds it, so an unattended service does not fill its
+volume silently.
+*Acceptance:* with passthrough prune enabled, content dropped from the Retriever
+is removed at the next reconciliation and listed in the run logs, while unit
+imports and the vulnerability database survive; with it disabled (the default),
+the transit store is unchanged by reconciliation; crossing the configured
+occupancy threshold raises the warning and moves the metric, and clearing it
+retracts both.
+
 **FR-046 — Store reset.**
 Tobby SHALL provide a full store reset requiring an explicit typed confirmation,
 audit-logged (FR-094). On authenticated instances it SHALL be restricted to the
@@ -541,6 +556,22 @@ Tobby with no other infrastructure; a path-traversal and link-escape corpus
 returns errors; a non-enabled FileSet under `/files/` returns 404; range
 requests return 206.
 
+**FR-048 — Operator FileSet packing. *(amendment 2026-08-26)***
+Tobby SHALL provide, via CLI (`tobby fileset pack`) and API/UI, a packing
+operation that takes a local file tree, packages it as a single-manifest
+`FileSet` OCI image conforming to RECIPE-SPEC §7.4, and imports it into the
+local store through the unit import path (FR-023), pinned by digest. The
+resulting FileSet MAY then be enabled for FR-047 serving like any other.
+Packed FileSets SHALL be recorded as manual imports — unsigned, of local
+origin — and SHALL be distinguishable from Recipe-delivered FileSets in
+listings and reports. This operation SHALL NOT introduce any HTTP upload
+surface: writing goes through OCI import only, and serving remains FR-047,
+read-only (section 5.2).
+*Acceptance:* packing a directory yields a FileSet whose extraction reproduces
+the tree (modes and symlinks per RECIPE-SPEC §7.4); once enabled, its content
+is served under `/files/<fileset>/…` (FR-047); it appears marked as a manual
+import in listings; `/files/` still accepts no write method.
+
 ### 3.6 Removable-media transport
 
 **FR-050 — Self-contained transportable store.**
@@ -564,6 +595,18 @@ destination zone registry, applying the same policy checks (FR-030, FR-033) afte
 the media verification of FR-054.
 *Acceptance:* the UC2 end-to-end scenario — synchronize, transport (simulated),
 destination push — completes with digests identical end to end.
+
+*Amendment 2026-08-11 (R-28).* The destination instance SHALL persist, per zone,
+the resolution timestamp and media identifier (FR-054) of the last media it
+imported, and SHALL refuse by default a media whose resolution timestamp is
+older than that record, naming both timestamps. The refusal MAY be overridden by
+an admin, audit-logged (FR-094), on the pattern of the zone-identity override.
+This is an **anti-accident** guard, not a security control: the media manifest is
+unsigned, so a hostile party can forge the timestamp — what it prevents is an
+operator re-importing last month's medium and silently rolling a zone backwards.
+*Acceptance:* importing a media older than the last recorded import for that zone
+is refused by default naming both timestamps; the admin override succeeds and
+writes an audit entry; the record advances only on a completed import.
 
 **FR-053 — Logs on the transport media.**
 In mirror mode, operation logs SHALL be written to a file within the transported
@@ -597,6 +640,83 @@ not pushed; a media produced for zone A is refused by an instance configured for
 zone B; a trust-root file on the media has no effect on verification; verification
 progress is displayed. *(ADR-0006, ADR-0007)*
 
+*Amendment 2026-08-26 (R-19) — granularity of the block.* The sentence
+"integrity or completeness failure SHALL block with no override" above was
+written as a global verdict, while RECIPE-SPEC §12.3 point 4 requires failing
+closed **per item**. The two are reconciled as follows, and this paragraph
+governs:
+
+- **Per recipe.** Verification and the push decision are taken recipe by recipe.
+  A recipe whose signature verifies against the destination's trust roots and
+  whose every reachable ingredient matches its pinned digest and its manifest
+  entry is pushable. Any recipe failing either check is blocked with no
+  override, and SHALL be named in the report with the reason and the offending
+  file. A partially damaged medium therefore still delivers its intact recipes,
+  which is the whole point of carrying several deliveries on one medium.
+- **Globally blocking, no per-recipe salvage.** A media manifest that is absent,
+  unparseable, or internally inconsistent, and a zone-identity mismatch, block
+  the medium as a whole — the first because there is then no inventory to reason
+  about, the second because the medium is addressed to someone else. The
+  zone-identity mismatch remains admin-overridable and audit-logged; a corrupt
+  manifest is not.
+- Files covered by the manifest but reachable from no verified recipe are
+  reported as extraneous and never pushed; they do not block anything.
+
+*Acceptance:* on a medium carrying two recipes where one ingredient blob of the
+first is truncated, the first recipe is blocked and named with its offending
+file while the second is pushed; a corrupted manifest blocks both with no
+override offered; a zone mismatch blocks both and offers the audited admin
+override.
+
+*Amendment 2026-08-11 (R-28) — media identity.* The manifest SHALL carry a
+media identifier generated when the transportable store is created, stable
+across subsequent synchronizations onto the same store, and repeated in the
+operation logs (FR-053) on both sides, so an incident can be traced to a
+physical medium.
+*Acceptance:* the identifier appears in the manifest and in the source-side and
+destination-side logs of the same medium; re-synchronizing an existing store
+keeps it; a freshly created store gets a different one.
+
+*Amendment 2026-08-26 (R-19b) — the serving half of the order.* "Verification
+SHALL precede any push, any **serving**, and any local write" governs three
+verbs, and this paragraph states how the second is enforced, since it was the
+one left implicit.
+
+- **Who is guarded.** A destination-side instance (FR-052: one told which zone
+  it serves) whose storage root carries a media manifest — a store that changed
+  hands. A passthrough instance and a source-side mirror instance both serve
+  unconditionally: the latter's store carries a manifest because it *wrote*
+  it, and the zone identity is what tells the two sides apart.
+- **What is withheld.** The embedded registry (FR-040) and the FileSet surface
+  (FR-047), in whole, for every role. Nothing else: the web UI, the API, the
+  probes and the metrics stay available, because they are what an operator
+  needs in order to verify.
+- **What opens it.** A verification, in the running process, whose verdict is
+  *pushable*. R-19 made the PUSH decision per recipe; serving is not that
+  decision — `/v2/` and `/files/` hand out blobs, and a blob a blocked recipe
+  reaches is exactly the content that failed — so a medium that did not come
+  out whole serves nothing while its intact recipes remain pushable into the
+  zone registry, which then serves them. No verdict is cached across a
+  restart: the question is whether the bytes are right now.
+- **How the refusal reads.** Both surfaces SHALL answer `403` with the error
+  taxonomy's what/cause/action, in the shape their clients understand — the
+  OCI error envelope on `/v2/`, plain text on `/files/` — naming the medium
+  and the way to verify it. Never a `404` and never a silent `503`.
+- **No opt-out.** There is no configuration that serves an unverified medium.
+  The overrides FR-054 sanctions are the two anti-accident guards over the
+  unsigned manifest (zone identity, freshness); an integrity or signature
+  verdict has no override, and a "serve anyway" setting would be that override
+  under another name (FR-075).
+- **Probes.** The instance stays live and ready (FR-092): it is running and
+  usable, and `/readyz` states in its body which surfaces are closed and where
+  to open them. A `503` would remove the interface that fixes the condition.
+*Acceptance:* an instance started on a transported store answers `403` naming
+the taxonomy code on `GET /v2/<repo>/manifests/<digest>` and on
+`GET /files/<set>/<path>` for content the store demonstrably holds, while
+`/healthz` and `/readyz` answer `200`; the same instance serves both after a
+verification clears the medium; a source-side mirror instance holding the same
+store serves both immediately.
+
 **FR-055 — Pre-flight checks.**
 Before starting a mirror synchronization or an export, Tobby SHALL compute and
 display the per-recipe and total bytes to transfer — from source manifests,
@@ -614,6 +734,23 @@ during writes.
 the missing byte count stated; per-recipe sizes are displayed at trigger time; a
 FAT32 target with a > 4 GiB blob or export archive is refused naming the limit; a
 simulated file-too-large error mid-write leaves the store consistent.
+
+*Amendment 2026-08-11 (R-04) — plan mode.* This computation already produces
+most of a dry run; Tobby SHALL expose it as a **side-effect-free operation** in
+both modes, from the CLI (`--dry-run`), the API, and the UI, over either the
+configured Retriever or a candidate Retriever file, reporting: version
+resolution (FR-021), per-digest statuses (FR-026), projected volumes (this
+requirement), projected prune (FR-045), and the policy verdicts evaluable
+without transfer — registry allow-list (FR-030) and the signature verdicts of
+the recipes reachable without fetching content. A plan run SHALL write nothing
+to the store, push nothing, and SHALL NOT reset or gate the passthrough refresh
+schedule (FR-013). Exit codes SHALL distinguish "nothing to do", "changes
+planned", and "refused by policy" so the operation is usable as a CI gate
+(FR-066).
+*Acceptance:* a plan run over a Retriever with pending changes reports them and
+leaves the store byte-identical; a plan run whose recipes violate the allow-list
+exits with the policy code without contacting the destination; a plan run in
+passthrough mode does not advance the refresh schedule.
 
 **FR-056 — Transport log durability.**
 The log file on the transport media (FR-053) SHALL use size-based rotation and
@@ -651,6 +788,22 @@ the instance and its deployment shape, which is not a runtime operation.
 is covered by at least one e2e test; the UI offers no mode-switch control.
 *(ADR-0010)*
 
+*Amendment 2026-08-11 (R-02) — media screen.* The UI SHALL provide a dedicated
+**Media** screen, present on both the source and the destination side, which
+walks a non-expert operator through the physical transfer: the inventory summary
+of the store (zone, media identifier, resolution timestamp, recipes, volumes),
+the per-stage and per-recipe verdicts of destination-side verification
+(completeness and checksums → recipe signatures → ingredient digests), and the
+guided sequence Verify → Report → Push, where each step unlocks the next. A zone
+refusal or a stale-media refusal SHALL be stated in plain language with the
+course of action, not as an error code alone. This screen introduces no engine
+behaviour of its own: the blocking order is already normative in FR-054, and the
+screen is required to make it legible.
+*Acceptance:* on the destination side the Push control is unreachable until
+verification has completed; per-recipe verdicts name blocked recipes and their
+offending files; a zone mismatch and a stale medium each render their refusal
+with the admin override path.
+
 **FR-063 — Internationalization.**
 All UI labels SHALL be externalized and provided in English and French, with the
 active language selectable; adding a language SHALL NOT require code changes beyond a
@@ -685,6 +838,23 @@ the CLI is not required to mirror every screen.
 *Acceptance:* the UC2 flow can be scripted end to end through the CLI, with exit
 codes distinguishing success, policy refusal, and verification failure.
 *(ADR-0006, ADR-0010)*
+
+*Amendment 2026-08-11 (R-08) — stable command-line contract.* The CLI SHALL
+carry a contract an automation can depend on across versions:
+`--output json` on every command that reports anything, with schemas documented
+alongside the OpenAPI document (FR-060); an exhaustive, published table of exit
+codes — the command-line projection of the error taxonomy (FR-065) — covered by
+the project's semantic-versioning promise, so that removing or renumbering a code
+is a breaking change; a guaranteed non-interactive mode, where no command
+prompts and none requires a terminal; and `--wait` on every command that starts
+a task, blocking until the task reaches a terminal state and exiting on its
+outcome.
+*Acceptance:* every reporting command accepts `--output json` and emits a
+document validating against its published schema; the exit-code table is
+generated from the code and a test fails if a code exists that the table does not
+list, or the converse; a scripted UC2 run with no TTY and no prompt completes;
+`--wait` on a synchronization trigger returns only once the task is terminal, and
+its exit code reflects the task outcome.
 
 ### 3.8 Authentication and authorization
 
@@ -859,6 +1029,19 @@ via `go:embed`; the binary SHALL be fully functional with no adjacent files.
 *Acceptance:* running the bare binary from an empty directory serves the complete UI.
 *(ADR-0010)*
 
+*Amendment 2026-08-11 (R-05) — embedded offline documentation.* The embedded
+assets SHALL include operations guides for both modes and a troubleshooting
+guide, in English and French, served by the instance itself under `/help` and
+reachable with no outbound connection (NFR-019) — the destination zone is
+air-gapped by definition, so documentation that lives on a website is
+documentation the operator who needs it most cannot read. Screens SHOULD link
+into the relevant section contextually, and every error code (FR-065) SHOULD
+link to its entry.
+*Acceptance:* an instance started with no network serves the complete guides in
+both languages; a link check over the embedded corpus finds no dangling target;
+error codes rendered in the UI carry a working link to their troubleshooting
+entry.
+
 **NFR-004 — Reproducible builds.**
 Release builds SHALL be reproducible: two builds of the same tag on independent
 machines produce bit-identical binaries.
@@ -940,6 +1123,22 @@ FR-073).
 secrets finds zero occurrences; redaction is unit-tested; session cookie
 attributes are asserted in the e2e suite. *(ADR-0009)*
 
+**NFR-020 — Secrets never travel. *(amendment 2026-08-11, R-16)***
+Files holding secrets — registry credentials (`dockerconfigjson`), TLS private
+keys, proxy passwords, static tokens, the local user database — SHALL NOT reside
+inside the transportable store (FR-050). Tobby SHALL verify this at startup and
+SHALL refuse to start when a configured secret path resolves under the store
+root, naming the offending path and the reason. Secret files SHALL be created
+with restrictive permissions — mode 0600 on Unix; on Windows an ACL granting the
+owning account only, documented with the feature matrix (NFR-018). The store is
+handed to a courier and plugged into a machine in another zone: anything under it
+is assumed to be read by someone else.
+*Acceptance:* an instance configured with a credentials file under the store root
+refuses to start, naming the path; a planted-secret corpus placed under the store
+is detected by the startup check; created secret files carry the documented
+permissions; the e2e suite scans a produced medium for the planted secrets and
+finds none.
+
 ### 4.5 Maintainability
 
 **NFR-016 — Code quality gates.**
@@ -1013,7 +1212,11 @@ digest-pinned like any ingredient, mountable as a Kubernetes image volume or
 extractable with standard tooling; *serving* them is FR-047, which exposes
 verified FileSet contents read-only over HTTP — sufficient for OS package
 repositories (apt/rpm) and bare-host bootstrap, with no unverified write path
-reopened.
+reopened. For the operator-side need of serving a handful of local files
+simply (air-gapped bootstrap, one-off documents), the sanctioned path is
+FR-048 *(amendment 2026-08-26)*: pack them into a digest-pinned FileSet
+imported through the store and served read-only by FR-047 — the convenience
+of an upload, without a mutable HTTP write surface.
 
 ### 5.3 Qualification pipeline orchestration
 

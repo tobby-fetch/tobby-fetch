@@ -55,6 +55,10 @@
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Fix the reported setting (precedence: flags, then TOBBY_* environment variables, then the YAML file), check the result with `tobby config dump`, then restart."
 
+"TBY-CFG-002.what": "The instance refuses to start: a secret file is configured inside the transportable store."
+"TBY-CFG-002.cause": "{{.paths}} resolves under the store root {{.root}}. The store is handed to a courier and plugged into a machine in another zone, so everything under it is assumed to be read by someone else — registry credentials, TLS private keys, the local user database and its static tokens must never travel on it."
+"TBY-CFG-002.action": "Move each listed file to a directory outside the store — the state directory (`state.root`) is the intended home — update the setting to the new location, then start the instance again. A path resolving inside the store through a symbolic link counts as inside: the reported resolved path is the one that decides."
+
 "TBY-NET-001.what": "The outbound proxy configuration is unusable, so the instance refuses to start."
 "TBY-NET-001.cause": "{{.setting}} is set to {{.proxy}}, which is not a usable forward-proxy URL (expected http:// or https:// with a host)."
 "TBY-NET-001.action": "Correct {{.setting}} to the form http://proxy.example.com:3128, keeping credentials out of the URL — they belong in network.proxy.username and network.proxy.password, which never appear in logs or in `tobby config dump`. Then restart."
@@ -99,6 +103,10 @@
 "TBY-REG-007.cause": "For {{.reference}}: {{.detail}}. The source registry, or a cache in front of it, does not honor byte ranges consistently."
 "TBY-REG-007.action": "Retry the task: the transfer restarts from the last verified position, or from the beginning if the source content changed. If it recurs on the same source, set transfer.resumeThreshold to 0 to disable in-blob resumption for this instance, and check any caching proxy on the path to that registry."
 
+"TBY-REG-008.what": "The source index does not carry a platform the recipe asks for."
+"TBY-REG-008.cause": "For {{.reference}}, no child of the index matches {{.platforms}}; the index publishes {{.available}}. A platform selector is os/arch with an OPTIONAL variant (RECIPE-SPEC §7.1): an omitted variant matches any, a named one must match exactly."
+"TBY-REG-008.action": "Confront the platforms list of the ingredient with what the source actually publishes (docker manifest inspect, or the inspection report of a unit import) and correct it. Tobby never silently drops a platform that was asked for."
+
 "TBY-REG-005.what": "The reference does not exist on the source registry."
 "TBY-REG-005.cause": "{{.reference}} was not found — wrong name or tag, or it was deleted upstream."
 "TBY-REG-005.action": "Check the repository name and the tag on the source registry, then correct the reference."
@@ -139,6 +147,18 @@
 "TBY-CHT-001.cause": "{{.chart}} declares the dependency {{.dependency}} but does not embed it under charts/ — it cannot deploy offline."
 "TBY-CHT-001.action": "Repackage the chart with its dependencies embedded (helm dependency build, then helm package), publish it, and retry the import."
 
+"TBY-FIL-001.what": "The file set could not be packed."
+"TBY-FIL-001.cause": "{{.detail}}"
+"TBY-FIL-001.action": "Point `tobby fileset pack` at an existing, non-empty directory, and give the file set a lowercase name and a version (for example `tobby fileset pack ./repo site-docs:1.0.0`). Nothing was written to the store."
+
+"TBY-FIL-002.what": "The directory holds an entry that cannot be packed safely."
+"TBY-FIL-002.cause": "{{.detail}}"
+"TBY-FIL-002.action": "Remove or replace that entry, then pack again — a file set is extracted and served on other machines, so symbolic links must stay inside the directory, special files and setuid bits are not carried, and names must not start with `.wh.`. Nothing was written to the store."
+
+"TBY-FIL-003.what": "Packing that directory is not allowed from this surface."
+"TBY-FIL-003.cause": "{{.path}} is outside the directories `files.packRoots` allows the web interface and the API to read; with no entry configured, they may read none."
+"TBY-FIL-003.action": "Either run `tobby fileset pack` on the instance host, which is not restricted, or add the directory to `files.packRoots` in the configuration file and restart the instance."
+
 "TBY-STO-001.what": "The local store could not be read."
 "TBY-STO-001.cause": "{{.detail}}"
 "TBY-STO-001.action": "Check that the storage root exists, is mounted, and is readable by the instance, then retry."
@@ -150,6 +170,106 @@
 "TBY-STO-002.what": "Writing to the local store failed."
 "TBY-STO-002.cause": "{{.detail}}"
 "TBY-STO-002.action": "Check free space and permissions on the storage root, then retry the operation."
+
+"TBY-MED-001.what": "The medium carries no media manifest."
+"TBY-MED-001.cause": "{{.path}} is absent — the store was not produced by a completed mirror synchronization, or the copy onto the medium was partial."
+"TBY-MED-001.action": "Re-copy the store from the source instance, or re-run the mirror synchronization that produces it. Nothing can be pushed from a medium without an inventory, and this refusal has no override."
+
+"TBY-MED-002.what": "The media manifest cannot be read."
+"TBY-MED-002.cause": "{{.path}} is truncated, unparseable, or internally inconsistent: {{.detail}}."
+"TBY-MED-002.action": "Re-copy the store from the source instance and verify again. A manifest that does not parse leaves nothing to check the medium against, and this refusal has no override."
+
+"TBY-MED-003.what": "The media manifest uses an unsupported format version."
+"TBY-MED-003.cause": "The medium declares media manifest format {{.found}}; this build reads format {{.supported}}."
+"TBY-MED-003.action": "Use a Tobby release matching the medium on this side, or re-produce the medium with the release running here."
+
+"TBY-MED-004.what": "The medium uses an unsupported store format version."
+"TBY-MED-004.cause": "The medium declares store format {{.found}}; this build reads format {{.supported}}."
+"TBY-MED-004.action": "Use a Tobby release matching the medium, or move the content through the OCI image layout with standard tooling (skopeo, oras, crane)."
+
+"TBY-MED-005.what": "The medium's recipe graph does not match its inventory."
+"TBY-MED-005.cause": "{{.path}} hashes to {{.actual}} but the manifest records {{.expected}} — the list of what the medium delivers has changed since the manifest was written."
+"TBY-MED-005.action": "Re-copy the store from the source instance. The recipe graph is what every per-recipe verdict is computed from, so an altered one blocks the whole medium and has no override."
+
+"TBY-MED-006.what": "The medium is addressed to another zone."
+"TBY-MED-006.cause": "The manifest names zone {{.found}}; this instance serves zone {{.expected}}."
+"TBY-MED-006.action": "Check that this is the medium intended for this zone. An administrator may override the refusal deliberately; the override is recorded in the audit journal."
+
+"TBY-MED-007.what": "The medium is older than the last one imported for this zone."
+"TBY-MED-007.cause": "Medium {{.media}} was resolved at {{.resolved}}, while zone {{.zone}} last imported content resolved at {{.recorded}} — importing it would roll the zone backwards."
+"TBY-MED-007.action": "Check that you plugged in the current medium. An administrator may override the refusal deliberately — to restore an older delivery on purpose, for instance; the override is recorded in the audit journal."
+
+"TBY-MED-010.what": "A file the recipe needs is missing from the medium."
+"TBY-MED-010.cause": "{{.recipe}} reaches {{.path}}, which the medium does not carry — the copy was partial, or the file was removed."
+"TBY-MED-010.action": "Re-copy the store from the source instance. The recipe is blocked whole and has no override; recipes intact on the same medium remain pushable."
+
+"TBY-MED-011.what": "A file on the medium has the wrong size."
+"TBY-MED-011.cause": "{{.path}} holds {{.actual}} bytes but the manifest records {{.expected}} — the file was truncated or altered after the manifest was written."
+"TBY-MED-011.action": "Re-copy the store from the source instance. The recipe reaching this file is blocked whole and has no override."
+
+"TBY-MED-012.what": "A file on the medium does not match its recorded digest."
+"TBY-MED-012.cause": "{{.path}} hashes to {{.actual}} but the manifest records {{.expected}} — the content was corrupted or tampered with in transport."
+"TBY-MED-012.action": "Re-copy the store from the source instance. The recipe reaching this file is blocked whole and has no override."
+
+"TBY-MED-013.what": "A file the recipe needs is absent from the inventory."
+"TBY-MED-013.cause": "{{.recipe}} reaches {{.path}}, which the media manifest does not list — the manifest cannot vouch for it."
+"TBY-MED-013.action": "Re-produce the medium from the source instance so the manifest covers everything the recipes reach. The recipe is blocked whole and has no override."
+
+"TBY-MED-014.what": "A manifest on the medium cannot be read."
+"TBY-MED-014.cause": "{{.path}} is not readable as an OCI manifest or index: {{.detail}}."
+"TBY-MED-014.action": "Re-copy the store from the source instance. What the recipe delivers cannot be established from an unreadable manifest, so the recipe is blocked whole."
+
+"TBY-MED-015.what": "A blob on the medium is stored under the wrong digest."
+"TBY-MED-015.cause": "{{.path}} is addressed as {{.expected}} but its bytes hash to {{.actual}} — the content-addressed store disagrees with itself."
+"TBY-MED-015.action": "Re-copy the store from the source instance. The recipe reaching this blob is blocked whole and has no override."
+
+"TBY-MED-020.what": "A file on the medium is not covered by the inventory."
+"TBY-MED-020.cause": "{{.path}} lies under manifest coverage but the manifest does not list it — it was added after the manifest was written."
+"TBY-MED-020.action": "Nothing to do to proceed: extraneous content is never pushed. Investigate how it got onto the medium if you did not put it there."
+
+"TBY-MED-021.what": "A file on the medium is reached by no recipe."
+"TBY-MED-021.cause": "{{.path}} is inventoried but no recipe of this medium delivers it — leftover content from an earlier delivery, most often."
+"TBY-MED-021.action": "Nothing to do to proceed: content reachable from no recipe is never pushed. Prune the source store if you want the medium to carry less."
+
+"TBY-MED-022.what": "A bookkeeping file on the medium does not match its recorded digest."
+"TBY-MED-022.cause": "{{.path}} does not match its inventory entry — the store's own bookkeeping was altered after the manifest was written."
+"TBY-MED-022.action": "Nothing is pushed from this file, so verification continues; re-copy the store from the source instance if you did not alter it deliberately."
+
+"TBY-MED-030.what": "This medium has not been verified yet, so nothing is served from it."
+"TBY-MED-030.cause": "{{.surface}} is closed because medium {{.media}} arrived from another zone and no verification has established that its content is intact and signed (FR-054). The instance itself is running normally."
+"TBY-MED-030.action": "Open {{.screen}} in the web interface and run Verify — it re-hashes the medium and can take several minutes on a full disk — or call POST /api/v1/media/verify on this instance. This surface opens by itself as soon as the medium clears. `tobby media verify` reports the same verdict but runs in its own process and does not open this instance's surfaces: only a verification the instance itself performs does."
+
+"TBY-MED-031.what": "A verification of this medium is already running."
+"TBY-MED-031.cause": "One run is walking the medium (stage: {{.stage}}); starting a second would halve both and answer nothing new."
+"TBY-MED-031.action": "Wait for the run in progress. Its verdict lands on the Media screen and on GET /api/v1/media/verification."
+
+"TBY-MED-032.what": "This medium did not clear verification, so nothing is served from it."
+"TBY-MED-032.cause": "{{.surface}} is closed because medium {{.media}} verified as {{.verdict}} rather than whole. Serving is a property of the store as a whole — a blob a blocked recipe reaches is exactly the content that failed — so unlike the push decision it is not taken recipe by recipe."
+"TBY-MED-032.action": "Read the report on {{.screen}}: it names each blocked recipe and the file that failed. Re-copy the medium from the source instance and verify again. The intact recipes can still be pushed into the zone registry, which then serves them."
+
+"TBY-STO-004.what": "The operation was refused before it started: the target does not have enough free space."
+"TBY-STO-004.cause": "{{.path}} needs {{.needed}} bytes and only {{.available}} are usable — {{.free}} bytes are free, minus the {{.margin}} % safety margin. It is short by {{.shortfall}} bytes."
+"TBY-STO-004.action": "Free at least {{.shortfall}} bytes on the target, point the operation at a larger volume, or remove content that is no longer referenced. Lower preflight.safetyMarginPercent only if you accept filling the volume."
+
+"TBY-STO-005.what": "The target filesystem cannot hold a file this large."
+"TBY-STO-005.cause": "{{.path}} is formatted as {{.filesystem}}, whose largest single file is {{.limit}} bytes; the {{.what}} would write a file of {{.size}} bytes."
+"TBY-STO-005.action": "Reformat the medium with a filesystem that has no such limit (exFAT, NTFS, ext4, XFS), or split the transfer so that no single file exceeds the limit."
+
+"TBY-STO-006.what": "The store was not reset."
+"TBY-STO-006.cause": "The typed confirmation did not match: resetting the store requires typing {{.phrase}} exactly, in capitals, with nothing else."
+"TBY-STO-006.action": "Type {{.phrase}} in the confirmation field and submit again. A reset removes every artifact of this store; the operation history and the task logs are kept."
+
+"TBY-LAY-001.what": "This is not a usable OCI image layout."
+"TBY-LAY-001.cause": "{{.path}} could not be read as one: {{.detail}}"
+"TBY-LAY-001.action": "Check that the path is the layout itself — the directory (or the uncompressed tar of it) holding `oci-layout`, `index.json` and `blobs/`. A compressed archive must be decompressed first. `skopeo copy oci:<path>:<tag> …` on the same path tells you whether any OCI tool can read it either."
+
+"TBY-LAY-002.what": "The archive was refused: one of its entries has no place in an image layout."
+"TBY-LAY-002.cause": "In {{.path}}, the entry {{.entry}} was refused — {{.reason}}."
+"TBY-LAY-002.action": "Nothing was written. An OCI image layout archive contains only `oci-layout`, `index.json` and `blobs/<algorithm>/<digest>` files: an archive that also carries links or paths leading outside it was not produced by an OCI tool. Get the medium re-made at its source, and report it as an incident if it arrived from outside your organization."
+
+"TBY-LAY-003.what": "The export destination already exists."
+"TBY-LAY-003.cause": "{{.path}} is already there, and this export was not allowed to replace it."
+"TBY-LAY-003.action": "Choose another destination, or re-run the export with the replace option (`--overwrite` on the command line) once you are sure what is there can be lost."
 
 "TBY-TSK-001.what": "The task does not exist."
 "TBY-TSK-001.cause": "No task with identifier {{.id}} on this instance — wrong link, or the store was reset."
@@ -166,3 +286,23 @@
 "TBY-SRV-003.what": "The instance is unreachable."
 "TBY-SRV-003.cause": "The network connection dropped, or the instance is restarting."
 "TBY-SRV-003.action": "Check your network link and retry; the page resumes as soon as the instance answers."
+
+# Exit-code table (FR-066 amendment R-08). Not error codes: the rows of
+# the published command-line contract, rendered by ExitCodeTable into the
+# reference pages and covered by the semantic-versioning promise.
+"exit.column.code": "Code"
+"exit.column.name": "Name"
+"exit.column.meaning": "Meaning"
+
+"exit.ok.title": "Success"
+"exit.ok.meaning": "The command did what was asked."
+"exit.failure.title": "Operational failure"
+"exit.failure.meaning": "Network, storage or internal error — everything that failed without a policy or a verification verdict. Every code of the operational class exits here, and so does a command that started a task the instance then failed."
+"exit.usage.title": "Usage error"
+"exit.usage.meaning": "Bad flag, unknown command, or a command asked for something it cannot honour. The message carries a `see 'tobby … --help'` hint naming the command that misparsed."
+"exit.policy.title": "Policy refusal"
+"exit.policy.meaning": "Refused by explicit policy or authorization: registry allow-list, roles, secure-by-default startup refusals, immutable recipe tags, the two waivable media guards."
+"exit.verification.title": "Verification failure"
+"exit.verification.meaning": "A failed integrity or authenticity check: signatures, pinned digests, artifact types, media checksums. The most severe class, and the one no override reopens."
+"exit.changes-planned.title": "Changes planned"
+"exit.changes-planned.meaning": "A side-effect-free run found work to do — `tobby sync --dry-run` over a Retriever with pending changes. A success with something to say, so a gate can branch on it without treating it as a broken build."

@@ -26,8 +26,8 @@ import (
 
 // newUserCmd wires `tobby user` (R-01): local accounts are created and
 // updated on the host, the tool computes the argon2id hash — a password
-// hash is never written by hand. Human feedback goes to stderr; stdout
-// carries machine output only (the audit record, or the list table).
+// hash is never written by hand. Human feedback and the audit record go
+// to stderr; stdout carries the report and nothing else (R-08, B-010).
 func newUserCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "user",
@@ -41,13 +41,39 @@ func newUserCmd() *cobra.Command {
 // directory, resolved through the same configuration layers as serve.
 type userFlags struct {
 	commonFlags
-	stdin bool
+	report *reportFlag
+	stdin  bool
+}
+
+func newUserFlags() *userFlags {
+	return &userFlags{report: newReportFlag(outputText, outputJSON)}
 }
 
 func (f *userFlags) register(cmd *cobra.Command) {
 	f.commonFlags.register(cmd)
+	f.report.register(cmd)
 	cmd.Flags().BoolVar(&f.stdin, "password-stdin", false,
 		"read the password from the first line of standard input (for automation)")
+}
+
+// accountReport is the machine form of one account operation, and of one
+// row of `tobby user list` (R-08). It never carries anything derived from
+// the password: a hash is not a report (NFR-015).
+type accountReport struct {
+	Name string `json:"name"`
+	Role string `json:"role"`
+	// First marks the account that made this instance administrable, the
+	// one R-01 forces to be an admin. Only `add` sets it.
+	First     bool   `json:"first,omitempty"`
+	Created   string `json:"created,omitempty"`
+	LastLogin string `json:"lastLogin,omitempty"`
+}
+
+// accountListReport is the machine form of `tobby user list`. An object
+// rather than a bare array: a document that can grow a field without
+// breaking every reader is the whole point of the R-08 contract.
+type accountListReport struct {
+	Accounts []accountReport `json:"accounts"`
 }
 
 // stateStore opens the account store from the resolved configuration.
@@ -65,13 +91,16 @@ func (f *userFlags) stateStore(cmd *cobra.Command) (*auth.Store, error) {
 }
 
 func newUserAddCmd() *cobra.Command {
-	flags := &userFlags{}
+	flags := newUserFlags()
 	var roleFlag string
 	cmd := &cobra.Command{
 		Use:   "add <name>",
 		Short: "Create a local account (the first account defaults to admin)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := flags.report.validate(cmd); err != nil {
+				return err
+			}
 			store, err := flags.stateStore(cmd)
 			if err != nil {
 				return err
@@ -101,10 +130,13 @@ func newUserAddCmd() *cobra.Command {
 			if err := store.AddAccount(name, role, password, time.Now()); err != nil {
 				return err
 			}
-			auditLocal(&audit.Event{
+			auditLocal(cmd, &audit.Event{
 				Actor: audit.ActorLocal, Action: audit.ActionAccountCreate,
 				Target: name, Outcome: audit.OutcomeSuccess, Origin: audit.OriginLocal,
 			})
+			if flags.report.json() {
+				return writeJSON(cmd, accountReport{Name: name, Role: string(role), First: first})
+			}
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "account %q created with role %s\n", name, role)
 			if first {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "first account of this instance: role admin\n")
@@ -118,12 +150,15 @@ func newUserAddCmd() *cobra.Command {
 }
 
 func newUserPasswdCmd() *cobra.Command {
-	flags := &userFlags{}
+	flags := newUserFlags()
 	cmd := &cobra.Command{
 		Use:   "passwd <name>",
 		Short: "Change a local account's password",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := flags.report.validate(cmd); err != nil {
+				return err
+			}
 			store, err := flags.stateStore(cmd)
 			if err != nil {
 				return err
@@ -135,10 +170,14 @@ func newUserPasswdCmd() *cobra.Command {
 			if err := store.SetPassword(args[0], password, time.Now()); err != nil {
 				return err
 			}
-			auditLocal(&audit.Event{
+			auditLocal(cmd, &audit.Event{
 				Actor: audit.ActorLocal, Action: audit.ActionAccountPasswd,
 				Target: args[0], Outcome: audit.OutcomeSuccess, Origin: audit.OriginLocal,
 			})
+			if flags.report.json() {
+				acct, _ := store.Account(args[0])
+				return writeJSON(cmd, accountReport{Name: args[0], Role: string(acct.Role)})
+			}
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "password of %q updated\n", args[0])
 			return nil
 		},
@@ -148,15 +187,29 @@ func newUserPasswdCmd() *cobra.Command {
 }
 
 func newUserListCmd() *cobra.Command {
-	flags := &userFlags{}
+	flags := newUserFlags()
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List the local accounts",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := flags.report.validate(cmd); err != nil {
+				return err
+			}
 			store, err := flags.stateStore(cmd)
 			if err != nil {
 				return err
+			}
+			if flags.report.json() {
+				list := accountListReport{Accounts: []accountReport{}}
+				for _, a := range store.Accounts() {
+					row := accountReport{Name: a.Name, Role: string(a.Role), Created: a.Created.Format(time.RFC3339)}
+					if !a.LastLogin.IsZero() {
+						row.LastLogin = a.LastLogin.Format(time.RFC3339)
+					}
+					list.Accounts = append(list.Accounts, row)
+				}
+				return writeJSON(cmd, list)
 			}
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			_, _ = fmt.Fprintln(w, "NAME\tROLE\tCREATED\tLAST LOGIN")
@@ -171,6 +224,7 @@ func newUserListCmd() *cobra.Command {
 		},
 	}
 	flags.commonFlags.register(cmd)
+	flags.report.register(cmd)
 	return cmd
 }
 
@@ -192,13 +246,20 @@ func readPassword(cmd *cobra.Command, fromStdin, confirm bool) (string, error) {
 		return pw, nil
 	}
 
+	// The terminal check is the non-interactive guarantee of R-08, not a
+	// convenience: without it term.ReadPassword blocks on a pipe with no
+	// writer, and a CI job that forgot --password-stdin hangs until its
+	// own timeout instead of failing in the first second with the name of
+	// the flag it needs. TestNoCommandPromptsWithoutATerminal proves it
+	// by running every command with exactly such a pipe on stdin.
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
 		return "", errors.New("standard input is not a terminal: use --password-stdin to pass the password non-interactively")
 	}
-	fmt.Fprint(os.Stderr, "Password: ")
+	errW := cmd.ErrOrStderr()
+	_, _ = fmt.Fprint(errW, "Password: ")
 	first, err := term.ReadPassword(fd)
-	fmt.Fprintln(os.Stderr)
+	_, _ = fmt.Fprintln(errW)
 	if err != nil {
 		return "", fmt.Errorf("reading password: %w", err)
 	}
@@ -206,9 +267,9 @@ func readPassword(cmd *cobra.Command, fromStdin, confirm bool) (string, error) {
 		return "", errors.New("password must not be empty")
 	}
 	if confirm {
-		fmt.Fprint(os.Stderr, "Confirm password: ")
+		_, _ = fmt.Fprint(errW, "Confirm password: ")
 		second, err := term.ReadPassword(fd)
-		fmt.Fprintln(os.Stderr)
+		_, _ = fmt.Fprintln(errW)
 		if err != nil {
 			return "", fmt.Errorf("reading confirmation: %w", err)
 		}
@@ -219,9 +280,15 @@ func readPassword(cmd *cobra.Command, fromStdin, confirm bool) (string, error) {
 	return string(first), nil
 }
 
-// auditLocal emits one audit record on stdout — the FR-090 passthrough
-// channel — for host-local account operations.
-func auditLocal(e *audit.Event) {
-	logger := logging.New(os.Stdout, slog.LevelInfo)
-	audit.Log(context.Background(), logger, e)
+// auditLocal emits one audit record for a host-local account operation
+// (FR-094).
+//
+// It goes to STDERR, where every structured log of this CLI goes. It used
+// to go to stdout, which was defensible while `tobby user` reported
+// nothing else — but R-08 gives stdout to the report, and a log record
+// interleaved with a JSON document makes both unparseable (B-010). The
+// record is not lost: an operator collecting the trail redirects stderr,
+// the way they already do for `tobby fileset pack`.
+func auditLocal(cmd *cobra.Command, e *audit.Event) {
+	audit.Log(context.Background(), logging.New(cmd.ErrOrStderr(), slog.LevelInfo), e)
 }

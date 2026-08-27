@@ -1,0 +1,51 @@
+# The embedded documentation gate (R-05, NFR-003 amendment 2026-08-11).
+#
+# The guides the binary serves offline are a byte-for-byte copy of the
+# website sources (internal/help/corpus, written by tools/helpsync). Two
+# things can rot: the copy can fall behind the source, and a page edited on
+# the website can point at a target the embedded corpus does not carry.
+#
+# Neither is caught by ci.yml, which ignores `website/**` on purpose — so
+# an author editing only the documentation would get a green run for a
+# binary that ships the previous edition. This workflow is the half that
+# watches the source: it triggers on the documentation AND on the code that
+# embeds it, and it is cheap enough to run on every such change.
+#
+# Third-party actions are pinned by full commit SHA (ADR-0011).
+name: Help corpus
+
+on:
+  push:
+    branches: [main]
+    paths: &corpus_paths
+      - "website/src/content/docs/**"
+      - "website/src/data/status.yaml"
+      - "website/src/assets/docs/**"
+      - "internal/help/**"
+      - "tools/helpsync/**"
+      - ".github/workflows/help-corpus.yml"
+  pull_request:
+    paths: *corpus_paths
+
+permissions:
+  contents: read
+
+jobs:
+  corpus:
+    name: Embedded corpus in sync, and no dangling target
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # A pure copy: no Markdown parsed, no HTML produced, nothing fetched
+      # (NFR-019). A failure here means the committed corpus and the
+      # website sources have drifted — `go run ./tools/helpsync` fixes it.
+      - name: The embedded corpus matches the website sources
+        run: go run ./tools/helpsync -check
+      # The link check the NFR-003 amendment asks for, over the corpus as
+      # embedded: every cross-page link, every anchor, every screenshot and
+      # every error code referenced by a page resolves — in both languages.
+      - name: No dangling target in the embedded corpus
+        run: go test -count=1 ./internal/help/...

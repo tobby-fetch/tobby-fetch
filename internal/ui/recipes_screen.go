@@ -12,7 +12,9 @@
 package ui
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -21,6 +23,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
@@ -93,8 +96,17 @@ func (u *UI) recipesSync(w http.ResponseWriter, r *http.Request) {
 		u.render.Error(w, r, taxonomy.New(taxonomy.CodeInternal, nil))
 		return
 	}
+	// The prune decision is the form's, not the instance's (FR-045): the
+	// operator has just been shown the list and the total size, and an
+	// unchecked box is an instruction, not an omission. The form always
+	// posts the field — checked or not — through the hidden companion
+	// input, so "absent" never has to be guessed at.
+	prune := u.prunesByDefault
+	if r.Form.Has("prune") {
+		prune = r.FormValue("prune") == "on"
+	}
 	id, _ := auth.IdentityFrom(r.Context())
-	t, err := u.queue.Create(tasks.TypeSync, u.retrieverSource, id.Name, nil)
+	t, err := u.queue.Create(tasks.TypeSync, u.retrieverSource, id.Name, nil, tasks.WithPrune(prune))
 	if err != nil {
 		u.render.Error(w, r, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))
 		return
@@ -106,7 +118,66 @@ func (u *UI) recipesSync(w http.ResponseWriter, r *http.Request) {
 		Outcome: audit.OutcomeSuccess,
 		Origin:  auth.ClientOrigin(r),
 	})
+	if prune {
+		// A run that removes content is its own trail entry (FR-094): one
+		// record says a cycle started, this one says it was allowed to
+		// delete, and after the fact those are different questions.
+		audit.Log(r.Context(), u.logger, &audit.Event{
+			Actor:   id.Name,
+			Action:  audit.ActionPruneActive,
+			Target:  t.ID,
+			Outcome: audit.OutcomeSuccess,
+			Origin:  auth.ClientOrigin(r),
+		})
+	}
 	u.redirectTo(w, r, "/tasks/"+t.ID)
+}
+
+// PruneProjector computes what a prune would remove right now. The engine
+// implements it; the interface keeps this package testable without one.
+type PruneProjector interface {
+	ProjectPrune(ctx context.Context) (engine.PruneProjection, error)
+}
+
+// prunePreviewData feeds the FR-045 trigger-time confirmation fragment:
+// what the next synchronization would remove, and how much disk that is.
+type prunePreviewData struct {
+	Items      []engine.PruneItem
+	Count      int
+	TotalBytes int64
+	// Default is the state the checkbox opens in — on in mirror mode,
+	// where the store IS the delivery unit and its operator is standing
+	// right here.
+	Default bool
+}
+
+// prunePreview serves GET /recipes/prune-preview: the swap target the
+// trigger loads before an operator confirms (UI-SPEC §5.2 async tile).
+//
+// It is a fragment rather than part of the page because it costs a
+// Retriever resolution: the recipe list must render at once even when the
+// cookbook is slow, and a projection that cannot be computed has to be
+// able to say so without taking the screen down with it.
+func (u *UI) prunePreview(w http.ResponseWriter, r *http.Request) {
+	if u.projector == nil || u.retrieverSource == "" {
+		u.render.Fragment(w, r, "recipes", "prune-preview-unavailable", nil)
+		return
+	}
+	projection, err := u.projector.ProjectPrune(r.Context())
+	if err != nil {
+		u.logger.LogAttrs(r.Context(), slog.LevelWarn, "prune projection failed",
+			slog.String("error", err.Error()), slog.String("requirement", "FR-045"))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		u.render.Fragment(w, r, "recipes", "prune-preview-error", nil)
+		return
+	}
+	u.render.Fragment(w, r, "recipes", "prune-preview", &prunePreviewData{
+		Items:      projection.Items,
+		Count:      len(projection.Items),
+		TotalBytes: projection.TotalBytes,
+		Default:    u.prunesByDefault,
+	})
 }
 
 // recipeMappingData feeds the /recipes/{recipe}/mapping page: every
@@ -168,6 +239,14 @@ type retrieverData struct {
 	// LastSync is the most recent sync-type task, nil when none ran yet.
 	LastSync    *taskRow
 	HasLastSync bool
+	// Prune reports that reconciliation removes the content the Retriever
+	// no longer references (FR-045 amendment, R-33). An instance that
+	// deletes on a timer says so where its posture is read.
+	Prune bool
+	// Occupancy is the latest store-footprint sample against the
+	// configured threshold (R-33). Zero-valued Threshold means none is
+	// configured, which the screen states as such.
+	Occupancy store.Occupancy
 }
 
 // intervalData renders the reconciliation cadence. Configured and
@@ -201,6 +280,10 @@ func (u *UI) retrieverScreenData() *retrieverData {
 		Allowlist:         u.allowlist.Patterns(),
 		Destination:       u.destination,
 		Cookbook:          u.cookbook,
+		Prune:             u.prunesByDefault,
+	}
+	if u.occupancy != nil {
+		data.Occupancy = u.occupancy.Current()
 	}
 	if u.interval != nil {
 		data.Interval = &intervalData{

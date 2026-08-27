@@ -1,0 +1,11 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* Contextual pointer from a screen into the embedded documentation
+     (NFR-003, amendment 2026-08-11: "screens SHOULD link into the relevant
+     section contextually"). Callers pass the guide through withData:
+
+       {{template "help-cta" (withData . (.Guide "passthrough/operate"))}}
+
+     .Guide returns nothing when the corpus has no such page, so the block
+     renders nothing rather than a dead link — and TestScreenGuidesExist
+     fails the build on a key the corpus does not carry. */}}
+{{define "help-cta"}}{{with .Data}}<a class="t-help-cta" href="{{.Href}}"><span class="t-help-cta-icon" aria-hidden="true">✻</span><span class="t-visually-hidden">{{$.T "help.screen_link"}} — </span>{{.Title}}</a>{{end}}{{end}}

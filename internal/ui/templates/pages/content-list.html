@@ -7,6 +7,7 @@
 {{define "main"}}
 <section>
   <h1 class="t-page-title">{{.T "content.title"}}</h1>
+<p class="t-page-guide">{{template "help-cta" (withData . (.Guide "passthrough/connect-clients"))}}</p>
   {{if .Err}}
   {{template "error-block" .}}
   {{else}}

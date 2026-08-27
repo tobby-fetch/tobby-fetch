@@ -19,6 +19,8 @@ import (
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
+	"github.com/tobby-fetch/tobby-fetch/internal/help"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 	"github.com/tobby-fetch/tobby-fetch/internal/ui/format"
@@ -40,6 +42,8 @@ var pageFiles = []string{
 	"account",
 	"admin-accounts",
 	"admin-network",
+	"admin-oci-layout",
+	"admin-store",
 	"admin-retriever",
 	"api-docs",
 	"content-list",
@@ -47,10 +51,14 @@ var pageFiles = []string{
 	"content-repo",
 	"dashboard",
 	"error",
+	"filesets",
 	"help",
+	"help-page",
 	"import",
 	"login",
+	"media",
 	"recipe-mapping",
+	"recipe-plan",
 	"recipe-publish",
 	"recipes",
 	"task-detail",
@@ -61,6 +69,22 @@ var pageFiles = []string{
 // (hx-history="false" stamped on <main>): screens that may carry a secret
 // (ADR-0015 §5). Belt over the global historyCacheSize:0 — the attribute
 // survives a configuration regression.
+// provenanceClass picks the badge modifier of one inventory provenance.
+// A manual import borrows the "outdated" amber rather than a colour of
+// its own: it is the one class that carries a caveat — unsigned, of local
+// origin — and amber is already what this design system uses to say
+// "look at this one".
+func provenanceClass(provenance string) string {
+	switch provenance {
+	case fileserve.FromRecipe:
+		return "recipe"
+	case fileserve.FromManualImport:
+		return "outdated"
+	default:
+		return "solid"
+	}
+}
+
 var noHistoryPages = map[string]bool{"admin-accounts": true, "account": true}
 
 // parseTemplates builds one template set per page: layout + partials +
@@ -71,6 +95,12 @@ func parseTemplates() map[string]*template.Template {
 		// kindClass maps a kind onto its badge modifier (UI-SPEC §7: five
 		// pills, never translated).
 		"kindClass": kindClass,
+		// provenanceClass maps a FileSet inventory provenance onto a badge
+		// modifier (FR-048: a manual import must be distinguishable at a
+		// glance from a Recipe-delivered FileSet).
+		"provenanceClass": provenanceClass,
+		// join renders a version list as one comma-separated cell.
+		"join": func(v []string) string { return strings.Join(v, ", ") },
 		// withErr rebinds the frozen error-block partial onto another error
 		// (per-item task failures): same View context, substituted Err.
 		"withErr": func(v *View, e *ErrView) *View {
@@ -153,6 +183,13 @@ type ErrView struct {
 	Action      string
 	HelpAnchor  string
 	Correlation string
+	// Detail is the verbatim technical cause of a persisted failure
+	// (B-021), never localized and only ever set where one was recorded —
+	// the task surfaces. What/Cause/Action above stay the catalog's
+	// localized triple; this is the line that says what the registry, the
+	// parser or the filesystem actually answered, and without it a
+	// TBY-SRV-001 row explains nothing at all.
+	Detail string
 	// Status is the HTTP status, shown on full error pages.
 	Status int
 }
@@ -181,6 +218,27 @@ func pairsToMap(pairs []any) map[string]any {
 		}
 	}
 	return m
+}
+
+// GuideLink is a screen's contextual pointer into the embedded
+// documentation (NFR-003, amendment 2026-08-11: "screens SHOULD link into
+// the relevant section contextually"). It is nil when the corpus carries
+// no such page, so a screen can never render a help link that leads
+// nowhere — the failure mode offline documentation exists to avoid.
+type GuideLink struct {
+	Href  string
+	Title string
+}
+
+// Guide resolves a corpus page key into a link labelled with the page's
+// own title, in the viewer's language. TestScreenGuidesExist walks the
+// templates and fails on a key the corpus does not carry.
+func (v *View) Guide(key string) *GuideLink {
+	pg, _, ok := help.Load().Lookup(v.lang, key)
+	if !ok {
+		return nil
+	}
+	return &GuideLink{Href: "/help/" + key, Title: pg.Title}
 }
 
 // Formatting helpers (package format: the single localization point).
@@ -223,6 +281,12 @@ type Renderer struct {
 	// AnonymousFileSets names the FileSets served without authentication
 	// (FR-047 opt-in): a permanent warning banner, never silent.
 	AnonymousFileSets []string
+	// Occupancy reads the latest store-footprint sample (R-33). Unlike
+	// every other banner source it is a function rather than a value: the
+	// fact it carries changes while the instance runs, and the banner has
+	// to appear AND retract without a restart. Nil on an instance wired
+	// without a store.
+	Occupancy func() store.Occupancy
 }
 
 // NewRenderer parses the embedded templates.
@@ -282,6 +346,18 @@ func (rd *Renderer) view(r *http.Request, data any) *View {
 			Kind: "warning",
 			Text: v.T("banner.anonymous_filesets", "Names", strings.Join(rd.AnonymousFileSets, ", ")),
 		})
+	}
+	// Operational last, and persistent by construction: it is re-read on
+	// every page, so it goes away by itself when the store comes back
+	// under the threshold (R-33) — no dismissal, no restart.
+	if rd.Occupancy != nil {
+		if o := rd.Occupancy(); o.Exceeded {
+			v.Banners = append(v.Banners, Banner{
+				Kind: "warning",
+				Text: v.T("banner.store_occupancy",
+					"Used", v.FmtBytes(o.Bytes), "Threshold", v.FmtBytes(o.Threshold)),
+			})
+		}
 	}
 	return v
 }

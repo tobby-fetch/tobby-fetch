@@ -17,12 +17,9 @@ This page is generated from the taxonomy catalog embedded in the binary
 `#tby-reg-003` is stable — the same anchors the in-instance troubleshooting
 guide (`/help#TBY-REG-003`) resolves.
 
-:::note[Upcoming — milestone 5]
-The embedded `/help` troubleshooting guide (R-05) and the media-related
-error codes (export, pre-flight, import verdicts) ship with milestone 5,
-on these same anchors. Track it on the
-[project status](../../discover/status/) page.
-:::
+A test walks the catalog and fails the build when a code has no section
+here, in either language — the catalog is the source of truth, this page is
+its published rendering.
 
 **How to read each entry:**
 
@@ -32,11 +29,11 @@ on these same anchors. Track it on the
   authoring pipeline.
 - **Blocks** — the blast radius: the whole instance (startup refusal), one
   task or recipe, or just the request at hand.
-- **Override** — no code has a runtime override today. Policy refusals are
-  lifted by changing the audited configuration that enforces them
-  (allowlist, trust scopes, accounts); verification failures cannot be
-  overridden at all. The single runtime override — admin-only, audited, at
-  media import — arrives with milestone 5.
+- **Override** — policy refusals are lifted by changing the audited
+  configuration that enforces them (allowlist, trust scopes, accounts);
+  verification failures cannot be overridden at all. The only runtime
+  overrides are admin-only and audited, and both sit at media import: the
+  zone mismatch (TBY-MED-006) and the staleness guard (TBY-MED-007).
 
 ## Authentication and accounts (TBY-AUTH)
 
@@ -176,6 +173,21 @@ on these same anchors. Track it on the
   with `tobby config dump`, then restart. See the
   [configuration reference](../../reference/configuration/).
 - **Fixable offline:** yes · **Blocks:** the whole instance (startup refusal) or the command that loaded the configuration
+
+### TBY-CFG-002
+
+- **What happened:** the instance refuses to start — a secret file is
+  configured inside the transportable store.
+- **Probable cause:** one of `state.root`, `registries.credentialsFile` or
+  `server.tls.keyFile` resolves under `storage.root`. The store is handed
+  to a courier and plugged into a machine in another zone, so everything
+  under it is assumed to be read by someone else (NFR-020).
+- **Corrective action:** move each listed file outside the store — the
+  state directory is its home — update the setting, then start again. The
+  check resolves through the filesystem, so a path that reaches the store
+  through a symbolic link counts as inside; the message reports the
+  resolved path that decided.
+- **Fixable offline:** yes · **Blocks:** the whole instance (startup refusal)
 
 ## Outbound network and TLS (TBY-NET)
 
@@ -317,6 +329,23 @@ on these same anchors. Track it on the
   any caching proxy on the path.
 - **Fixable offline:** no (source-side; the `resumeThreshold: 0` workaround is local) · **Blocks:** the task concerned
 
+### TBY-REG-008
+
+- **What happened:** the source index does not carry a platform the recipe
+  asks for.
+- **Probable cause:** for *\<reference\>*, no child of the index matches
+  *\<platforms\>*; the index publishes *\<available\>*. A platform
+  selector is `os/arch` with an **optional** variant (RECIPE-SPEC §7.1): an
+  omitted variant matches any, a named one must match exactly. Registries
+  commonly describe their arm64 child as `linux/arm64` with variant `v8`,
+  so a selector naming a variant the source does not publish matches
+  nothing.
+- **Corrective action:** confront the `platforms` list of the ingredient
+  with what the source actually publishes (`docker manifest inspect`, or
+  the inspection report of a unit import) and correct it. Tobby never
+  silently drops a platform that was asked for.
+- **Fixable offline:** no (the truth lives in the source index) · **Blocks:** the ingredient concerned
+
 ## Policy refusals (TBY-POL)
 
 ### TBY-POL-001
@@ -455,6 +484,341 @@ on these same anchors. Track it on the
   or set it to `0` to stream every blob straight to the store without
   spooling.
 - **Fixable offline:** yes · **Blocks:** the resumable transfers concerned
+
+### TBY-STO-004
+
+- **What happened:** the operation was refused before it started — the
+  target does not have enough free space (FR-055).
+- **Probable cause:** the projected write exceeds the target's free space
+  minus the configured safety margin (`preflight.safetyMarginPercent`,
+  default 10 %). The message states the exact shortfall in bytes.
+- **Corrective action:** free at least the stated number of bytes on the
+  target, point the operation at a larger volume, or remove content that is
+  no longer referenced. Lowering `preflight.safetyMarginPercent` only makes
+  sense if you accept filling the volume; `preflight.disabled: true` removes
+  the check entirely and is announced at startup.
+- **Fixable offline:** yes · **Blocks:** the synchronization or export concerned; nothing is written
+
+### TBY-STO-005
+
+- **What happened:** the target filesystem cannot hold a file this large
+  (FR-055).
+- **Probable cause:** the target is formatted with a filesystem whose
+  single-file ceiling is below the largest file the operation would
+  write — typically FAT32, whose limit is 4 GiB minus one byte. Single-tar
+  export archives count as one file. The same code is raised when the
+  condition arrives mid-write instead of at the pre-flight check: a medium
+  swapped between the two, or a filesystem this build could not identify.
+- **Corrective action:** reformat the medium with a filesystem that has no
+  such limit (exFAT, NTFS, ext4, XFS), or split the transfer so that no
+  single file exceeds the limit.
+- **Fixable offline:** yes · **Blocks:** the synchronization or export concerned; on a mid-write failure the store is left intact
+
+### TBY-STO-006
+
+- **What happened:** the store was not reset.
+- **Probable cause:** the typed confirmation did not match. A reset asks
+  for the word `RESET`, in capitals and with nothing else — a control this
+  destructive is not one you can click through by accident (FR-046).
+- **Corrective action:** type `RESET` in the confirmation field and submit
+  again. The reset removes every artifact this store holds; the operation
+  history, the task logs and the audit trail are **kept**, because a trail
+  a destructive action erases is not a trail.
+- **Fixable offline:** yes · **Blocks:** nothing — the store is untouched
+
+## Removable-media transport (TBY-MED)
+
+The medium is a store that changed hands, so everything it says about
+itself is a claim until this side has re-hashed it. Four conditions block
+a medium as a whole; everything else is decided delivery by delivery, so
+a partially damaged medium still hands over its intact recipes.
+
+### TBY-MED-001
+
+- **What happened:** the medium carries no media manifest.
+- **Probable cause:** `meta/media.json` is absent — the store was not
+  produced by a completed mirror synchronization, or the copy onto the
+  medium was partial.
+- **Corrective action:** re-copy the store from the source instance, or
+  re-run the mirror synchronization that produces it.
+- **Fixable offline:** yes · **Blocks:** the whole medium, no override (verification class, exit 4)
+
+### TBY-MED-002
+
+- **What happened:** the media manifest cannot be read.
+- **Probable cause:** it is truncated, unparseable, or internally
+  inconsistent — a path escaping the store, a duplicated inventory entry,
+  a repository name that is not one.
+- **Corrective action:** re-copy the store from the source instance and
+  verify again.
+- **Fixable offline:** yes · **Blocks:** the whole medium, no override (verification class, exit 4)
+
+### TBY-MED-003
+
+- **What happened:** the media manifest uses an unsupported format version.
+- **Probable cause:** the medium declares a manifest layout this build does
+  not read; both versions are named.
+- **Corrective action:** use a Tobby release matching the medium on this
+  side, or re-produce the medium with the release running here.
+- **Fixable offline:** yes · **Blocks:** the whole medium (verification class, exit 4)
+
+### TBY-MED-004
+
+- **What happened:** the medium uses an unsupported store format version.
+- **Probable cause:** the store layout on the medium is of another major
+  series; both versions are named.
+- **Corrective action:** use a matching Tobby release, or move the content
+  through the OCI image layout with standard tooling.
+- **Fixable offline:** yes · **Blocks:** the whole medium (verification class, exit 4)
+
+### TBY-MED-005
+
+- **What happened:** the medium's recipe graph does not match its inventory.
+- **Probable cause:** `meta/recipes.json` was altered after the manifest was
+  written — the list of what the medium delivers has changed.
+- **Corrective action:** re-copy the store from the source instance. The
+  recipe graph is what every per-recipe verdict is computed from.
+- **Fixable offline:** yes · **Blocks:** the whole medium, no override (verification class, exit 4)
+
+### TBY-MED-006
+
+- **What happened:** the medium is addressed to another zone.
+- **Probable cause:** the manifest names a zone this instance does not
+  serve; both are named.
+- **Corrective action:** check that this is the medium intended for this
+  zone. An administrator may override the refusal; the override is
+  recorded in the audit journal.
+- **Fixable offline:** yes · **Blocks:** the whole medium, admin override available (policy class, exit 3)
+
+### TBY-MED-007
+
+- **What happened:** the medium is older than the last one imported for this
+  zone.
+- **Probable cause:** its resolution timestamp precedes the one recorded for
+  the zone's last completed import; both timestamps and the medium are
+  named. An anti-accident guard, not a security control — the manifest is
+  unsigned.
+- **Corrective action:** check that you plugged in the current medium. An
+  administrator may override the refusal — to restore an older delivery on
+  purpose, for instance; the override is audited.
+- **Fixable offline:** yes · **Blocks:** the whole medium, admin override available (policy class, exit 3)
+
+### TBY-MED-010
+
+- **What happened:** a file the recipe needs is missing from the medium.
+- **Probable cause:** the copy was partial, or the file was removed.
+- **Corrective action:** re-copy the store from the source instance.
+- **Fixable offline:** yes · **Blocks:** that recipe whole, no override (verification class, exit 4)
+
+### TBY-MED-011
+
+- **What happened:** a file on the medium has the wrong size.
+- **Probable cause:** it was truncated or altered after the manifest was
+  written; expected and actual sizes are named.
+- **Corrective action:** re-copy the store from the source instance.
+- **Fixable offline:** yes · **Blocks:** the recipe reaching that file, no override (verification class, exit 4)
+
+### TBY-MED-012
+
+- **What happened:** a file on the medium does not match its recorded digest.
+- **Probable cause:** the content was corrupted or tampered with in
+  transport; both digests are named.
+- **Corrective action:** re-copy the store from the source instance.
+- **Fixable offline:** yes · **Blocks:** the recipe reaching that file, no override (verification class, exit 4)
+
+### TBY-MED-013
+
+- **What happened:** a file the recipe needs is absent from the inventory.
+- **Probable cause:** the manifest does not cover everything the recipes
+  reach, so it cannot vouch for that file.
+- **Corrective action:** re-produce the medium from the source instance.
+- **Fixable offline:** yes · **Blocks:** that recipe whole, no override (verification class, exit 4)
+
+### TBY-MED-014
+
+- **What happened:** a manifest on the medium cannot be read.
+- **Probable cause:** the named file is not readable as an OCI manifest or
+  index, so what the recipe delivers cannot be established.
+- **Corrective action:** re-copy the store from the source instance.
+- **Fixable offline:** yes · **Blocks:** that recipe whole (verification class, exit 4)
+
+### TBY-MED-015
+
+- **What happened:** a blob on the medium is stored under the wrong digest.
+- **Probable cause:** its bytes do not hash to the digest its own path
+  claims — the content-addressed store disagrees with itself, whatever the
+  inventory says.
+- **Corrective action:** re-copy the store from the source instance.
+- **Fixable offline:** yes · **Blocks:** the recipe reaching that blob, no override (verification class, exit 4)
+
+### TBY-MED-020
+
+- **What happened:** a file on the medium is not covered by the inventory.
+- **Probable cause:** it was added after the manifest was written.
+- **Corrective action:** none needed to proceed — extraneous content is
+  never pushed. Investigate how it got there if you did not put it there.
+- **Fixable offline:** yes · **Blocks:** nothing (reported only)
+
+### TBY-MED-021
+
+- **What happened:** a file on the medium is reached by no recipe.
+- **Probable cause:** leftover content from an earlier delivery, most often.
+- **Corrective action:** none needed to proceed — content reachable from no
+  recipe is never pushed. Prune the source store to carry less.
+- **Fixable offline:** yes · **Blocks:** nothing (reported only)
+
+### TBY-MED-022
+
+- **What happened:** a bookkeeping file on the medium does not match its
+  recorded digest.
+- **Probable cause:** the store's own ledgers — other than the recipe graph,
+  which blocks globally — were altered after the manifest was written.
+- **Corrective action:** re-copy the store from the source instance if you
+  did not alter it deliberately. Nothing is pushed out of these files.
+- **Fixable offline:** yes · **Blocks:** nothing (reported only)
+
+### TBY-MED-030
+
+- **What happened:** the medium has not been verified yet, so this instance
+  serves none of its content.
+- **Probable cause:** the store this instance was pointed at arrived from
+  another zone on a physical medium, and nothing has yet re-hashed it or
+  checked the signatures of what it delivers. FR-054 requires verification
+  to precede any push, any serving and any local write, so `/v2/` and
+  `/files/` are closed until it has run. The instance itself is alive,
+  ready, and serving its interface and its API normally.
+- **Corrective action:** open the **Media** screen and run *Verify* — on a
+  full disk it takes minutes — or call `POST /api/v1/media/verify` on this
+  instance. The content surfaces open by themselves as soon as the medium
+  clears. `tobby media verify` reaches the same verdict but runs in its own
+  process against the directory, so it does **not** open the surfaces of a
+  running instance: the gate is opened by a verification the instance
+  itself performs. There is deliberately no setting that serves a medium
+  without verifying it.
+- **Fixable offline:** yes · **Blocks:** the embedded registry and the file
+  surface, for this medium
+
+### TBY-MED-031
+
+- **What happened:** a verification of this medium is already running.
+- **Probable cause:** a second verification was asked for while one was
+  walking the medium. Two walks over the same disk halve each other and
+  answer nothing new.
+- **Corrective action:** wait for the run in progress. Its verdict lands on
+  the Media screen and on `GET /api/v1/media/verification`.
+- **Fixable offline:** yes · **Blocks:** the second verification only
+
+### TBY-MED-032
+
+- **What happened:** the medium was verified and did not come out whole, so
+  this instance serves none of its content.
+- **Probable cause:** the verdict is *partial* or *blocked*: at least one
+  delivery failed its signature or one of its ingredient digests. Unlike the
+  push decision, which R-19 takes recipe by recipe, serving is a property of
+  the store as a whole — `/v2/` and `/files/` hand out blobs, and a blob a
+  blocked delivery reaches is exactly the content that failed.
+- **Corrective action:** read the report on the Media screen: it names each
+  blocked delivery and the file that failed. Re-copy the medium from the
+  source instance and verify it again. The intact deliveries can still be
+  pushed into the zone registry, which then serves them.
+- **Fixable offline:** yes · **Blocks:** the embedded registry and the file
+  surface, for this medium
+
+## OCI image layout export and import (TBY-LAY)
+
+The interoperability exit (FR-051): the store written out in the standard
+layout that `skopeo`, `oras` and `crane` read, and read back in. An
+imported layout arrives from outside, so it is treated the way any foreign
+input is.
+
+### TBY-LAY-001
+
+- **What happened:** this is not a usable OCI image layout.
+- **Probable cause:** the path could not be read as one — no `oci-layout`
+  marker, an `index.json` that does not parse, or a blob that does not hash
+  to the digest addressing it.
+- **Corrective action:** check that the path is the layout itself: the
+  directory, or the **uncompressed** tar of it, holding `oci-layout`,
+  `index.json` and `blobs/`. A compressed archive must be decompressed
+  first — Tobby reads an uncompressed archive by seeking to a recorded blob
+  offset, which is also what leaves a decompression bomb nothing to expand
+  into. `skopeo copy oci:<path>:<tag> …` on the same path tells you whether
+  any OCI tool reads it either.
+- **Fixable offline:** yes · **Blocks:** the import concerned; nothing is written
+
+### TBY-LAY-002
+
+- **What happened:** the archive was refused — one of its entries has no
+  place in an image layout.
+- **Probable cause:** the named entry is an absolute path, a path leading
+  outside the archive, or a link. A layout archive holds `oci-layout`,
+  `index.json` and `blobs/<algorithm>/<digest>` files and nothing else, so
+  an archive carrying such an entry was not produced by an OCI tool.
+- **Corrective action:** nothing was written. Have the medium re-made at
+  its source, and report it as an incident if it arrived from outside your
+  organization. This is a verification failure, not a damaged transfer.
+- **Fixable offline:** yes · **Blocks:** the import concerned; nothing is written (verification class, exit 4)
+
+### TBY-LAY-003
+
+- **What happened:** the export destination already exists.
+- **Probable cause:** the path is already there and this export was not
+  allowed to replace it. An export writes to a staging path and renames it
+  into place, so it never half-overwrites anything.
+- **Corrective action:** choose another destination, or re-run with the
+  replace option (`--overwrite`) once you are sure what is there can be
+  lost.
+- **Fixable offline:** yes · **Blocks:** the export concerned; nothing is written
+
+## Packing file sets (TBY-FIL)
+
+`tobby fileset pack` turns a local directory into a FileSet OCI image and
+imports it through the unit-import path (FR-048). What
+[RECIPE-SPEC §14.5](https://tobby-fetch.github.io/recipe-spec/#145-extraction-safety)
+refuses at extraction time, packing refuses **first** — where the operator
+can still fix the tree. A file set that quietly held fewer files than the
+directory it came from would be worse than a refusal naming the entry.
+
+### TBY-FIL-001
+
+- **What happened:** the file set could not be packed.
+- **Probable cause:** stated verbatim — most often a directory that does
+  not exist, is empty, or is unreadable, or a name and version that do not
+  parse.
+- **Corrective action:** point the command at an existing, non-empty
+  directory and give the file set a lowercase name and a version, for
+  example `tobby fileset pack ./repo site-docs:1.0.0`. Nothing was written
+  to the store.
+- **Fixable offline:** yes · **Blocks:** the packing concerned; nothing is written
+
+### TBY-FIL-002
+
+- **What happened:** the directory holds an entry that cannot be packed
+  safely.
+- **Probable cause:** the named entry is a symbolic link pointing outside
+  the directory, a special file (device, FIFO, socket), a setuid or setgid
+  file, a name starting with `.wh.` — which a layer reader would take for a
+  deletion — or a name carrying a backslash or a NUL byte.
+- **Corrective action:** remove or replace that entry and pack again. A
+  file set is extracted and served on other machines, including Windows,
+  so the refusals are about where the content lands, not about this host.
+  Nothing was written to the store.
+- **Fixable offline:** yes · **Blocks:** the packing concerned; nothing is written
+
+### TBY-FIL-003
+
+- **What happened:** packing that directory is not allowed from this
+  surface.
+- **Probable cause:** the path lies outside the directories
+  `files.packRoots` allows the web interface and the API to read. With no
+  entry configured they may read **none** — reading an arbitrary host
+  directory on a network request is a capability an instance is given, not
+  one it holds.
+- **Corrective action:** either run `tobby fileset pack` on the instance
+  host, which is not restricted because whoever runs it already holds those
+  filesystem rights, or add the directory to `files.packRoots` in the
+  configuration file and restart the instance.
+- **Fixable offline:** yes · **Blocks:** the packing concerned; nothing is written
 
 ## Tasks (TBY-TSK)
 

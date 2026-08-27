@@ -4,15 +4,23 @@
 package ui
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/opencontainers/go-digest"
+
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 )
@@ -402,9 +410,9 @@ func TestSecurityBanners(t *testing.T) {
 	}
 }
 
-// TestRecipesNavEntry: the shell carries a real /recipes entry for every
-// role — the milestone-3 placeholder is gone, the media one stays under
-// ShowUpcoming.
+// TestRecipesNavEntry: the shell carries a real /recipes entry and a real
+// /media entry for every role — both milestone placeholders are gone, the
+// media one since the R-02 screen shipped.
 func TestRecipesNavEntry(t *testing.T) {
 	u := newTestUIWithOptions(t, &Options{ShowUpcoming: true}, nil)
 	mux := mount(u)
@@ -417,7 +425,176 @@ func TestRecipesNavEntry(t *testing.T) {
 	if strings.Contains(body, "Recipes — milestone") {
 		t.Error("nav still carries the recipes placeholder")
 	}
-	if !strings.Contains(body, "Media — milestone 5") {
-		t.Error("nav lost the media placeholder (ShowUpcoming)")
+	if !strings.Contains(body, `href="/media"`) {
+		t.Error("nav misses the real /media entry (R-02)")
+	}
+	if strings.Contains(body, "Media — milestone") {
+		t.Error("nav still carries the media placeholder")
+	}
+}
+
+// TestStoreOccupancyBanner is the UI half of R-33: the warning is on every
+// page while the store is over its threshold, names both figures, and goes
+// away by itself when the store comes back under it. A warning that
+// appears and never retracts is a warning operators learn to ignore.
+func TestStoreOccupancyBanner(t *testing.T) {
+	root := t.TempDir()
+	st, err := store.Open(context.Background(), root, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stOpen := true
+	closeStore := func() {
+		if !stOpen {
+			return
+		}
+		stOpen = false
+		if cerr := st.Close(); cerr != nil {
+			t.Errorf("closing store: %v", cerr)
+		}
+	}
+	t.Cleanup(closeStore)
+	// One byte of threshold: any content at all crosses it, which keeps
+	// the fixture about the banner rather than about arithmetic.
+	monitor := store.NewOccupancyMonitor(st, 1, slog.New(slog.DiscardHandler))
+	u := newTestUIWithOptions(t, &Options{Store: st, Occupancy: monitor}, nil)
+	mux := mount(u)
+	c := login(t, mux, "lecteur", "pw-view")
+
+	// An empty store is under any threshold: no banner.
+	monitor.Refresh(context.Background())
+	if body := get(t, mux, c, "/", nil).Body.String(); strings.Contains(body, "over the configured") {
+		t.Error("the occupancy banner is shown on a store that is within its threshold")
+	}
+
+	payload := bytes.Repeat([]byte("x"), 4096)
+	if err := st.WriteBlob(context.Background(), "some/repo", digest.FromBytes(payload), bytes.NewReader(payload)); err != nil {
+		t.Fatal(err)
+	}
+	monitor.Refresh(context.Background())
+	// The banner is shell furniture, so it must be on every page, not
+	// only on the store screens.
+	for _, page := range []string{"/", "/content", "/recipes"} {
+		body := get(t, mux, c, page, nil).Body.String()
+		if !strings.Contains(body, "t-banner--warning") || !strings.Contains(body, "over the configured") {
+			t.Errorf("%s misses the R-33 store-occupancy warning banner", page)
+		}
+	}
+
+	// The content goes — the same page, no restart, no dismissal. The
+	// removal reaches around the store's API, so the handle on that tree is
+	// given up first: Windows refuses to delete a file another handle holds
+	// open, and this removal is a hard failure here (NFR-018). Nothing
+	// after it needs the store back — the refresh sizes the blob directory
+	// on disk and the dashboard reads the sample the monitor recorded.
+	closeStore()
+	if err := os.RemoveAll(filepath.Join(root, "docker", "registry", "v2", "blobs")); err != nil {
+		t.Fatal(err)
+	}
+	monitor.Refresh(context.Background())
+	if body := get(t, mux, c, "/", nil).Body.String(); strings.Contains(body, "over the configured") {
+		t.Error("the occupancy banner survived the store coming back under its threshold")
+	}
+}
+
+// fakeProjector answers the FR-045 confirmation with a fixed projection,
+// so the screen is tested without a cookbook: what the engine computes has
+// its own tests, what the screen SHOWS is this one's subject.
+type fakeProjector struct {
+	projection engine.PruneProjection
+	err        error
+}
+
+func (f fakeProjector) ProjectPrune(context.Context) (engine.PruneProjection, error) {
+	return f.projection, f.err
+}
+
+// TestPruneConfirmationAtTriggerTime is the FR-045 requirement that a
+// mirror prune is "visible at trigger time with the list and total size of
+// items to be removed": the operator sees both before confirming, and the
+// box they untick is obeyed.
+func TestPruneConfirmationAtTriggerTime(t *testing.T) {
+	queue := newTestQueue(t)
+	const source = "https://retriever.example/retriever.yaml"
+	projector := fakeProjector{projection: engine.PruneProjection{
+		TotalBytes: 3 * 1024 * 1024,
+		Items: []engine.PruneItem{
+			{Repo: "host_5000/ingredients/beta", Tag: "2.0.0", Recipe: "beta@2.0.0", Bytes: 3 * 1024 * 1024},
+		},
+	}}
+	u := newTestUIWithOptions(t, &Options{
+		Queue: queue, RetrieverSource: source,
+		PrunesToRetriever: true, Projector: projector,
+	}, nil)
+	mux := mount(u)
+	c := login(t, mux, "op", "pw-op")
+
+	body := get(t, mux, c, "/recipes/prune-preview", nil).Body.String()
+	if !strings.Contains(body, "host_5000/ingredients/beta:2.0.0") {
+		t.Errorf("the confirmation does not list what would be removed:\n%s", body)
+	}
+	if !strings.Contains(body, "3 MiB") && !strings.Contains(body, "3MiB") {
+		t.Errorf("the confirmation does not state the total size:\n%s", body)
+	}
+	if !strings.Contains(body, "beta@2.0.0") {
+		t.Errorf("the confirmation does not name the recipe that brought it:\n%s", body)
+	}
+	// Mirror default: the box opens checked (FR-045 "enabled by default").
+	if !strings.Contains(body, `name="prune" value="on" checked`) {
+		t.Errorf("the prune box does not open checked on an instance that prunes by default:\n%s", body)
+	}
+
+	// The unticked box is an instruction, not an omission.
+	w := postForm(t, mux, c, "/recipes/sync", "csrf="+csrfOf(t, u, c)+"&prune=off", nil)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("sync: code=%d", w.Code)
+	}
+	created := queue.List("", tasks.TypeSync, "")
+	if len(created) != 1 {
+		t.Fatalf("sync tasks = %d, want 1", len(created))
+	}
+	if created[0].Prune {
+		t.Error("the run prunes although the operator unticked the box")
+	}
+
+	// Ticked: the run carries the decision.
+	w = postForm(t, mux, c, "/recipes/sync", "csrf="+csrfOf(t, u, c)+"&prune=on", nil)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("sync: code=%d", w.Code)
+	}
+	all := queue.List("", tasks.TypeSync, "")
+	if len(all) != 2 {
+		t.Fatalf("sync tasks = %d, want 2", len(all))
+	}
+	var pruning int
+	for _, tk := range all {
+		if tk.Prune {
+			pruning++
+		}
+	}
+	if pruning != 1 {
+		t.Errorf("%d of 2 runs prune, want exactly the one that asked", pruning)
+	}
+}
+
+// TestPruneConfirmationRefusesWhatItCannotProject: a removal must never be
+// confirmed against a projection the instance failed to compute, so the
+// failed fragment offers no checkbox at all.
+func TestPruneConfirmationRefusesWhatItCannotProject(t *testing.T) {
+	u := newTestUIWithOptions(t, &Options{
+		Queue: newTestQueue(t), RetrieverSource: "https://retriever.example/retriever.yaml",
+		PrunesToRetriever: true,
+		Projector:         fakeProjector{err: errors.New("the cookbook did not answer")},
+	}, nil)
+	mux := mount(u)
+	c := login(t, mux, "op", "pw-op")
+
+	w := get(t, mux, c, "/recipes/prune-preview", nil)
+	body := w.Body.String()
+	if strings.Contains(body, `name="prune"`) {
+		t.Errorf("a prune box is offered against a projection that failed:\n%s", body)
+	}
+	if !strings.Contains(body, "could not be worked out") {
+		t.Errorf("the failure is not stated:\n%s", body)
 	}
 }

@@ -144,7 +144,8 @@ func New() *cobra.Command {
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		return &usageError{err: err, hint: "see '" + cmd.CommandPath() + " --help'"}
 	})
-	root.AddCommand(newServeCmd(), newVersionCmd(), newConfigCmd(), newUserCmd(), newQuickstartCmd(), newRecipeCmd())
+	root.AddCommand(newServeCmd(), newVersionCmd(), newConfigCmd(), newUserCmd(), newQuickstartCmd(),
+		newRecipeCmd(), newSyncCmd(), newExportCmd(), newImportCmd(), newFileSetCmd(), newMediaCmd())
 	return root
 }
 
@@ -155,7 +156,17 @@ func Execute() int {
 	if err != nil {
 		var te *taxonomy.Error
 		var ue *usageError
+		var xe *exitError
+		var rp *remoteProblem
 		switch {
+		case errors.As(err, &xe):
+			// The report said everything; the code carries the verdict.
+		case errors.As(err, &rp):
+			// An instance's own refusal, printed as it was received: this
+			// build cannot re-render a problem document (it carries
+			// sentences, not parameters) and must not guess at one. The
+			// code inside still decides the exit class, below.
+			fmt.Fprint(os.Stderr, rp.Text())
 		case errors.As(err, &te):
 			fmt.Fprint(os.Stderr, taxonomy.Text(cliLang(), te))
 		case errors.As(err, &ue):
@@ -194,6 +205,14 @@ func classifyUsage(err error) error {
 func exitCodeFor(err error) int {
 	if err == nil {
 		return taxonomy.ExitOK
+	}
+	// Plan mode (FR-055 amendment R-04) exits on an OUTCOME, not on a
+	// failure: "changes are planned" is a successful run with something
+	// to say. The report is already on stdout, so this carries the code
+	// and nothing else.
+	var xe *exitError
+	if errors.As(err, &xe) {
+		return xe.code
 	}
 	var ue *usageError
 	if errors.As(err, &ue) {

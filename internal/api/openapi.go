@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/clischema"
 )
 
 // The OpenAPI 3.1 document travels inside the binary (NFR-003) and is the
@@ -24,13 +25,22 @@ var openAPIDoc []byte
 // of the web UI parses it server-side (UI-SPEC §5.12).
 func OpenAPI() []byte { return openAPIDoc }
 
-// RegisterOpenAPI mounts GET /api/v1/openapi.yaml (FR-060). Reading the
-// contract needs the viewer role, like every read of this API
-// (UI-SPEC §10.2: nothing anonymous but the probes).
+// RegisterOpenAPI mounts GET /api/v1/openapi.yaml (FR-060) and, beside
+// it, the JSON Schema of the command line's `--output json` documents
+// (FR-066 amendment R-08 asks for them "alongside the OpenAPI
+// document" — so they are served from the same place, by the same
+// instance, under the same role). Reading a contract needs the viewer
+// role, like every read of this API (UI-SPEC §10.2: nothing anonymous but
+// the probes).
 func RegisterOpenAPI(a *API) {
 	a.Handle("GET /api/v1/openapi.yaml", a.RequireRole(auth.RoleViewer,
 		func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/yaml")
 			_, _ = w.Write(openAPIDoc)
+		}))
+	a.Handle("GET /api/v1/cli-output.schema.json", a.RequireRole(auth.RoleViewer,
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", clischema.MediaType)
+			_, _ = w.Write(clischema.Document())
 		}))
 }

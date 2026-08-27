@@ -290,3 +290,32 @@ func TestInspectErrorTaxonomy(t *testing.T) {
 	time.Sleep(time.Millisecond)
 	check("timeout", host+"/library/redis:7.2", ctx, taxonomy.CodeInspectTimeout)
 }
+
+// TestMatchesPlatform locks the "os/arch[/variant]" rule of RECIPE-SPEC
+// §7.1 (B-020), which both the recipe engine's platform filter and the
+// fileServing selector read through this one function.
+func TestMatchesPlatform(t *testing.T) {
+	for _, tc := range []struct {
+		selector          string
+		os, arch, variant string
+		want              bool
+		why               string
+	}{
+		{"linux/amd64", "linux", "amd64", "", true, "exact, no variant on either side"},
+		{"linux/arm64", "linux", "arm64", "v8", true, "an omitted variant accepts any variant — the B-020 case"},
+		{"linux/arm/v7", "linux", "arm", "v7", true, "a named variant matches its own"},
+		{"linux/arm/v7", "linux", "arm", "v6", false, "a named variant binds: v7 is not v6"},
+		{"linux/arm64/v8", "linux", "arm64", "", false, "asking for v8 does not accept a variant-less child"},
+		{"linux/amd64", "linux", "arm64", "v8", false, "another architecture"},
+		{"linux/amd64", "windows", "amd64", "", false, "another OS"},
+		{"linux/amd64", "unknown", "unknown", "", false, "buildx attestation entries are not platforms"},
+		{"linux", "linux", "amd64", "", false, "an OS alone identifies no platform"},
+		{"linux/arm64/v8/extra", "linux", "arm64", "v8", false, "a fourth component is not the notation"},
+		{"", "linux", "amd64", "", false, "the empty selector matches nothing"},
+	} {
+		if got := MatchesPlatform(tc.selector, tc.os, tc.arch, tc.variant); got != tc.want {
+			t.Errorf("MatchesPlatform(%q, %q, %q, %q) = %v, want %v (%s)",
+				tc.selector, tc.os, tc.arch, tc.variant, got, tc.want, tc.why)
+		}
+	}
+}

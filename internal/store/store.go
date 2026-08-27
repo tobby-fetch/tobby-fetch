@@ -47,6 +47,9 @@ import (
 type Store struct {
 	app  *handlers.App
 	root string
+	// mediaID is the identity of the medium this store is (FR-054
+	// amendment R-28), minted at creation and read back on every open.
+	mediaID string
 	// browse is the second, read-side access to the same backend: the
 	// browsing accessors (browse.go) go through the storage library, never
 	// through the HTTP loopback (package doc).
@@ -73,11 +76,24 @@ func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error)
 	if err := checkFormat(root); err != nil {
 		return nil, err
 	}
+	// R-28: the store is stamped with the identity of the medium it is,
+	// the first time it is opened. Minting it here rather than at the
+	// first synchronization means a store that has never synchronized
+	// anything still has one — and so does a passthrough store, where it
+	// serves as the run-log correlation key (R-09).
+	mediaID, err := ensureMediaID(root)
+	if err != nil {
+		return nil, err
+	}
 
 	cfg := &configuration.Configuration{}
+	// driverName, not "filesystem": the library's own driver renames an
+	// open file and joins listing keys with the platform separator, and
+	// neither survives Windows (driver.go, B-023). The corrected driver
+	// wraps it; the parameters are the library's.
 	cfg.Storage = configuration.Storage{
-		"filesystem": configuration.Parameters{"rootdirectory": root},
-		"delete":     configuration.Parameters{"enabled": true},
+		driverName: configuration.Parameters{"rootdirectory": root},
+		"delete":   configuration.Parameters{"enabled": true},
 	}
 	// The HTTP secret signs upload-session state. Ephemeral is fine for a
 	// single instance; generating it ourselves keeps the library from
@@ -102,7 +118,7 @@ func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error)
 	// Second access to the same backend for the browsing accessors
 	// (browse.go): the storage library over the same root directory as the
 	// app handlers — never the HTTP loopback (FR-062, package doc).
-	driver, err := factory.Create(ctx, "filesystem", configuration.Parameters{"rootdirectory": root})
+	driver, err := factory.Create(ctx, driverName, configuration.Parameters{"rootdirectory": root})
 	if err != nil {
 		return nil, fmt.Errorf("store: creating browse driver: %w", err)
 	}
@@ -113,9 +129,12 @@ func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error)
 		return nil, fmt.Errorf("store: creating browse registry: %w", err)
 	}
 
+	// The media identifier goes into the very first log record of the
+	// store: R-28 asks for it to appear in the operation logs of both
+	// sides, so that an incident can be traced back to a physical medium.
 	logger.LogAttrs(ctx, slog.LevelInfo, "embedded registry initialized",
-		slog.String("root", root))
-	return &Store{app: app, root: root, browse: browse}, nil
+		slog.String("root", root), slog.String("media_id", mediaID))
+	return &Store{app: app, root: root, mediaID: mediaID, browse: browse}, nil
 }
 
 // APIHandler returns the OCI Distribution API (/v2/) handler. Mount it on

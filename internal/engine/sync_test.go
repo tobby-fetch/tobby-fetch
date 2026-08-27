@@ -5,14 +5,19 @@ package engine
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 )
@@ -29,6 +34,7 @@ type happyEnv struct {
 	chartDig string
 	modelDig string
 	manDig   string // recipe artifact manifest digest
+	trust    *TrustPolicy
 }
 
 const testZone = "zone-lab"
@@ -72,10 +78,11 @@ func newHappyEnv(t *testing.T) *happyEnv {
 	retr := retrieverFile(t, testZone, src.addr+"/cookbook", []spec.RecipeSelector{
 		{Name: "wordpress", Version: "6.8.2"},
 	})
-	eng := New(dst, newRemotes(t, nil), trustFor(t, nil, kp), retr, "", syncCfg())
+	trust := trustFor(t, nil, kp)
+	eng := New(dst, newRemotes(t, nil), trust, retr, "", syncCfg())
 
 	return &happyEnv{
-		src: src, dst: dst, eng: eng,
+		src: src, dst: dst, eng: eng, trust: trust,
 		hostRepo: strings.ReplaceAll(src.addr, ":", "_"),
 		idx:      idx, chartDig: chartDig, modelDig: modelDig, manDig: manDig,
 	}
@@ -193,6 +200,12 @@ func TestSyncHappyPath(t *testing.T) {
 		!rec.Verified || rec.TrustScope != "" {
 		t.Errorf("recipe record = %+v", rec)
 	}
+	// FR-054: where the artifact landed in THIS store, which a reader of
+	// the transported store cannot recompute from the nominal repository.
+	if rec.ArtifactRepo != env.hostRepo+"/cookbook/wordpress" || rec.ArtifactTag != "6.8.2" {
+		t.Errorf("recipe record does not locate its artifact on the medium: repo=%q tag=%q",
+			rec.ArtifactRepo, rec.ArtifactTag)
+	}
 	if len(rec.Ingredients) != 3 {
 		t.Fatalf("recorded ingredients = %+v, want 3", rec.Ingredients)
 	}
@@ -304,4 +317,111 @@ func containsString(ss []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestSyncWritesMediaManifest locks the FR-054 hook: a mirror instance
+// ends every synchronization by writing the medium's manifest, with the
+// zone it is addressed to, the run that produced it, and the instant the
+// Retriever was resolved — the freshness instant of R-28.
+func TestSyncWritesMediaManifest(t *testing.T) {
+	env := newHappyEnv(t)
+	before := time.Now().UTC().Add(-time.Second)
+
+	var calls int
+	var gotZone, gotRun string
+	var gotResolved time.Time
+	env.eng.SetMediaManifest(func(_ context.Context, zone, runID string, resolvedAt time.Time) error {
+		calls++
+		gotZone, gotRun, gotResolved = zone, runID, resolvedAt
+		return nil
+	})
+
+	if _, err := runSync(t, env.eng); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("the media manifest was written %d times, want exactly once per run", calls)
+	}
+	if gotZone != testZone {
+		t.Errorf("manifest zone = %q, want %q", gotZone, testZone)
+	}
+	if gotRun != "run_test" {
+		t.Errorf("manifest run = %q, want the run that produced the medium", gotRun)
+	}
+	if gotResolved.Before(before) || gotResolved.After(time.Now().UTC().Add(time.Second)) {
+		t.Errorf("resolution instant = %s, want the moment of this run", gotResolved)
+	}
+}
+
+// TestSyncWithoutMediaWriterWritesNothing: passthrough installs no writer,
+// and its store — a cache, not a medium — is never inventoried.
+func TestSyncWithoutMediaWriterWritesNothing(t *testing.T) {
+	env := newHappyEnv(t)
+	if _, err := runSync(t, env.eng); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(env.dst.Root(), "meta", "media.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a media manifest appeared without a writer installed: %v", err)
+	}
+}
+
+// TestSyncFailsWhenTheManifestCannotBeWritten: a medium without a manifest
+// is refused whole on the destination side (R-19), so reporting the run as
+// successful would promise a delivery that cannot be delivered.
+func TestSyncFailsWhenTheManifestCannotBeWritten(t *testing.T) {
+	env := newHappyEnv(t)
+	env.eng.SetMediaManifest(func(context.Context, string, string, time.Time) error {
+		return errors.New("no space left on the medium")
+	})
+	if _, err := runSync(t, env.eng); err == nil {
+		t.Fatal("the run reported success although the medium carries no manifest")
+	}
+}
+
+// TestMediaManifestOfARealSynchronizationVerifies is the end-to-end check
+// this milestone actually rests on: a store produced by the REAL fetch
+// pipeline — sparse multi-arch index (FR-022), chart, custom artifact,
+// signed recipe with its signature artifacts — is inventoried and then
+// verified back, clean.
+//
+// Written against the pipeline rather than against a hand-built store on
+// purpose: the reachability walk encodes what the registry backend lays
+// down on disk, and a fixture that agreed with the walk while the product
+// disagreed with both would prove nothing.
+func TestMediaManifestOfARealSynchronizationVerifies(t *testing.T) {
+	env := newHappyEnv(t)
+	ctx := context.Background()
+	env.eng.SetMediaManifest(func(ctx context.Context, zone, runID string, resolvedAt time.Time) error {
+		_, err := media.Write(ctx, env.dst, media.WriteOptions{Zone: zone, RunID: runID, ResolvedAt: resolvedAt})
+		return err
+	})
+	if _, err := runSync(t, env.eng); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	rep, err := media.Verify(ctx, env.dst, media.VerifyOptions{
+		Zone: testZone, Trust: MediaTrust{Policy: env.trust},
+	})
+	if err != nil {
+		t.Fatalf("verifying the medium: %v", err)
+	}
+	if rep.Verdict != media.VerdictPushable {
+		t.Fatalf("verdict = %q, want %q (blocks %+v, recipes %+v)",
+			rep.Verdict, media.VerdictPushable, rep.Blocks, rep.Recipes)
+	}
+	if len(rep.Recipes) != 1 || !rep.Recipes[0].Pushable {
+		t.Fatalf("recipe verdicts = %+v", rep.Recipes)
+	}
+	if rep.Recipes[0].KeyFingerprint == "" {
+		t.Error("the recipe verified without naming the key that did it")
+	}
+	// Everything the medium carries is delivered by the recipe: a real
+	// synchronization leaves nothing behind (the sparse index's unselected
+	// child is absent, not extraneous).
+	for _, f := range rep.Findings {
+		t.Errorf("a freshly synchronized medium reports %s on %s", f.Code, f.Path)
+	}
+	if rep.Media == nil || rep.Media.MediaID == "" || rep.Media.ProducedBy.RunID != "run_test" {
+		t.Errorf("media identity lost: %+v", rep.Media)
+	}
 }

@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/preflight"
 )
 
 // Mode is the operating mode, selected by configuration at startup (FR-001).
@@ -41,6 +43,14 @@ type Config struct {
 	// instance must state what it is (FR-001).
 	Mode Mode `yaml:"mode"`
 
+	// Zone is this instance's zone identity: the metadata.name of the
+	// Retriever that serves it. A source-side instance reads it from the
+	// Retriever it resolves and needs nothing here; a DESTINATION-side
+	// instance has no Retriever — its content arrives on a medium — and
+	// must be told which zone it serves, or it cannot tell whether a
+	// medium is addressed to it (FR-052, FR-054).
+	Zone string `yaml:"zone,omitempty"`
+
 	Storage     Storage     `yaml:"storage"`
 	State       State       `yaml:"state"`
 	Server      Server      `yaml:"server"`
@@ -53,6 +63,7 @@ type Config struct {
 	Retriever   Retriever   `yaml:"retriever"`
 	Destination Destination `yaml:"destination"`
 	Sync        Sync        `yaml:"sync"`
+	Preflight   Preflight   `yaml:"preflight"`
 	Tasks       Tasks       `yaml:"tasks"`
 	Trust       Trust       `yaml:"trust"`
 	Files       Files       `yaml:"files"`
@@ -137,6 +148,53 @@ type Sync struct {
 	// directory wins over it (package schedule). The override is a
 	// sensitive configuration change and is audited as one (FR-094).
 	Interval Duration `yaml:"interval"`
+	// Prune removes, at the end of each reconciliation cycle, the
+	// recipe-managed content the resolved Retriever no longer references
+	// (FR-045 amendment, R-33). The protected roots are the same as in
+	// mirror mode: unit imports (FR-023), the offline vulnerability
+	// database (FR-032), and anything pushed through /v2/ outside managed
+	// namespaces (UC3 seeding) — none of which is recipe-managed, so none
+	// of which is ever eligible.
+	//
+	// Default false, and deliberately so. A passthrough transit store is
+	// not a delivery unit, and shrinking it is never implied by a
+	// refresh: an operator who asked for fresher content has not asked
+	// for older content to be deleted. Enabling it is an explicit opt-in,
+	// reported at startup, on the retriever screen and its API mirror,
+	// and every removal is listed in the run logs (FR-053).
+	//
+	// Like Interval it applies in passthrough mode ONLY: mirror-mode
+	// prune is confirmed at trigger time with the list and the total size
+	// of what would go (FR-045), which is a different mechanism and not
+	// one a configuration flag may switch on unattended.
+	Prune bool `yaml:"prune,omitempty"`
+}
+
+// Preflight configures the checks that run before a synchronization or an
+// export starts (FR-055).
+type Preflight struct {
+	// SafetyMarginPercent is the share of the target's free space the
+	// projection must NOT consume. Default 10 (package preflight's
+	// DefaultMarginPercent).
+	//
+	// It exists because a store is never the only writer on its volume:
+	// the instance's own logs, the container runtime, and the operating
+	// system keep writing while a multi-hour transfer runs, and a
+	// projection that lands on the last free byte lands on a full disk.
+	// Zero restores the default rather than removing the margin — an
+	// absent key must not silently mean "fill the volume". Setting it to
+	// 0 % on purpose is spelled `disabled: true`.
+	SafetyMarginPercent int `yaml:"safetyMarginPercent"`
+	// Disabled turns the FR-055 gate into a report: volumes and verdicts
+	// are still computed and still displayed, and the synchronization
+	// starts anyway.
+	//
+	// It is the FR-075 shape — a safety check is removed only by an
+	// explicit, visible, logged opt-in, never by a value that happens to
+	// be zero — and it exists for the operator whose volume the instance
+	// cannot measure honestly (a network mount, an unusual driver) and
+	// who would otherwise have no way forward.
+	Disabled bool `yaml:"disabled"`
 }
 
 // Trust configures signature verification (FR-033, ADR-0007,
@@ -196,6 +254,16 @@ type TrustScope struct {
 // configuration file only.
 type Files struct {
 	FileSets []FileSetServe `yaml:"filesets,omitempty"`
+	// PackRoots confines operator FileSet packing (FR-048) as reached
+	// from the web interface and the API: those surfaces may pack a
+	// directory only if it sits under one of these absolute paths. The
+	// default — no entry — refuses every path, because reading an
+	// arbitrary host directory on request is a capability an instance
+	// should be given, not one it should have (FR-075: security-reducing
+	// settings are always explicit opt-in). `tobby fileset pack` on the
+	// host is unaffected: whoever runs it already holds the filesystem's
+	// own rights. List-valued: configuration file only.
+	PackRoots []string `yaml:"packRoots,omitempty"`
 }
 
 // FileSetServe enables one verified FileSet under /files/<name>/.
@@ -210,9 +278,10 @@ type FileSetServe struct {
 	// Version pins the served tag; empty serves the highest semver tag
 	// present locally.
 	Version string `yaml:"version,omitempty"`
-	// Platform selects the platform manifest of a multi-platform FileSet
-	// ("linux/amd64"); empty picks the single manifest and fails on an
-	// ambiguous index.
+	// Platform selects the platform manifest of a multi-platform FileSet,
+	// as "os/arch[/variant]" — the variant is optional and an omitted one
+	// accepts any ("linux/arm64" finds the linux/arm64/v8 child, B-020).
+	// Empty picks the single manifest and fails on an ambiguous index.
 	Platform string `yaml:"platform,omitempty"`
 	// Anonymous opts this FileSet into unauthenticated reads (bare-host
 	// bootstrap) — reported like the FR-075 override, never silent.
@@ -331,6 +400,19 @@ type Storage struct {
 	// BasePrefix is the optional relocation base prefix (FR-035), applied
 	// identically to every ingredient of the instance. Default: none.
 	BasePrefix string `yaml:"basePrefix,omitempty"`
+	// OccupancyThreshold is the on-disk footprint past which the store is
+	// reported as too full: a persistent warning on every UI page, the
+	// same fact on the API, and a metric that moves in both directions
+	// (FR-045 amendment, R-33).
+	//
+	// Zero — the default — means no threshold. Tobby cannot guess the
+	// size of the volume it was handed, and a made-up default would
+	// either cry wolf on a large one or stay silent on a small one; an
+	// unset threshold is reported as unset, never as satisfied. The
+	// setting exists because a passthrough instance reconciles unattended
+	// for months: without it, "the volume filled up" is discovered when
+	// the first write fails.
+	OccupancyThreshold Size `yaml:"occupancyThreshold,omitempty"`
 }
 
 // State locates the instance state directory: accounts and tokens today,
@@ -487,6 +569,30 @@ func (t *ClientTLS) Configured() bool { return len(t.CAFiles) > 0 || t.CA != "" 
 type Logging struct {
 	// Level is one of debug, info, warn, error. Default "info".
 	Level string `yaml:"level"`
+	// Media configures the operation log written onto the transport
+	// medium (FR-053).
+	Media MediaLog `yaml:"media"`
+}
+
+// MediaLog configures the operation log on the transport medium (FR-053,
+// FR-056). It applies in mirror mode only: a passthrough store is a cache
+// in front of a destination registry, not an object that changes hands.
+type MediaLog struct {
+	// File is the log's location inside the store, in slash form.
+	// Default medialog.DefaultPath. It must lie OUTSIDE the media
+	// manifest's coverage — the instance refuses to start otherwise
+	// (FR-054): a log inside coverage invalidates, line by line, the
+	// inventory the destination side verifies.
+	File string `yaml:"file,omitempty"`
+	// MaxSize is the size-based rotation threshold (FR-056). Default
+	// 10MiB.
+	MaxSize Size `yaml:"maxSize,omitempty"`
+	// Keep is how many rotated generations to retain. Default 3.
+	Keep int `yaml:"keep,omitempty"`
+	// Disabled turns the medium's log off. Explicit and never a default:
+	// FR-053 makes the log part of what the medium carries, and a medium
+	// arriving without one cannot be audited by whoever receives it.
+	Disabled bool `yaml:"disabled,omitempty"`
 }
 
 // Shutdown configures the graceful-shutdown behavior (FR-093, ADR-0012).
@@ -505,6 +611,7 @@ func Default() Config {
 		Transfer:    Transfer{ResumeThreshold: 64 * MiB},
 		Destination: Destination{Cookbook: DefaultCookbook},
 		Sync:        Sync{Parallelism: 3, Retries: 3, Interval: Duration(15 * time.Minute)},
+		Preflight:   Preflight{SafetyMarginPercent: preflight.DefaultMarginPercent},
 		Tasks:       Tasks{KeepFinished: 500},
 		Logging:     Logging{Level: "info"},
 		Shutdown:    Shutdown{GracePeriod: Duration(30 * time.Second)},
@@ -523,11 +630,33 @@ const (
 	// ScopeState validates only what state-directory commands need:
 	// everything set must be coherent, but no mode is required.
 	ScopeState
+	// ScopeStorage validates what store-directory commands need (`tobby
+	// export`, `tobby import` — FR-051 — and `tobby fileset pack` —
+	// FR-048): the store root, its relocation base prefix, and its
+	// separation from the state directory. Like ScopeState it requires no
+	// mode: reading a store out to an image layout, or writing a packed
+	// FileSet into it, says nothing about how this host serves.
+	ScopeStorage
 	// ScopeRegistries validates what registry-facing commands need
 	// (`tobby recipe push`, R-36): credentials and per-host insecure
 	// opt-ins. Like ScopeState it requires no mode — publishing a recipe
 	// is an authoring act, it says nothing about how this host serves.
 	ScopeRegistries
+	// ScopeMedia validates what the destination-side media commands need
+	// (`tobby media verify|import`, FR-052): the transported store, the
+	// trust roots, the zone identity and the destination. Like the two
+	// above it requires no mode — a medium handed to an operator is
+	// verified the same way whatever this host serves, and demanding a
+	// mode would make an operator invent one to inspect a disk.
+	ScopeMedia
+	// ScopeNetwork validates what a command that drives a RUNNING
+	// instance needs (`tobby sync` without --dry-run, FR-014/FR-066): the
+	// outbound edge — proxy, trust roots — and the listen address it uses
+	// to address a local instance. It requires no mode and no store: the
+	// command opens neither, it calls /api/v1 on the process that holds
+	// them, and demanding a storage root would make an operator name a
+	// directory this command never touches.
+	ScopeNetwork
 )
 
 // Load builds the effective configuration: defaults, overlaid with the YAML
@@ -599,6 +728,12 @@ func (c *Config) validate(scope Scope) error {
 	if _, err := parseLevel(c.Logging.Level); err != nil {
 		errs = append(errs, fmt.Errorf("logging.level: %w", err))
 	}
+	if c.Logging.Media.MaxSize < 0 {
+		errs = append(errs, errors.New("logging.media.maxSize must not be negative"))
+	}
+	if c.Logging.Media.Keep < 0 {
+		errs = append(errs, errors.New("logging.media.keep must not be negative"))
+	}
 	if c.Server.Addr == "" {
 		errs = append(errs, errors.New("server.addr must not be empty"))
 	}
@@ -610,6 +745,9 @@ func (c *Config) validate(scope Scope) error {
 	}
 	if time.Duration(c.Import.InspectTimeout) <= 0 {
 		errs = append(errs, errors.New("import.inspectTimeout must be positive"))
+	}
+	if c.Storage.Root == "" && scope == ScopeStorage {
+		errs = append(errs, fmt.Errorf("storage.root is required: set --storage-root, %s, or \"storage.root:\" in the configuration file", EnvStorageRoot))
 	}
 	if err := disjointRoots(c.State.Root, c.Storage.Root); err != nil {
 		errs = append(errs, err)
@@ -625,6 +763,15 @@ func (c *Config) validate(scope Scope) error {
 	}
 	if time.Duration(c.Sync.Interval) < 0 {
 		errs = append(errs, errors.New("sync.interval must not be negative: use 0 to disable the periodic reconciliation of FR-013"))
+	}
+	if c.Preflight.SafetyMarginPercent < 0 || c.Preflight.SafetyMarginPercent >= 100 {
+		errs = append(errs, errors.New("preflight.safetyMarginPercent must be between 0 and 99: it is a share of the target's free space held back (FR-055); use \"preflight.disabled: true\" to remove the check itself"))
+	}
+	if c.Sync.Prune && c.Mode == ModeMirror {
+		errs = append(errs, errors.New("sync.prune applies in passthrough mode only: mirror-mode prune is confirmed at trigger time, with the list and total size of what would be removed (FR-045), and is not a setting that may run unattended"))
+	}
+	if c.Storage.OccupancyThreshold < 0 {
+		errs = append(errs, errors.New("storage.occupancyThreshold must not be negative: use 0 to leave the store occupancy unmonitored"))
 	}
 	if c.Tasks.KeepFinished < 0 {
 		errs = append(errs, errors.New("tasks.keepFinished must not be negative: use 0 to keep the whole task history"))
@@ -850,6 +997,15 @@ func (c *Config) validateFiles() []error {
 			errs = append(errs, fmt.Errorf("files.filesets[%d] (%s): ref is required", i, f.Name))
 		}
 	}
+	for i, root := range c.Files.PackRoots {
+		// Relative here would resolve against the working directory of
+		// whoever started the instance — a different answer under systemd,
+		// under a container and in a shell, for a setting whose whole job
+		// is to bound what the remote surfaces can read.
+		if root == "" || !filepath.IsAbs(root) {
+			errs = append(errs, fmt.Errorf("files.packRoots[%d]: %q must be an absolute path", i, root))
+		}
+	}
 	return errs
 }
 
@@ -876,8 +1032,14 @@ func disjointRoots(state, storage string) error {
 	if state == "" || storage == "" {
 		return nil
 	}
-	s, err1 := filepath.Abs(state)
-	g, err2 := filepath.Abs(storage)
+	// The two are compared with filepath.Rel, which refuses to relate
+	// paths whose volume names differ — and `\\?\C:\store` and `C:\store`
+	// are the same directory under two of them, so a state directory
+	// spelled one way inside a store spelled the other was accepted
+	// (B-027). Both are normalized onto the ordinary spelling first, the
+	// same rewriting SecretPaths applies (secretpaths.go).
+	s, err1 := filepath.Abs(ordinaryVolume(state))
+	g, err2 := filepath.Abs(ordinaryVolume(storage))
 	if err1 != nil || err2 != nil {
 		return nil // path resolution problems surface later, on use
 	}

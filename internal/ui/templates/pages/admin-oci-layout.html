@@ -1,0 +1,107 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /admin/oci-layout — export the store to, and import it from, the
+     standard OCI image layout (FR-051, ADR-0006). The interface half of
+     /api/v1/oci-layout (FR-061 parity): same service, same selection
+     rules, same taxonomy entries.
+
+     The estimate button is the side-effect-free operation of FR-055 —
+     projected bytes and the size of the largest single file, which is what
+     a 4 GiB per-file limit refuses. Both write actions enqueue a task and
+     follow it, like every other long operation of the product. */}}
+{{define "title"}}{{.T "layout.title"}}{{end}}
+{{define "main"}}
+<section>
+  {{template "admin-subnav" .}}
+  <h1 class="t-page-title">{{.T "layout.title"}}</h1>
+  <p class="t-page-sub">{{.T "layout.subtitle"}}</p>
+
+  {{if .Err}}{{template "error-block" .}}{{end}}
+
+  {{if not .Data.Configured}}
+  <p class="t-muted t-note">{{.T "layout.inert"}}</p>
+  {{end}}
+
+  {{if .Data.Plan}}
+  {{/* The estimate. Sizes are raw bytes from the server, formatted here:
+       the API mirror carries the same numbers unformatted (ADR-0015 §7). */}}
+  <div class="t-card">
+    <h2 class="t-kick">{{.T "layout.plan_title"}}</h2>
+    <dl class="t-kv">
+      <dt>{{.T "layout.plan_references"}}</dt><dd>{{.Data.Plan.References}}</dd>
+      <dt>{{.T "layout.plan_manifests"}}</dt><dd>{{.Data.Plan.Manifests}}</dd>
+      <dt>{{.T "layout.plan_blobs"}}</dt><dd>{{.Data.Plan.Blobs}}</dd>
+      <dt>{{.T "layout.plan_total"}}</dt><dd>{{.FmtBytes .Data.Plan.TotalBytes}}</dd>
+      <dt>{{.T "layout.plan_largest"}}</dt><dd>{{.FmtBytes .Data.Plan.LargestFileBytes}}</dd>
+    </dl>
+    <p class="t-form-hint">{{.T "layout.plan_largest_help"}}</p>
+    {{if .Data.Plan.Missing}}
+    <h3 class="t-kick">{{.T "layout.plan_missing"}}</h3>
+    <p class="t-form-hint">{{.T "layout.plan_missing_help"}}</p>
+    <ul class="t-list">
+      {{range .Data.Plan.Missing}}<li class="t-mono" translate="no">{{.}}</li>{{end}}
+    </ul>
+    {{end}}
+  </div>
+  {{end}}
+
+  <h2 class="t-kick">{{.T "layout.export_title"}}</h2>
+  <form class="t-form t-card" method="post" action="/admin/oci-layout/export"
+        hx-disabled-elt="find button[type='submit']">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+
+    <label for="layout-output">{{.T "layout.output_label"}}</label>
+    <input id="layout-output" class="t-input t-mono" type="text" name="output"
+           value="{{.Data.Output}}" required placeholder="/media/usb/payload.tar"
+           autocomplete="off" autocapitalize="off" spellcheck="false" translate="no"
+           aria-describedby="layout-output-help">
+    <p id="layout-output-help" class="t-form-hint">{{.T "layout.output_help"}}</p>
+
+    <label for="layout-recipe">{{.T "layout.recipe_label"}}</label>
+    <select id="layout-recipe" name="recipe" class="t-select" aria-describedby="layout-recipe-help">
+      <option value="">{{.T "layout.recipe_all"}}</option>
+      {{range .Data.Recipes}}
+      <option value="{{.}}"{{if eq . $.Data.Recipe}} selected{{end}}>{{.}}</option>
+      {{end}}
+    </select>
+    <p id="layout-recipe-help" class="t-form-hint">{{.T "layout.recipe_help"}}</p>
+
+    <label class="t-check">
+      <input type="checkbox" name="directory" value="1"{{if .Data.Directory}} checked{{end}}>
+      {{.T "layout.directory_label"}}
+    </label>
+    <p class="t-form-hint">{{.T "layout.directory_help"}}</p>
+
+    <label class="t-check">
+      <input type="checkbox" name="overwrite" value="1"{{if .Data.Overwrite}} checked{{end}}>
+      {{.T "layout.overwrite_label"}}
+    </label>
+
+    <div class="t-row">
+      <button type="submit" class="t-btn t-btn--primary"{{if not .Data.Configured}} disabled{{end}}>{{.T "layout.export_submit"}}</button>
+      <button type="submit" class="t-btn t-btn--secondary" formaction="/admin/oci-layout/plan"{{if not .Data.Configured}} disabled{{end}}>{{.T "layout.plan_submit"}}</button>
+    </div>
+  </form>
+
+  <h2 class="t-kick">{{.T "layout.import_title"}}</h2>
+  <form class="t-form t-card" method="post" action="/admin/oci-layout/import"
+        hx-disabled-elt="find button[type='submit']">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+
+    <label for="layout-input">{{.T "layout.input_label"}}</label>
+    <input id="layout-input" class="t-input t-mono" type="text" name="input"
+           value="{{.Data.Input}}" required placeholder="/media/usb/payload.tar"
+           autocomplete="off" autocapitalize="off" spellcheck="false" translate="no"
+           aria-describedby="layout-input-help">
+    <p id="layout-input-help" class="t-form-hint">{{.T "layout.input_help"}}</p>
+
+    <label for="layout-repository">{{.T "layout.repository_label"}}</label>
+    <input id="layout-repository" class="t-input t-mono" type="text" name="repository"
+           value="{{.Data.Repository}}" placeholder="docker.io/library/alpine"
+           autocomplete="off" autocapitalize="off" spellcheck="false" translate="no"
+           aria-describedby="layout-repository-help">
+    <p id="layout-repository-help" class="t-form-hint">{{.T "layout.repository_help"}}</p>
+
+    <button type="submit" class="t-btn t-btn--primary"{{if not .Data.Configured}} disabled{{end}}>{{.T "layout.import_submit"}}</button>
+  </form>
+</section>
+{{end}}

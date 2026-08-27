@@ -54,10 +54,32 @@ func readRetrieverSource(ctx context.Context, remotes *Remotes, source string) (
 		}
 		return raw, nil
 	}
-	if host, _, ok := strings.Cut(source, "/"); ok && (strings.ContainsAny(host, ".:") || host == "localhost") {
+	if host, _, ok := strings.Cut(source, "/"); ok && !hasDriveDesignator(source) && (strings.ContainsAny(host, ".:") || host == "localhost") {
 		return fetchRetrieverOCI(ctx, remotes, source)
 	}
 	return nil, fmt.Errorf("retriever file %s does not exist (and the value is not an URL or an OCI reference)", source)
+}
+
+// hasDriveDesignator reports whether source opens with a Windows drive
+// designator, which makes it a file path and never a registry reference.
+//
+// Without it "C:/config/retriever.yaml" — a perfectly ordinary value, as
+// forward slashes are legal on Windows and usual in YAML — cuts to the
+// host "C:", whose colon reads as a port and sends a local file to a
+// registry called "C:". That is precisely the confusion the
+// disambiguation order above exists to prevent (NFR-018).
+//
+// The check is spelled out lexically rather than delegated to
+// filepath.VolumeName because that function returns "" unless the binary
+// was built for Windows. A configuration file is read on the machine it
+// is deployed to, so how its source is classified must not depend on
+// where the binary was compiled — nor on which platform ran the tests.
+func hasDriveDesignator(source string) bool {
+	if len(source) < 2 || source[1] != ':' {
+		return false
+	}
+	c := source[0]
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
 }
 
 // fetchRetrieverURL reads the document over HTTP(S) through the

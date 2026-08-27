@@ -29,6 +29,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 )
 
@@ -321,6 +322,33 @@ func TestSelectFileSetManifestOnIndex(t *testing.T) {
 	}
 }
 
+// TestSelectFileSetManifestOmittedVariant is B-020 on this selector: the
+// configured platform follows the "os/arch[/variant]" notation, where the
+// variant is optional, and registries describe their arm64 children with
+// variant v8. Comparing rendered labels made the variant mandatory, so a
+// perfectly ordinary "linux/arm64" refused to serve an index that plainly
+// carried one. A named variant still binds.
+func TestSelectFileSetManifestOmittedVariant(t *testing.T) {
+	st := openFileSetStore(t)
+	children := pushIndex(t, st, "1.0.0",
+		v1.Platform{OS: "linux", Architecture: "amd64"},
+		v1.Platform{OS: "linux", Architecture: "arm64", Variant: "v8"})
+
+	got, err := resolveOne(t, st, config.FileSetServe{Name: "debs", Ref: fileSetRef, Platform: "linux/arm64"})
+	if err != nil {
+		t.Fatalf("resolveFileSets: %v", err)
+	}
+	if got.digest != children["linux/arm64"] {
+		t.Errorf("selected %s, want the linux/arm64 child %s", got.digest, children["linux/arm64"])
+	}
+
+	_, err = resolveFileSets(context.Background(), st,
+		fileSetConfig(config.FileSetServe{Name: "debs", Ref: fileSetRef, Platform: "linux/arm64/v9"}))
+	if err == nil || !strings.Contains(err.Error(), "platform linux/arm64/v9 not found in the index") {
+		t.Errorf("wrong variant = %v, want an explicit not-found-in-index error", err)
+	}
+}
+
 // TestSelectFileSetManifestSinglePlatformIndex: an index carrying one real
 // platform plus buildx-style attestation entries ("unknown/unknown") is not
 // ambiguous — the attestations are not platforms, so no configuration is
@@ -408,6 +436,34 @@ func TestResolveFileSetsReportsEveryFailureAndKeepsTheRest(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "fileset debs") {
 		t.Errorf("the healthy FileSet was reported as failing: %v", err)
+	}
+}
+
+// TestSyncFileSetsServesWhatResolvedDespiteAFailure: one declaration
+// waiting for its content must not keep every other FileSet — packed ones
+// included (FR-048) — out of /files/. The refresh used to abandon the
+// whole Sync on the joined error, which resolveFileSets already documents
+// as not being an instance failure.
+func TestSyncFileSetsServesWhatResolvedDespiteAFailure(t *testing.T) {
+	st := openFileSetStore(t)
+	pushImages(t, st, "1.0.0")
+	fsrv := fileserve.NewServer(storeBlobs{st: st}, t.TempDir(), fileserve.Limits{}, slog.New(slog.DiscardHandler))
+	// A served FileSet keeps an os.Root open on its extracted tree for the
+	// server's whole life, and on Windows an open handle is what stops a
+	// directory from being removed (NFR-018). Registering the close after
+	// the t.TempDir() call above makes LIFO cleanup release the handle
+	// before the temporary directory is torn down.
+	t.Cleanup(func() { _ = fsrv.Close() })
+
+	cfg := fileSetConfig(
+		config.FileSetServe{Name: "not-synced-yet", Ref: "registry.example.com/filesets/absent"},
+		config.FileSetServe{Name: "debs", Ref: fileSetRef},
+	)
+	syncFileSets(context.Background(), fsrv, st, cfg, slog.New(slog.DiscardHandler))
+
+	enabled := fsrv.Enabled()
+	if len(enabled) != 1 || enabled[0].Name != "debs" {
+		t.Fatalf("serving %+v, want the one FileSet whose content is present", enabled)
 	}
 }
 

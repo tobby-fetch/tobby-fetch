@@ -41,6 +41,8 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/api"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
+	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 )
@@ -90,14 +92,22 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "GET /tasks/{id}", Floor: auth.RoleViewer, Method: "GET", Path: "/tasks/no-such-task"},
 	{Pattern: "GET /import", Floor: auth.RoleOperator, Why: "importing is an operator action (FR-023)", Method: "GET", Path: "/import"},
 	{Pattern: "POST /import", Floor: auth.RoleOperator, Method: "POST", Path: "/import", Form: "reference="},
+	{Pattern: "GET /filesets", Floor: auth.RoleViewer, Why: "the FileSet inventory is a listing like any other (FR-047)", Method: "GET", Path: "/filesets"},
+	{Pattern: "POST /filesets/pack", Floor: auth.RoleAdmin, Why: "packing reads a directory of the host and puts unsigned content in the store (FR-048)", Method: "POST", Path: "/filesets/pack", Form: "source="},
 	{Pattern: "GET /content", Floor: auth.RoleViewer, Method: "GET", Path: "/content"},
 	{Pattern: "GET /content/{repo...}", Floor: auth.RoleViewer, Method: "GET", Path: "/content/no/such/repo"},
 	{Pattern: "POST /content/{repo...}", Floor: auth.RoleAdmin, Why: "removal of unit-imported content (FR-044 amendment)", Method: "POST", Path: "/content/no/such/repo/-/delete"},
 	{Pattern: "GET /recipes", Floor: auth.RoleViewer, Method: "GET", Path: "/recipes"},
 	{Pattern: "POST /recipes/sync", Floor: auth.RoleOperator, Why: "triggering a synchronization is an operator action (FR-014)", Method: "POST", Path: "/recipes/sync"},
+	{Pattern: "GET /recipes/prune-preview", Floor: auth.RoleOperator, Why: "what a synchronization would REMOVE is part of the trigger it informs (FR-045): the role that may see it is the role that may confirm it", Method: "GET", Path: "/recipes/prune-preview"},
 	{Pattern: "GET /recipes/publish", Floor: auth.RoleOperator, Why: "the publication form (R-40): only a role that can publish is offered one", Method: "GET", Path: "/recipes/publish"},
 	{Pattern: "POST /recipes/publish", Floor: auth.RoleOperator, Why: "publishing writes into another zone's cookbook (R-40); the write is audited (FR-094)", Method: "POST", Path: "/recipes/publish", Form: "reference=&document="},
+	{Pattern: "GET /recipes/plan", Floor: auth.RoleOperator, Why: "the plan form (FR-055/R-04): only a role that can trigger a synchronization is offered a simulation of one", Method: "GET", Path: "/recipes/plan"},
+	{Pattern: "POST /recipes/plan", Floor: auth.RoleOperator, Why: "a plan mutates nothing, but it makes this instance reach out to every registry the submitted Retriever names", Method: "POST", Path: "/recipes/plan", Form: "retriever=&document="},
 	{Pattern: "GET /recipes/{recipe}/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/recipes/no-such-recipe/mapping"},
+	{Pattern: "GET /media", Floor: auth.RoleViewer, Why: "the medium's inventory summary is a listing like any other (R-02)", Method: "GET", Path: "/media"},
+	{Pattern: "POST /media/verify", Floor: auth.RoleOperator, Why: "re-hashing a whole medium is work, not a read (FR-054); the two waivers inside it need admin, enforced in the handler", Method: "POST", Path: "/media/verify"},
+	{Pattern: "POST /media/import", Floor: auth.RoleOperator, Why: "pushing a transported medium into the zone registry (FR-052), audited (FR-094); the waivers need admin, enforced in the handler", Method: "POST", Path: "/media/import"},
 	{Pattern: "GET /account", Floor: auth.RoleViewer, Why: "self-service: every authenticated role manages its own account (R-34)", Method: "GET", Path: "/account"},
 	{Pattern: "POST /account/password", Floor: auth.RoleViewer, Method: "POST", Path: "/account/password", Form: "current=x&new=&confirm="},
 	{Pattern: "GET /admin/accounts", Floor: auth.RoleAdmin, Method: "GET", Path: "/admin/accounts"},
@@ -110,7 +120,15 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "POST /admin/retriever/interval", Floor: auth.RoleAdmin, Why: "changes how often this instance promotes, unattended (FR-013); the change is audited as sensitive configuration (FR-094)", Method: "POST", Path: "/admin/retriever/interval"},
 	{Pattern: "GET /admin/network", Floor: auth.RoleAdmin, Why: "reveals the instance's own TLS identity and its outbound path (FR-082, FR-080)", Method: "GET", Path: "/admin/network"},
 	{Pattern: "POST /admin/network/certificate", Floor: auth.RoleAdmin, Why: "decides what every client of this instance authenticates against (FR-082); audited as sensitive configuration (FR-094)", Method: "POST", Path: "/admin/network/certificate"},
+	{Pattern: "GET /admin/oci-layout", Floor: auth.RoleAdmin, Why: "the export writes the store's content to a path on the host filesystem (FR-051)", Method: "GET", Path: "/admin/oci-layout"},
+	{Pattern: "POST /admin/oci-layout/plan", Floor: auth.RoleAdmin, Why: "same selection surface as the export it estimates (FR-055)", Method: "POST", Path: "/admin/oci-layout/plan", Form: "output="},
+	{Pattern: "POST /admin/oci-layout/export", Floor: auth.RoleAdmin, Why: "writes the store's content to a host path (FR-051); audited (FR-094)", Method: "POST", Path: "/admin/oci-layout/export", Form: "output="},
+	{Pattern: "POST /admin/oci-layout/import", Floor: auth.RoleAdmin, Why: "brings outside bytes into the store (FR-051); audited (FR-094)", Method: "POST", Path: "/admin/oci-layout/import", Form: "input="},
+	{Pattern: "GET /admin/store", Floor: auth.RoleAdmin, Why: "the reset lives here (FR-046)", Method: "GET", Path: "/admin/store"},
+	{Pattern: "POST /admin/store/reset", Floor: auth.RoleAdmin, Why: "full store reset, restricted to admin by FR-046 and audited (FR-094)", Method: "POST", Path: "/admin/store/reset", Form: "confirmation=not-the-phrase"},
 	{Pattern: "GET /help", Floor: auth.RoleViewer, Method: "GET", Path: "/help"},
+	{Pattern: "GET /help/{page...}", Floor: auth.RoleViewer, Why: "the embedded operations guides (NFR-003 amendment): readable by whoever operates the instance, and by nobody who has not signed in (R-01)", Method: "GET", Path: "/help/passthrough/operate"},
+	{Pattern: "GET /help/-/assets/{name}", Floor: auth.RoleViewer, Why: "the screenshots of those guides; same floor as the pages that show them", Method: "GET", Path: "/help/-/assets/no-such-shot.png"},
 	{Pattern: "GET /about", Floor: auth.RoleViewer, Method: "GET", Path: "/about"},
 	{Pattern: "GET /about/third-party", Floor: auth.RoleViewer, Method: "GET", Path: "/about/third-party"},
 	{Pattern: "GET /api-docs", Floor: auth.RoleViewer, Method: "GET", Path: "/api-docs"},
@@ -122,18 +140,31 @@ var uiMatrix = []rbacRoute{
 // has an endpoint an operator can call, and no more.
 var apiMatrix = []rbacRoute{
 	{Pattern: "GET /api/v1/openapi.yaml", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/openapi.yaml"},
+	{Pattern: "GET /api/v1/cli-output.schema.json", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/cli-output.schema.json"},
 	{Pattern: "GET /api/v1/content", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/content"},
 	{Pattern: "GET /api/v1/content/{repo...}", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/content/no/such/repo"},
 	{Pattern: "DELETE /api/v1/content/{repo...}", Floor: auth.RoleAdmin, Method: "DELETE", Path: "/api/v1/content/no/such/repo"},
+	{Pattern: "GET /api/v1/filesets", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/filesets"},
+	{Pattern: "POST /api/v1/filesets/pack", Floor: auth.RoleAdmin, Method: "POST", Path: "/api/v1/filesets/pack", Body: `{"source":""}`},
 	{Pattern: "POST /api/v1/import", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/import", Body: `{"reference":""}`},
 	{Pattern: "GET /api/v1/import/inspect", Floor: auth.RoleOperator, Method: "GET", Path: "/api/v1/import/inspect"},
 	{Pattern: "GET /api/v1/tasks", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/tasks"},
 	{Pattern: "GET /api/v1/tasks/{id}", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/tasks/no-such-task"},
 	{Pattern: "GET /api/v1/tasks/{id}/logs", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/tasks/no-such-task/logs"},
+	{Pattern: "POST /api/v1/oci-layout/plan", Floor: auth.RoleAdmin, Why: "mirror of /admin/oci-layout's estimate (FR-061)", Method: "POST", Path: "/api/v1/oci-layout/plan", Body: `{"output":""}`},
+	{Pattern: "POST /api/v1/oci-layout/export", Floor: auth.RoleAdmin, Why: "writes the store's content to a host path (FR-051)", Method: "POST", Path: "/api/v1/oci-layout/export", Body: `{"output":""}`},
+	{Pattern: "POST /api/v1/oci-layout/import", Floor: auth.RoleAdmin, Why: "brings outside bytes into the store (FR-051)", Method: "POST", Path: "/api/v1/oci-layout/import", Body: `{"input":""}`},
+	{Pattern: "POST /api/v1/store/reset", Floor: auth.RoleAdmin, Why: "full store reset, restricted to admin by FR-046", Method: "POST", Path: "/api/v1/store/reset", Body: `{"confirmation":"not-the-phrase"}`},
 	{Pattern: "GET /api/v1/recipes", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/recipes"},
 	{Pattern: "GET /api/v1/recipes/{recipe}/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/recipes/no-such-recipe/mapping"},
 	{Pattern: "POST /api/v1/sync", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/sync"},
+	{Pattern: "POST /api/v1/plan", Floor: auth.RoleOperator, Why: "a plan mutates nothing, but it makes the instance open outbound connections to every registry the submitted Retriever names (FR-055/R-04)", Method: "POST", Path: "/api/v1/plan", Body: `{}`},
+	{Pattern: "GET /api/v1/sync/prune-preview", Floor: auth.RoleOperator, Method: "GET", Path: "/api/v1/sync/prune-preview"},
 	{Pattern: "POST /api/v1/recipes/publish", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/recipes/publish", Body: `{"reference":"","document":""}`},
+	{Pattern: "GET /api/v1/media/verification", Floor: auth.RoleViewer, Why: "the serving gate and the verification in progress (FR-054), mirror of what the Media screen polls: reading, and pollable because it hashes nothing", Method: "GET", Path: "/api/v1/media/verification"},
+	{Pattern: "GET /api/v1/media", Floor: auth.RoleViewer, Why: "the medium's identity and the zone's last import (FR-052, R-28): reading, like every other inventory view", Method: "GET", Path: "/api/v1/media"},
+	{Pattern: "POST /api/v1/media/verify", Floor: auth.RoleOperator, Why: "re-hashing a whole medium is work, not a read (FR-054); the FR-054 waivers inside it need admin, enforced in the handler", Method: "POST", Path: "/api/v1/media/verify", Body: `{}`},
+	{Pattern: "POST /api/v1/media/import", Floor: auth.RoleOperator, Why: "pushing a transported medium into the zone registry (FR-052), audited (FR-094); the waivers need admin, enforced in the handler", Method: "POST", Path: "/api/v1/media/import", Body: `{}`},
 	{Pattern: "GET /api/v1/network", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/network"},
 	{Pattern: "PUT /api/v1/network/certificate", Floor: auth.RoleAdmin, Method: "PUT", Path: "/api/v1/network/certificate", Body: `{"certificate":"","key":""}`},
 	{Pattern: "GET /api/v1/retriever", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/retriever"},
@@ -222,8 +253,9 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 		Logger:   slog.New(slog.DiscardHandler),
 		Now:      func() time.Time { return t0 },
 	}
+	svc := interop.New(st, queue, "", slog.New(slog.DiscardHandler))
 	u := New(authn, slog.New(slog.DiscardHandler), &Options{
-		Version: "0.4.0-test", Mode: "mirror", Store: st, Queue: queue,
+		Version: "0.4.0-test", Mode: "mirror", Store: st, Queue: queue, Interop: svc,
 	})
 	u.Now = func() time.Time { return t0 }
 
@@ -231,7 +263,7 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	u.Mount(rec)
 
 	restAPI := api.New(authn, slog.New(slog.DiscardHandler))
-	api.RegisterContent(restAPI, st)
+	api.RegisterContent(restAPI, st, nil)
 	api.RegisterTasks(restAPI, queue, st, time.Second, nil)
 	api.RegisterAccounts(restAPI, accounts)
 	api.RegisterRecipes(restAPI, &api.RecipeOptions{Store: st, Queue: queue})
@@ -239,7 +271,20 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	// and without a certificate: the matrix probes the GATE, and every
 	// row here is decided before the handler runs.
 	api.RegisterPublish(restAPI, nil)
+	api.RegisterPlan(restAPI, &api.PlanOptions{})
+	// The FR-048 mirror. The surface is wired with a packer confined to
+	// no root at all — the matrix probes the GATE, and every row here is
+	// decided before the handler runs.
+	api.RegisterFileSets(restAPI, &fileserve.Surface{
+		Catalog: rbacCatalog{st: st},
+		Packer:  fileserve.NewPacker(st, "", slog.New(slog.DiscardHandler), fileserve.WithPackRoots(nil)),
+	})
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{})
+	api.RegisterOCILayout(restAPI, svc, queue)
+	// FR-052: registered without an engine, like the two above — the
+	// matrix probes the gate, and every row is decided before the
+	// handler runs.
+	api.RegisterMedia(restAPI, &api.MediaOptions{})
 	api.RegisterOpenAPI(restAPI)
 	rec.mux.Handle("/api/v1/", restAPI.Handler())
 
@@ -457,10 +502,14 @@ func TestRBACMatrixMirrorsUIFloors(t *testing.T) {
 		{"GET /content/{repo...}", "GET /api/v1/content/{repo...}"},
 		{"POST /content/{repo...}", "DELETE /api/v1/content/{repo...}"},
 		{"POST /import", "POST /api/v1/import"},
+		{"GET /filesets", "GET /api/v1/filesets"},
+		{"POST /filesets/pack", "POST /api/v1/filesets/pack"},
 		{"GET /tasks", "GET /api/v1/tasks"},
 		{"GET /recipes", "GET /api/v1/recipes"},
 		{"POST /recipes/sync", "POST /api/v1/sync"},
+		{"GET /recipes/prune-preview", "GET /api/v1/sync/prune-preview"},
 		{"POST /recipes/publish", "POST /api/v1/recipes/publish"},
+		{"POST /recipes/plan", "POST /api/v1/plan"},
 		{"GET /admin/network", "GET /api/v1/network"},
 		{"POST /admin/network/certificate", "PUT /api/v1/network/certificate"},
 		{"GET /admin/retriever", "GET /api/v1/retriever"},
@@ -479,3 +528,17 @@ func TestRBACMatrixMirrorsUIFloors(t *testing.T) {
 		}
 	}
 }
+
+// rbacCatalog is the minimal inventory read surface the FR-048 rows need:
+// the matrix probes the gate, so an empty store is the whole fixture.
+type rbacCatalog struct{ st *store.Store }
+
+func (c rbacCatalog) Repositories(ctx context.Context) ([]string, error) {
+	return c.st.Repositories(ctx)
+}
+
+func (c rbacCatalog) Tags(ctx context.Context, repo string) ([]string, error) {
+	return c.st.Tags(ctx, repo)
+}
+
+func (c rbacCatalog) Provenance(string) string { return fileserve.FromSeed }

@@ -91,6 +91,24 @@ func TestLoadRetrieverSources(t *testing.T) {
 		}
 	})
 
+	// A Windows drive designator is a file path, not a registry host. The
+	// case is checked on every platform because the classification is
+	// lexical by design: a configuration file is read on the machine it is
+	// deployed to, so the answer must not depend on the build target
+	// (NFR-018).
+	t.Run("missing windows path is actionable, not a registry guess", func(t *testing.T) {
+		for _, source := range []string{
+			`C:/config/retriever.yaml`,
+			`C:\config\retriever.yaml`,
+			`c:config/retriever.yaml`,
+		} {
+			_, err := LoadRetriever(ctx, remotes, source)
+			if err == nil || !strings.Contains(err.Error(), "does not exist") {
+				t.Errorf("LoadRetriever(%q) error = %v, want a does-not-exist explanation and no registry attempt (FR-010)", source, err)
+			}
+		}
+	})
+
 	t.Run("empty source is actionable", func(t *testing.T) {
 		_, err := LoadRetriever(ctx, remotes, "")
 		if err == nil || !strings.Contains(err.Error(), "not configured") {

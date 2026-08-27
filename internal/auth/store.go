@@ -18,11 +18,13 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/secretfile"
 )
 
 // accountsFile is the file holding accounts and tokens under the state
-// directory. Mode 0600: it contains password hashes and token digests
-// (NFR-018).
+// directory. Owner-only: it contains password hashes and token digests
+// (NFR-020, NFR-018).
 const accountsFile = "accounts.yaml"
 
 // fileSchema is the on-disk format. Versioned like every persisted schema.
@@ -113,12 +115,12 @@ var ErrExists = errors.New("already exists")
 var ErrLastAdmin = errors.New("last administrator account")
 
 // Open loads (or initializes empty) the account store under stateRoot. The
-// directory is created 0700 if missing.
+// directory is created owner-only if missing (NFR-020).
 func Open(stateRoot string) (*Store, error) {
 	if stateRoot == "" {
 		return nil, errors.New("auth: state root is required")
 	}
-	if err := os.MkdirAll(stateRoot, 0o700); err != nil {
+	if err := secretfile.MkdirAll(stateRoot); err != nil {
 		return nil, fmt.Errorf("auth: creating state directory: %w", err)
 	}
 	s := &Store{path: filepath.Join(stateRoot, accountsFile), data: fileSchema{Version: 1}}
@@ -138,32 +140,18 @@ func Open(stateRoot string) (*Store, error) {
 	return s, nil
 }
 
-// save writes the store atomically with restrictive permissions (NFR-018).
-// Callers hold s.mu.
+// save writes the store atomically, owner-only on both operating systems
+// of the validated scope (NFR-020, NFR-018). The file holds the argon2id
+// hashes of every account and the digests of every static token: the
+// permissions are not hygiene, they are the last barrier once someone has
+// a shell on the host. Callers hold s.mu.
 func (s *Store) save() error {
 	out, err := yaml.Marshal(s.data)
 	if err != nil {
 		return fmt.Errorf("auth: encoding accounts: %w", err)
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(s.path), ".accounts-*")
-	if err != nil {
+	if err := secretfile.Write(s.path, out); err != nil {
 		return fmt.Errorf("auth: writing accounts: %w", err)
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName) //nolint:errcheck // best-effort cleanup on the error paths
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close() //nolint:errcheck,gosec // the chmod error is the one reported
-		return fmt.Errorf("auth: securing accounts file: %w", err)
-	}
-	if _, err := tmp.Write(out); err != nil {
-		tmp.Close() //nolint:errcheck,gosec // the write error is the one reported
-		return fmt.Errorf("auth: writing accounts: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("auth: writing accounts: %w", err)
-	}
-	if err := os.Rename(tmpName, s.path); err != nil {
-		return fmt.Errorf("auth: replacing accounts file: %w", err)
 	}
 	return nil
 }

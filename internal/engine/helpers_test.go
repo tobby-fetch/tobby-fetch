@@ -98,6 +98,13 @@ type destRegistry struct {
 	// with more path components — the FR-035 fixture for a destination
 	// that does not accept nested repositories.
 	maxDepth int
+
+	// watch, when set, runs on every inbound request BEFORE the registry
+	// answers it. The FR-054 ordering test needs to observe the instant a
+	// destination is first contacted, not merely the list afterwards:
+	// "nothing was pushed before verification" is a statement about
+	// order, and a request log read at the end cannot make it.
+	watch func(method, path string)
 }
 
 // newDestRegistry serves a fresh destination.
@@ -111,7 +118,11 @@ func newDestRegistry(t *testing.T, opts ...func(*destRegistry)) *destRegistry {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d.mu.Lock()
 		d.reqs = append(d.reqs, r.Method+" "+r.URL.Path)
+		watch := d.watch
 		d.mu.Unlock()
+		if watch != nil {
+			watch(r.Method, r.URL.Path)
+		}
 		if d.maxDepth > 0 && repoDepth(r.URL.Path) > d.maxDepth {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
@@ -129,6 +140,11 @@ func newDestRegistry(t *testing.T, opts ...func(*destRegistry)) *destRegistry {
 // refusingNestedNames caps the accepted repository depth.
 func refusingNestedNames(depth int) func(*destRegistry) {
 	return func(d *destRegistry) { d.maxDepth = depth }
+}
+
+// watching runs f on every inbound request, before the registry answers.
+func watching(f func(method, path string)) func(*destRegistry) {
+	return func(d *destRegistry) { d.watch = f }
 }
 
 // reset drops the recorded requests, so a second cycle is measured on its

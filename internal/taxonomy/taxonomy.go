@@ -52,6 +52,15 @@ const (
 	ExitUsage        = 2
 	ExitPolicy       = 3
 	ExitVerification = 4
+	// ExitChangesPlanned is the plan-mode outcome of FR-055's R-04
+	// amendment: the run succeeded and found work to do. It is a success
+	// code with a distinct value, not a failure — a CI gate needs to
+	// branch on "there are changes" without treating it as a broken
+	// build, and 0 would make "nothing to do" and "everything changed"
+	// indistinguishable. Refusals keep their own classes: a plan blocked
+	// by the allow-list exits ExitPolicy, one blocked by a signature
+	// verdict exits ExitVerification.
+	ExitChangesPlanned = 5
 )
 
 // ExitCode returns the process exit code for the class.

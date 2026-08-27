@@ -12,7 +12,10 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
+	"github.com/tobby-fetch/tobby-fetch/internal/interop"
+	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -47,6 +50,13 @@ type UI struct {
 	// publisher backs the R-40 publication screen; nil on an instance
 	// wired without one, which renders the form inert.
 	publisher Publisher
+	// planner backs the FR-055/R-04 plan screen; nil renders its form
+	// inert, the way a missing publisher does.
+	planner Planner
+	// fileSets backs the FR-047/FR-048 FileSets screen — the same surface
+	// the REST endpoints use, so the two cannot drift (FR-061). Nil on an
+	// instance wired without one, which renders the screen empty.
+	fileSets *fileserve.Surface
 	// serverCert backs the FR-082 network screen: what the listener
 	// presents, and — through its own Destination — where a replacement
 	// goes. Asking the certificate rather than carrying the configured
@@ -56,6 +66,32 @@ type UI struct {
 	// egress is the outbound posture reported on the same screen
 	// (FR-080, FR-081).
 	egress tlsadmin.Egress
+	// interop backs the OCI image layout screens (FR-051) and the store
+	// reset (FR-046); nil on an instance wired without one, which renders
+	// those screens explanatory rather than inert.
+	interop *interop.Service
+	// occupancy is the latest store-footprint sample (R-33); nil on an
+	// instance with no configured threshold.
+	occupancy *store.OccupancyMonitor
+	// prunesByDefault is what an unqualified trigger does about content
+	// the Retriever no longer references (FR-045): the state the
+	// confirmation checkbox opens in, and what the retriever screen and
+	// its API mirror report.
+	prunesByDefault bool
+	// projector computes the trigger-time confirmation (FR-045). Nil on
+	// an instance wired without an engine.
+	projector PruneProjector
+	// mediaZone is the destination-side context of the Media screen
+	// (FR-062 amendment R-02): the zone this instance serves and the
+	// freshness record it holds for it. Nil leaves the screen in its
+	// source-side shape — a summary of the medium this store is, and no
+	// verification sequence.
+	mediaZone MediaZone
+	// mediaGate is the FR-054 serving gate: whether /v2/ and /files/
+	// answer, the verification currently walking the medium, and the
+	// verdict the last one reached. Nil on an instance that guards
+	// nothing, which renders the sequence unavailable rather than broken.
+	mediaGate *mediagate.Gate
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -109,6 +145,14 @@ type Options struct {
 	// Publisher publishes recipe documents into a cookbook (R-40). Nil
 	// leaves the publication screen readable and its form inert.
 	Publisher Publisher
+	// Planner produces the side-effect-free plan of FR-055's R-04
+	// amendment. Nil leaves the plan screen readable and its form inert.
+	Planner Planner
+	// FileSets is the FR-047/FR-048 surface behind the FileSets screen:
+	// the inventory of held and served file sets, and the packing of a
+	// local directory into one. Shared with the REST endpoints so the two
+	// give one answer (FR-061).
+	FileSets *fileserve.Surface
 	// ServerCert is the certificate the listener presents (FR-082). Nil
 	// on an instance serving plain HTTP — the screen says so rather than
 	// showing an empty certificate.
@@ -116,6 +160,28 @@ type Options struct {
 	// Egress is the instance's outbound transport, reported as posture
 	// (FR-080, FR-081). Only its printable accessors are ever called.
 	Egress tlsadmin.Egress
+	// Interop backs the OCI image layout screens (FR-051) and the store
+	// reset (FR-046) — the same object the API mirror uses, so FR-061
+	// parity holds by construction.
+	Interop *interop.Service
+	// Occupancy watches the store footprint against the configured
+	// threshold (R-33): a persistent banner while it is exceeded, gone
+	// again when it is not. Nil on an instance with no threshold set.
+	Occupancy *store.OccupancyMonitor
+	// PrunesToRetriever is what an unqualified trigger does about content
+	// the Retriever no longer references (FR-045): on in mirror mode,
+	// where the operator confirms against a projected list, off in
+	// passthrough unless sync.prune says otherwise.
+	PrunesToRetriever bool
+	// Projector computes the FR-045 trigger-time confirmation. Nil leaves
+	// the confirmation fragment saying it cannot project, which is what
+	// an instance with no Retriever source should say.
+	Projector PruneProjector
+	// MediaZone and MediaGate back the Media screen (FR-062 amendment
+	// R-02) — the same objects the /api/v1/media endpoints read, so the
+	// screen and its mirror cannot answer differently (FR-061).
+	MediaZone MediaZone
+	MediaGate *mediagate.Gate
 }
 
 // New assembles the UI.
@@ -129,6 +195,9 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 	// renderer (FR-033, FR-047 — same channel as the FR-075 override).
 	render.RelaxedScopes = opts.RelaxedTrustScopes
 	render.AnonymousFileSets = opts.AnonymousFileSets
+	if opts.Occupancy != nil {
+		render.Occupancy = opts.Occupancy.Current
+	}
 	return &UI{
 		render:            render,
 		authn:             authn,
@@ -147,8 +216,16 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		cookbook:          opts.Cookbook,
 		interval:          opts.Interval,
 		publisher:         opts.Publisher,
+		planner:           opts.Planner,
+		fileSets:          opts.FileSets,
 		serverCert:        opts.ServerCert,
 		egress:            opts.Egress,
+		interop:           opts.Interop,
+		occupancy:         opts.Occupancy,
+		prunesByDefault:   opts.PrunesToRetriever,
+		projector:         opts.Projector,
+		mediaZone:         opts.MediaZone,
+		mediaGate:         opts.MediaGate,
 	}
 }
 
@@ -213,13 +290,37 @@ func (u *UI) Mount(rt Router) {
 	// recipe graph, the per-recipe mapping table, and the sync trigger.
 	mux.Handle("GET /recipes", app(u.recipesList))
 	mux.Handle("POST /recipes/sync", operator(u.recipesSync))
+	mux.Handle("GET /recipes/prune-preview", operator(u.prunePreview))
 	// Recipe publication (R-40): the interface half of `tobby recipe
 	// push`. Operator-gated — publishing writes into a cookbook — and
 	// declared before /recipes/{recipe}/mapping only for readability:
 	// the two patterns differ in segment count and cannot collide.
+	// The FileSets screen (FR-047, FR-048). Reading the inventory is a
+	// listing like any other; packing is admin, because it reads a
+	// directory of the host filesystem and puts unsigned content in the
+	// store — the same floor as content removal.
+	mux.Handle("GET /filesets", app(u.filesetsScreen))
+	mux.Handle("POST /filesets/pack", admin(u.filesetsPack))
 	mux.Handle("GET /recipes/publish", operator(u.recipePublishScreen))
 	mux.Handle("POST /recipes/publish", operator(u.recipePublishSubmit))
+	// Plan mode (FR-055 amendment R-04): the simulation of a
+	// synchronization, side-effect-free, over the configured Retriever or
+	// a candidate one. Operator-gated like the trigger it simulates —
+	// a plan mutates nothing, but it makes this instance reach out to
+	// every registry the submitted document names.
+	mux.Handle("GET /recipes/plan", operator(u.planScreen))
+	mux.Handle("POST /recipes/plan", operator(u.planSubmit))
 	mux.Handle("GET /recipes/{recipe}/mapping", app(u.recipeMapping))
+
+	// The Media screen (FR-062 amendment R-02, FR-052): the physical
+	// transfer, on both sides of it. Reading the medium's inventory is a
+	// listing like any other; verifying it re-hashes the whole disk and
+	// importing it writes into the zone registry, so both are operator
+	// actions — with the two FR-054 waivers reserved to an administrator
+	// in the handler, exactly as the API mirror enforces them.
+	mux.Handle("GET /media", app(u.mediaScreen))
+	mux.Handle("POST /media/verify", operator(u.mediaVerify))
+	mux.Handle("POST /media/import", operator(u.mediaImport))
 
 	// Account self-service (R-34, FR-061): every authenticated role,
 	// viewer included — the admin gate stays on /admin/accounts.
@@ -250,7 +351,25 @@ func (u *UI) Mount(rt Router) {
 	// instance authenticates against.
 	mux.Handle("GET /admin/network", admin(u.adminNetwork))
 	mux.Handle("POST /admin/network/certificate", admin(u.adminNetworkCertificate))
+	// Interoperability and the store reset (FR-051, FR-046). Admin on
+	// every one: an export names a host filesystem path and writes the
+	// store's content to it, an import brings outside bytes in, and a
+	// reset empties the store.
+	mux.Handle("GET /admin/oci-layout", admin(u.layoutScreen))
+	mux.Handle("POST /admin/oci-layout/plan", admin(u.layoutEstimate))
+	mux.Handle("POST /admin/oci-layout/export", admin(u.layoutExport))
+	mux.Handle("POST /admin/oci-layout/import", admin(u.layoutImport))
+	mux.Handle("GET /admin/store", admin(u.storeScreen))
+	mux.Handle("POST /admin/store/reset", admin(u.storeReset))
 	mux.Handle("GET /help", app(u.helpScreen))
+	// The embedded documentation (R-05, NFR-003): the guides at
+	// /help/<section>/<page>, their screenshots on the "/-/" sub-resource
+	// separator (ADR-0015 §3) so the asset namespace can never collide
+	// with a page key. The asset pattern is more specific than the
+	// catch-all and wins on ServeMux's precedence rules, whatever the
+	// declaration order.
+	mux.Handle("GET /help/-/assets/{name}", app(u.helpAsset))
+	mux.Handle("GET /help/{page...}", app(u.helpPage))
 	mux.Handle("GET /about", app(u.aboutScreen))
 	mux.Handle("GET /about/third-party", app(u.thirdPartyNotices))
 	mux.Handle("GET /api-docs", app(u.apiDocsScreen))

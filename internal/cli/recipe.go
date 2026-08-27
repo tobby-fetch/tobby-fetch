@@ -27,8 +27,19 @@ func newRecipeCmd() *cobra.Command {
 	return cmd
 }
 
+// recipePushReport is the machine form of a publication (R-08). The
+// digest is what a signing pipeline consumes; "unchanged" is what tells it
+// whether there is anything new to sign.
+type recipePushReport struct {
+	Reference  string `json:"reference"`
+	Repository string `json:"repository"`
+	Digest     string `json:"digest"`
+	Unchanged  bool   `json:"unchanged"`
+}
+
 func newRecipePushCmd() *cobra.Command {
 	flags := &commonFlags{}
+	report := newReportFlag(outputText, outputJSON)
 	cmd := &cobra.Command{
 		Use:   "push <file> <registry>/<cookbook>/<name>:<version>",
 		Short: "Validate a recipe and publish it to a cookbook",
@@ -51,6 +62,9 @@ digest is printed on stdout, ready for cosign:
     registry.example.com/cookbook/harbor@<the printed digest>`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := report.validate(cmd); err != nil {
+				return err
+			}
 			file, ref := args[0], args[1]
 			doc, err := os.ReadFile(file) //nolint:gosec // G304: publishing the operator's own file is the feature
 			if err != nil {
@@ -81,6 +95,14 @@ digest is printed on stdout, ready for cosign:
 				return err
 			}
 
+			if report.json() {
+				return writeJSON(cmd, recipePushReport{
+					Reference:  res.Reference,
+					Repository: repositoryOf(res.Reference),
+					Digest:     res.Digest,
+					Unchanged:  res.Unchanged,
+				})
+			}
 			// Human feedback on stderr, the digest alone on stdout: the
 			// command composes into a signing pipeline (B-010).
 			what := "published"
@@ -95,6 +117,7 @@ digest is printed on stdout, ready for cosign:
 		},
 	}
 	flags.register(cmd)
+	report.register(cmd)
 	return cmd
 }
 

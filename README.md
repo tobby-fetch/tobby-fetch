@@ -22,8 +22,10 @@ Two operating modes cover the whole path:
   is physically carried across the air gap and pushed into the destination
   zone registry by the same application — after full re-verification.
 
-Everything that crosses a boundary is **signed, digest-pinned, scanned, and
-allow-listed** — and Tobby's own releases hold themselves to the same bar:
+Everything that crosses a boundary is **signed, digest-pinned and
+allow-listed**, and re-verified on the far side against that side's own
+trust roots — vulnerability scanning joins the list at milestone 6. Tobby's
+own releases hold themselves to the same bar:
 SLSA Build L3 provenance, reproducible builds, signed SBOMs, zero-known-CVE
 images, and an OpenVEX statement for anything a scanner flags that does not
 apply.
@@ -36,7 +38,7 @@ issues, disagree with an ADR:
 | Document | What it is |
 |---|---|
 | [Software Requirements Specification](docs/SRS.md) | Every functional and non-functional requirement, numbered and testable |
-| [Architecture Decision Records](docs/adr/) | The 14 structuring decisions — context, decision, consequences, alternatives |
+| [Architecture Decision Records](docs/adr/) | The 16 structuring decisions — context, decision, consequences, alternatives |
 | [Roadmap (French)](https://tobby-fetch.github.io/tobby-fetch/roadmap.html) | Milestones and features in three readings: technical, plain-language, business value — rendered on the project site ([source](website/public/roadmap.html)) |
 | [Recipe format specification](https://github.com/tobby-fetch/recipe-spec) | The `Recipe`/`Retriever` format, JSON Schemas, examples, and the Go parsing/validation SDK — separate repository, Apache-2.0, tagged `v1alpha1` (draft) |
 | [Example recipes](examples/) | Harbor, Keycloak, MetalLB, OpenTelemetry Collector, VictoriaMetrics operator — and the four ways a container image escapes `helm template \| grep image:` before it strands a sealed zone |
@@ -49,7 +51,7 @@ completed milestones stays replayable, in whole or per milestone, at any time
 ([ADR-0014](docs/adr/ADR-0014-crucible-test-infrastructure-incus.md)).
 
 > 🐕 **Released and under active development.** The current release line is
-> **v0.4.x**, with the first four milestones delivered:
+> **v0.5.x**, with the first five milestones delivered:
 >
 > 1. **Foundations** — the application skeleton (layered configuration,
 >    structured JSON logging with run correlation, security audit log,
@@ -64,6 +66,13 @@ completed milestones stays replayable, in whole or per milestone, at any time
 > 4. **Passthrough** — the long-lived promotion service between connected
 >    zones: allow-list policy, authenticated forward proxy, private PKI
 >    trust, and the reference Helm chart.
+> 5. **Mirror & air-gap** — the physical transfer end to end: a
+>    synchronization onto a transportable store with pre-flight checks and a
+>    plan mode, a media manifest and its re-verification on the far side, a
+>    guided Media screen, per-recipe blocking, a destination that serves
+>    nothing until the medium it holds has been verified, OCI image layout
+>    export/import, and documentation embedded in the binary for the zone
+>    that has no route to a website.
 >
 > The design documents above remain the source of truth for what comes
 > next — see the [roadmap](https://tobby-fetch.github.io/tobby-fetch/roadmap.html).

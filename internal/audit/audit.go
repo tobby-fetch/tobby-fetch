@@ -111,6 +111,19 @@ const (
 	// ActionContentDelete is the admin removal of one unit-imported
 	// repository (FR-044 amendment): the target is the repository path.
 	ActionContentDelete = "content.delete"
+	// ActionFileSetPack is the packing of a local file tree into a
+	// FileSet imported in the store (FR-048): the target is the packed
+	// reference, version included. Recorded from every surface — the
+	// content is unsigned and of local origin, so the trail is the only
+	// record of who put it there.
+	ActionFileSetPack = "fileset.pack"
+
+	// ActionPruneActive is emitted at startup while the passthrough prune
+	// is enabled by the explicit R-33 opt-in (FR-045 amendment) — the
+	// trail's counterpart of the retriever screen's own statement. An
+	// instance that deletes content on a timer must be answerable for
+	// when it was told to.
+	ActionPruneActive = "prune.active"
 
 	// ActionIntervalChange is a change to the promotion cadence of
 	// FR-013 — the sensitive configuration change FR-094 asks to be
@@ -128,6 +141,38 @@ const (
 	// that was attempted, which is the half of the trail that answers
 	// "who tried to write into that cookbook".
 	ActionRecipePublish = "recipe.publish"
+
+	// ActionStoreReset is the full store reset of FR-046 — the single
+	// most destructive action the product offers, and the one the
+	// requirement names explicitly among the audited events. The target
+	// is the storage root that was emptied; a refused confirmation is
+	// recorded too, as "denied": somebody typing the wrong word into that
+	// field is the trail's early warning.
+	ActionStoreReset = "store.reset"
+
+	// ActionLayoutExport and ActionLayoutImport are the OCI image layout
+	// operations of FR-051. Recorded because they cross the instance's
+	// boundary in both directions: an export writes content of this store
+	// to a path on the host — the interoperability escape hatch is also
+	// the way content leaves — and an import brings outside bytes in. The
+	// target is the medium's path.
+	ActionLayoutExport = "layout.export"
+	// ActionLayoutImport is the inbound half of ActionLayoutExport: a
+	// medium's content entering this store.
+	ActionLayoutImport = "layout.import"
+	// ActionMediaImport is a destination-side media import (FR-052): the
+	// actor is the authenticated identity or the local invocation, the
+	// target the transported store. Recorded because it is the moment
+	// content from outside the zone enters the zone's registry, which is
+	// the event FR-094 exists for.
+	ActionMediaImport = "media.import"
+
+	// ActionMediaOverride is an administrator waiving one FR-054 guard on
+	// a media import — the zone-identity refusal or the R-28 freshness
+	// refusal. Both requirements name the audit record explicitly, and it
+	// carries the guard as its target so the trail says WHICH barrier was
+	// lowered and not merely that one was.
+	ActionMediaOverride = "media.override"
 
 	// ActionServerCertReplace is a replacement of the listener's own
 	// certificate from the administration surfaces (FR-082). The

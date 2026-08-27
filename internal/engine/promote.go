@@ -32,6 +32,45 @@ import (
 // failure an operator of a promotion service needs to see.
 const pushItemPrefix = "push/"
 
+// origin says where a promotion reads its bytes from.
+//
+// Two flows push through this file and they disagree on exactly one
+// thing. A passthrough cycle promotes content THIS instance fetched, so
+// the repository holding it is this instance's own relocation of the
+// nominal reference. A destination-side media import (FR-052) promotes
+// content a foreign instance wrote onto a medium, under ITS base prefix —
+// a prefix no reader can recompute (RECIPE-SPEC §11.5), which is why the
+// store's recipe graph records the relocated path alongside the nominal
+// one and why this indirection exists rather than a second copy of the
+// push path.
+//
+// The DESTINATION path is not part of it: it is always this instance's
+// own relocation of the nominal reference, in both flows. A zone's
+// registry is addressed in that zone's terms — the same rule FR-034
+// states for the cookbook — and carrying a foreign prefix into it would
+// publish content under the name of the instance that happened to write
+// the medium.
+type origin struct {
+	// stored maps one subject onto the repository the local store holds
+	// it under. ingredient is the ingredient's name, or "" for the recipe
+	// artifact itself.
+	stored func(ref, ingredient string) (string, error)
+	// upstream says whether the FR-022 widening may fetch the platforms a
+	// selection left out. False on a media import: the zone is isolated
+	// (NFR-019), the medium is all there is, and the destination's own
+	// refusal says more than a fetch that cannot happen.
+	upstream bool
+}
+
+// ownContent is the promotion origin of a passthrough cycle: the bytes
+// are where this instance's own relocation convention put them.
+func (e *Engine) ownContent() *origin {
+	return &origin{
+		stored:   func(ref, _ string) (string, error) { return relocate.PathWithBase(e.base, ref) },
+		upstream: true,
+	}
+}
+
 // promoteRecipe pushes one synchronized recipe into the destination zone:
 // its ingredients first, then the recipe artifact itself with its
 // signatures (FR-034), so the zone's cookbook never advertises a recipe
@@ -46,9 +85,9 @@ const pushItemPrefix = "push/"
 // Failures are isolated per item, like the fetch side: one ingredient
 // that cannot cross does not stop the others, and the recipe artifact is
 // simply not published — which is the point of publishing it last.
-func (e *Engine) promoteRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, f *FetchedRecipe, rid string) {
+func (e *Engine) promoteRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, f *FetchedRecipe, rid string, org *origin) bool {
 	if e.dest == nil {
-		return
+		return false
 	}
 	logger = logger.With(slog.String("destination", e.dest.Host()))
 
@@ -58,20 +97,20 @@ func (e *Engine) promoteRecipe(ctx context.Context, sink *taskSink, logger *slog
 	// unattended for months: what is on disk now is what is about to
 	// cross, and between the import and this cycle the store has been
 	// writable, backed up, restored, and possibly transported.
-	local, err := relocate.PathWithBase(e.base, f.NominalRepo)
+	local, err := org.stored(f.NominalRepo, "")
 	if err != nil {
 		_ = e.pushFailed(sink, logger, rid, "recipe", err, rid)
-		return
+		return false
 	}
 	if err := e.verifyStored(ctx, local, f.NominalRepo, f.ManifestDigest, f.NominalRepo+":"+f.Tag); err != nil {
 		_ = e.pushFailed(sink, logger, rid, "recipe", err, rid)
-		return
+		return false
 	}
 
 	allPushed := true
 	for i := range f.Recipe.Spec.Ingredients {
 		ing := &f.Recipe.Spec.Ingredients[i]
-		if err := e.promoteIngredient(ctx, sink, logger, ing, rid); err != nil {
+		if err := e.promoteIngredient(ctx, sink, logger, ing, rid, org); err != nil {
 			allPushed = false
 		}
 	}
@@ -83,9 +122,9 @@ func (e *Engine) promoteRecipe(ctx context.Context, sink *taskSink, logger *slog
 		// seeing the version yet.
 		logger.LogAttrs(ctx, slog.LevelWarn, "recipe not propagated: some ingredients did not cross",
 			slog.String("recipe", rid), slog.String("requirement", "FR-034"))
-		return
+		return false
 	}
-	e.propagateRecipe(ctx, sink, logger, f, local, rid)
+	return e.propagateRecipe(ctx, sink, logger, f, local, rid)
 }
 
 // promoteIngredient pushes one ingredient to its relocated destination
@@ -99,15 +138,23 @@ func (e *Engine) promoteRecipe(ctx context.Context, sink *taskSink, logger *slog
 // registry it does not own, and one HEAD replaces that belief with the
 // current truth. Re-asking costs a request and can only ever prevent a
 // missing push; believing the record can only ever hide one.
-func (e *Engine) promoteIngredient(ctx context.Context, sink *taskSink, logger *slog.Logger, ing *spec.Ingredient, rid string) error {
+func (e *Engine) promoteIngredient(ctx context.Context, sink *taskSink, logger *slog.Logger, ing *spec.Ingredient, rid string, org *origin) error {
 	logger = logger.With(slog.String("ingredient", ing.Name), slog.String("digest", ing.Digest))
 	itemName := pushItemPrefix + rid + "/" + ing.Name
 
-	local, err := relocate.PathWithBase(e.base, ing.Ref)
+	local, err := org.stored(ing.Ref, ing.Name)
 	if err != nil {
 		return e.pushFailed(sink, logger, rid, ing.Name, err, ing.Ref)
 	}
-	dst, err := e.dest.Repository(local)
+	// The name the next zone sees is this instance's relocation of the
+	// nominal reference, never the path the bytes happen to sit under —
+	// the two coincide on a passthrough cycle and differ on a medium
+	// written by another instance (see origin).
+	target, err := relocate.PathWithBase(e.base, ing.Ref)
+	if err != nil {
+		return e.pushFailed(sink, logger, rid, ing.Name, err, ing.Ref)
+	}
+	dst, err := e.dest.Repository(target)
 	if err != nil {
 		return e.pushFailed(sink, logger, rid, ing.Name, err, ing.Ref)
 	}
@@ -157,7 +204,7 @@ func (e *Engine) promoteIngredient(ctx context.Context, sink *taskSink, logger *
 		return perr
 	}
 	err = withRetries(ctx, e.cfg.Retries, push)
-	if err != nil && sparseIndexRefused(err) {
+	if err != nil && org.upstream && sparseIndexRefused(err) {
 		// FR-022, second sentence: the sparse index preserves the pinned
 		// digest, "if the destination registry rejects sparse indexes, all
 		// platforms SHALL be transferred instead". The refusal is the only
@@ -259,28 +306,28 @@ func (e *Engine) completeIndex(ctx context.Context, ing *spec.Ingredient, localR
 // (§8): the same digest is a no-op, a different one is a conflict that
 // requires a new metadata.version, and inventing a third answer here
 // would make this implementation disagree with every other.
-func (e *Engine) propagateRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, f *FetchedRecipe, local, rid string) {
+func (e *Engine) propagateRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, f *FetchedRecipe, local, rid string) bool {
 	itemName := pushItemPrefix + rid + "/recipe"
 	tag, err := e.dest.CookbookTag(f.Recipe.Metadata.Name, f.Recipe.Metadata.Version)
 	if err != nil {
 		_ = e.pushFailed(sink, logger, rid, "recipe", err, rid)
-		return
+		return false
 	}
 	dst := tag.Context()
 	if err := e.dest.Accepts(ctx, dst); err != nil {
 		_ = e.pushFailed(sink, logger, rid, "recipe", err, rid)
-		return
+		return false
 	}
 
 	payload, _, dgst, err := e.store.RawManifest(ctx, local, f.Tag)
 	if err != nil {
 		_ = e.pushFailed(sink, logger, rid, "recipe", err, rid)
-		return
+		return false
 	}
 	layout, err := cookbook.VerifyManifest(payload)
 	if err != nil {
 		_ = e.pushFailed(sink, logger, rid, "recipe", validationError(tag.String(), err), rid)
-		return
+		return false
 	}
 
 	res := tasks.Resolution{
@@ -299,7 +346,7 @@ func (e *Engine) propagateRecipe(ctx context.Context, sink *taskSink, logger *sl
 			published, getErr := remote.Get(tag, e.dest.options(ctx)...)
 			if getErr != nil {
 				_ = e.pushFailed(sink, logger, rid, "recipe", getErr, rid)
-				return
+				return false
 			}
 			remoteLayout, layoutErr := cookbook.VerifyManifest(published.Manifest)
 			if layoutErr != nil {
@@ -310,7 +357,7 @@ func (e *Engine) propagateRecipe(ctx context.Context, sink *taskSink, logger *sl
 					"published": existing.Digest.String(),
 					"candidate": dgst,
 				}), rid)
-				return
+				return false
 			}
 			identical = cookbook.DecideRepublication(remoteLayout.Document.Digest, layout.Document.Digest) == cookbook.RepublicationIdentical
 			if !identical {
@@ -319,7 +366,7 @@ func (e *Engine) propagateRecipe(ctx context.Context, sink *taskSink, logger *sl
 					"published": remoteLayout.Document.Digest,
 					"candidate": layout.Document.Digest,
 				}), rid)
-				return
+				return false
 			}
 		}
 		res.DestinationStatus = string(importer.StatusUpToDate)
@@ -329,10 +376,15 @@ func (e *Engine) propagateRecipe(ctx context.Context, sink *taskSink, logger *sl
 			return true
 		})
 		e.meter(e.meters.PushSkipped)
-		return
+		// Reported as delivered, not as skipped work: the zone's cookbook
+		// already advertises this exact recipe, which is the state the
+		// promotion exists to reach. The media import (FR-052) reads this
+		// verdict to decide whether the medium was fully delivered, and a
+		// medium re-imported after a partial run must be able to complete.
+		return true
 	case !isNotFound(headErr):
 		_ = e.pushFailed(sink, logger, rid, "recipe", headErr, rid)
-		return
+		return false
 	}
 	res.DestinationStatus = string(importer.StatusNew)
 
@@ -346,7 +398,7 @@ func (e *Engine) propagateRecipe(ctx context.Context, sink *taskSink, logger *sl
 	moved, err := e.dest.PushManifest(ctx, e.store, local, dst, f.Tag, f.Tag)
 	if err != nil {
 		_ = e.pushFailed(sink, logger, rid, "recipe", err, rid)
-		return
+		return false
 	}
 	// FR-034 acceptance: the propagated recipe is verifiable with cosign
 	// at its destination, which requires its signature to travel with it.
@@ -367,6 +419,7 @@ func (e *Engine) propagateRecipe(ctx context.Context, sink *taskSink, logger *sl
 	logger.LogAttrs(ctx, slog.LevelInfo, "recipe propagated to the zone cookbook",
 		slog.String("reference", tag.String()), slog.String("digest", dgst),
 		slog.Int64("pushed_bytes", moved), slog.String("requirement", "FR-034"))
+	return true
 }
 
 // pushAttachedSignatures copies whatever signature artifacts the local

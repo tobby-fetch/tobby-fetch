@@ -9,6 +9,7 @@
 <section>
   <h1 class="t-page-title">{{.T "tasks.title"}}</h1>
   <p class="t-page-sub">{{.T "tasks.subtitle"}}</p>
+<p class="t-page-guide">{{template "help-cta" (withData . (.Guide "passthrough/operate"))}}</p>
   <form class="t-content-filters" method="get" action="/tasks" role="search"
         hx-get="/tasks" hx-push-url="true" hx-sync="this:replace"
         hx-target="#tasks-results" hx-swap="outerHTML"

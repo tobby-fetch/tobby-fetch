@@ -4,7 +4,9 @@
 package engine
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -210,6 +212,147 @@ func TestSyncMissingPlatform(t *testing.T) {
 	it := itemByName(t, task, "partial@1.0.0/app")
 	if it.Status != tasks.StatusFailed || it.Error == nil {
 		t.Errorf("item = %+v, want failed on the absent platform (FR-022)", it)
+	}
+}
+
+// TestSyncSelectsPlatformWhoseVariantTheRecipeOmits is B-020, reproduced
+// on the shape real registries actually publish.
+//
+// RECIPE-SPEC §7.1 writes the field as "os/arch[/variant]" — the variant
+// is optional — and its own normative example asks for
+// platforms: ["linux/amd64", "linux/arm64"]. Docker's official images
+// describe their arm64 child as linux/arm64 WITH variant v8, so an index
+// seeded the way the world publishes them (rather than the way the old
+// fixtures did, variant-free) is what the recipe meets in production.
+//
+// The whole ingredient failed, so the assertion is on both platforms
+// landing under the pinned index digest — the FR-022 sparse index — not
+// merely on the item's status.
+func TestSyncSelectsPlatformWhoseVariantTheRecipeOmits(t *testing.T) {
+	src := newRegistry(t)
+	dst := openStore(t)
+	kp := newKeyPair(t)
+	ctx := context.Background()
+
+	idx := seedIndex(t, src, "library/alpine", "3.22.1",
+		v1.Platform{OS: "linux", Architecture: "amd64"},
+		v1.Platform{OS: "linux", Architecture: "arm64", Variant: "v8"},
+		v1.Platform{OS: "linux", Architecture: "arm", Variant: "v7"},
+	)
+	yaml := cookedRecipeYAML(t, "base", "1.0.0", []spec.Ingredient{{
+		Name: "alpine", Kind: spec.IngredientContainerImage,
+		Ref: src.addr + "/library/alpine", Version: "3.22.1", Digest: idx.digest,
+		Platforms: []string{"linux/amd64", "linux/arm64"},
+	}})
+	manDig := publishRecipe(t, src.st, "cookbook/base", "1.0.0", yaml)
+	signManifest(t, src.st, "cookbook/base", manDig, kp)
+
+	retr := retrieverFile(t, testZone, src.addr+"/cookbook", []spec.RecipeSelector{
+		{Name: "base", Version: "1.0.0"},
+	})
+	task, err := runSync(t, New(dst, newRemotes(t, nil), trustFor(t, nil, kp), retr, "", syncCfg()))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	it := itemByName(t, task, "base@1.0.0/alpine")
+	if it.Status != tasks.StatusDone {
+		t.Fatalf("item = %+v (detail %q), want done: an omitted variant selects the platform",
+			it.Status, errDetail(it))
+	}
+
+	repo := strings.ReplaceAll(src.addr, ":", "_") + "/library/alpine"
+	if d, ok := dst.ResolveTag(ctx, repo, "3.22.1"); !ok || d != idx.digest {
+		t.Errorf("tag resolves %q (ok=%v), want the pinned index %s", d, ok, idx.digest)
+	}
+	for _, label := range []string{"linux/amd64", "linux/arm64/v8"} {
+		if !dst.HasManifest(ctx, repo, idx.children[label]) {
+			t.Errorf("selected platform %s is missing from the store", label)
+		}
+	}
+	// The selection is still a selection: arm/v7 was not asked for, so the
+	// index stays sparse (FR-022).
+	if dst.HasManifest(ctx, repo, idx.children["linux/arm/v7"]) {
+		t.Error("linux/arm/v7 was transferred although the recipe never asked for it")
+	}
+}
+
+// errDetail renders an item's recorded cause for failure messages (B-021).
+func errDetail(it *tasks.Item) string {
+	if it.Error == nil {
+		return ""
+	}
+	return string(it.Error.Code) + ": " + it.Error.Detail
+}
+
+// TestFailedIngredientIsLoggedWithItsCause is B-021: an ingredient that
+// fails must leave a trail an operator can follow.
+//
+// The failure fixture is an absent platform. It was chosen because it was
+// the most opaque failure the engine produced — a bare fmt.Errorf that
+// settled as TBY-SRV-001, whose corrective action is literally "follow
+// the correlation identifier in the logs" (FR-090), an instruction that
+// led nowhere: the item recorded the code and nothing else, and the
+// ingredient goroutine emitted no record at all, at any level. R-08 has
+// since given that condition its own entry (TBY-REG-008), which removes
+// the opacity but not the requirement: whatever the code, the failure
+// must reach the logs with its correlation fields AND reach the item with
+// what it was about, so the task detail and /api/v1/tasks/{id} can show
+// it (FR-061).
+func TestFailedIngredientIsLoggedWithItsCause(t *testing.T) {
+	src := newRegistry(t)
+	dst := openStore(t)
+	kp := newKeyPair(t)
+
+	idx := seedIndex(t, src, "library/app", "1.0.0", v1.Platform{OS: "linux", Architecture: "amd64"})
+	yaml := cookedRecipeYAML(t, "opaque", "1.0.0", []spec.Ingredient{{
+		Name: "app", Kind: spec.IngredientContainerImage,
+		Ref: src.addr + "/library/app", Version: "1.0.0", Digest: idx.digest,
+		Platforms: []string{"linux/amd64", "linux/riscv64"},
+	}})
+	manDig := publishRecipe(t, src.st, "cookbook/opaque", "1.0.0", yaml)
+	signManifest(t, src.st, "cookbook/opaque", manDig, kp)
+
+	retr := retrieverFile(t, testZone, src.addr+"/cookbook", []spec.RecipeSelector{
+		{Name: "opaque", Version: "1.0.0"},
+	})
+	var logBuf bytes.Buffer
+	eng := New(dst, newRemotes(t, nil), trustFor(t, nil, kp), retr, "", syncCfg())
+	task := &tasks.Task{ID: "tsk_b021", RunID: "run_b021", Type: tasks.TypeSync, Status: tasks.StatusRunning}
+	if err := runSyncTask(t, eng, task, slog.New(slog.NewTextHandler(&logBuf, nil))); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	it := itemByName(t, task, "opaque@1.0.0/app")
+	if it.Status != tasks.StatusFailed || it.Error == nil {
+		t.Fatalf("item = %+v, want failed", it)
+	}
+	if it.Error.Code != taxonomy.CodePlatformMissing {
+		t.Fatalf("item code = %s, want %s", it.Error.Code, taxonomy.CodePlatformMissing)
+	}
+	// What the failure was about travels with the item — as the entry's
+	// parameters here, since the message is re-rendered per reader
+	// (FR-063), and as ItemError.Detail whenever the failure wraps a
+	// technical cause. Either way every surface can name the platform.
+	if got, _ := it.Error.Params["platforms"].(string); !strings.Contains(got, "linux/riscv64") {
+		t.Errorf("item error params = %v, want the absent platform named", it.Error.Params)
+	}
+	// And the actionable half: what the index DOES publish, because the
+	// fix is a comparison between the two.
+	if got, _ := it.Error.Params["available"].(string); !strings.Contains(got, "linux/amd64") {
+		t.Errorf("item error params = %v, want the platforms the index publishes", it.Error.Params)
+	}
+
+	// The log line, with the correlation fields the corrective action of
+	// TBY-SRV-001 sends the operator looking for (FR-090).
+	logs := logBuf.String()
+	for _, want := range []string{
+		"ingredient synchronization failed",
+		"recipe=opaque", "ingredient=app",
+		"code=" + string(taxonomy.CodePlatformMissing), "linux/riscv64",
+	} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("logs lack %q (B-021, FR-090):\n%s", want, logs)
+		}
 	}
 }
 

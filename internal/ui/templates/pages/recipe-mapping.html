@@ -22,6 +22,7 @@
     <span class="t-badge t-badge--recipe" translate="no" lang="en">Recipe</span>
   </div>
   <p class="t-page-sub">{{.T "mapping.subtitle"}}</p>
+<p class="t-page-guide">{{template "help-cta" (withData . (.Guide "passthrough/connect-clients"))}}</p>
 
   {{range .Data.Versions}}
   <div class="t-titlerow">

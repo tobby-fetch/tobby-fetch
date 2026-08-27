@@ -1,0 +1,51 @@
+ok   scenario m5 started 2026-08-27T01:26:13Z
+ok   tooling available (skopeo 1.13.3, jq, cosign)
+ok   built tobby for linux/amd64
+ok   instances launched (source, connected, zone registry, isolated)
+ok   three block devices created and attached (/dev/loop0, /dev/loop1, /dev/loop2)
+ok   media formatted (ext4, ext4, FAT32) and mounted on the connected node
+ok   egress canary failed as required (air gap proven by construction)
+ok   two signed deliveries published (zone-app → sha256:06562081b2fe7681dae48611d85042bf00e613b7031a80d9552dc1785289c73b, zone-tool → sha256:2ca674dd6a04f9f3d36581daeaaa761e4fdd0b8841bec66fe5dc64ab5e12ef29)
+ok   the isolated zone's registry is serving on 10.180.20.99:5000
+ok   the undersized medium has 255 KiB free, of which the 99 % reserve leaves a hundredth
+ok   FR-055: undersized medium refused before any transfer, shortfall stated, nothing written
+ok   FR-055: a real FAT32 volume is identified with its 4 GiB per-file ceiling
+ok   FR-014: no cycle fires on its own in mirror mode
+ok   R-04: a plan run leaves the store byte-identical
+ok   FR-054: media manifest written — zone zone-b, 2 deliveries, medium 20260827T012626Z-9bcc084359fbb41f
+ok   FR-045: prune ran BEFORE the manifest; the manual import survived it; the medium keeps its identity
+ok   NFR-020: a secret planted under the store makes the instance refuse to start, naming the path
+ok   one blob of zone-app truncated; medium unmounted and detached (transport begins)
+ok   medium re-attached and mounted on the isolated node
+ok   FR-054: before verification /v2/ and /files/ serve nothing, and /readyz still answers
+ok   FR-054: a medium for another zone is blocked; the admin waiver clears it and is recorded
+ok   R-19: zone-app blocked whole, naming docker/registry/v2/blobs/sha256/06/06562081b2fe7681dae48611d85042bf00e613b7031a80d9552dc1785289c73b/data; zone-tool still pushable
+ok   FR-052/FR-034: the cleared delivery is in the zone registry and its cookbook; the blocked one is not
+ok   content pushed into the isolated zone is pullable there by a standard OCI client
+ok   FR-053/FR-054: the return log is on the medium, outside the manifest's coverage
+ok   R-28: the same medium is not stale — an interrupted import can be retried
+ok   R-28: an older medium is refused naming both timestamps; the admin waiver clears it
+ok   FR-051: skopeo reads the exported layout (10.180.10.189_8080/library/tool:1.0.0 → sha256:2ca674dd6a04f9f3d36581daeaaa761e4fdd0b8841bec66fe5dc64ab5e12ef29)
+ok   R-05: the guides are served offline by the instance, in both languages
+ok   R-41: a directory packed on the isolated side becomes a FileSet; /files/ still accepts no write method
+ok   FR-046: a reset without the exact typed confirmation is refused
+ok   scenario m5 complete — report: crucible-report-m5.txt
+
+# Acceptance host: disposable Scaleway Elastic Metal (Intel Xeon E3-1231 v3,
+# 8 threads, 31 GiB, fr-par-2), Ubuntu 24.04.3 LTS, kernel 6.8.0-88, Incus
+# 6.0.0. Created 2026-08-27 ~00:00 UTC, destroyed 01:27 UTC (destruction
+# verified). The report above is unedited, from the pushed commit 51112c3 on
+# milestone-5.
+#
+# The whole cascade replayed green on that host in one run, from the same
+# commit — m1 00:23:xx, m2, m3, m4, m5 01:27:03 — which is the property
+# DEVELOPMENT-PLAN §5 item 8 asks for: the suite of every completed milestone
+# stays runnable, in whole, at any time. Their four reports are the
+# milestone-1 to milestone-4 files beside this one; this run reproduced them
+# rather than replacing them.
+#
+# One product defect was found here and nowhere else: B-031, `tobby sync`
+# could not trigger a serving instance because it decoded the API's task
+# envelope as a bare task. Its own test suite passed, because the fake
+# instance in that suite answered what the client expected instead of what
+# the API sends. Fixed before this run.

@@ -22,6 +22,13 @@
 // strict entry validation, and at serve time by opening every file
 // through an os.Root anchored on the extracted rootfs, so that even a
 // symlink planted inside the cache can never resolve outside it.
+//
+// The package also owns the other direction of the same contract:
+// operator FileSet packing (FR-048, pack.go) turns a local file tree
+// into a single-manifest FileSet image written straight into the store.
+// The two halves live together because they enforce one rule set — what
+// extraction refuses under §14.5, packing refuses first — and because a
+// packed FileSet has to be one this server can serve.
 package fileserve
 
 import (
@@ -169,6 +176,21 @@ func (s *Server) Sync(ctx context.Context, sets []FileSet) error {
 		target := filepath.Join(s.cacheDir, nameDir, digestDir)
 
 		if !isComplete(target) {
+			// The extraction clears whatever sits at target before it
+			// renames the new tree over it, and what sits there may be a
+			// directory THIS server still holds open — the case is a set
+			// whose completion marker went missing under an unchanged
+			// digest, which keeps serving from the very tree the
+			// re-extraction is about to remove. Unix removes a directory
+			// out from under an open handle without complaining; Windows
+			// refuses, and the fileset can then never be re-extracted
+			// while the instance runs (B-024).
+			//
+			// The release is scoped to that collision and not to every
+			// re-extraction: a set moving to a NEW digest extracts into a
+			// different directory, so its current tree is untouched and
+			// must keep answering until the new one is in place.
+			s.releaseServedDigest(set.Name, set.ManifestDigest)
 			if err := s.extract(ctx, set, target); err != nil {
 				errs = append(errs, fmt.Errorf("fileserve: fileset %q: %w", set.Name, err))
 				continue
@@ -198,8 +220,66 @@ func (s *Server) Sync(ctx context.Context, sets []FileSet) error {
 		_ = ss.root.Close()
 	}
 
+	// A purge failure is reported, not returned. The cache is idempotent:
+	// whatever could not be removed now is still unwanted on the next
+	// Sync and will be removed then. Folding it into the error would
+	// report a Sync that installed everything it was asked to install as
+	// a failure — and on Windows that is the normal outcome whenever a
+	// client is still streaming a file out of a superseded digest, since
+	// an open handle blocks the removal there (B-024).
 	if err := s.purge(wanted); err != nil {
-		errs = append(errs, err)
+		s.logger.LogAttrs(ctx, slog.LevelWarn, "fileset cache not fully reclaimed",
+			slog.String("error", err.Error()),
+			slog.String("action", "the entries will be retried on the next synchronization"))
+	}
+	return errors.Join(errs...)
+}
+
+// releaseServedDigest closes and forgets the root currently serving name,
+// but only when it is serving THIS digest — that is, only when the caller
+// is about to delete the very directory the root is anchored on (see
+// Sync). Any other digest lives elsewhere on disk and keeps serving.
+func (s *Server) releaseServedDigest(name, dgst string) {
+	s.mu.Lock()
+	ss := s.served[name]
+	if ss == nil || ss.set.ManifestDigest != dgst {
+		s.mu.Unlock()
+		return
+	}
+	delete(s.served, name)
+	s.mu.Unlock()
+	_ = ss.root.Close()
+}
+
+// Close releases every directory handle the server holds and stops
+// serving.
+//
+// It exists because a Server owns one os.Root per served FileSet for its
+// whole life, and nothing but a superseding Sync ever closed them. On
+// Unix that is invisible — the process exits and the descriptors go with
+// it, and a directory can be removed while it is open. On Windows an open
+// handle is what stops the cache directory from being deleted at all, so
+// an embedder that reconfigures or shuts an instance down had no way to
+// let go of it (B-024, NFR-018).
+//
+// A closed Server serves 404 for everything; Sync may be called again to
+// bring it back.
+func (s *Server) Close() error {
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+	s.mu.Lock()
+	previous := s.served
+	s.served = map[string]*servedSet{}
+	s.order = nil
+	s.mu.Unlock()
+
+	// In-flight requests hold their own *os.File, opened under the read
+	// lock; closing the root they came from does not invalidate them.
+	var errs []error
+	for name, ss := range previous {
+		if err := ss.root.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("fileserve: closing the rootfs of %q: %w", name, err))
+		}
 	}
 	return errors.Join(errs...)
 }
@@ -279,9 +359,16 @@ func validateSet(set FileSet) error {
 }
 
 // sanitizeName maps a FileSet name to a safe cache directory segment.
-// Names made only of alphanumerics, dots and dashes are used verbatim;
-// anything else becomes "_" plus a truncated content hash — underscore
-// is outside the verbatim alphabet, so the two forms cannot collide.
+// Names made only of lower-case alphanumerics, dots and dashes are used
+// verbatim; anything else becomes "_" plus a truncated content hash —
+// underscore is outside the verbatim alphabet, so the two forms cannot
+// collide.
+//
+// The mapping is a pure function of the name and gives the same answer on
+// every platform, which is a requirement and not a convenience: a store
+// is carried from one machine to another, and a name resolving to one
+// directory on Linux and another on Windows would make the destination
+// re-extract every fileset it was just handed (NFR-018).
 func sanitizeName(name string) string {
 	if len(name) <= 100 && safeNamePattern(name) {
 		return name
@@ -289,18 +376,49 @@ func sanitizeName(name string) string {
 	return "_" + digest.FromString(name).Encoded()[:16]
 }
 
+// safeNamePattern reports whether a name can stand as its own directory
+// segment on every operating system in the validated scope (NFR-018).
+//
+// The alphabet is narrower than the characters a filesystem accepts, and
+// the extra refusals are all Windows semantics that Linux does not
+// reproduce:
+//
+//   - Upper-case letters, because a Windows volume is case-insensitive:
+//     "Docs" and "docs" would share ONE cache directory, so extracting
+//     the second would os.RemoveAll the tree of the first, and purge —
+//     which matches directory entries against the wanted names — would
+//     then reclaim the shared directory out from under whichever set was
+//     still being served.
+//   - A trailing dot, because Windows strips it: "docs." and "docs"
+//     collide for exactly the same reason.
+//   - The DOS device names, with or without an extension, because
+//     Windows resolves them ahead of any file of that name and
+//     os.MkdirAll simply fails on them.
+//
+// None of these is rejected as a FileSet name: each merely falls through
+// to sanitizeName's hashed form, which is a legal segment everywhere.
 func safeNamePattern(name string) bool {
-	if name == "" || name[0] == '.' || name[0] == '-' {
+	if name == "" || name[0] == '.' || name[0] == '-' || name[len(name)-1] == '.' {
 		return false
 	}
 	for i := range len(name) {
 		c := name[i]
 		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c >= 'a' && c <= 'z', c >= '0' && c <= '9':
 		case c == '.' || c == '-':
 		default:
 			return false
 		}
+	}
+	// Only the part before the first dot decides: "com1.log" is the serial
+	// port, not a file. The list is already lower-case because the
+	// alphabet above admits nothing else.
+	base, _, _ := strings.Cut(name, ".")
+	switch base {
+	case "con", "prn", "aux", "nul",
+		"com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+		"lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9":
+		return false
 	}
 	return true
 }

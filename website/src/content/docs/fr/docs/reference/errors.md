@@ -11,19 +11,16 @@ cause probable, l'action corrective — rendu à l'identique par l'interface
 web, la CLI et l'API (en documents « problem » RFC 9457). Les codes font
 partie du contrat produit : **un code n'est jamais renuméroté ni
 réutilisé**, et sa classe détermine le
-[code de sortie CLI](../../reference/cli/#exit-codes).
+[code de sortie du processus](#codes-de-sortie).
 
 Cette page est produite depuis le catalogue de la taxonomie embarqué dans
 le binaire (`internal/taxonomy`). Chaque code a son propre titre : l'ancre
 `#tby-reg-003` est stable — ce sont les mêmes ancres que résoudra le guide
 de dépannage embarqué (`/help#TBY-REG-003`).
 
-:::note[À venir — jalon 5]
-Le guide `/help` embarqué (R-05) et les codes d'erreur du parcours média
-(export, pré-vol, verdicts d'import) arrivent au jalon 5, sur ces mêmes
-ancres. À suivre sur la page
-[État du projet](../../discover/status/).
-:::
+Un test parcourt le catalogue et fait échouer la compilation dès qu'un code
+n'a pas sa section ici, dans l'une ou l'autre langue — le catalogue est la
+source de vérité, cette page en est le rendu publié.
 
 **Comment lire chaque entrée :**
 
@@ -33,11 +30,40 @@ ancres. À suivre sur la page
   chaîne de qualification amont.
 - **Bloque** — la portée : toute l'instance (refus de démarrage), une tâche
   ou une recipe, ou seulement la requête en cours.
-- **Dérogation** — aucun code n'a de dérogation à chaud aujourd'hui. Les
-  refus de politique se lèvent en modifiant la configuration auditée qui
-  les impose (liste blanche, clés de confiance, comptes) ; les échecs de
-  vérification ne se dérogent jamais. L'unique dérogation à chaud —
-  réservée à l'admin, auditée, à l'import d'un média — arrive au jalon 5.
+- **Dérogation** — les refus de politique se lèvent en modifiant la
+  configuration auditée qui les impose (liste blanche, clés de confiance,
+  comptes) ; les échecs de vérification ne se dérogent jamais. Les seules
+  dérogations à chaud sont réservées à l'admin, auditées, et se situent
+  toutes deux à l'import d'un média : la zone qui ne correspond pas
+  (TBY-MED-006) et le garde-fou de fraîcheur (TBY-MED-007).
+
+## Codes de sortie
+
+La classe d'un code décide du code de sortie du processus : c'est la
+projection en ligne de commande de cette taxonomie (FR-066, amendement
+R-08). **La table ci-dessous est produite depuis le code**
+(`internal/taxonomy`), et un test fait échouer la compilation dès que les
+deux divergent — dans les deux sens : un code que la table n'énumère pas,
+ou une ligne que rien ne peut produire.
+
+Elle est couverte par la promesse de versionnement sémantique du projet :
+retirer un code ou en renuméroter un est un changement cassant. La colonne
+`Nom` est le nom machine stable de la ligne ; il fait partie du contrat et
+n'est jamais traduit.
+
+<!-- generated:exit-codes -->
+| Code | Nom | Signification |
+|---|---|---|
+| `0` | `ok` | **Succès** — La commande a fait ce qui était demandé. |
+| `1` | `failure` | **Échec opérationnel** — Erreur réseau, stockage ou interne — tout ce qui a échoué sans verdict de politique ni de vérification. Tous les codes de la classe opérationnelle sortent ici, ainsi qu'une commande qui a déclenché une tâche que l'instance a ensuite fait échouer. |
+| `2` | `usage` | **Erreur d'usage** — Drapeau erroné, commande inconnue, ou commande à qui l'on demande ce qu'elle ne peut pas honorer. Le message porte l'indication `see 'tobby … --help'` désignant la commande dont l'analyse a échoué. |
+| `3` | `policy` | **Refus de politique** — Refusé par une politique ou une autorisation explicite : liste blanche de registres, rôles, refus de démarrage sécurisés par défaut, immutabilité d'un tag de recipe, les deux garde-fous de média levables par un administrateur. |
+| `4` | `verification` | **Échec de vérification** — Un contrôle d'intégrité ou d'authenticité a échoué : signatures, digests épinglés, types d'artefact, sommes de contrôle du média. La classe la plus sévère, et la seule qu'aucune levée ne rouvre. |
+| `5` | `changes-planned` | **Changements prévus** — Une exécution sans effet de bord a trouvé du travail à faire — `tobby sync --dry-run` sur un Retriever porteur de changements. C'est un succès qui a quelque chose à dire, pour qu'une barrière d'intégration puisse s'y brancher sans y voir une compilation cassée. |
+<!-- /generated:exit-codes -->
+
+La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
+`--output json`, mode non interactif — reste en anglais jusqu'au jalon 7.
 
 ## Authentification et comptes (TBY-AUTH)
 
@@ -182,6 +208,21 @@ ancres. À suivre sur la page
   [référence de configuration](../../reference/configuration/).
 - **Remédiable hors-ligne :** oui · **Bloque :** toute l'instance (refus de démarrage) ou la commande qui a chargé la configuration
 
+### TBY-CFG-002
+
+- **Ce qui s'est passé :** l'instance refuse de démarrer — un fichier de
+  secret est configuré à l'intérieur du store transportable.
+- **Cause probable :** `state.root`, `registries.credentialsFile` ou
+  `server.tls.keyFile` se résout sous `storage.root`. Le store est confié
+  à un porteur puis branché sur une machine d'une autre zone : tout ce qui
+  est dessous est réputé lu par quelqu'un d'autre (NFR-020).
+- **Action corrective :** déplacez chaque fichier listé hors du store — le
+  répertoire d'état est sa place — mettez le réglage à jour, puis
+  redémarrez. Le contrôle passe par le système de fichiers : un chemin qui
+  atteint le store via un lien symbolique compte comme étant dedans, et le
+  message indique le chemin résolu qui a tranché.
+- **Corrigeable hors ligne :** oui · **Bloque :** l'instance entière (refus au démarrage)
+
 ## Réseau sortant et TLS (TBY-NET)
 
 ### TBY-NET-001
@@ -325,6 +366,24 @@ ancres. À suivre sur la page
   `transfer.resumeThreshold: 0` pour désactiver la reprise intra-blob, et
   vérifiez le proxy cache éventuel sur le chemin.
 - **Remédiable hors-ligne :** non (côté source ; le contournement `resumeThreshold: 0` est local) · **Bloque :** la tâche concernée
+
+### TBY-REG-008
+
+- **Quoi :** l'index de la source ne porte pas une plateforme demandée par
+  la recipe.
+- **Cause probable :** pour *\<référence\>*, aucun enfant de l'index ne
+  correspond à *\<plateformes\>* ; l'index publie *\<disponibles\>*. Un
+  sélecteur de plateforme s'écrit `os/arch` avec un variant **facultatif**
+  (RECIPE-SPEC §7.1) : un variant omis correspond à n'importe lequel, un
+  variant nommé doit correspondre exactement. Les registres décrivent
+  couramment leur enfant arm64 comme `linux/arm64` avec le variant `v8` :
+  un sélecteur nommant un variant que la source ne publie pas ne
+  correspond à rien.
+- **Action corrective :** confrontez la liste `platforms` de l'ingrédient à
+  ce que la source publie réellement (`docker manifest inspect`, ou le
+  rapport d'inspection d'un import unitaire) et corrigez-la. Tobby
+  n'abandonne jamais silencieusement une plateforme demandée.
+- **Remédiable hors-ligne :** non (la vérité est dans l'index de la source) · **Bloque :** l'ingrédient concerné
 
 ## Refus de politique (TBY-POL)
 
@@ -471,6 +530,363 @@ ancres. À suivre sur la page
   mettez-le à `0` pour transférer chaque blob directement vers le store
   sans fichier temporaire.
 - **Remédiable hors-ligne :** oui · **Bloque :** les transferts reprenables concernés
+
+### TBY-STO-004
+
+- **Ce qui s'est passé :** l'opération a été refusée avant de démarrer — la
+  cible n'a pas assez d'espace libre (FR-055).
+- **Cause probable :** l'écriture projetée dépasse l'espace libre de la
+  cible moins la marge de sécurité configurée
+  (`preflight.safetyMarginPercent`, 10 % par défaut). Le message énonce le
+  manque exact, en octets.
+- **Action corrective :** libérez au moins le nombre d'octets annoncé sur
+  la cible, visez un volume plus grand, ou supprimez du contenu qui n'est
+  plus référencé. Abaisser `preflight.safetyMarginPercent` n'a de sens que
+  si vous acceptez de remplir le volume ; `preflight.disabled: true`
+  supprime la vérification et l'annonce au démarrage.
+- **Corrigeable hors ligne :** oui · **Bloque :** la synchronisation ou l'export concerné ; rien n'est écrit
+
+### TBY-STO-005
+
+- **Ce qui s'est passé :** le système de fichiers de la cible ne peut pas
+  contenir un fichier de cette taille (FR-055).
+- **Cause probable :** la cible est formatée avec un système de fichiers
+  dont la limite par fichier est inférieure au plus gros fichier que
+  l'opération écrirait — typiquement FAT32, limité à 4 Gio moins un octet.
+  Une archive tar d'export compte pour un seul fichier. Le même code est
+  émis quand la condition survient en cours d'écriture plutôt qu'au
+  pré-vol : support échangé entre les deux, ou système de fichiers que ce
+  build n'a pas su identifier.
+- **Action corrective :** reformatez le support avec un système de fichiers
+  sans cette limite (exFAT, NTFS, ext4, XFS), ou découpez le transfert pour
+  qu'aucun fichier ne dépasse la limite.
+- **Corrigeable hors ligne :** oui · **Bloque :** la synchronisation ou l'export concerné ; en cours d'écriture, le store reste intact
+
+### TBY-STO-006
+
+- **Ce qui s'est passé :** le store n'a pas été réinitialisé.
+- **Cause probable :** la confirmation saisie ne correspond pas. Une remise
+  à zéro demande le mot `RESET`, en majuscules et rien d'autre — une
+  commande aussi destructrice n'est pas de celles qu'on valide par
+  inadvertance (FR-046).
+- **Action corrective :** saisissez `RESET` dans le champ de confirmation
+  et validez de nouveau. La remise à zéro supprime tous les artefacts du
+  store ; l'historique des opérations, les journaux de tâches et le journal
+  d'audit sont **conservés**, parce qu'une trace qu'une action destructrice
+  efface n'est pas une trace.
+- **Corrigeable hors ligne :** oui · **Bloque :** rien — le store est intact
+
+## Transport sur support amovible (TBY-MED)
+
+Le support est un store qui a changé de mains : tout ce qu'il dit de
+lui-même reste une allégation tant que ce côté-ci n'a pas recalculé les
+empreintes. Quatre conditions bloquent le support entier ; tout le reste se
+décide livraison par livraison, si bien qu'un support partiellement abîmé
+remet quand même ses recipes intactes.
+
+### TBY-MED-001
+
+- **Quoi :** le support ne porte aucun manifeste de média.
+- **Cause probable :** `meta/media.json` est absent — le store n'a pas été
+  produit par une synchronisation miroir menée à son terme, ou la copie sur
+  le support est partielle.
+- **Action corrective :** recopiez le store depuis l'instance source, ou
+  relancez la synchronisation miroir qui le produit.
+- **Corrigeable hors ligne :** oui · **Bloque :** le support entier, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-002
+
+- **Quoi :** le manifeste de média est illisible.
+- **Cause probable :** il est tronqué, non analysable ou incohérent — un
+  chemin qui sort du store, une entrée d'inventaire en double, un nom de
+  dépôt qui n'en est pas un.
+- **Action corrective :** recopiez le store depuis l'instance source puis
+  vérifiez à nouveau.
+- **Corrigeable hors ligne :** oui · **Bloque :** le support entier, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-003
+
+- **Quoi :** le manifeste de média utilise une version de format non prise
+  en charge.
+- **Cause probable :** le support déclare un format de manifeste que cette
+  version de Tobby ne lit pas ; les deux versions sont nommées.
+- **Action corrective :** utilisez de ce côté une version de Tobby
+  correspondant au support, ou reproduisez le support avec la version d'ici.
+- **Corrigeable hors ligne :** oui · **Bloque :** le support entier (classe vérification, code 4)
+
+### TBY-MED-004
+
+- **Quoi :** le support utilise une version de format de store non prise en
+  charge.
+- **Cause probable :** la disposition du store est d'une autre série
+  majeure ; les deux versions sont nommées.
+- **Action corrective :** utilisez une version de Tobby correspondante, ou
+  transférez le contenu via l'OCI image layout avec l'outillage standard.
+- **Corrigeable hors ligne :** oui · **Bloque :** le support entier (classe vérification, code 4)
+
+### TBY-MED-005
+
+- **Quoi :** le graphe de recipes du support ne correspond pas à son
+  inventaire.
+- **Cause probable :** `meta/recipes.json` a été modifié après l'écriture du
+  manifeste — la liste de ce que le support livre a changé.
+- **Action corrective :** recopiez le store depuis l'instance source. Le
+  graphe est ce à partir de quoi chaque verdict par recipe est calculé.
+- **Corrigeable hors ligne :** oui · **Bloque :** le support entier, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-006
+
+- **Quoi :** le support est adressé à une autre zone.
+- **Cause probable :** le manifeste nomme une zone que cette instance ne
+  sert pas ; les deux sont nommées.
+- **Action corrective :** vérifiez qu'il s'agit bien du support destiné à
+  cette zone. Un administrateur peut lever le refus ; la dérogation est
+  consignée au journal d'audit.
+- **Corrigeable hors ligne :** oui · **Bloque :** le support entier, dérogation admin possible (classe politique, code 3)
+
+### TBY-MED-007
+
+- **Quoi :** le support est plus ancien que le dernier importé pour cette
+  zone.
+- **Cause probable :** son horodatage de résolution précède celui du dernier
+  import abouti de la zone ; les deux horodatages et le support sont nommés.
+  Garde-fou anti-accident, pas contrôle de sécurité : le manifeste n'est pas
+  signé.
+- **Action corrective :** vérifiez que vous avez branché le support courant.
+  Un administrateur peut lever le refus — pour restaurer volontairement une
+  livraison antérieure, par exemple ; la dérogation est auditée.
+- **Corrigeable hors ligne :** oui · **Bloque :** le support entier, dérogation admin possible (classe politique, code 3)
+
+### TBY-MED-010
+
+- **Quoi :** un fichier nécessaire à la recipe est absent du support.
+- **Cause probable :** copie partielle, ou fichier supprimé.
+- **Action corrective :** recopiez le store depuis l'instance source.
+- **Corrigeable hors ligne :** oui · **Bloque :** cette recipe entière, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-011
+
+- **Quoi :** un fichier du support n'a pas la taille attendue.
+- **Cause probable :** il a été tronqué ou modifié après l'écriture du
+  manifeste ; les tailles attendue et constatée sont nommées.
+- **Action corrective :** recopiez le store depuis l'instance source.
+- **Corrigeable hors ligne :** oui · **Bloque :** la recipe qui atteint ce fichier, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-012
+
+- **Quoi :** un fichier du support ne correspond pas à son empreinte
+  enregistrée.
+- **Cause probable :** le contenu a été corrompu ou altéré pendant le
+  transport ; les deux empreintes sont nommées.
+- **Action corrective :** recopiez le store depuis l'instance source.
+- **Corrigeable hors ligne :** oui · **Bloque :** la recipe qui atteint ce fichier, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-013
+
+- **Quoi :** un fichier nécessaire à la recipe est absent de l'inventaire.
+- **Cause probable :** le manifeste ne couvre pas tout ce que les recipes
+  atteignent ; il ne peut donc pas en répondre.
+- **Action corrective :** reproduisez le support depuis l'instance source.
+- **Corrigeable hors ligne :** oui · **Bloque :** cette recipe entière, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-014
+
+- **Quoi :** un manifeste du support est illisible.
+- **Cause probable :** le fichier nommé n'est pas lisible comme manifeste ou
+  index OCI ; ce que la recipe livre ne peut pas être établi.
+- **Action corrective :** recopiez le store depuis l'instance source.
+- **Corrigeable hors ligne :** oui · **Bloque :** cette recipe entière (classe vérification, code 4)
+
+### TBY-MED-015
+
+- **Quoi :** un blob du support est rangé sous une mauvaise empreinte.
+- **Cause probable :** ses octets n'ont pas l'empreinte que son propre
+  chemin annonce — le stockage adressé par contenu se contredit, quoi que
+  dise l'inventaire.
+- **Action corrective :** recopiez le store depuis l'instance source.
+- **Corrigeable hors ligne :** oui · **Bloque :** la recipe qui atteint ce blob, sans dérogation (classe vérification, code 4)
+
+### TBY-MED-020
+
+- **Quoi :** un fichier du support n'est pas couvert par l'inventaire.
+- **Cause probable :** il a été ajouté après l'écriture du manifeste.
+- **Action corrective :** rien à faire pour continuer — le contenu
+  surnuméraire n'est jamais poussé. Cherchez comment il est arrivé là si ce
+  n'est pas vous qui l'y avez mis.
+- **Corrigeable hors ligne :** oui · **Bloque :** rien (signalé seulement)
+
+### TBY-MED-021
+
+- **Quoi :** un fichier du support n'est atteint par aucune recipe.
+- **Cause probable :** le plus souvent, un reliquat d'une livraison
+  antérieure.
+- **Action corrective :** rien à faire pour continuer — un contenu atteint
+  par aucune recipe n'est jamais poussé. Élaguez le store source pour que le
+  support porte moins.
+- **Corrigeable hors ligne :** oui · **Bloque :** rien (signalé seulement)
+
+### TBY-MED-022
+
+- **Quoi :** un fichier de tenue de registre du support ne correspond pas à
+  son empreinte enregistrée.
+- **Cause probable :** la comptabilité interne du store — hors graphe de
+  recipes, qui bloque globalement — a été modifiée après l'écriture du
+  manifeste.
+- **Action corrective :** recopiez le store depuis l'instance source si vous
+  ne l'avez pas modifié délibérément. Rien n'est poussé depuis ces fichiers.
+- **Corrigeable hors ligne :** oui · **Bloque :** rien (signalé seulement)
+
+### TBY-MED-030
+
+- **Quoi :** le support n'a pas encore été vérifié : cette instance n'en sert
+  aucun contenu.
+- **Cause probable :** le store sur lequel cette instance a été pointée est
+  arrivé d'une autre zone sur un support physique, et rien n'en a encore
+  recalculé les empreintes ni vérifié les signatures de ce qu'il livre.
+  FR-054 exige que la vérification précède toute poussée, tout service et
+  toute écriture locale : `/v2/` et `/files/` restent donc fermés tant
+  qu'elle n'a pas eu lieu. L'instance, elle, est vivante, prête, et sert
+  normalement son interface et son API.
+- **Action corrective :** ouvrez l'écran **Média** et lancez *Vérifier* — sur
+  un disque plein cela prend plusieurs minutes — ou appelez
+  `POST /api/v1/media/verify` sur cette instance. Les surfaces de contenu
+  s'ouvrent d'elles-mêmes dès que le support est validé. `tobby media verify`
+  rend le même verdict mais s'exécute dans son propre processus sur le
+  répertoire : il **n'ouvre pas** les surfaces d'une instance en cours
+  d'exécution — le verrou est levé par une vérification que l'instance
+  elle-même effectue. Aucun réglage ne permet délibérément de servir un
+  support sans le vérifier.
+- **Corrigeable hors ligne :** oui · **Bloque :** la registry embarquée et la
+  surface de fichiers, pour ce support
+
+### TBY-MED-031
+
+- **Quoi :** une vérification de ce support est déjà en cours.
+- **Cause probable :** une seconde vérification a été demandée alors qu'une
+  première parcourait le support. Deux parcours du même disque se ralentissent
+  mutuellement sans rien apprendre de plus.
+- **Action corrective :** attendez la fin de l'exécution en cours. Son verdict
+  s'affiche sur l'écran Média et sur `GET /api/v1/media/verification`.
+- **Corrigeable hors ligne :** oui · **Bloque :** la seconde vérification
+  seulement
+
+### TBY-MED-032
+
+- **Quoi :** le support a été vérifié et n'en est pas ressorti intact : cette
+  instance n'en sert aucun contenu.
+- **Cause probable :** le verdict est *partiel* ou *bloqué* : au moins une
+  livraison a échoué sur sa signature ou sur l'une des empreintes de ses
+  ingrédients. Contrairement à la décision de poussée, que R-19 prend recipe
+  par recipe, servir engage le store entier — `/v2/` et `/files/` distribuent
+  des blobs, et un blob atteint par une livraison bloquée est exactement le
+  contenu qui a échoué.
+- **Action corrective :** lisez le rapport sur l'écran Média : il nomme chaque
+  livraison bloquée et le fichier fautif. Recopiez le support depuis
+  l'instance source et vérifiez de nouveau. Les livraisons intactes restent
+  poussables vers la registry de zone, qui les sert ensuite.
+- **Corrigeable hors ligne :** oui · **Bloque :** la registry embarquée et la
+  surface de fichiers, pour ce support
+
+## Export et import OCI image layout (TBY-LAY)
+
+La sortie d'interopérabilité (FR-051) : le store écrit dans le format
+standard que `skopeo`, `oras` et `crane` lisent, et relu ensuite. Un layout
+importé vient de l'extérieur : il est traité comme n'importe quelle entrée
+étrangère.
+
+### TBY-LAY-001
+
+- **Ce qui s'est passé :** ce n'est pas un OCI image layout exploitable.
+- **Cause probable :** le chemin n'a pas pu être lu comme tel — pas de
+  marqueur `oci-layout`, un `index.json` qui ne s'analyse pas, ou un blob
+  dont l'empreinte ne correspond pas au digest qui l'adresse.
+- **Action corrective :** vérifiez que le chemin désigne le layout
+  lui-même : le répertoire, ou son tar **non compressé**, contenant
+  `oci-layout`, `index.json` et `blobs/`. Une archive compressée doit
+  d'abord être décompressée — Tobby lit une archive non compressée en se
+  positionnant sur un décalage de blob enregistré, ce qui ne laisse rien à
+  déployer à une bombe de décompression. `skopeo copy oci:<chemin>:<tag> …`
+  sur le même chemin vous dira si un outil OCI y arrive davantage.
+- **Corrigeable hors ligne :** oui · **Bloque :** l'import concerné ; rien n'est écrit
+
+### TBY-LAY-002
+
+- **Ce qui s'est passé :** l'archive a été refusée — une de ses entrées n'a
+  rien à faire dans un image layout.
+- **Cause probable :** l'entrée nommée est un chemin absolu, un chemin qui
+  sort de l'archive, ou un lien. Une archive de layout contient
+  `oci-layout`, `index.json` et des fichiers
+  `blobs/<algorithme>/<digest>`, et rien d'autre : une archive qui porte
+  une telle entrée n'a pas été produite par un outil OCI.
+- **Action corrective :** rien n'a été écrit. Faites refabriquer le support
+  à sa source, et signalez-le comme incident s'il provient de l'extérieur
+  de votre organisation. C'est un échec de vérification, pas un transfert
+  abîmé.
+- **Corrigeable hors ligne :** oui · **Bloque :** l'import concerné ; rien n'est écrit (classe vérification, code 4)
+
+### TBY-LAY-003
+
+- **Ce qui s'est passé :** la destination de l'export existe déjà.
+- **Cause probable :** le chemin est déjà présent et cet export n'était pas
+  autorisé à le remplacer. Un export écrit dans un chemin de préparation
+  puis le renomme en place : il n'écrase donc jamais à moitié.
+- **Action corrective :** choisissez une autre destination, ou relancez
+  avec l'option de remplacement (`--overwrite`) une fois certain que ce qui
+  s'y trouve peut être perdu.
+- **Corrigeable hors ligne :** oui · **Bloque :** l'export concerné ; rien n'est écrit
+
+## Empaquetage d'ensembles de fichiers (TBY-FIL)
+
+`tobby fileset pack` transforme un répertoire local en image OCI FileSet et
+l'importe par le chemin d'import unitaire (FR-048). Ce que
+[RECIPE-SPEC §14.5](https://tobby-fetch.github.io/recipe-spec/#145-extraction-safety)
+refuse à l'extraction, l'empaquetage le refuse **d'abord** — là où
+l'exploitant peut encore corriger son arbre. Un ensemble qui contiendrait
+discrètement moins de fichiers que le répertoire dont il sort serait pire
+qu'un refus qui nomme l'entrée fautive.
+
+### TBY-FIL-001
+
+- **Ce qui s'est passé :** l'ensemble de fichiers n'a pas pu être empaqueté.
+- **Cause probable :** énoncée telle quelle — le plus souvent un répertoire
+  inexistant, vide ou illisible, ou un nom et une version qui ne s'analysent
+  pas.
+- **Action corrective :** indiquez un répertoire existant et non vide, et
+  donnez à l'ensemble un nom en minuscules et une version, par exemple
+  `tobby fileset pack ./repo site-docs:1.0.0`. Rien n'a été écrit dans le
+  store.
+- **Corrigeable hors ligne :** oui · **Bloque :** l'empaquetage concerné ; rien n'est écrit
+
+### TBY-FIL-002
+
+- **Ce qui s'est passé :** le répertoire contient une entrée qui ne peut pas
+  être empaquetée sans risque.
+- **Cause probable :** l'entrée nommée est un lien symbolique pointant hors
+  du répertoire, un fichier spécial (périphérique, FIFO, socket), un fichier
+  setuid ou setgid, un nom commençant par `.wh.` — qu'un lecteur de couche
+  prendrait pour une suppression — ou un nom portant un antislash ou un
+  octet NUL.
+- **Action corrective :** supprimez ou remplacez cette entrée puis
+  empaquetez à nouveau. Un ensemble de fichiers est extrait et servi sur
+  d'autres machines, Windows compris : les refus portent sur l'endroit où
+  le contenu atterrit, pas sur cet hôte. Rien n'a été écrit dans le store.
+- **Corrigeable hors ligne :** oui · **Bloque :** l'empaquetage concerné ; rien n'est écrit
+
+### TBY-FIL-003
+
+- **Ce qui s'est passé :** l'empaquetage de ce répertoire n'est pas autorisé
+  depuis cette surface.
+- **Cause probable :** le chemin est en dehors des répertoires que
+  `files.packRoots` autorise l'interface web et l'API à lire. Sans entrée
+  configurée, elles n'en lisent **aucun** — lire un répertoire arbitraire de
+  l'hôte sur requête réseau est une capacité qu'on donne à une instance, pas
+  qu'elle possède.
+- **Action corrective :** lancez `tobby fileset pack` sur l'hôte de
+  l'instance, qui n'est pas restreint parce que celui qui l'exécute détient
+  déjà ces droits sur le système de fichiers, ou ajoutez le répertoire à
+  `files.packRoots` dans le fichier de configuration puis redémarrez
+  l'instance.
+- **Corrigeable hors ligne :** oui · **Bloque :** l'empaquetage concerné ; rien n'est écrit
 
 ## Tâches (TBY-TSK)
 

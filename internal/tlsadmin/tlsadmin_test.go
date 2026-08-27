@@ -17,6 +17,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -215,13 +216,20 @@ func TestReplaceInstallsTheConfiguredPair(t *testing.T) {
 		t.Error("the installed certificate is not the submitted bytes")
 	}
 	// The key keeps the restrictive mode the previous file carried: a
-	// replacement must not widen the permissions of key material.
-	info, err := os.Stat(keyPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("key mode = %v, want 0600", info.Mode().Perm())
+	// replacement must not widen the permissions of key material. That
+	// check is POSIX-only — permission bits do not carry the rule on
+	// Windows, the access list does, and TestReplaceKeepsTheKeyOwnerOnly
+	// skips there for the same reason. Everything above it, the installed
+	// bytes and the reported subject and fingerprint, runs on every
+	// supported platform (NFR-018).
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(keyPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Errorf("key mode = %v, want 0600", info.Mode().Perm())
+		}
 	}
 }
 
@@ -321,3 +329,47 @@ func (f *fakeCert) Destination() (certPath, keyPath string, ok bool) {
 	return f.destCert, f.destKey, f.destCert != ""
 }
 func (f *fakeCert) Adopt() error { f.adopted = true; return nil }
+
+// TestReplaceKeepsTheKeyOwnerOnly is the NFR-020 regression: a key file an
+// operator once loosened must come back owner-only after a replacement.
+// writePEM inherits the target's mode — right for the public certificate,
+// wrong for the key — so the key goes through its own writer.
+func TestReplaceKeepsTheKeyOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits do not carry the rule on Windows; the access list does. internal/secretfile's own Windows tests read that list back and own this assertion")
+	}
+	dir := t.TempDir()
+	certPath, keyPath := filepath.Join(dir, "tls.crt"), filepath.Join(dir, "tls.key")
+	oldCert, oldKey := pair(t, "old.example.com", now.Add(24*time.Hour))
+	// Both targets pre-exist world-readable: the state an operator, an
+	// installer, or a restored backup can leave behind.
+	if err := os.WriteFile(certPath, oldCert, 0o644); err != nil { //nolint:gosec // G306: the certificate is public by definition
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, oldKey, 0o644); err != nil { //nolint:gosec // G306: deliberately loose — the point of the test
+		t.Fatal(err)
+	}
+
+	newCert, newKey := pair(t, "new.example.com", now.Add(365*24*time.Hour))
+	if _, err := Replace(certPath, keyPath, newCert, newKey, now); err != nil {
+		t.Fatal(err)
+	}
+
+	keyInfo, err := os.Stat(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := keyInfo.Mode().Perm(); got != 0o600 {
+		t.Errorf("private key mode after replacement = %04o, want 0600", got)
+	}
+	// The certificate keeps the operator's choice: it is public by
+	// construction, and silently narrowing it would break a deployment
+	// that published it on purpose.
+	certInfo, err := os.Stat(certPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := certInfo.Mode().Perm(); got != 0o644 {
+		t.Errorf("certificate mode after replacement = %04o, want the 0644 it had", got)
+	}
+}

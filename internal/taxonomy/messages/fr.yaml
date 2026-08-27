@@ -55,6 +55,10 @@
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Corrigez le réglage indiqué (précédence : drapeaux, puis variables d'environnement TOBBY_*, puis fichier YAML), vérifiez le résultat avec `tobby config dump`, puis redémarrez."
 
+"TBY-CFG-002.what": "L'instance refuse de démarrer : un fichier de secret est configuré à l'intérieur du store transportable."
+"TBY-CFG-002.cause": "{{.paths}} se résout sous la racine du store {{.root}}. Le store est confié à un porteur puis branché sur une machine d'une autre zone : tout ce qui est dessous est réputé lu par quelqu'un d'autre — identifiants de registre, clés privées TLS, base d'utilisateurs locale et jetons statiques ne doivent jamais voyager dessus."
+"TBY-CFG-002.action": "Déplacez chaque fichier listé dans un répertoire hors du store — le répertoire d'état (`state.root`) est sa place — mettez le réglage à jour vers le nouvel emplacement, puis redémarrez l'instance. Un chemin qui se résout dans le store via un lien symbolique compte comme étant dedans : c'est le chemin résolu indiqué qui tranche."
+
 "TBY-NET-001.what": "La configuration du proxy sortant est inutilisable : l'instance refuse de démarrer."
 "TBY-NET-001.cause": "{{.setting}} vaut {{.proxy}}, qui n'est pas une URL de proxy exploitable (http:// ou https:// avec un hôte attendus)."
 "TBY-NET-001.action": "Corrigez {{.setting}} sous la forme http://proxy.example.com:3128, sans identifiants dans l'URL : ceux-ci relèvent de network.proxy.username et network.proxy.password, qui n'apparaissent jamais dans les journaux ni dans `tobby config dump`. Puis redémarrez."
@@ -99,6 +103,10 @@
 "TBY-REG-007.cause": "Pour {{.reference}} : {{.detail}}. Le registre source, ou un cache placé devant lui, n'honore pas les plages d'octets de manière cohérente."
 "TBY-REG-007.action": "Relancez la tâche : le transfert repart de la dernière position vérifiée, ou de zéro si le contenu de la source a changé. Si cela se reproduit sur la même source, mettez transfer.resumeThreshold à 0 pour désactiver la reprise intra-blob sur cette instance, et vérifiez le proxy cache éventuel sur le chemin vers ce registre."
 
+"TBY-REG-008.what": "L'index de la source ne porte pas une plateforme demandée par la recipe."
+"TBY-REG-008.cause": "Pour {{.reference}}, aucun enfant de l'index ne correspond à {{.platforms}} ; l'index publie {{.available}}. Un sélecteur de plateforme s'écrit os/arch avec un variant FACULTATIF (RECIPE-SPEC §7.1) : un variant omis correspond à n'importe lequel, un variant nommé doit correspondre exactement."
+"TBY-REG-008.action": "Confrontez la liste platforms de l'ingrédient à ce que la source publie réellement (docker manifest inspect, ou le rapport d'inspection d'un import unitaire) et corrigez-la. Tobby n'abandonne jamais silencieusement une plateforme demandée."
+
 "TBY-REG-005.what": "La référence n'existe pas sur le registre source."
 "TBY-REG-005.cause": "{{.reference}} est introuvable — nom ou tag erroné, ou supprimée en amont."
 "TBY-REG-005.action": "Vérifiez le nom du dépôt et le tag sur le registre source, puis corrigez la référence."
@@ -139,6 +147,18 @@
 "TBY-CHT-001.cause": "{{.chart}} déclare la dépendance {{.dependency}} mais ne l'embarque pas sous charts/ — il ne peut pas se déployer hors-ligne."
 "TBY-CHT-001.action": "Ré-empaquetez le chart avec ses dépendances embarquées (helm dependency build puis helm package), publiez-le, puis relancez l'import."
 
+"TBY-FIL-001.what": "L'ensemble de fichiers n'a pas pu être empaqueté."
+"TBY-FIL-001.cause": "{{.detail}}"
+"TBY-FIL-001.action": "Indiquez à `tobby fileset pack` un répertoire existant et non vide, et donnez à l'ensemble un nom en minuscules et une version (par exemple `tobby fileset pack ./repo site-docs:1.0.0`). Rien n'a été écrit dans le magasin."
+
+"TBY-FIL-002.what": "Le répertoire contient une entrée qui ne peut pas être empaquetée sans risque."
+"TBY-FIL-002.cause": "{{.detail}}"
+"TBY-FIL-002.action": "Supprimez ou remplacez cette entrée, puis empaquetez à nouveau : un ensemble de fichiers est extrait et servi sur d'autres machines, donc les liens symboliques doivent rester dans le répertoire, les fichiers spéciaux et les bits setuid ne sont pas transportés, et les noms ne doivent pas commencer par `.wh.`. Rien n'a été écrit dans le magasin."
+
+"TBY-FIL-003.what": "L'empaquetage de ce répertoire n'est pas autorisé depuis cette surface."
+"TBY-FIL-003.cause": "{{.path}} est en dehors des répertoires que `files.packRoots` autorise l'interface web et l'API à lire ; sans entrée configurée, elles n'en lisent aucun."
+"TBY-FIL-003.action": "Lancez `tobby fileset pack` sur l'hôte de l'instance, qui n'est pas restreint, ou ajoutez le répertoire à `files.packRoots` dans le fichier de configuration puis redémarrez l'instance."
+
 "TBY-STO-001.what": "Le store local n'a pas pu être lu."
 "TBY-STO-001.cause": "{{.detail}}"
 "TBY-STO-001.action": "Vérifiez que le répertoire de stockage existe, est monté et lisible par l'instance, puis réessayez."
@@ -150,6 +170,106 @@
 "TBY-STO-002.what": "L'écriture dans le store local a échoué."
 "TBY-STO-002.cause": "{{.detail}}"
 "TBY-STO-002.action": "Vérifiez l'espace libre et les permissions du répertoire de stockage, puis relancez l'opération."
+
+"TBY-MED-001.what": "Le support ne porte aucun manifeste de média."
+"TBY-MED-001.cause": "{{.path}} est absent — le store n'a pas été produit par une synchronisation miroir menée à son terme, ou la copie sur le support est partielle."
+"TBY-MED-001.action": "Recopiez le store depuis l'instance source, ou relancez la synchronisation miroir qui le produit. Rien ne peut être poussé depuis un support sans inventaire, et ce refus n'admet aucune dérogation."
+
+"TBY-MED-002.what": "Le manifeste de média est illisible."
+"TBY-MED-002.cause": "{{.path}} est tronqué, non analysable ou incohérent : {{.detail}}."
+"TBY-MED-002.action": "Recopiez le store depuis l'instance source puis vérifiez à nouveau. Un manifeste qui ne s'analyse pas ne laisse rien à quoi confronter le support, et ce refus n'admet aucune dérogation."
+
+"TBY-MED-003.what": "Le manifeste de média utilise une version de format non prise en charge."
+"TBY-MED-003.cause": "Le support déclare le format de manifeste {{.found}} ; cette version de Tobby lit le format {{.supported}}."
+"TBY-MED-003.action": "Utilisez de ce côté une version de Tobby correspondant au support, ou reproduisez le support avec la version qui tourne ici."
+
+"TBY-MED-004.what": "Le support utilise une version de format de store non prise en charge."
+"TBY-MED-004.cause": "Le support déclare le format de store {{.found}} ; cette version de Tobby lit le format {{.supported}}."
+"TBY-MED-004.action": "Utilisez une version de Tobby correspondant au support, ou transférez le contenu via le format OCI image layout avec l'outillage standard (skopeo, oras, crane)."
+
+"TBY-MED-005.what": "Le graphe de recipes du support ne correspond pas à son inventaire."
+"TBY-MED-005.cause": "{{.path}} a pour empreinte {{.actual}} alors que le manifeste enregistre {{.expected}} — la liste de ce que le support livre a changé depuis l'écriture du manifeste."
+"TBY-MED-005.action": "Recopiez le store depuis l'instance source. Le graphe de recipes est ce à partir de quoi chaque verdict par recipe est calculé : un graphe altéré bloque le support entier, sans dérogation."
+
+"TBY-MED-006.what": "Le support est adressé à une autre zone."
+"TBY-MED-006.cause": "Le manifeste nomme la zone {{.found}} ; cette instance sert la zone {{.expected}}."
+"TBY-MED-006.action": "Vérifiez qu'il s'agit bien du support destiné à cette zone. Un administrateur peut lever le refus délibérément ; la dérogation est consignée au journal d'audit."
+
+"TBY-MED-007.what": "Le support est plus ancien que le dernier importé pour cette zone."
+"TBY-MED-007.cause": "Le support {{.media}} a été résolu le {{.resolved}}, alors que la zone {{.zone}} a importé en dernier un contenu résolu le {{.recorded}} — l'importer ferait reculer la zone."
+"TBY-MED-007.action": "Vérifiez que vous avez branché le support courant. Un administrateur peut lever le refus délibérément — pour restaurer volontairement une livraison antérieure, par exemple ; la dérogation est consignée au journal d'audit."
+
+"TBY-MED-010.what": "Un fichier nécessaire à la recipe est absent du support."
+"TBY-MED-010.cause": "{{.recipe}} atteint {{.path}}, que le support ne porte pas — copie partielle, ou fichier supprimé."
+"TBY-MED-010.action": "Recopiez le store depuis l'instance source. La recipe est bloquée entière, sans dérogation ; les recipes intactes du même support restent poussables."
+
+"TBY-MED-011.what": "Un fichier du support n'a pas la taille attendue."
+"TBY-MED-011.cause": "{{.path}} contient {{.actual}} octets alors que le manifeste enregistre {{.expected}} — le fichier a été tronqué ou modifié après l'écriture du manifeste."
+"TBY-MED-011.action": "Recopiez le store depuis l'instance source. La recipe qui atteint ce fichier est bloquée entière, sans dérogation."
+
+"TBY-MED-012.what": "Un fichier du support ne correspond pas à son empreinte enregistrée."
+"TBY-MED-012.cause": "{{.path}} a pour empreinte {{.actual}} alors que le manifeste enregistre {{.expected}} — le contenu a été corrompu ou altéré pendant le transport."
+"TBY-MED-012.action": "Recopiez le store depuis l'instance source. La recipe qui atteint ce fichier est bloquée entière, sans dérogation."
+
+"TBY-MED-013.what": "Un fichier nécessaire à la recipe est absent de l'inventaire."
+"TBY-MED-013.cause": "{{.recipe}} atteint {{.path}}, que le manifeste de média ne liste pas — le manifeste ne peut donc pas en répondre."
+"TBY-MED-013.action": "Reproduisez le support depuis l'instance source pour que le manifeste couvre tout ce que les recipes atteignent. La recipe est bloquée entière, sans dérogation."
+
+"TBY-MED-014.what": "Un manifeste du support est illisible."
+"TBY-MED-014.cause": "{{.path}} n'est pas lisible comme manifeste ou index OCI : {{.detail}}."
+"TBY-MED-014.action": "Recopiez le store depuis l'instance source. Ce que la recipe livre ne peut pas être établi à partir d'un manifeste illisible : la recipe est bloquée entière."
+
+"TBY-MED-015.what": "Un blob du support est rangé sous une mauvaise empreinte."
+"TBY-MED-015.cause": "{{.path}} est adressé comme {{.expected}} mais ses octets ont pour empreinte {{.actual}} — le stockage adressé par contenu se contredit."
+"TBY-MED-015.action": "Recopiez le store depuis l'instance source. La recipe qui atteint ce blob est bloquée entière, sans dérogation."
+
+"TBY-MED-020.what": "Un fichier du support n'est pas couvert par l'inventaire."
+"TBY-MED-020.cause": "{{.path}} se trouve sous la couverture du manifeste mais celui-ci ne le liste pas — il a été ajouté après l'écriture du manifeste."
+"TBY-MED-020.action": "Rien à faire pour continuer : le contenu surnuméraire n'est jamais poussé. Cherchez comment il est arrivé sur le support si ce n'est pas vous qui l'y avez mis."
+
+"TBY-MED-021.what": "Un fichier du support n'est atteint par aucune recipe."
+"TBY-MED-021.cause": "{{.path}} est inventorié mais aucune recipe de ce support ne le livre — le plus souvent, un reliquat d'une livraison antérieure."
+"TBY-MED-021.action": "Rien à faire pour continuer : un contenu atteint par aucune recipe n'est jamais poussé. Élaguez le store source si vous voulez que le support porte moins."
+
+"TBY-MED-022.what": "Un fichier de tenue de registre du support ne correspond pas à son empreinte enregistrée."
+"TBY-MED-022.cause": "{{.path}} ne correspond pas à son entrée d'inventaire — la comptabilité interne du store a été modifiée après l'écriture du manifeste."
+"TBY-MED-022.action": "Rien n'est poussé depuis ce fichier, la vérification continue ; recopiez le store depuis l'instance source si vous ne l'avez pas modifié délibérément."
+
+"TBY-MED-030.what": "Ce support n'a pas encore été vérifié : rien n'en est servi."
+"TBY-MED-030.cause": "{{.surface}} est fermé parce que le support {{.media}} vient d'une autre zone et qu'aucune vérification n'a établi que son contenu est intact et signé (FR-054). L'instance, elle, fonctionne normalement."
+"TBY-MED-030.action": "Ouvrez {{.screen}} dans l'interface web et lancez Vérifier — la vérification recalcule les empreintes du support et peut prendre plusieurs minutes sur un disque plein — ou appelez POST /api/v1/media/verify sur cette instance. Cette surface s'ouvre d'elle-même dès que le support est vérifié. `tobby media verify` rend le même verdict mais s'exécute dans son propre processus et n'ouvre pas les surfaces de cette instance : seule une vérification exécutée par l'instance elle-même le fait."
+
+"TBY-MED-031.what": "Une vérification de ce support est déjà en cours."
+"TBY-MED-031.cause": "Une exécution parcourt le support (étape : {{.stage}}) ; en lancer une seconde ralentirait les deux sans rien apprendre de plus."
+"TBY-MED-031.action": "Attendez la fin de l'exécution en cours. Son verdict s'affiche sur l'écran Média et sur GET /api/v1/media/verification."
+
+"TBY-MED-032.what": "Ce support n'a pas passé la vérification : rien n'en est servi."
+"TBY-MED-032.cause": "{{.surface}} est fermé parce que le support {{.media}} a été vérifié « {{.verdict}} » et non intact. Servir engage le store entier — un blob atteint par une recipe bloquée est exactement le contenu qui a échoué — donc, contrairement à la décision de poussée, cela ne se décide pas recipe par recipe."
+"TBY-MED-032.action": "Lisez le rapport sur {{.screen}} : il nomme chaque recipe bloquée et le fichier fautif. Recopiez le support depuis l'instance source, puis vérifiez de nouveau. Les recipes intactes restent poussables vers la registry de zone, qui les sert ensuite."
+
+"TBY-STO-004.what": "L'opération a été refusée avant de démarrer : la cible n'a pas assez d'espace libre."
+"TBY-STO-004.cause": "{{.path}} demande {{.needed}} octets et seuls {{.available}} sont utilisables — {{.free}} octets sont libres, moins la marge de sécurité de {{.margin}} %. Il manque {{.shortfall}} octets."
+"TBY-STO-004.action": "Libérez au moins {{.shortfall}} octets sur la cible, visez un volume plus grand, ou supprimez du contenu qui n'est plus référencé. N'abaissez preflight.safetyMarginPercent que si vous acceptez de remplir le volume."
+
+"TBY-STO-005.what": "Le système de fichiers de la cible ne peut pas contenir un fichier de cette taille."
+"TBY-STO-005.cause": "{{.path}} est formaté en {{.filesystem}}, dont le plus gros fichier possible fait {{.limit}} octets ; le transfert ({{.what}}) écrirait un fichier de {{.size}} octets."
+"TBY-STO-005.action": "Reformatez le support avec un système de fichiers sans cette limite (exFAT, NTFS, ext4, XFS), ou découpez le transfert pour qu'aucun fichier ne dépasse la limite."
+
+"TBY-STO-006.what": "Le store n'a pas été réinitialisé."
+"TBY-STO-006.cause": "La confirmation saisie ne correspond pas : la remise à zéro du store exige de taper {{.phrase}} exactement, en majuscules, et rien d'autre."
+"TBY-STO-006.action": "Saisissez {{.phrase}} dans le champ de confirmation et validez de nouveau. Une remise à zéro supprime tous les artefacts de ce store ; l'historique des opérations et les journaux de tâches sont conservés."
+
+"TBY-LAY-001.what": "Ce n'est pas un OCI image layout exploitable."
+"TBY-LAY-001.cause": "{{.path}} n'a pas pu être lu comme tel : {{.detail}}"
+"TBY-LAY-001.action": "Vérifiez que le chemin désigne bien le layout lui-même — le répertoire (ou son tar non compressé) contenant `oci-layout`, `index.json` et `blobs/`. Une archive compressée doit d'abord être décompressée. `skopeo copy oci:<chemin>:<tag> …` sur le même chemin vous dira si un outil OCI y arrive davantage."
+
+"TBY-LAY-002.what": "L'archive a été refusée : une de ses entrées n'a rien à faire dans un image layout."
+"TBY-LAY-002.cause": "Dans {{.path}}, l'entrée {{.entry}} a été refusée — {{.reason}}."
+"TBY-LAY-002.action": "Rien n'a été écrit. Une archive OCI image layout ne contient que `oci-layout`, `index.json` et des fichiers `blobs/<algorithme>/<digest>` : une archive qui porte en plus des liens ou des chemins sortant d'elle-même n'a pas été produite par un outil OCI. Faites refabriquer le support à sa source, et signalez-le comme incident s'il provient de l'extérieur de votre organisation."
+
+"TBY-LAY-003.what": "La destination de l'export existe déjà."
+"TBY-LAY-003.cause": "{{.path}} est déjà présent, et cet export n'était pas autorisé à le remplacer."
+"TBY-LAY-003.action": "Choisissez une autre destination, ou relancez l'export avec l'option de remplacement (`--overwrite` en ligne de commande) une fois certain que ce qui s'y trouve peut être perdu."
 
 "TBY-TSK-001.what": "La tâche n'existe pas."
 "TBY-TSK-001.cause": "Aucune tâche d'identifiant {{.id}} sur cette instance — lien erroné, ou store réinitialisé."
@@ -166,3 +286,24 @@
 "TBY-SRV-003.what": "L'instance est injoignable."
 "TBY-SRV-003.cause": "La connexion réseau est tombée, ou l'instance redémarre."
 "TBY-SRV-003.action": "Vérifiez votre liaison réseau et réessayez ; la page reprend dès que l'instance répond."
+
+# Table des codes de sortie (FR-066, amendement R-08). Ce ne sont pas des
+# codes d'erreur : ce sont les lignes du contrat de ligne de commande
+# publié, rendues par ExitCodeTable dans les pages de référence et
+# couvertes par la promesse de versionnement sémantique.
+"exit.column.code": "Code"
+"exit.column.name": "Nom"
+"exit.column.meaning": "Signification"
+
+"exit.ok.title": "Succès"
+"exit.ok.meaning": "La commande a fait ce qui était demandé."
+"exit.failure.title": "Échec opérationnel"
+"exit.failure.meaning": "Erreur réseau, stockage ou interne — tout ce qui a échoué sans verdict de politique ni de vérification. Tous les codes de la classe opérationnelle sortent ici, ainsi qu'une commande qui a déclenché une tâche que l'instance a ensuite fait échouer."
+"exit.usage.title": "Erreur d'usage"
+"exit.usage.meaning": "Drapeau erroné, commande inconnue, ou commande à qui l'on demande ce qu'elle ne peut pas honorer. Le message porte l'indication `see 'tobby … --help'` désignant la commande dont l'analyse a échoué."
+"exit.policy.title": "Refus de politique"
+"exit.policy.meaning": "Refusé par une politique ou une autorisation explicite : liste blanche de registres, rôles, refus de démarrage sécurisés par défaut, immutabilité d'un tag de recipe, les deux garde-fous de média levables par un administrateur."
+"exit.verification.title": "Échec de vérification"
+"exit.verification.meaning": "Un contrôle d'intégrité ou d'authenticité a échoué : signatures, digests épinglés, types d'artefact, sommes de contrôle du média. La classe la plus sévère, et la seule qu'aucune levée ne rouvre."
+"exit.changes-planned.title": "Changements prévus"
+"exit.changes-planned.meaning": "Une exécution sans effet de bord a trouvé du travail à faire — `tobby sync --dry-run` sur un Retriever porteur de changements. C'est un succès qui a quelque chose à dire, pour qu'une barrière d'intégration puisse s'y brancher sans y voir une compilation cassée."

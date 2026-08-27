@@ -8,14 +8,41 @@
 # `@vX.Y.Z` tag — referencing them by hash breaks provenance verification.
 #
 # Signatures need no secret: binaries, SBOMs and the image are all signed
-# keyless via the job's OIDC identity. The one secret this workflow uses is
-# HOMEBREW_TAP_TOKEN, and only to push the formula bump into the separate
+# keyless via the job's OIDC identity. The only secret this workflow spends
+# is HOMEBREW_TAP_TOKEN, and only to push the formula bump into the separate
 # tap repository — a cross-repository write GITHUB_TOKEN cannot perform. It
 # is a fine-grained token restricted to tobby-fetch/homebrew-tap with
 # `contents: write` and nothing else; it signs nothing and touches no
 # artifact. When it is absent or expired the homebrew job fails loudly at
 # release time, which is the point: a formula silently left behind is worse
 # than a red job.
+#
+# A second secret name appears below, SCOOP_BUCKET_TOKEN, but the sentence
+# above still holds: the scoop job only reads it to find out whether it
+# exists, and never uses it to write anywhere. The Windows workstation
+# channels — winget and Scoop — render their manifests from the templates in
+# packaging/, attach them to the release as assets, and stop. Neither opens a
+# pull request against microsoft/winget-pkgs and neither pushes into a bucket
+# repository, because both of those destinations are indexes other people
+# read on our behalf, and putting a new version in front of their users is a
+# reviewed human act rather than a side effect of tagging.
+#
+# Both Windows jobs hand off GREEN today, and Scoop turns red the day that
+# means something. Red is worth having only while it is rare: a job that
+# failed on every release until somebody created a bucket would teach the
+# team to expect a red square on the release page and stop reading it, which
+# is precisely how the red that matters gets missed. So Scoop reads its token
+# to tell two states apart — no token means no bucket and nobody has asked
+# for one, which is a hand-off with a job summary; a token set means a bucket
+# exists and someone decided it should be fed, and a version rendered but not
+# delivered is then a real gap and fails the job. Winget ends green because
+# nothing is missing there either: the manifests are rendered, checked against this run's own
+# SHA256SUMS and attached, and what remains is a pull request into an index
+# whose reviewers do not work here. A job that failed on every release
+# forever would not say that; it would teach everyone to expect a red square
+# on the release page and stop reading it, which is exactly how the scoop
+# job's red — the one that means something — gets missed. Winget hands off
+# through a warning annotation and a job summary instead.
 name: Release
 
 on:
@@ -518,6 +545,268 @@ jobs:
 
           Signed-off-by: tobby release bot <noreply@github.com>"
           git push
+
+  # winget: render the three-file manifest set for the Windows Package
+  # Manager and attach it to the release. Windows is not a courtesy target —
+  # NFR-001 requires the single static binary on Windows for both
+  # architectures, and NFR-018 puts the complete mirror-mode workflow inside
+  # the validated Windows scope — so the mirror workstation deserves an entry
+  # in the package manager its operators already run, not a download link.
+  #
+  # The deliberate limit: this job renders and attaches, and publishes
+  # nothing. A winget release is a pull request against microsoft/winget-pkgs,
+  # a community index reviewed by people outside this project, and the
+  # PackageIdentifier it accepts is immutable afterwards. That is a decision a
+  # person takes with their name on it, not an automated consequence of
+  # pushing a tag, so no step here opens such a pull request and no token that
+  # could is stored in this repository. The rendered manifests ride on the
+  # release precisely so the human doing it has a provenance-covered,
+  # already-validated set to submit rather than files hand-edited afterwards.
+  #
+  # Checksums are read from the SHA256SUMS this run just built and the SLSA
+  # provenance covers, not recomputed from a re-download.
+  winget:
+    name: Render the winget manifest set
+    runs-on: ubuntu-latest
+    needs: [build, release]
+    # Only what the upload actually needs: writing release assets. The
+    # homebrew job can run with `permissions: {}` because it pushes with its
+    # own cross-repository token; this one touches the release itself.
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Checkout this repository (for the manifest templates)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: binaries
+          path: dist
+      - name: Render the manifest set from the templates
+        run: |
+          set -euo pipefail
+          amd64="$(awk '$2 ~ /tobby-windows-amd64\.exe$/ {print $1}' dist/SHA256SUMS)"
+          arm64="$(awk '$2 ~ /tobby-windows-arm64\.exe$/ {print $1}' dist/SHA256SUMS)"
+          for v in "$amd64" "$arm64"; do
+            [ "${#v}" -eq 64 ] || { echo "::error::missing or malformed windows checksum"; exit 1; }
+          done
+          VERSION="${VERSION#v}" AMD64="$amd64" ARM64="$arm64" python3 - <<'PY'
+          import os, re, pathlib
+          version = os.environ["VERSION"]
+          tag = f"v{version}"
+          it = iter([os.environ["AMD64"], os.environ["ARM64"]])  # template order: x64, then arm64
+          out = pathlib.Path("rendered-winget")
+          out.mkdir(exist_ok=True)
+          for name in ("infraBuilder.tobby.yaml",
+                       "infraBuilder.tobby.installer.yaml",
+                       "infraBuilder.tobby.locale.en-US.yaml"):
+              s = pathlib.Path("packaging/winget", name).read_text()
+              s = re.sub(r'^(PackageVersion: )"0\.0\.0"',
+                         lambda m: f'{m.group(1)}"{version}"', s, count=1, flags=re.M)
+              s = s.replace("v0.0.0", tag)  # asset URLs and the release-notes link
+              s = re.sub(r'^(\s*InstallerSha256: )"0{64}"',
+                         lambda m: f'{m.group(1)}"{next(it)}"', s, flags=re.M)
+              (out / name).write_text(s)
+          PY
+      - name: Verify the substitution actually applied
+        run: |
+          set -euo pipefail
+          for f in rendered-winget/*.yaml; do
+            grep -q "PackageVersion: \"${VERSION#v}\"" "$f" \
+              || { echo "::error::version substitution did not apply in $f"; exit 1; }
+            ! grep -q 'v0\.0\.0' "$f" \
+              || { echo "::error::a tag placeholder survived in $f"; exit 1; }
+            ! grep -qE '0{64}' "$f" \
+              || { echo "::error::a checksum placeholder survived in $f"; exit 1; }
+          done
+          grep -q "InstallerSha256: \"$(awk '$2 ~ /tobby-windows-amd64\.exe$/ {print $1}' dist/SHA256SUMS)\"" \
+            rendered-winget/infraBuilder.tobby.installer.yaml \
+            || { echo "::error::the x64 checksum is not the one this run built"; exit 1; }
+          grep -q "InstallerSha256: \"$(awk '$2 ~ /tobby-windows-arm64\.exe$/ {print $1}' dist/SHA256SUMS)\"" \
+            rendered-winget/infraBuilder.tobby.installer.yaml \
+            || { echo "::error::the arm64 checksum is not the one this run built"; exit 1; }
+      - name: Attach the rendered manifests to the release
+        run: >
+          gh release upload "${VERSION}"
+          rendered-winget/infraBuilder.tobby.yaml
+          rendered-winget/infraBuilder.tobby.installer.yaml
+          rendered-winget/infraBuilder.tobby.locale.en-US.yaml
+          --clobber
+      # This step does NOT fail, and the difference from the homebrew job
+      # above is the whole reasoning. Homebrew fails when HOMEBREW_TAP_TOKEN
+      # is absent because something the workflow was supposed to do could not
+      # be done. Here nothing is missing and nothing failed: the manifests
+      # are rendered, verified against this run's own SHA256SUMS, and
+      # attached to the release. What remains is a pull request against
+      # microsoft/winget-pkgs, which is reviewed by people outside this
+      # project and which nobody here may open on its behalf — and the
+      # PackageIdentifier is immutable once accepted, so it is a decision,
+      # not a step.
+      #
+      # A job that failed on every release forever would not communicate
+      # that. It would train everyone to expect one red square on the
+      # release page and to stop reading it, which is how the homebrew job's
+      # own red — the one that means something — gets missed. So the hand-off
+      # is a warning annotation and a job summary the releaser actually
+      # reads, and the release stays green.
+      - name: Announce the human step (the community index is not ours to write to)
+        run: |
+          echo "::warning::winget manifests for ${VERSION} are attached to the release; submitting them to microsoft/winget-pkgs is a human step."
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## winget — rendered, not published
+
+          The three \`infraBuilder.tobby*.yaml\` manifests for **${VERSION}** are
+          attached to the release. Their \`InstallerSha256\` values come from this
+          run's \`SHA256SUMS\`, which the SLSA provenance covers.
+
+          Nothing has been submitted. This workflow opens no pull request against
+          \`microsoft/winget-pkgs\` and holds no token that could: that index is
+          reviewed by people outside this project, and the PackageIdentifier
+          \`infraBuilder.tobby\` is immutable once accepted.
+
+          To publish this version by hand:
+
+          1. Download the three \`infraBuilder.tobby*.yaml\` assets from the
+             ${VERSION} release into an empty directory.
+          2. On a Windows host: \`winget validate --manifest .\`, then
+             \`winget install --manifest .\` — this proves the portable install and
+             the \`tobby\` command alias both work.
+          3. Open a pull request adding the three files under
+             \`manifests/i/infraBuilder/tobby/${VERSION#v}/\` in
+             \`microsoft/winget-pkgs\`.
+
+          Re-running this job changes none of that.
+          EOF
+
+  # Scoop: render the app manifest for the bucket and attach it to the
+  # release. Same reasoning as the winget job — Windows is a validated target
+  # (NFR-001, NFR-018) and Scoop is what the operators of mirror workstations
+  # tend to have, not least because it installs per-user and needs no
+  # administrator rights, which on a managed workstation is often the only
+  # kind of install available.
+  #
+  # The deliberate limit, and here it is not even a judgement call yet: the
+  # bucket repository tobby-fetch/scoop-bucket does not exist. Creating a
+  # public repository that becomes a distribution channel — with the
+  # maintenance, the trust and the deprecation story that follows — is not a
+  # decision this release chain gets to take on a tag push. So this job
+  # renders, attaches, and then tells a human exactly what is missing.
+  #
+  # Checksums are read from the SHA256SUMS this run just built and the SLSA
+  # provenance covers, not recomputed from a re-download.
+  scoop:
+    name: Render the Scoop manifest
+    runs-on: ubuntu-latest
+    needs: [build, release]
+    # Only what the upload actually needs: writing release assets.
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Checkout this repository (for the manifest template)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: binaries
+          path: dist
+      - name: Render the manifest from the template
+        run: |
+          set -euo pipefail
+          amd64="$(awk '$2 ~ /tobby-windows-amd64\.exe$/ {print $1}' dist/SHA256SUMS)"
+          arm64="$(awk '$2 ~ /tobby-windows-arm64\.exe$/ {print $1}' dist/SHA256SUMS)"
+          for v in "$amd64" "$arm64"; do
+            [ "${#v}" -eq 64 ] || { echo "::error::missing or malformed windows checksum"; exit 1; }
+          done
+          VERSION="${VERSION#v}" AMD64="$amd64" ARM64="$arm64" python3 - <<'PY'
+          import json, os, re, pathlib
+          version = os.environ["VERSION"]
+          it = iter([os.environ["AMD64"], os.environ["ARM64"]])  # template order: 64bit, then arm64
+          s = pathlib.Path("packaging/scoop/tobby.json").read_text()
+          s = re.sub(r'^(\s*"version": )"0\.0\.0"',
+                     lambda m: f'{m.group(1)}"{version}"', s, count=1, flags=re.M)
+          # Only the pinned download URLs carry the placeholder tag; the
+          # autoupdate block uses Scoop's own "$version" and must stay literal.
+          s = s.replace("/releases/download/v0.0.0/", f"/releases/download/v{version}/")
+          s = re.sub(r'^(\s*"hash": )"0{64}"',
+                     lambda m: f'{m.group(1)}"{next(it)}"', s, flags=re.M)
+          json.loads(s)  # a manifest that does not parse is not a manifest
+          out = pathlib.Path("rendered-scoop")
+          out.mkdir(exist_ok=True)
+          (out / "tobby.json").write_text(s)
+          PY
+      - name: Verify the substitution actually applied
+        run: |
+          set -euo pipefail
+          f=rendered-scoop/tobby.json
+          grep -q "\"version\": \"${VERSION#v}\"" "$f" \
+            || { echo "::error::version substitution did not apply in $f"; exit 1; }
+          ! grep -q '/releases/download/v0\.0\.0/' "$f" \
+            || { echo "::error::a tag placeholder survived in $f"; exit 1; }
+          ! grep -qE '"hash": "0{64}"' "$f" \
+            || { echo "::error::a checksum placeholder survived in $f"; exit 1; }
+          grep -q "\"hash\": \"$(awk '$2 ~ /tobby-windows-amd64\.exe$/ {print $1}' dist/SHA256SUMS)\"" "$f" \
+            || { echo "::error::the 64bit checksum is not the one this run built"; exit 1; }
+          grep -q "\"hash\": \"$(awk '$2 ~ /tobby-windows-arm64\.exe$/ {print $1}' dist/SHA256SUMS)\"" "$f" \
+            || { echo "::error::the arm64 checksum is not the one this run built"; exit 1; }
+      - name: Attach the rendered manifest to the release
+        run: >
+          gh release upload "${VERSION}"
+          rendered-scoop/tobby.json
+          --clobber
+      # Both branches below fail, for two different reasons, and both say so
+      # out loud. The token is read only to tell those reasons apart — it is
+      # never used to write anything, here or anywhere else in this file.
+      - name: Hand off, or fail loudly if a channel was left behind
+        env:
+          TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+        run: |
+          if [ -z "${TOKEN}" ]; then
+            # Nothing was left behind: there is no bucket yet, and nobody has
+            # said there should be. Red here would fire on every release until
+            # someone creates one, which is the state that teaches a team to
+            # expect a red square on the release page and stop reading it —
+            # the same argument that makes the winget job hand off green.
+            echo "::warning::The Scoop manifest for ${VERSION} is rendered and attached to this"
+            echo "::warning::release as tobby.json. No bucket exists to publish it to yet."
+            {
+              echo "### Scoop manifest rendered — not published"
+              echo
+              echo "\`tobby.json\` for ${VERSION} is attached to this release."
+              echo
+              echo "To open the Scoop channel, once:"
+              echo
+              echo "1. Create \`tobby-fetch/scoop-bucket\` as a **public** repository with a \`bucket/\` directory."
+              echo "2. Commit the attached \`tobby.json\` as \`bucket/tobby.json\`."
+              echo "3. Mint a fine-grained token restricted to that repository, scope \`contents: write\`"
+              echo "   and nothing else, and store it as this repository's \`SCOOP_BUCKET_TOKEN\` secret."
+              echo
+              echo "From then on this job turns **red** whenever a release renders a manifest that"
+              echo "nobody committed — which is the state that actually deserves a red square."
+              echo
+              echo "Users install with:"
+              echo
+              echo '```'
+              echo "scoop bucket add tobby https://github.com/tobby-fetch/scoop-bucket"
+              echo "scoop install tobby"
+              echo '```'
+            } >>"${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+          # The token exists, so a bucket exists and someone decided it should
+          # be fed. A version rendered and not delivered is now a real gap.
+          echo "::error::The Scoop manifest for ${VERSION} is rendered and attached to the"
+          echo "::error::release as tobby.json — and nothing has been published."
+          echo "::error::SCOOP_BUCKET_TOKEN is set, but this workflow still writes to no bucket:"
+          echo "::error::the push step is deliberately not wired, because putting a version in"
+          echo "::error::front of a bucket's users is a reviewed human act. Commit the tobby.json"
+          echo "::error::attached to this release as bucket/tobby.json in"
+          echo "::error::tobby-fetch/scoop-bucket, or decide that this chain should push it and"
+          echo "::error::add that step here on purpose."
+          exit 1
 
   # SLSA Build L3 provenance for the binaries, uploaded to the release by
   # the isolated trusted builder itself (not by this workflow).

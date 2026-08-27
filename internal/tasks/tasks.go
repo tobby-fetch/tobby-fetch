@@ -35,12 +35,29 @@ const (
 	StatusSkipped Status = "skipped"
 )
 
-// The task types: unit import (FR-023, milestone 2) and recipe
-// synchronization (FR-014, milestone 3). Milestone 5 adds the media
-// operations.
+// The task types: unit import (FR-023, milestone 2), recipe
+// synchronization (FR-014, milestone 3), and the OCI image layout
+// export/import of the removable-media work (FR-051, milestone 5).
 const (
-	TypeUnitImport = "unit-import"
-	TypeSync       = "sync"
+	TypeUnitImport   = "unit-import"
+	TypeSync         = "sync"
+	TypeLayoutExport = "layout-export"
+	TypeLayoutImport = "layout-import"
+	// TypeMediaImport is the destination-side operation of FR-052: verify
+	// a transported medium, then push what verification cleared.
+	TypeMediaImport = "media-import"
+)
+
+// The FR-054 guards an administrator may waive on one media import. Both
+// are anti-accident guards over an unsigned manifest, never security
+// controls, which is why they are overridable at all — and why the waiver
+// is named, persisted on the task and audited (FR-094) rather than
+// flattened into a boolean nobody can attribute afterwards.
+const (
+	// OverrideZone waives the zone-identity refusal (FR-054).
+	OverrideZone = "zone"
+	// OverrideFreshness waives the staleness refusal (R-28).
+	OverrideFreshness = "freshness"
 )
 
 // Task is one tracked operation.
@@ -70,6 +87,19 @@ type Task struct {
 	// traced (manifest annotations, report, logs), never the default.
 	VendorDependencies bool `json:"vendor_dependencies,omitempty"`
 
+	// Layout carries the parameters of an OCI image layout operation
+	// (FR-051). They are persisted rather than held by the caller because
+	// FR-029 re-runs an interrupted task from the file alone: an export
+	// whose format and selection lived only in the request that started
+	// it would resume as a different export.
+	Layout *Layout `json:"layout,omitempty"`
+	// MediaOverrides names the FR-054 guards an administrator waived for
+	// this media import (OverrideZone, OverrideFreshness). It is persisted
+	// on the task, not merely logged: FR-075 asks a lowered barrier to be
+	// visible, and the task record is what an operator opens weeks later
+	// to find out why a medium addressed elsewhere was imported anyway.
+	MediaOverrides []string `json:"media_overrides,omitempty"`
+
 	// Error is the task-level failure (when the operation could not even
 	// decompose into items — e.g. the inspection failed).
 	Error *ItemError `json:"error,omitempty"`
@@ -83,11 +113,59 @@ type Task struct {
 	// it without a schema break.
 	ChartDependencies []ChartDependency `json:"chart_dependencies,omitempty"`
 
+	// Prune is what THIS run was asked to do about content the resolved
+	// Retriever no longer references (FR-045). It lives on the task
+	// rather than on the engine because the answer is per-run: mirror
+	// mode confirms it at trigger time with the list and the total size,
+	// passthrough reads it from sync.prune — and a resumed task must
+	// carry the decision that was confirmed, not the one the instance
+	// happens to default to when it comes back up.
+	Prune bool `json:"prune,omitempty"`
+
+	// Pruned is the FR-045 removal report of a synchronization: the
+	// recipe-managed content the resolved Retriever no longer references,
+	// removed at the end of the cycle when sync.prune is on. Empty on the
+	// default instance, which prunes nothing.
+	Pruned []Pruned `json:"pruned,omitempty"`
+
 	// Resolutions is the FR-021 resolution report of a synchronization:
 	// requested → resolved → digest, per recipe entry and per ingredient,
 	// with the FR-026 status and the FR-036 effective endpoint when a
 	// substitution applied.
 	Resolutions []Resolution `json:"resolutions,omitempty"`
+}
+
+// Layout is the parameter set of an OCI image layout export or import
+// (FR-051). Written once at creation and read-only afterwards: the
+// runner never mutates it, which is why the task clone shares it.
+type Layout struct {
+	// Format is the shape of an export: "tar" or "directory".
+	Format string `json:"format,omitempty"`
+	// Recipes and Repositories narrow an export; both empty exports the
+	// whole store.
+	Recipes      []string `json:"recipes,omitempty"`
+	Repositories []string `json:"repositories,omitempty"`
+	// Repository places, on import, the entries a third-party layout
+	// names by tag alone.
+	Repository string `json:"repository,omitempty"`
+	// Overwrite allows an export to replace an existing destination.
+	Overwrite bool `json:"overwrite,omitempty"`
+}
+
+// Pruned is one row of the FR-045 removal report: what went, and which
+// recipe used to hold it. The digest is carried because a tag is not an
+// identity — after the medium has travelled, "which bytes left" is the
+// question the run log has to be able to answer (FR-053).
+type Pruned struct {
+	// Repo is the store repository path the tag belonged to.
+	Repo string `json:"repo"`
+	// Tag is the removed tag.
+	Tag string `json:"tag"`
+	// Digest pins what the tag resolved to.
+	Digest string `json:"digest,omitempty"`
+	// Recipe is the "name@version" of the recipe that brought it and that
+	// the current Retriever no longer references.
+	Recipe string `json:"recipe,omitempty"`
 }
 
 // Resolution is one row of the FR-021 report.
@@ -247,14 +325,37 @@ func (it *Item) TrackBlobDone(dgst string) {
 type ItemError struct {
 	Code   taxonomy.Code  `json:"code"`
 	Params map[string]any `json:"params,omitempty"`
+	// Detail is the underlying technical cause, verbatim (B-021).
+	//
+	// It is a field of its OWN, beside the code and never in place of
+	// it: the code is the stable contract (R-03) and the taxonomy stays
+	// untouched, while the detail is the one thing the taxonomy cannot
+	// carry — what the source registry, the parser or the filesystem
+	// actually said. Without it a TBY-SRV-001 item states that an
+	// internal error occurred and stops there, which is precisely the
+	// dead end B-021 reported.
+	//
+	// Deliberately NOT localized: it is the wrapped Go error, the same
+	// string the FR-090 log record carries, so the two can be matched
+	// character for character. Never a rendered sentence — the
+	// localized what/cause/action still come from the catalog at
+	// display time (ADR-0015 §4).
+	Detail string `json:"detail,omitempty"`
 }
 
-// FromTaxonomy converts a taxonomy error for persistence.
+// FromTaxonomy converts a taxonomy error for persistence, wrapped cause
+// included (B-021). The taxonomy keeps that cause for logs only; dropping
+// it here was what left a failed item carrying a code an operator could
+// read but not act on.
 func FromTaxonomy(e *taxonomy.Error) *ItemError {
 	if e == nil {
 		return nil
 	}
-	return &ItemError{Code: e.Code(), Params: e.ParamsMap()}
+	ie := &ItemError{Code: e.Code(), Params: e.ParamsMap()}
+	if cause := e.Unwrap(); cause != nil {
+		ie.Detail = cause.Error()
+	}
+	return ie
 }
 
 // Taxonomy rebuilds the renderable error.
@@ -319,4 +420,13 @@ func newID(prefix string) string {
 		panic("tasks: reading random bytes: " + err.Error())
 	}
 	return prefix + hex.EncodeToString(b[:])
+}
+
+// WithMediaOverrides records the FR-054 guards an administrator waived
+// for one media import. Explicit and per-operation, like every other
+// lowered barrier (FR-075): there is no instance-wide setting that waives
+// them, because a medium addressed to another zone is a fact about that
+// medium and not a posture an instance adopts.
+func WithMediaOverrides(guards ...string) TaskOption {
+	return func(t *Task) { t.MediaOverrides = append(t.MediaOverrides, guards...) }
 }

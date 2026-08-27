@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tobby-fetch.github.io/schemas/cli-output.schema.json",
+  "title": "Tobby command-line output documents",
+  "description": "The documents `tobby <command> --output json` writes on standard output (SRS FR-066, amendment 2026-08-11 / R-08). One entry of $defs per reporting command, keyed by the command path. Published alongside the OpenAPI document of the REST API (FR-060) and served at GET /api/v1/cli-output.schema.json. Adding a member is additive; removing one or changing its type is a breaking change, like an exit code.",
+  "$defs": {
+    "task": {
+      "title": "Task",
+      "description": "One task, in the exact shape GET /api/v1/tasks/{id} serves it (FR-061). Only the members every task carries are required here; the operation-specific ones are documented in the OpenAPI document.",
+      "type": "object",
+      "required": ["id", "run_id", "type", "status", "created", "items"],
+      "properties": {
+        "id": { "type": "string" },
+        "run_id": { "type": "string" },
+        "type": { "type": "string" },
+        "reference": { "type": "string" },
+        "actor": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "running", "done", "failed", "skipped"] },
+        "created": { "type": "string", "format": "date-time" },
+        "started": { "type": "string", "format": "date-time" },
+        "finished": { "type": "string", "format": "date-time" },
+        "resumed": { "type": "boolean" },
+        "media_overrides": { "type": "array", "items": { "type": "string" } },
+        "error": { "$ref": "#/$defs/itemError" },
+        "items": {
+          "description": "The task's items. A task that decomposed into nothing carries null rather than an empty array — the persisted shape, served identically by the API.",
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "required": ["name", "status"],
+            "properties": {
+              "name": { "type": "string" },
+              "digest": { "type": "string" },
+              "size_bytes": { "type": "integer" },
+              "status": { "type": "string" },
+              "error": { "$ref": "#/$defs/itemError" }
+            }
+          }
+        }
+      }
+    },
+    "itemError": {
+      "title": "Task error",
+      "description": "A failure recorded on a task or on one of its items: the stable taxonomy code, its parameters, and the verbatim technical cause (B-021). Never a localized sentence — the code re-renders in the reader's language.",
+      "type": "object",
+      "required": ["code"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^TBY-[A-Z]{3,4}-[0-9]{3}$" },
+        "params": { "type": "object" },
+        "detail": { "type": "string" }
+      }
+    },
+    "missing": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+
+    "tobby version": {
+      "title": "tobby version --output json",
+      "type": "object",
+      "required": ["version", "commit", "date", "go", "os", "arch", "apiMajor", "exitCodes"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "string" },
+        "commit": { "type": "string" },
+        "date": { "type": "string" },
+        "go": { "type": "string" },
+        "os": { "type": "string" },
+        "arch": { "type": "string" },
+        "apiMajor": { "type": "string", "description": "Major version of the REST API this binary serves (FR-060)." },
+        "exitCodes": {
+          "description": "Every exit code this binary can return — the published table of R-08.",
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+
+    "tobby config dump": {
+      "title": "tobby config dump --output json",
+      "description": "The effective configuration, all layers merged, secrets redacted by construction (FR-003, NFR-015). Deliberately open: the configuration schema is documented in the configuration reference and grows with every feature — pinning its members here would make a new setting a schema violation.",
+      "type": "object",
+      "required": ["mode", "server", "storage"],
+      "properties": {
+        "mode": { "type": ["string", "null"] },
+        "server": { "type": "object" },
+        "storage": { "type": "object" }
+      }
+    },
+
+    "tobby user add": { "$ref": "#/$defs/account" },
+    "tobby user passwd": { "$ref": "#/$defs/account" },
+    "account": {
+      "title": "One local account",
+      "type": "object",
+      "required": ["name", "role"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["viewer", "operator", "admin"] },
+        "first": { "type": "boolean", "description": "The account that made this instance administrable (R-01)." },
+        "created": { "type": "string", "format": "date-time" },
+        "lastLogin": { "type": "string", "format": "date-time" }
+      }
+    },
+
+    "tobby user list": {
+      "title": "tobby user list --output json",
+      "type": "object",
+      "required": ["accounts"],
+      "additionalProperties": false,
+      "properties": {
+        "accounts": { "type": "array", "items": { "$ref": "#/$defs/account" } }
+      }
+    },
+
+    "tobby recipe push": {
+      "title": "tobby recipe push --output json",
+      "type": "object",
+      "required": ["reference", "repository", "digest", "unchanged"],
+      "additionalProperties": false,
+      "properties": {
+        "reference": { "type": "string" },
+        "repository": { "type": "string", "description": "The reference without its tag — what cosign signs, since cosign signs digests." },
+        "digest": { "type": "string", "pattern": "^[a-z0-9]+:[a-f0-9]+$" },
+        "unchanged": { "type": "boolean", "description": "The identical document was already published: a no-op, not a conflict." }
+      }
+    },
+
+    "tobby fileset pack": {
+      "title": "tobby fileset pack --output json",
+      "type": "object",
+      "required": ["name", "reference", "repository", "version", "digest", "layerDigest", "files", "directories", "symlinks", "bytes", "signed"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "reference": { "type": "string" },
+        "repository": { "type": "string" },
+        "version": { "type": "string" },
+        "digest": { "type": "string", "pattern": "^[a-z0-9]+:[a-f0-9]+$" },
+        "layerDigest": { "type": "string", "pattern": "^[a-z0-9]+:[a-f0-9]+$" },
+        "files": { "type": "integer" },
+        "directories": { "type": "integer" },
+        "symlinks": { "type": "integer" },
+        "bytes": { "type": "integer" },
+        "signed": { "type": "boolean", "const": false, "description": "Always false: Tobby holds no signing key (ADR-0007). Reported rather than omitted — a missing field reads as an oversight." }
+      }
+    },
+
+    "tobby sync": {
+      "title": "tobby sync --output json (trigger)",
+      "description": "What a command-line trigger did: which instance it drove, whether it followed the task to the end, and the task itself.",
+      "type": "object",
+      "required": ["instance", "waited", "task"],
+      "additionalProperties": false,
+      "properties": {
+        "instance": { "type": "string", "description": "Base URL of the instance the task was created on." },
+        "waited": { "type": "boolean", "description": "False means task.status is a snapshot of something still moving." },
+        "task": { "$ref": "#/$defs/task" }
+      }
+    },
+
+    "tobby sync --dry-run": {
+      "title": "tobby sync --dry-run --output json",
+      "description": "The plan document of FR-055's R-04 amendment — the same document POST /api/v1/plan returns. Its sections are documented in the OpenAPI schema Plan; the members required here are the ones an exit-code gate reads.",
+      "type": "object",
+      "required": ["mode", "source", "outcome", "totals", "policy", "prune", "generated_at"],
+      "properties": {
+        "mode": { "type": "string" },
+        "source": { "type": "string" },
+        "source_is_candidate": { "type": "boolean" },
+        "zone": { "type": "string" },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "destination": { "type": "string" },
+        "outcome": {
+          "type": "string",
+          "enum": ["up-to-date", "changes-planned", "policy-refused", "verification-failed", "failed"]
+        },
+        "totals": { "type": "object" },
+        "policy": { "type": "object" },
+        "prune": { "type": "object" },
+        "recipes": { "type": "array" },
+        "checks": { "type": "array" },
+        "problems": { "type": "array" }
+      }
+    },
+
+    "tobby export": {
+      "title": "tobby export --output json",
+      "type": "object",
+      "required": ["output", "format", "references", "manifests", "blobs", "bytes", "largestFileBytes"],
+      "additionalProperties": false,
+      "properties": {
+        "output": { "type": "string" },
+        "format": { "type": "string", "enum": ["tar", "directory"] },
+        "references": { "type": "integer" },
+        "manifests": { "type": "integer" },
+        "blobs": { "type": "integer" },
+        "bytes": { "type": "integer" },
+        "largestFileBytes": { "type": "integer" },
+        "missing": { "$ref": "#/$defs/missing" }
+      }
+    },
+
+    "tobby export --dry-run": {
+      "title": "tobby export --dry-run --output json",
+      "type": "object",
+      "required": ["format", "manifests", "blobs", "files", "contentBytes", "totalBytes", "largestFileBytes"],
+      "additionalProperties": false,
+      "properties": {
+        "format": { "type": "string", "enum": ["tar", "directory"] },
+        "references": { "type": "array", "items": { "type": "string" } },
+        "manifests": { "type": "integer" },
+        "blobs": { "type": "integer" },
+        "files": { "type": "integer" },
+        "contentBytes": { "type": "integer" },
+        "totalBytes": { "type": "integer" },
+        "largestFileBytes": { "type": "integer" },
+        "missing": { "$ref": "#/$defs/missing" }
+      }
+    },
+
+    "tobby import": {
+      "title": "tobby import --output json",
+      "description": "Entries carry their own outcome: a medium that lost one image is not a failed import, it is an import with one named failure.",
+      "type": "object",
+      "required": ["input", "manifests", "blobs", "bytes", "entries", "failed"],
+      "additionalProperties": false,
+      "properties": {
+        "input": { "type": "string" },
+        "manifests": { "type": "integer" },
+        "blobs": { "type": "integer" },
+        "bytes": { "type": "integer" },
+        "failed": { "type": "integer" },
+        "ignored": { "type": "array", "items": { "type": "string" } },
+        "missing": { "$ref": "#/$defs/missing" },
+        "entries": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "required": ["reference", "digest"],
+            "additionalProperties": false,
+            "properties": {
+              "reference": { "type": "string" },
+              "digest": { "type": "string" },
+              "error": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "tobby media verify": {
+      "title": "tobby media verify --output json",
+      "description": "The verification report of FR-054 — the same document POST /api/v1/media/verify returns.",
+      "type": "object",
+      "required": ["verdict", "zone", "checked", "startedAt", "finishedAt"],
+      "properties": {
+        "verdict": { "type": "string" },
+        "blocks": { "type": "array" },
+        "media": { "type": ["object", "null"] },
+        "zone": { "type": "object" },
+        "freshness": { "type": ["object", "null"] },
+        "recipes": { "type": "array" },
+        "findings": { "type": "array" },
+        "checked": { "type": "object" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "finishedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+
+    "tobby media import": {
+      "$ref": "#/$defs/task",
+      "title": "tobby media import --output json",
+      "description": "The task the import ran, in the same shape a queued import leaves behind (FR-061), so the two surfaces narrate one operation in one vocabulary."
+    }
+  }
+}

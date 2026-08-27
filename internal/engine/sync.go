@@ -23,6 +23,8 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
+	"github.com/tobby-fetch/tobby-fetch/internal/media"
+	"github.com/tobby-fetch/tobby-fetch/internal/preflight"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -33,11 +35,29 @@ import (
 // MetaStore extends the write surface with the bookkeeping the engine
 // maintains: provenance (FR-045 groundwork) and the recipe graph
 // (FR-044 reachability), implemented by the embedded store.
+//
+// PlanStore is embedded rather than optional so the FR-055 gate cannot
+// be wired out by accident: an engine that could not read the store's
+// size and free space would be an engine that starts transfers it cannot
+// finish, and making that state unrepresentable is cheaper than a test
+// that checks somebody remembered to call a setter.
 type MetaStore interface {
 	Store
 	StoreReader
+	PlanStore
 	SetProvenance(repo string, p *store.Provenance) error
 	PutRecipeRecord(r *store.RecipeRecord) error
+	// Root and MediaID describe the store as a physical object, which is
+	// what it becomes in mirror mode (FR-050): destination-side
+	// verification re-hashes it file by file — a filesystem walk, not an
+	// API call — and every log record of the operation names the medium
+	// it was about (R-28).
+	Root() string
+	MediaID() string
+	// RecipeRecords is the recipe graph: on a transported store it is the
+	// authority on where each delivery landed, and the only place the
+	// producing instance's relocated paths are written down (FR-054).
+	RecipeRecords() ([]store.RecipeRecord, error)
 }
 
 // Meters are the engine's observability hooks (NFR-008: the parallelism
@@ -71,12 +91,53 @@ type Engine struct {
 	base    string
 	cfg     config.Sync
 	meters  Meters
+	// media writes the transport medium's manifest at the end of a run
+	// (FR-054); nil outside mirror mode.
+	media MediaManifestWriter
+	// planner is the FR-055 pre-flight and the R-04 plan mode. It is
+	// built with the engine, from the same store, so there is no wiring
+	// step to forget and no nil to guard against on the gate path.
+	planner *Planner
+	// prune is what an unqualified trigger does about content the
+	// resolved Retriever no longer references (FR-045). The per-run
+	// decision lives on the task; this is only the default the surfaces
+	// offer and report.
+	prune bool
+	// zone is the identity of the zone this instance serves and imports
+	// media for (FR-052); empty on a source-side instance, which decides
+	// nothing about a medium.
+	zone string
+	// imports is the per-zone freshness register (R-28), held in the
+	// INSTANCE state directory and never on the medium.
+	imports *media.Imports
+	// verdicts receives every verification report this engine produces,
+	// whichever surface asked for one — the serving gate of FR-054 is
+	// built on it (internal/mediagate). Nil on an instance that serves
+	// no medium.
+	verdicts func(*media.Report)
 }
 
 // New assembles the engine.
 func New(st MetaStore, remotes *Remotes, trust *TrustPolicy, retrieverSource, basePrefix string, cfg config.Sync) *Engine {
-	return &Engine{store: st, remotes: remotes, trust: trust, source: retrieverSource, base: basePrefix, cfg: cfg}
+	e := &Engine{store: st, remotes: remotes, trust: trust, source: retrieverSource, base: basePrefix, cfg: cfg}
+	e.planner = NewPlanner(st, remotes, trust, retrieverSource, PlanConfig{BasePrefix: basePrefix})
+	return e
 }
+
+// SetPreflight refines the pre-flight parameters with the instance's own
+// (FR-055 safety margin, FR-001 mode). Not calling it leaves the engine
+// on the defaults, which is the secure position: the margin applies, the
+// gate is armed.
+func (e *Engine) SetPreflight(mode string, pf config.Preflight) {
+	e.planner.cfg.Mode = mode
+	e.planner.cfg.MarginPercent = pf.SafetyMarginPercent
+	e.planner.cfg.MarginDisabled = pf.Disabled
+}
+
+// Planner exposes the plan engine to the surfaces that report one (the
+// CLI, the API and the UI), so they run the same computation the gate
+// runs rather than a second one that could disagree with it.
+func (e *Engine) Planner() *Planner { return e.planner }
 
 // SetMeters installs the observability hooks.
 func (e *Engine) SetMeters(m Meters) { e.meters = m }
@@ -90,11 +151,33 @@ func (e *Engine) SetMeters(m Meters) { e.meters = m }
 // SetMeters is: an engine without a destination is a complete engine, and
 // every existing caller that never promotes should keep reading as one
 // that never promotes.
-func (e *Engine) SetDestination(d *Destination) { e.dest = d }
+func (e *Engine) SetDestination(d *Destination) {
+	e.dest = d
+	e.planner.SetDestination(d)
+}
 
 // Destination reports the configured promotion target, for the surfaces
 // that show where this instance pushes to (FR-035 mapping, FR-065).
 func (e *Engine) Destination() *Destination { return e.dest }
+
+// MediaManifestWriter writes the media manifest into the transportable
+// store at the end of a synchronization (FR-054), given the zone the
+// medium is addressed to, the run that produced it, and the instant the
+// Retriever was resolved — the freshness instant of R-28.
+//
+// A function rather than an interface, and installed rather than
+// constructed in: mirror mode is the only mode whose store IS a medium,
+// and an engine with no writer installed is a complete engine, exactly
+// like an engine with no destination.
+type MediaManifestWriter func(ctx context.Context, zone, runID string, resolvedAt time.Time) error
+
+// SetMediaManifest installs the end-of-run media manifest writer.
+//
+// Nil — the default — is the passthrough behaviour: that store is not a
+// transport medium, it is a cache in front of a destination registry, and
+// inventorying it every cycle would cost real time for a document nobody
+// would carry anywhere.
+func (e *Engine) SetMediaManifest(w MediaManifestWriter) { e.media = w }
 
 // Source reports the configured retriever source (FR-010: shown in the
 // UI and the API).
@@ -122,9 +205,23 @@ func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) e
 		return e.mapError(err, e.source)
 	}
 	zone := retr.Metadata.Name
+	// The instant this run resolved its Retriever. It dates the DELIVERY,
+	// which is what the destination's freshness guard compares against
+	// (R-28) — not the moment the bookkeeping was written, which would
+	// drift with the size of the transfer.
+	resolvedAt := time.Now().UTC()
 	logger.LogAttrs(ctx, slog.LevelInfo, "retriever loaded",
 		slog.String("source", e.source), slog.String("zone", zone),
 		slog.Int("recipes", len(retr.Spec.Recipes)))
+
+	// FR-055: does it fit, and will it go through — decided BEFORE the
+	// first byte moves, because that is the only moment at which the
+	// answer is worth anything. A refusal fails the whole task rather
+	// than an item: there is nothing partial about "the volume cannot
+	// hold this".
+	if err := e.preflightGate(ctx, logger); err != nil {
+		return err
+	}
 	sink.update(func(t *tasks.Task) bool {
 		// A resumed task's resolution report is rebuilt from scratch: the
 		// rows describe THIS run's decisions.
@@ -132,24 +229,61 @@ func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) e
 		return true
 	})
 
+	resolved := newResolvedRecipes()
 	for i := range retr.Spec.Recipes {
 		entry := &retr.Spec.Recipes[i]
 		cookbookRef := entry.Cookbook
 		if cookbookRef == "" {
 			cookbookRef = retr.Spec.Cookbook
 		}
-		e.syncRecipe(ctx, sink, logger, cookbookRef, entry, zone)
+		e.syncRecipe(ctx, sink, logger, cookbookRef, entry, zone, resolved)
+	}
+
+	// Prune last, and only here (FR-045). It is the only scope that knows
+	// the WHOLE resolved Retriever — one entry cannot tell whether content
+	// it does not reference is still referenced by another — and it must
+	// come after every graph entry has been recorded, or reachability
+	// would be computed against a graph the run has not finished writing.
+	//
+	// It must also stay the LAST mutation of the run: FR-054 requires the
+	// media manifest to describe the store after any prune, so whatever
+	// writes that manifest belongs below this call, never above it.
+	if sink.prune() {
+		e.pruneToRetriever(ctx, sink, logger, resolved)
+	}
+
+	// FR-054: in mirror mode the store IS the transport medium, so every
+	// synchronization that produced it ends by writing the media manifest
+	// — after the content, and after any prune (FR-045), so the inventory
+	// describes what the medium finally holds.
+	//
+	// Unlike a per-item failure this one fails the task: a medium without
+	// a manifest is refused whole on the destination side (R-19), so
+	// reporting the run as successful would promise a delivery that
+	// cannot be delivered.
+	if e.media != nil {
+		if err := e.media(ctx, zone, sink.runID(), resolvedAt); err != nil {
+			logger.LogAttrs(ctx, slog.LevelError, "media manifest not written",
+				slog.String("zone", zone), slog.String("error", err.Error()))
+			return e.mapError(err, zone)
+		}
+		logger.LogAttrs(ctx, slog.LevelInfo, "media manifest written",
+			slog.String("zone", zone), slog.Time("resolved_at", resolvedAt))
 	}
 	return nil
 }
 
 // syncRecipe resolves, verifies and fetches one Retriever entry. Failures
 // land on the entry's items; other entries continue.
-func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, cookbookRef string, entry *spec.RecipeSelector, zone string) {
+func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, cookbookRef string, entry *spec.RecipeSelector, zone string, resolved *resolvedRecipes) {
 	logger = logger.With(slog.String("recipe", entry.Name))
 	cb := NewCookbook(e.remotes, cookbookRef)
 
 	fail := func(itemName string, err error) {
+		// The run is no longer complete, and prune reads that: content of
+		// an entry that failed to resolve is indistinguishable from
+		// content the Retriever dropped (FR-045).
+		resolved.failed()
 		te := tasks.FromTaxonomy(e.mapError(err, entry.Name))
 		sink.update(func(t *tasks.Task) bool {
 			item := itemFor(t, itemName)
@@ -257,6 +391,7 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 						slog.String("item", itemName),
 						slog.String("panic", fmt.Sprint(r)),
 						slog.String("stack", string(debug.Stack())))
+					resolved.failed()
 					sink.update(func(t *tasks.Task) bool {
 						item := itemFor(t, itemName)
 						item.Status = tasks.StatusFailed
@@ -271,16 +406,37 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 				// share a slot, so the slice needs no lock of its own.
 				records[i] = rec
 			}
+			var te *taxonomy.Error
+			if err != nil {
+				// Both halves matter and they came from two branches: the
+				// run is no longer complete, which prune reads (FR-045),
+				// and the item needs its taxonomy error to carry a cause
+				// (B-021).
+				resolved.failed()
+				te = e.mapError(err, ing.Ref)
+			}
 			sink.update(func(t *tasks.Task) bool {
 				item := itemFor(t, itemName)
-				if err != nil {
+				if te != nil {
 					item.Status = tasks.StatusFailed
-					item.Error = tasks.FromTaxonomy(e.mapError(err, ing.Ref))
+					item.Error = tasks.FromTaxonomy(te)
 				} else {
 					t.Resolutions = append(t.Resolutions, res)
 				}
 				return true
 			})
+			if te != nil {
+				// B-021: this path recorded the code on the item and said
+				// nothing anywhere else — unlike "recipe entry failed"
+				// above and "promotion refused" on the push side. Several
+				// codes, TBY-SRV-001 first among them, answer "follow the
+				// correlation identifier in the logs" (FR-090), which is
+				// only an answer if a record exists to be found.
+				logger.LogAttrs(ctx, slog.LevelWarn, "ingredient synchronization failed",
+					slog.String("ingredient", ing.Name), slog.String("item", itemName),
+					slog.String("digest", ing.Digest), slog.String("code", string(te.Code())),
+					slog.String("error", err.Error()))
+			}
 		}(i, ing, itemName)
 	}
 	wg.Wait()
@@ -301,6 +457,7 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	if !recipeSettled {
 		status, err := e.storeRecipeArtifact(ctx, fetched)
 		if err != nil {
+			resolved.failed()
 			te := tasks.FromTaxonomy(e.mapError(err, rid))
 			sink.update(func(t *tasks.Task) bool {
 				item := itemFor(t, recipeItemName)
@@ -326,7 +483,7 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	// zone. It runs after the fetch and never during it — pushing an
 	// ingredient the local store has not finished committing would put
 	// content on the destination that this instance cannot prove it holds.
-	e.promoteRecipe(ctx, sink, logger, fetched, rid)
+	e.promoteRecipe(ctx, sink, logger, fetched, rid, e.ownContent())
 
 	// Record the graph: reachability for GC/prune (FR-044/FR-045), zone
 	// identity and resolution timestamp for the milestone-5 media manifest
@@ -337,14 +494,29 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 			kept = append(kept, r)
 		}
 	}
+	// Where the artifact itself landed in this store. A reader of the
+	// store — destination-side media verification above all (FR-054) —
+	// cannot recompute it from the nominal repository, because the base
+	// prefix belongs to this instance and not to the content.
+	artifactRepo, err := relocate.PathWithBase(e.base, nominalRepo)
+	if err != nil {
+		artifactRepo = ""
+	}
 	if err := e.store.PutRecipeRecord(&store.RecipeRecord{
 		Name: recipe.Metadata.Name, Version: recipe.Metadata.Version,
-		CookbookRepo: nominalRepo, Digest: fetched.ManifestDigest,
-		RunID: sink.runID(), Zone: zone, ResolvedAt: time.Now().UTC(),
+		CookbookRepo: nominalRepo, ArtifactRepo: artifactRepo, ArtifactTag: fetched.Tag,
+		Digest: fetched.ManifestDigest,
+		RunID:  sink.runID(), Zone: zone, ResolvedAt: time.Now().UTC(),
 		Verified: verified, TrustScope: scopeName, Ingredients: kept,
 	}); err != nil {
 		fail(rid, err)
+		return
 	}
+	// The entry resolved: its graph key is what prune keeps (FR-045). The
+	// key is the RECORD's, not the Retriever entry's — a recipe may be
+	// selected by a version expression and recorded under the concrete
+	// version it resolved to, and prune joins on the recorded one.
+	resolved.keep(recipe.Metadata.Name, recipe.Metadata.Version)
 }
 
 // verifyRecipe applies FR-033: verify against the decision's key set;
@@ -538,34 +710,69 @@ func selectPlatforms(desc *remote.Descriptor, ing *spec.Ingredient) (map[string]
 	if err != nil {
 		return nil, err
 	}
-	want := map[string]bool{}
-	for _, p := range ing.Platforms {
-		want[p] = true
-	}
+	// The match is the format's rule, not a string comparison on rendered
+	// labels (B-020): the variant is optional in the selector, and one
+	// selector may legitimately match several children.
+	matched := make(map[string]bool, len(ing.Platforms))
 	selected := map[string]bool{}
+	var available []string
 	for i := range man.Manifests {
 		child := &man.Manifests[i]
 		if child.Platform == nil {
 			continue
 		}
-		label := child.Platform.OS + "/" + child.Platform.Architecture
-		if child.Platform.Variant != "" {
-			label += "/" + child.Platform.Variant
-		}
-		if want[label] {
+		available = append(available, platformLabel(child.Platform.OS, child.Platform.Architecture, child.Platform.Variant))
+		for _, want := range ing.Platforms {
+			if !importer.MatchesPlatform(want, child.Platform.OS, child.Platform.Architecture, child.Platform.Variant) {
+				continue
+			}
 			selected[child.Digest.String()] = true
-			delete(want, label)
+			matched[want] = true
 		}
 	}
-	if len(want) > 0 {
-		missing := make([]string, 0, len(want))
-		for p := range want {
-			missing = append(missing, p)
+	var missing []string
+	for _, want := range ing.Platforms {
+		if !matched[want] {
+			missing = append(missing, want)
 		}
+	}
+	if len(missing) > 0 {
 		sort.Strings(missing)
-		return nil, fmt.Errorf("platforms %s not present in the source index of %s", strings.Join(missing, ", "), ing.Ref)
+		sort.Strings(available)
+		// A code of its own rather than the bare error this used to be
+		// (R-08, found while fixing B-020): an unpublished platform is
+		// the operator's own document to fix, and TBY-SRV-001 sent them
+		// to the logs instead. The available list is in the message
+		// because the fix is a comparison — "linux/arm64" against
+		// "linux/arm64/v8" is unreadable without both sides.
+		return nil, taxonomy.New(taxonomy.CodePlatformMissing, taxonomy.Params{
+			"reference": ing.Ref,
+			"platforms": strings.Join(missing, ", "),
+			"available": platformList(available),
+		})
 	}
 	return selected, nil
+}
+
+// platformLabel renders one index child the way RECIPE-SPEC §7.1 writes a
+// selector, so the refusal shows the two sides in the same notation.
+func platformLabel(os, arch, variant string) string {
+	label := os + "/" + arch
+	if variant != "" {
+		label += "/" + variant
+	}
+	return label
+}
+
+// platformList renders the children an index actually carries. An index
+// whose every child is platform-less (an attestation-only index, or a
+// malformed one) yields no labels at all, and "publishes " followed by
+// nothing reads as a truncated message rather than as a fact.
+func platformList(available []string) string {
+	if len(available) == 0 {
+		return "no platform-tagged child at all"
+	}
+	return strings.Join(available, ", ")
 }
 
 // storeRecipeArtifact copies the recipe artifact and its attached
@@ -755,6 +962,13 @@ func withRetries(ctx context.Context, retries int, fn func() error) error {
 	for attempt := 0; ; attempt++ {
 		err = fn()
 		if err == nil || attempt >= retries {
+			return err
+		}
+		// FR-055: "file too large" is a property of the target, not a
+		// transient. Retrying it burns the backoff budget to reach the
+		// same ceiling three times, and delays the clean failure the
+		// requirement asks for.
+		if preflight.IsFileTooLarge(err) {
 			return err
 		}
 		var te *taxonomy.Error

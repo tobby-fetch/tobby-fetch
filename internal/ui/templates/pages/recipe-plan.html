@@ -1,0 +1,250 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /recipes/plan — plan mode (FR-055 amendment R-04, UI-SPEC §6).
+
+     The screen answers, in this order, the two questions an operator has
+     before triggering: does it fit, and what would change. So the
+     pre-flight verdict comes FIRST, before the totals and long before the
+     per-recipe tables — a refusal rendered under three screenfuls of
+     digests is a refusal nobody reads.
+
+     Nothing on this page writes anything: the form's only action is the
+     plan itself, and the plan is side-effect-free by requirement. */}}
+{{define "title"}}{{.T "plan.title"}}{{end}}
+{{define "main"}}
+<section>
+  <h1 class="t-page-title">{{.T "plan.title"}}</h1>
+  <p class="t-page-sub">{{.T "plan.subtitle"}}</p>
+
+  {{if .Err}}{{template "error-block" .}}{{end}}
+
+  <form class="t-form t-card" method="post" action="/recipes/plan"
+        hx-disabled-elt="find button[type='submit']" hx-indicator="find .htmx-indicator">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+
+    <p>
+      <span class="t-kick">{{.T "plan.source_label"}}</span>
+      {{if .Data.Source}}<span class="t-mono" translate="no">{{.Data.Source}}</span>
+      {{else}}<span class="t-muted">{{.T "plan.source_none"}}</span>{{end}}
+    </p>
+
+    <label for="plan-retriever">{{.T "plan.candidate_label"}}</label>
+    <input id="plan-retriever" class="t-input t-mono" type="text" name="retriever"
+           value="{{.Data.Candidate}}" autocomplete="off" autocapitalize="off"
+           spellcheck="false" translate="no" aria-describedby="plan-retriever-help">
+    <p id="plan-retriever-help" class="t-form-hint">{{.T "plan.candidate_help"}}</p>
+
+    <label for="plan-document">{{.T "plan.document_label"}}</label>
+    <textarea id="plan-document" name="document" rows="10" class="t-mono"
+              autocomplete="off" autocapitalize="off" spellcheck="false" translate="no"
+              aria-describedby="plan-document-help">{{.Data.Document}}</textarea>
+    <p id="plan-document-help" class="t-form-hint">{{.T "plan.document_help"}}</p>
+
+    <div class="t-row" style="margin-top:0.8rem">
+      <button type="submit" class="t-btn t-btn--primary">{{.T "plan.run"}}</button>
+      <span class="htmx-indicator t-pulse-dot" aria-hidden="true"></span>
+    </div>
+    <p class="t-form-hint">{{.T "plan.no_side_effect"}}</p>
+  </form>
+
+  {{with .Data.Plan}}
+  {{/* FR-055: space and filesystem, first. */}}
+  {{range $.Data.Checks}}
+  <div class="t-card">
+    <h2 class="t-kick">{{$.T "plan.preflight_title"}}</h2>
+    {{if .RefusalErr}}{{template "error-block" (withErr $ .RefusalErr)}}{{end}}
+    <table class="t-table">
+      <caption class="t-visually-hidden">{{$.T "plan.pf_caption"}}</caption>
+      <tbody>
+        <tr><th scope="row">{{$.T "plan.pf_path"}}</th>
+            <td class="t-mono" translate="no">{{.Path}}</td></tr>
+        <tr><th scope="row">{{$.T "plan.pf_filesystem"}}</th>
+            <td>
+              {{if .Filesystem.Unbounded}}
+              <span class="t-mono" translate="no">{{.Filesystem.Type}}</span>
+              <span class="t-muted">{{$.T "plan.pf_max_file_none"}}</span>
+              {{else if .Filesystem.Identified}}
+              <span class="t-mono" translate="no">{{.Filesystem.Type}}</span>
+              <span class="t-muted">{{$.T "plan.pf_max_file" "Size" ($.FmtBytes .Filesystem.MaxFileSize)}}</span>
+              {{else}}
+              <span class="t-badge t-badge--done-errors">{{$.T "plan.pf_unidentified"}}</span>
+              {{if .Filesystem.Type}}<span class="t-mono t-muted" translate="no">{{.Filesystem.Type}}</span>{{end}}
+              {{end}}
+              {{if .Filesystem.Detection}}<span class="t-muted t-note" translate="no">{{.Filesystem.Detection}}</span>{{end}}
+            </td></tr>
+        <tr><th scope="row">{{$.T "plan.pf_free"}}</th>
+            <td class="t-num">
+              {{if .Space.Known}}<span title="{{.Space.FreeBytes}}">{{$.FmtBytes .Space.FreeBytes}}</span>
+              {{else}}<span class="t-muted">{{$.T "plan.pf_space_unknown"}}</span>{{end}}
+            </td></tr>
+        <tr><th scope="row">{{$.T "plan.pf_margin"}}</th>
+            <td class="t-num">{{$.T "plan.pf_margin_value" "Percent" .MarginPercent "Bytes" ($.FmtBytes .ReservedBytes)}}</td></tr>
+        <tr><th scope="row">{{$.T "plan.pf_usable"}}</th>
+            <td class="t-num" title="{{.UsableBytes}}">{{$.FmtBytes .UsableBytes}}</td></tr>
+        <tr><th scope="row">{{$.T "plan.pf_projected"}}</th>
+            <td class="t-num" title="{{.ProjectedBytes}}">{{$.FmtBytes .ProjectedBytes}}</td></tr>
+        <tr><th scope="row">{{$.T "plan.pf_largest"}}</th>
+            <td class="t-num" title="{{.LargestFileBytes}}">{{$.FmtBytes .LargestFileBytes}}</td></tr>
+      </tbody>
+    </table>
+    {{range .WarningKeys}}
+    <p class="t-note"><span class="t-badge t-badge--done-errors">{{$.T .}}</span></p>
+    {{end}}
+  </div>
+  {{end}}
+
+  {{/* The verdict and the totals (FR-021, FR-026, FR-055). */}}
+  <div class="t-card">
+    <h2 class="t-kick">{{$.T "plan.outcome_title"}}</h2>
+    <p class="t-row">
+      <span class="t-badge t-badge--{{$.Data.OutcomeClass}}">{{$.T $.Data.OutcomeKey}}</span>
+      <span class="t-muted t-note">{{$.T "plan.exit_code" "Code" $.Data.ExitCode}}</span>
+    </p>
+    <div class="t-tiles">
+      <div class="t-tile">
+        <span class="t-tile-label">{{$.T "plan.t_transfer"}}</span>
+        <span class="t-tile-value" title="{{.Totals.TransferBytes}}">{{$.FmtBytes .Totals.TransferBytes}}</span>
+        <span class="t-tile-sub">{{$.T "plan.t_total" "Bytes" ($.FmtBytes .Totals.TotalBytes)}}</span>
+      </div>
+      <div class="t-tile">
+        <span class="t-tile-label">{{$.T "plan.t_store"}}</span>
+        <span class="t-tile-value" title="{{.Totals.ProjectedStoreBytes}}">{{$.FmtBytes .Totals.ProjectedStoreBytes}}</span>
+        <span class="t-tile-sub">{{$.T "plan.t_store_now" "Bytes" ($.FmtBytes .Totals.StoreBytes)}}</span>
+      </div>
+      <div class="t-tile">
+        <span class="t-tile-label">{{$.T "plan.t_items"}}</span>
+        <span class="t-tile-value">{{.Totals.Ingredients}}</span>
+        <span class="t-tile-sub">{{$.T "plan.t_items_value" "New" .Totals.New "Outdated" .Totals.Outdated "UpToDate" .Totals.UpToDate}}</span>
+      </div>
+      {{if .Totals.PushEvaluated}}
+      <div class="t-tile">
+        <span class="t-tile-label">{{$.T "plan.t_push"}}</span>
+        <span class="t-tile-value" title="{{.Totals.PushUpperBoundBytes}}">{{$.FmtBytes .Totals.PushUpperBoundBytes}}</span>
+        <span class="t-tile-sub">{{$.T "plan.t_push_sub" "Host" .Destination}}</span>
+      </div>
+      {{end}}
+    </div>
+    <p class="t-muted t-note">{{$.T "plan.zone" "Zone" .Zone}}</p>
+  </div>
+
+  {{/* FR-030: the allow-list verdict, stated positively — "no refusal"
+       and "evaluated and passed" must not look alike. */}}
+  <div class="t-card">
+    <h2 class="t-kick">{{$.T "plan.policy_title"}}</h2>
+    {{if .Policy.AllowlistDeclared}}
+    <p class="t-muted t-note">{{$.T "plan.policy_declared"}}</p>
+    {{else}}
+    <p class="t-muted t-note">{{$.T "plan.policy_undeclared"}}</p>
+    {{end}}
+    {{if .Policy.Hosts}}
+    <table class="t-table">
+      <caption class="t-visually-hidden">{{$.T "plan.policy_caption"}}</caption>
+      <thead><tr>
+        <th scope="col">{{$.T "plan.policy_th_host"}}</th>
+        <th scope="col">{{$.T "plan.policy_th_role"}}</th>
+        <th scope="col">{{$.T "plan.policy_th_verdict"}}</th>
+      </tr></thead>
+      <tbody>
+        {{range .Policy.Hosts}}
+        <tr>
+          <td class="t-mono t-primary" translate="no">{{.Host}}</td>
+          <td class="t-muted" translate="no" lang="en">{{.Role}}</td>
+          <td>
+            {{if .Allowed}}<span class="t-badge t-badge--up-to-date">{{$.T "plan.policy_allowed"}}</span>
+            {{else}}<span class="t-badge t-badge--failed">{{$.T "plan.policy_refused"}}</span>{{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{end}}
+  </div>
+
+  {{/* FR-045: the projected prune. */}}
+  <div class="t-card">
+    <h2 class="t-kick">{{$.T "plan.prune_title"}}</h2>
+    {{if not .Prune.Evaluated}}
+    <p class="t-muted">{{$.T "plan.prune_not_evaluated"}}</p>
+    {{if .Prune.Reason}}<p class="t-note t-muted">{{.Prune.Reason}}</p>{{end}}
+    {{else if not .Prune.Repositories}}
+    <p class="t-muted">{{$.T "plan.prune_none"}}</p>
+    {{else}}
+    <p>{{$.T "plan.prune_summary" "Count" (len .Prune.Repositories) "Bytes" ($.FmtBytes .Prune.TotalBytes)}}</p>
+    <table class="t-table">
+      <caption class="t-visually-hidden">{{$.T "plan.prune_caption"}}</caption>
+      <thead><tr>
+        <th scope="col">{{$.T "plan.prune_th_repo"}}</th>
+        <th scope="col">{{$.T "plan.prune_th_recipe"}}</th>
+        <th scope="col" class="t-num">{{$.T "plan.prune_th_size"}}</th>
+      </tr></thead>
+      <tbody>
+        {{range .Prune.Repositories}}
+        <tr>
+          <td class="t-mono t-primary" translate="no">{{.Repo}}</td>
+          <td class="t-mono t-muted" translate="no">{{.Recipe}}</td>
+          <td class="t-num" title="{{.Bytes}}">{{$.FmtBytes .Bytes}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{end}}
+  </div>
+  {{end}}
+
+  {{/* FR-021, FR-026, FR-033 per recipe. */}}
+  {{range .Data.Recipes}}
+  <div class="t-card">
+    <h2 class="t-kick"><span class="t-mono" translate="no">{{.Name}}</span></h2>
+    <table class="t-table">
+      <caption class="t-visually-hidden">{{$.T "plan.r_caption"}}</caption>
+      <tbody>
+        <tr><th scope="row">{{$.T "plan.r_version"}}</th>
+            <td><span class="t-mono" translate="no">{{.Requested}}</span> →
+                <span class="t-mono" translate="no">{{if .Resolved}}{{.Resolved}}{{else}}—{{end}}</span></td></tr>
+        <tr><th scope="row">{{$.T "plan.r_cookbook"}}</th>
+            <td class="t-mono t-muted" translate="no" title="{{.Cookbook}}">{{$.Trunc .Cookbook 44}}</td></tr>
+        <tr><th scope="row">{{$.T "plan.r_signature"}}</th>
+            <td>
+              <span class="t-badge t-badge--{{.SignatureClass}}">{{$.T .SignatureKey}}</span>
+              {{if .TrustScope}}<span class="t-mono t-muted" translate="no">{{.TrustScope}}</span>{{end}}
+            </td></tr>
+        <tr><th scope="row">{{$.T "plan.r_transfer"}}</th>
+            <td class="t-num" title="{{.TransferBytes}}">{{$.FmtBytes .TransferBytes}}</td></tr>
+      </tbody>
+    </table>
+    {{if .Problem}}
+    <p class="t-note">
+      <span class="t-badge t-badge--failed" translate="no">{{.Problem.Code}}</span>
+      <a href="/help#{{.Problem.Code}}" hx-boost="false">{{$.T "plan.problem_help"}}</a>
+    </p>
+    {{end}}
+    {{if .Ingredients}}
+    <table class="t-table">
+      <caption class="t-visually-hidden">{{$.T "plan.ing_caption"}}</caption>
+      <thead><tr>
+        <th scope="col">{{$.T "plan.ing_th_name"}}</th>
+        <th scope="col">{{$.T "plan.ing_th_ref"}}</th>
+        <th scope="col">{{$.T "plan.ing_th_status"}}</th>
+        {{if $.Data.Plan.Totals.PushEvaluated}}<th scope="col">{{$.T "plan.ing_th_push"}}</th>{{end}}
+        <th scope="col" class="t-num">{{$.T "plan.ing_th_transfer"}}</th>
+      </tr></thead>
+      <tbody>
+        {{range .Ingredients}}
+        <tr>
+          <td class="t-primary">{{.Name}}
+            <span class="t-badge t-badge--{{kindClass .Kind}}" translate="no" lang="en">{{.Kind}}</span></td>
+          <td class="t-mono t-muted" translate="no" title="{{.Ref}}">{{$.Trunc .Ref 40}}
+            {{if .Effective}}<span class="t-note t-muted" translate="no" title="{{.Effective}}">→ {{$.Trunc .Effective 34}}</span>{{end}}</td>
+          <td><span class="t-badge t-badge--{{.Status}}" translate="no" lang="en">{{.Status}}</span></td>
+          {{if $.Data.Plan.Totals.PushEvaluated}}
+          <td><span class="t-badge t-badge--{{.PushStatus}}" translate="no" lang="en">{{.PushStatus}}</span></td>
+          {{end}}
+          <td class="t-num" title="{{.TransferBytes}}">{{$.FmtBytes .TransferBytes}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{end}}
+  </div>
+  {{end}}
+</section>
+{{end}}

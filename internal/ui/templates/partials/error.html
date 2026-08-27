@@ -12,9 +12,13 @@
     <dt>{{.T "error.what_label"}}</dt><dd>{{.Err.What}}</dd>
     <dt>{{.T "error.cause_label"}}</dt><dd>{{.Err.Cause}}</dd>
     <dt>{{.T "error.action_label"}}</dt><dd>{{.Err.Action}}</dd>
+    {{/* B-021: the verbatim cause of a persisted failure, when one was
+         recorded. Never translated — it is what the source answered, and
+         it must match the log record character for character. */}}
+    {{if .Err.Detail}}<dt>{{.T "error.detail_label"}}</dt><dd class="t-error-detail" translate="no">{{.Err.Detail}}</dd>{{end}}
   </dl>
   <div class="t-error-block-foot">
-    <a href="{{.Err.HelpAnchor}}">{{.T "error.help_link" "Code" .Err.Code}}</a>
+    <a href="{{.Err.HelpAnchor}}" hx-boost="false">{{.T "error.help_link" "Code" .Err.Code}}</a>
     {{if .Err.Correlation}}<span class="t-chip t-chip--code" translate="no">{{.Err.Correlation}}</span>{{end}}
   </div>
 </div>

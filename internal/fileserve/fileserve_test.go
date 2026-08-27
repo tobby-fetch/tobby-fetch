@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -211,7 +212,18 @@ func discardLogger() *slog.Logger {
 func newTestServer(t *testing.T, blobs Blobs, limits Limits) (srv *Server, cacheDir string) {
 	t.Helper()
 	dir := t.TempDir()
-	return NewServer(blobs, dir, limits, discardLogger()), dir
+	s := NewServer(blobs, dir, limits, discardLogger())
+	// A served FileSet holds an os.Root on its extracted tree for as long
+	// as the server lives. Registered after t.TempDir, so cleanup runs
+	// before the directory is removed: on Windows an open handle is what
+	// stops that removal, and t.TempDir reports the failure as the test's
+	// (B-024, NFR-018).
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("closing the file server: %v", err)
+		}
+	})
+	return s, dir
 }
 
 func mustSync(t *testing.T, s *Server, sets ...FileSet) {
@@ -374,9 +386,19 @@ func TestModesPreservedWithoutSetuidSetgid(t *testing.T) {
 		if err != nil {
 			t.Fatalf("stat %s: %v", name, err)
 		}
-		if fi.Mode().Perm() != wantPerm {
+		// Windows has no POSIX permission bits to preserve: Chmod there
+		// only toggles the read-only attribute and Stat reports a
+		// synthetic 0666 for files and 0777 for directories, so the
+		// exact mode bits of an extracted tree are not observable on
+		// Windows and this half of the assertion cannot run (NFR-018).
+		// "Preserve what the platform can express" is still the correct
+		// production behaviour; only the fixture is unobservable.
+		if runtime.GOOS != "windows" && fi.Mode().Perm() != wantPerm {
 			t.Fatalf("%s perm = %o, want %o", name, fi.Mode().Perm(), wantPerm)
 		}
+		// The §14.5 rule — extraction never applies setuid/setgid — is
+		// checked everywhere. Windows never reports either bit, so it
+		// holds trivially there, which is exactly what §14.5 demands.
 		if fi.Mode()&(os.ModeSetuid|os.ModeSetgid) != 0 {
 			t.Fatalf("%s kept setuid/setgid: %v", name, fi.Mode())
 		}
@@ -423,6 +445,16 @@ func TestRejectsTraversalEntries(t *testing.T) {
 		"relative dotdot": file("../evil", "x"),
 		"absolute path":   file("/etc/passwd", "x"),
 		"interior dotdot": file("a/../../evil", "x"),
+		// A tar entry name is a slash path by specification, so these
+		// three are ordinary characters on Unix and path syntax on
+		// Windows, which NFR-018 puts in the operating scope. They are in
+		// the corpus for the platform they mean something on, and they
+		// run on every platform because the rule is lexical (B-025).
+		"windows dotdot":   file(`..\..\evil`, "x"),
+		"drive absolute":   file(`C:\evil`, "x"),
+		"drive forward":    file("C:/evil", "x"),
+		"unc share":        file(`\\attacker\share\evil`, "x"),
+		"windows whiteout": file(`data\.wh.keep`, "x"),
 	}
 	for name, entry := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -457,6 +489,15 @@ func TestRejectsEscapingSymlink(t *testing.T) {
 	cases := map[string]tarEntry{
 		"relative escape": symlink("escape", "../../outside"),
 		"absolute target": symlink("abs", "/etc/passwd"),
+		// os.Root contains what is written, never what a link points at,
+		// and Root.Symlink does not validate its target — so a target
+		// waved through here becomes a real link on disk pointing
+		// wherever it says. On Windows these three point outside the
+		// rootfs; path.Join reads them as one ordinary segment, which is
+		// why the escape test alone never saw them (B-025).
+		"windows escape": symlink("winesc", `..\..\outside`),
+		"drive target":   symlink("drive", `C:\Windows\System32\drivers\etc\hosts`),
+		"unc target":     symlink("unc", `\\attacker\share\payload`),
 	}
 	for name, entry := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -472,7 +513,25 @@ func TestRejectsEscapingSymlink(t *testing.T) {
 	}
 }
 
+// requireSymlinks skips when this account cannot create a symbolic link.
+//
+// Windows grants SeCreateSymbolicLinkPrivilege to administrators and to
+// nobody else by default, and the extraction path has no unprivileged
+// fallback — so a FileSet carrying a symlink cannot be extracted at all
+// there, and a test that plants one would fail inside Sync, far from
+// anything it means to assert (NFR-018). The refusal corpus above needs
+// no probe: those entries are rejected before anything is created.
+func requireSymlinks(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.Symlink("target", filepath.Join(dir, "link")); err != nil {
+		t.Skipf("this account cannot create symbolic links, so the extraction and serving of a "+
+			"FileSet containing one is NOT covered by this run: %v", err)
+	}
+}
+
 func TestInternalSymlinkServedButNeverOutOfRoot(t *testing.T) {
+	requireSymlinks(t)
 	b := newFakeBlobs()
 	set := singleLayerSet(t, b, "links", "example.com/links",
 		dirEntry("data"),
@@ -491,11 +550,14 @@ func TestInternalSymlinkServedButNeverOutOfRoot(t *testing.T) {
 	// resolve outside the rootfs — os.Root refuses it, the client sees
 	// only a 404.
 	rootfs := filepath.Join(setDir(cacheDir, set), "rootfs")
+	// Creating a symbolic link needs a privilege a Windows runner may not
+	// hold (NFR-018), and without it the planted links cannot be built at
+	// all; skip rather than report a failure of the barrier.
 	if err := os.Symlink("/etc/passwd", filepath.Join(rootfs, "planted-abs")); err != nil {
-		t.Fatal(err)
+		t.Skipf("symlinks unavailable, the serve-time barrier against planted escaping symlinks is not covered: %v", err)
 	}
 	if err := os.Symlink(strings.Repeat("../", 10)+"etc/passwd", filepath.Join(rootfs, "planted-rel")); err != nil {
-		t.Fatal(err)
+		t.Skipf("symlinks unavailable, the serve-time barrier against planted escaping symlinks is not covered: %v", err)
 	}
 	for _, p := range []string{"planted-abs", "planted-rel"} {
 		if rec := get(t, s, "/files/links/"+p); rec.Code != http.StatusNotFound {
@@ -542,6 +604,14 @@ func TestIgnoresSpecialEntriesAndCountsThem(t *testing.T) {
 	)
 	var logBuf bytes.Buffer
 	s := NewServer(b, t.TempDir(), Limits{}, slog.New(slog.NewJSONHandler(&logBuf, nil)))
+	// This one builds its own server rather than going through
+	// newTestServer, so it has to release its own handles: on Windows an
+	// open root under t.TempDir() is what makes the cleanup fail (B-024).
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("closing the file server: %v", err)
+		}
+	})
 	mustSync(t, s, set)
 
 	wantBody(t, get(t, s, "/files/special/ok.txt"), http.StatusOK, "ok")
@@ -778,8 +848,14 @@ func TestSyncRedoesInterruptedExtraction(t *testing.T) {
 	mustSync(t, s, set)
 
 	target := setDir(cacheDir, set)
-	before, err := os.Stat(target)
-	if err != nil {
+	// A witness inside the tree, rather than the directory's identity.
+	// os.SameFile compares inodes on Unix and a file index on Windows,
+	// where a freshly created directory can be reported as the same file —
+	// so identity answered "not redone" for an extraction that had been
+	// redone perfectly well. What the requirement is about is the CONTENT
+	// being laid down again, and this is how to watch that happen.
+	witness := filepath.Join(target, "witness-of-the-first-extraction")
+	if err := os.WriteFile(witness, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// Simulate an interrupted extraction: the completion marker is gone.
@@ -787,12 +863,8 @@ func TestSyncRedoesInterruptedExtraction(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustSync(t, s, set)
-	after, err := os.Stat(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if os.SameFile(before, after) {
-		t.Fatal("marker-less extraction was not redone")
+	if _, err := os.Stat(witness); !os.IsNotExist(err) {
+		t.Fatalf("marker-less extraction was not redone: the first extraction's tree survived (stat = %v)", err)
 	}
 	if _, err := os.Stat(filepath.Join(target, markerFile)); err != nil {
 		t.Fatalf("completion marker missing after re-extraction: %v", err)

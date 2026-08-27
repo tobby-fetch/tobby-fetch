@@ -1,0 +1,51 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /help/<section>/<page> — one guide of the embedded corpus (R-05).
+     The body comes from internal/help, which builds it tag by tag from
+     escaped source text and allowlisted SVG: no raw-HTML path exists here
+     (NFR-013). A page served in English for lack of a translation says so
+     AND carries lang="en" on its body, so the document's language stays
+     true for assistive technology (NFR-017). */}}
+{{define "title"}}{{.Data.Page.Title}}{{end}}
+{{define "main"}}
+<article class="t-doc">
+  {{template "help-subnav" .}}
+
+  <nav class="t-breadcrumb" aria-label="{{.T "help.breadcrumb_label"}}">
+    <a href="/help">{{.T "help.title"}}</a>
+    <span class="t-breadcrumb-sep">/</span>
+    <a href="/help#section-{{.Data.Section}}" hx-boost="false">{{.T (printf "help.section.%s" .Data.Section)}}</a>
+    <span class="t-breadcrumb-sep">/</span>
+    <span aria-current="page">{{.Data.Page.Title}}</span>
+  </nav>
+
+  <h1 class="t-page-title">{{.Data.Page.Title}}
+    {{if .Data.Page.BadgeText}}<span class="t-badge t-badge--doc-{{if eq .Data.Page.BadgeVariant "caution"}}partial{{else}}upcoming{{end}}">{{.Data.Page.BadgeText}}</span>{{end}}
+  </h1>
+  {{if .Data.Page.Description}}<p class="t-page-sub">{{.Data.Page.Description}}</p>{{end}}
+
+  {{if .Data.Fallback}}
+  <div class="t-banner t-banner--warning" role="status">
+    <span class="t-banner-icon" aria-hidden="true">◈</span>
+    <span>{{.T "help.fallback_notice"}}</span>
+  </div>
+  {{end}}
+
+  {{if gt (len .Data.Headings) 1}}
+  <nav class="t-doc-toc" aria-label="{{.T "help.page_toc_label"}}">
+    <p class="t-doc-toc-title">{{.T "help.page_toc_title"}}</p>
+    <ul>
+      {{range .Data.Headings}}{{if eq .Level 2}}<li><a href="#{{.ID}}" hx-boost="false">{{.Text}}</a></li>{{end}}{{end}}
+    </ul>
+  </nav>
+  {{end}}
+
+  <div class="t-doc-body"{{if .Data.Fallback}} lang="en"{{end}}>{{.Data.HTML}}</div>
+
+  {{if or .Data.Prev.Key .Data.Next.Key}}
+  <nav class="t-doc-pager" aria-label="{{.T "help.pager_label"}}">
+    {{if .Data.Prev.Key}}<a class="t-doc-pager-prev" href="/help/{{.Data.Prev.Key}}"><span>{{.T "help.previous"}}</span>{{.Data.Prev.Title}}</a>{{else}}<span></span>{{end}}
+    {{if .Data.Next.Key}}<a class="t-doc-pager-next" href="/help/{{.Data.Next.Key}}"><span>{{.T "help.next"}}</span>{{.Data.Next.Title}}</a>{{end}}
+  </nav>
+  {{end}}
+</article>
+{{end}}

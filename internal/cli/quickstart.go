@@ -313,7 +313,7 @@ func (d *dialogue) createFirstAccount(store *auth.Store, passwordStdin bool) err
 	if err := store.AddAccount(name, auth.RoleAdmin, password, time.Now()); err != nil {
 		return err
 	}
-	auditLocal(&audit.Event{
+	auditLocal(d.cmd, &audit.Event{
 		Actor: audit.ActorLocal, Action: audit.ActionAccountCreate,
 		Target: name, Outcome: audit.OutcomeSuccess, Origin: audit.OriginLocal,
 	})
