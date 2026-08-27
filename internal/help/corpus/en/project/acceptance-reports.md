@@ -12,24 +12,14 @@ reports live in
 [`docs/acceptance/`](https://github.com/tobby-fetch/tobby-fetch/tree/main/docs/acceptance)
 in the repository. This page indexes them.
 
-The four crucible reports currently in the repository are the output of a
-**full replay of every milestone** run on 2026-08-22 for the v0.4.2
-re-acceptance (commit `377dfa6`), on a disposable bare-metal host created
-and destroyed within the same half hour — the hardening release was
-replayed rather than reasoned about.
+The five crucible reports in the repository are the output of a **full
+replay of every milestone**, run on 2026-08-27 for the v0.5.0 acceptance
+(commit `51112c3`), on a disposable bare-metal host created and destroyed
+in the same session — every milestone was replayed rather than reasoned
+about, which is what makes the cascade a property and not a memory. The
+milestone-1 to milestone-4 files are that run reproducing them; the
+previous full replay was 2026-08-22, for the v0.4.2 re-acceptance.
 
-:::note[The milestone-5 report is not published yet]
-The milestone-5 scenario is in the repository —
-[`crucible/scenarios/m5/`](https://github.com/tobby-fetch/tobby-fetch/tree/main/crucible/scenarios/m5)
-— and it is the whole physical transfer: a real detachable block device, a
-network gap with no route rather than an unused one, real cosign signatures
-re-verified on the far side against *that* side's trust roots, two distinct
-deliveries so per-recipe blocking has something to decide, and a medium
-deliberately damaged between the two halves of the trip. Its raw report is
-published here, unedited, when the run that accepts the release has been
-made. This section is the place it will occupy; it is deliberately empty
-rather than filled with a summary of a run that has not been quoted.
-:::
 
 ## The reports
 
@@ -78,6 +68,33 @@ second cycle, the runtime interval change audited and surviving restart,
 an off-list destination refused before any byte moved — and the same
 promotion from a sealed node whose only route is the authenticated proxy,
 over private-PKI TLS. All checks pass.
+
+### [milestone-5-crucible-report.txt](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-5-crucible-report.txt) — mirror and air-gap
+
+The whole physical transfer, on a real detachable block device across a
+network gap that has no route rather than an unused one. Thirty-two checks:
+an undersized medium refused before any transfer with the shortfall in
+bytes and nothing written, a real FAT32 volume identified with its 4 GiB
+per-file ceiling, no synchronization firing on its own in mirror mode, a
+plan run leaving the store byte-identical, the prune running *before* the
+manifest so the inventory describes what the medium finally holds, a
+credentials file planted under the store stopping the instance dead — then
+the trip. On the far side: nothing served before verification, a medium
+addressed to another zone refused and its administrator waiver recorded,
+and the arbitration this milestone exists for — one delivery blocked whole
+and named with the file that failed, its intact neighbour pushed. Then the
+cleared delivery pulled back inside the isolated zone by a standard OCI
+client, the return log on the medium outside the manifest's coverage, a
+medium rewound in time refused with both timestamps named, `skopeo` reading
+the exported layout, the guides answering offline in both languages, a
+directory packed inside the zone served under `/files/` with no write
+method accepted, and a reset refused without its typed confirmation. All
+checks pass.
+
+One product defect was found here and nowhere else: `tobby sync` could not
+trigger a serving instance, because it read the API's task envelope as a
+bare task. Its own test suite was green — the fake instance in it answered
+what the client expected instead of what the API sends.
 
 ### [milestone-4-quality-audit.md](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-4-quality-audit.md) — point-in-time audit
 
