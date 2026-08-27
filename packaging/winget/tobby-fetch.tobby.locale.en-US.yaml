@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright © 2026 infraBuilder SASU and contributors
 #
-# winget default-locale manifest for `infraBuilder.tobby` — see
-# `infraBuilder.tobby.yaml` for why that identifier was chosen. en-US is the
+# winget default-locale manifest for `tobby-fetch.tobby` — see
+# `tobby-fetch.tobby.yaml` for why that identifier was chosen. en-US is the
 # locale the version manifest names as `DefaultLocale`, which is why this
 # file's `ManifestType` is `defaultLocale` and not `locale`: winget requires
 # the default locale to be complete, and treats the additional `locale`
@@ -17,7 +17,7 @@
 # products, so nothing here is a fresh wording.
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
 
-PackageIdentifier: infraBuilder.tobby
+PackageIdentifier: tobby-fetch.tobby
 PackageVersion: "0.0.0" # rendered by the release workflow
 PackageLocale: en-US
 Publisher: infraBuilder SASU

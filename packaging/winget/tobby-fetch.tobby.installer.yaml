@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright © 2026 infraBuilder SASU and contributors
 #
-# winget installer manifest for `infraBuilder.tobby` — see
-# `infraBuilder.tobby.yaml` for why that identifier was chosen. Placeholders
+# winget installer manifest for `tobby-fetch.tobby` — see
+# `tobby-fetch.tobby.yaml` for why that identifier was chosen. Placeholders
 # here follow the same convention as the Homebrew formula
 # (packaging/homebrew/tobby.rb): the version is `0.0.0`, every checksum is
 # sixty-four zeros, and the release workflow rewrites both. A placeholder
@@ -41,7 +41,7 @@
 # would be wrong on Windows only.
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
 
-PackageIdentifier: infraBuilder.tobby
+PackageIdentifier: tobby-fetch.tobby
 PackageVersion: "0.0.0" # rendered by the release workflow
 InstallerType: portable
 Commands:
@@ -52,7 +52,7 @@ Commands:
 # file that fails at first launch.
 MinimumOSVersion: 10.0.14393.0
 # ReleaseNotesUrl does NOT belong here. It is a field of the locale
-# manifest, where infraBuilder.tobby.locale.en-US.yaml already carries
+# manifest, where tobby-fetch.tobby.locale.en-US.yaml already carries
 # it — release notes are prose, and prose is per-locale. Declared in
 # both files, `winget validate` refuses the whole set with
 # "Duplicate field found in the manifest. [ReleaseNotesUrl]", because

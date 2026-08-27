@@ -599,9 +599,9 @@ jobs:
           it = iter([os.environ["AMD64"], os.environ["ARM64"]])  # template order: x64, then arm64
           out = pathlib.Path("rendered-winget")
           out.mkdir(exist_ok=True)
-          for name in ("infraBuilder.tobby.yaml",
-                       "infraBuilder.tobby.installer.yaml",
-                       "infraBuilder.tobby.locale.en-US.yaml"):
+          for name in ("tobby-fetch.tobby.yaml",
+                       "tobby-fetch.tobby.installer.yaml",
+                       "tobby-fetch.tobby.locale.en-US.yaml"):
               s = pathlib.Path("packaging/winget", name).read_text()
               s = re.sub(r'^(PackageVersion: )"0\.0\.0"',
                          lambda m: f'{m.group(1)}"{version}"', s, count=1, flags=re.M)
@@ -622,17 +622,17 @@ jobs:
               || { echo "::error::a checksum placeholder survived in $f"; exit 1; }
           done
           grep -q "InstallerSha256: \"$(awk '$2 ~ /tobby-windows-amd64\.exe$/ {print $1}' dist/SHA256SUMS)\"" \
-            rendered-winget/infraBuilder.tobby.installer.yaml \
+            rendered-winget/tobby-fetch.tobby.installer.yaml \
             || { echo "::error::the x64 checksum is not the one this run built"; exit 1; }
           grep -q "InstallerSha256: \"$(awk '$2 ~ /tobby-windows-arm64\.exe$/ {print $1}' dist/SHA256SUMS)\"" \
-            rendered-winget/infraBuilder.tobby.installer.yaml \
+            rendered-winget/tobby-fetch.tobby.installer.yaml \
             || { echo "::error::the arm64 checksum is not the one this run built"; exit 1; }
       - name: Attach the rendered manifests to the release
         run: >
           gh release upload "${VERSION}"
-          rendered-winget/infraBuilder.tobby.yaml
-          rendered-winget/infraBuilder.tobby.installer.yaml
-          rendered-winget/infraBuilder.tobby.locale.en-US.yaml
+          rendered-winget/tobby-fetch.tobby.yaml
+          rendered-winget/tobby-fetch.tobby.installer.yaml
+          rendered-winget/tobby-fetch.tobby.locale.en-US.yaml
           --clobber
       # This step does NOT fail, and the difference from the homebrew job
       # above is the whole reasoning. Homebrew fails when HOMEBREW_TAP_TOKEN
@@ -657,18 +657,18 @@ jobs:
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           ## winget — rendered, not published
 
-          The three \`infraBuilder.tobby*.yaml\` manifests for **${VERSION}** are
+          The three \`tobby-fetch.tobby*.yaml\` manifests for **${VERSION}** are
           attached to the release. Their \`InstallerSha256\` values come from this
           run's \`SHA256SUMS\`, which the SLSA provenance covers.
 
           Nothing has been submitted. This workflow opens no pull request against
           \`microsoft/winget-pkgs\` and holds no token that could: that index is
           reviewed by people outside this project, and the PackageIdentifier
-          \`infraBuilder.tobby\` is immutable once accepted.
+          \`tobby-fetch.tobby\` is immutable once accepted.
 
           To publish this version by hand:
 
-          1. Download the three \`infraBuilder.tobby*.yaml\` assets from the
+          1. Download the three \`tobby-fetch.tobby*.yaml\` assets from the
              ${VERSION} release into an empty directory.
           2. On a Windows host: \`winget validate --manifest .\`, then
              \`winget install --manifest .\` — this proves the portable install and

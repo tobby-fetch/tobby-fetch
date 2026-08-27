@@ -3,26 +3,38 @@
 #
 # winget version manifest — the root of the three-file manifest set the
 # Windows Package Manager expects for a package version, alongside
-# `infraBuilder.tobby.installer.yaml` and
-# `infraBuilder.tobby.locale.en-US.yaml`. This file lives in this repository
+# `tobby-fetch.tobby.installer.yaml` and
+# `tobby-fetch.tobby.locale.en-US.yaml`. This file lives in this repository
 # as a template with placeholders; the release workflow renders it against a
 # real tag and attaches the rendered set to the GitHub release. It is never
 # pushed anywhere: submitting a manifest to `microsoft/winget-pkgs` is a pull
 # request against a community index, reviewed by people who are not us, and
 # that is a human decision rather than a step in an automated release chain.
 #
-# Why `infraBuilder.tobby` and not something else. A PackageIdentifier is
+# Why `tobby-fetch.tobby` and not something else. A PackageIdentifier is
 # `<Publisher>.<Package>`, it is the primary key of the community index, and
 # it is immutable once accepted — a badly chosen one cannot be corrected
-# later without orphaning every installed copy. The publisher part is
-# `infraBuilder`: the vendor of record is `infraBuilder SASU`
-# (packaging/nfpm/nfpm.yaml), but `SASU` is a French legal form rather than
-# part of the trading name, and winget's convention is to drop the legal
-# suffix exactly as `Inc`, `Ltd` and `GmbH` are dropped throughout the index.
-# The brand's own lower-case initial is kept, because the identifier is a
-# name and not a slug. The package part is `tobby`, the same lower-case
-# spelling the binary, the Homebrew formula and the container image already
-# carry — one product, one spelling, on every distribution channel.
+# later without orphaning every installed copy.
+#
+# "Publisher" means whoever publishes, not whichever company signs the
+# invoices: the index is full of projects and GitHub organisations in that
+# position — `Sigstore.Cosign`, `Kubernetes.kubectl`, `ORASProject.ORAS`,
+# `astral-sh.uv`, `loft-sh.vcluster`, and `okteto.okteto`, which settles the
+# question of whether a repeated name is acceptable. So the publisher part
+# is `tobby-fetch`, the GitHub organisation, verbatim and hyphen included.
+#
+# The deciding argument is that every other channel already says it:
+# `brew install tobby-fetch/tap/tobby`, `scoop bucket add tobby
+# https://github.com/tobby-fetch/scoop-bucket`, and the image at
+# `ghcr.io/tobby-fetch/tobby-fetch`. An identifier of `tobby-fetch.tobby`
+# would have made winget the one channel out of four whose namespace an
+# operator has never seen anywhere else. infraBuilder SASU remains the
+# `vendor` and `maintainer` in the package metadata and the copyright
+# holder throughout — which is where the company of record belongs, rather
+# than in an index key.
+#
+# The package part is `tobby`: the same lower-case spelling the binary, the
+# Homebrew formula and the container image already carry.
 #
 # Windows binaries are a first-class release target here, not a convenience
 # tier: NFR-001 requires the single static binary for Linux *and* Windows on
@@ -34,7 +46,7 @@
 # entry rather than a download link.
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
 
-PackageIdentifier: infraBuilder.tobby
+PackageIdentifier: tobby-fetch.tobby
 PackageVersion: "0.0.0" # rendered by the release workflow
 DefaultLocale: en-US
 ManifestType: version
