@@ -100,7 +100,7 @@ Value syntax in the environment:
 | Key | Type | Default | Env | Purpose |
 |---|---|---|---|---|
 | `registries.insecure` | list of hosts | *(none)* | `TOBBY_REGISTRIES_INSECURE` | Hosts reached over plain HTTP. Per-host and explicit, never a global switch. Not the answer to a private PKI — that is `network.tls`. |
-| `registries.substitutions` | map host → base | *(none)* | *(file only)* | Fetch-time source substitution: a downstream zone fetches `docker.io/…` from its upstream zone registry without modifying the recipes. Changes only the endpoint contacted, never the relocated path. |
+| `registries.substitutions` | map host → base | *(none)* | *(file only)* | Fetch-time source substitution: a downstream zone fetches `docker.io/…` from its upstream zone registry without modifying the recipes. Changes only the endpoint contacted, never the relocated path. The base is a host, plus at most the upstream's base path; the full canonical path, origin host included, is appended to it — see [what the substitute registry must hold](../../passthrough/retriever-cascade/#what-the-substitute-registry-must-hold). |
 | `registries.allowlist` | list of host patterns | *(absent = unrestricted)* | *(file only)* | Bounds which registries the instance may contact at all, evaluated on the host actually reached. Absent and `[]` are different statements: absent means no restriction (reported as undeclared), `[]` means nothing is allowed. Globs: `*` within a DNS label, `**` across labels. |
 | `registries.credentialsFile` | path | *(none)* | *(file only)* | A `kubernetes.io/dockerconfigjson` payload; credentials are looked up by the effective host contacted, whichever direction the bytes travel. Must sit outside the transportable store. |
 
@@ -212,7 +212,7 @@ registries:
     - registry.upstream.example.com
     - registry.zone.example.com
   substitutions:                      # fetch docker.io content from upstream zone
-    docker.io: registry.upstream.example.com/docker.io
+    docker.io: registry.upstream.example.com   # a host: the origin path is appended
 
 retriever:
   source: https://registry.upstream.example.com/zone/retriever.yaml

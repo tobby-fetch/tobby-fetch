@@ -104,8 +104,8 @@ c'est la **substitution de source** (FR-036) :
 # Instance aval
 registries:
   substitutions:
-    docker.io: registry.upstream.example/docker.io
-    ghcr.io: registry.upstream.example/ghcr.io
+    docker.io: registry.upstream.example
+    ghcr.io: registry.upstream.example
 
 retriever:
   source: oci://registry.upstream.example/cookbook/retriever:v1
@@ -125,6 +125,106 @@ justification sont dans [ADR-0013](../../reference/srs-adr/) ; la
 grammaire normative (forme canonique des hôtes, encodage des ports,
 sémantique de substitution) est dans
 [RECIPE-SPEC §11.5](https://tobby-fetch.github.io/recipe-spec/).
+
+## Ce que doit contenir le registre substitué
+
+Une substitution associe un **hôte** d'origine à une **base**. L'instance
+y ajoute ensuite le chemin canonique complet, hôte d'origine compris :
+
+```text
+effectif = <base>/<hôte-canonique>[_<port>]/<chemin-du-dépôt>
+
+substitutions:
+  docker.io: registry.upstream.example
+
+docker.io/library/nginx   →  registry.upstream.example/docker.io/library/nginx
+ghcr.io/dexidp/dex        →  ghcr.io/dexidp/dex   (non substitué : tel quel)
+```
+
+L'hôte d'origine reste dans le chemin à dessein : c'est là qu'un Tobby
+amont range le contenu, et l'instance aval l'y retrouve sans aucune
+traduction. La valeur est donc un hôte, suivi au plus du chemin de base
+sous lequel l'amont a promu. Elle ne répète jamais l'hôte d'origine.
+
+:::caution
+`docker.io: registry.upstream.example/docker.io` est l'erreur classique :
+elle va chercher `registry.upstream.example/docker.io/docker.io/library/nginx`,
+un chemin qui n'existe nulle part.
+:::
+
+Ce qu'on écrit dépend de ce qui alimente le registre amont :
+
+| Registre amont | Alimenté par | Valeur de la substitution | Ce que fait l'exploitant |
+| --- | --- | --- | --- |
+| Le registre embarqué (`/v2/`) d'un Tobby amont | Les synchronisations de cette instance | `<hôte amont>`, ou `<hôte amont>/<storage.basePrefix>` s'il y en a un | Rien : il porte déjà la disposition canonique. |
+| Un registre de zone dans lequel un Tobby amont promeut | `destination.registry` | `<hôte du registre>`, ou `<hôte du registre>/<destination.basePath>` s'il y en a un | Rien de plus que pour la promotion elle-même : Tobby pousse `docker.io/library/nginx` en `<registre>/docker.io/library/nginx`. Sur Harbor, le projet de premier niveau qui porte le nom de l'hôte d'origine doit exister ([ADR-0013](../../reference/srs-adr/)). |
+| Un proxy de tirage : projet proxy-cache Harbor, dépôt distant Artifactory ou Nexus | Le proxy lui-même, à la demande, depuis l'origine | `<hôte du proxy>` | Créer **un proxy par hôte d'origine, nommé exactement comme l'hôte canonique** (ci-dessous). |
+
+Les trois cas convergent vers la même disposition. Un registre de zone
+alimenté par un Tobby amont l'obtient gratuitement : Tobby source depuis
+l'origine, sans substitution, et pousse sous le préfixe d'origine. Un
+proxy l'obtient par son nom.
+
+### Proxys de tirage : un projet par hôte d'origine
+
+Un proxy de tirage réécrit dans l'autre sens : le nom de son projet
+**remplace** l'hôte d'origine. Un projet proxy-cache Harbor nommé
+`dockerhub` sert `harbor.example/dockerhub/library/nginx` depuis le
+`library/nginx` de Docker Hub. Une substitution pointée sur ce projet
+demanderait à Docker Hub `docker.io/library/nginx`, qui n'existe pas.
+
+La correction revient au mainteneur du proxy, et c'est une simple
+question de nom. Il suffit de nommer le projet d'après l'hôte d'origine
+canonique : le chemin que demande Tobby est alors exactement celui
+qu'attend le proxy.
+
+```text
+Tobby demande    harbor.example/docker.io/library/nginx
+Harbor lit       projet « docker.io », dépôt « library/nginx »
+Harbor récupère  library/nginx sur Docker Hub
+```
+
+L'hôte canonique est à la fois la clé de substitution et le nom du
+projet, et le chemin demandé au proxy est toujours `<proxy>/` suivi du
+`ref` de la recipe (un port s'écrivant `_<port>`) :
+
+| Registre d'origine | Clé de substitution / projet du proxy | `ref` dans la recipe |
+| --- | --- | --- |
+| Docker Hub | `docker.io` | `docker.io/library/nginx` |
+| GitHub Container Registry | `ghcr.io` | `ghcr.io/dexidp/dex` |
+| Quay | `quay.io` | `quay.io/jetstack/cert-manager-controller` |
+| Kubernetes | `registry.k8s.io` | `registry.k8s.io/kube-state-metrics/kube-state-metrics` |
+| Google Container Registry | `gcr.io` | `gcr.io/distroless/static` |
+| Google Artifact Registry | `europe-docker.pkg.dev` | `europe-docker.pkg.dev/acme/apps/api` |
+| Microsoft Artifact Registry | `mcr.microsoft.com` | `mcr.microsoft.com/dotnet/runtime` |
+| Amazon ECR Public | `public.ecr.aws` | `public.ecr.aws/docker/library/alpine` |
+| Azure Container Registry | `acme.azurecr.io` | `acme.azurecr.io/team/app` |
+| GitLab.com | `registry.gitlab.com` | `registry.gitlab.com/acme/app/api` |
+| Forge auto-hébergée sur un port dédié | clé `forge.example.com:5050`, projet `forge.example.com_5050` | `forge.example.com:5050/acme/app` |
+
+- **Docker Hub est le seul cas particulier, et seulement côté clients.**
+  `docker pull nginx` veut dire `docker.io/library/nginx`. Une recipe
+  écrit toujours l'hôte, et `library/` pour les images officielles.
+  `index.docker.io` et `registry-1.docker.io` se replient sur
+  `docker.io` (liste fermée, ADR-0013) : le seul projet `docker.io`
+  couvre les trois graphies.
+- **Un port dédié.** C'est courant sur les forges auto-hébergées comme
+  GitLab ou Froggit, dont le registre écoute souvent sur 5050. La clé
+  garde le `:` (`forge.example.com:5050`). Le chemin l'encode en `_`
+  (`forge.example.com_5050`), car un nom de dépôt ne peut pas contenir
+  `:`. Le projet du proxy s'appelle donc `forge.example.com_5050`.
+- **Un hôte, un projet.** C'est vrai même chez un même éditeur :
+  `gcr.io` et `us.gcr.io`, ou deux régions d'Artifact Registry, font deux
+  projets.
+- **Vérifier les noms.** Ils contiennent des points, et un tiret bas
+  quand il y a un port. Vérifiez que votre proxy les accepte avant de
+  bâtir sur cette disposition.
+- **La confiance ne se déplace pas.** Le proxy s'authentifie auprès de
+  l'origine avec ses propres identifiants. Tobby s'authentifie auprès du
+  proxy : le fichier de credentials et la liste blanche nomment l'hôte du
+  proxy. Le proxy n'est pas non plus une ancre de confiance : signatures
+  et digests épinglés sont vérifiés exactement comme si les octets
+  venaient de l'origine.
 
 Deux politiques lisent délibérément des références différentes :
 

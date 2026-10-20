@@ -8,6 +8,20 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Source substitution examples doubled the origin host.** The
+  configuration reference and the cascade page showed
+  `docker.io: registry.upstream.example/docker.io`. A substitution
+  appends the full canonical path, origin host included, so that value
+  fetched `…/docker.io/docker.io/library/nginx`. The value is a host,
+  plus at most the upstream's base path. The cascade page now says what
+  the substitute registry must hold, upstream Tobby and pull-through
+  proxy alike. A Harbor proxy-cache project, or an Artifactory or Nexus
+  remote, is named after the canonical origin host. The page gives
+  worked names for the common public registries and for a host with a
+  custom port.
+
 ## [0.5.0] - 2026-08-27
 
 ### Added

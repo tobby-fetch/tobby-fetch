@@ -103,8 +103,8 @@ origin hosts (`docker.io/...`). The bridge is **source substitution**
 # Downstream instance
 registries:
   substitutions:
-    docker.io: registry.upstream.example/docker.io
-    ghcr.io: registry.upstream.example/ghcr.io
+    docker.io: registry.upstream.example
+    ghcr.io: registry.upstream.example
 
 retriever:
   source: oci://registry.upstream.example/cookbook/retriever:v1
@@ -122,6 +122,104 @@ points at. The rule and its rationale are
 [ADR-0013](../../reference/srs-adr/); the normative grammar (host
 canonicalization, port encoding, substitution semantics) is
 [RECIPE-SPEC §11.5](https://tobby-fetch.github.io/recipe-spec/).
+
+## What the substitute registry must hold
+
+A substitution maps an origin **host** to a **base**. The instance then
+appends the full canonical path — origin host included:
+
+```text
+effective = <base>/<canonical-host>[_<port>]/<repository-path>
+
+substitutions:
+  docker.io: registry.upstream.example
+
+docker.io/library/nginx   →  registry.upstream.example/docker.io/library/nginx
+ghcr.io/dexidp/dex        →  ghcr.io/dexidp/dex   (not substituted: as written)
+```
+
+The origin host stays in the path on purpose: that is where an upstream
+Tobby holds the content, so the downstream instance finds it without any
+translation. The value is therefore a host — plus, at most, the base
+path the upstream promoted under — and never repeats the origin host.
+
+:::caution
+`docker.io: registry.upstream.example/docker.io` is the classic mistake:
+it fetches `registry.upstream.example/docker.io/docker.io/library/nginx`,
+a path that exists nowhere.
+:::
+
+What to write depends on what fills the upstream registry:
+
+| Upstream registry | Filled by | Substitution value | What the operator does |
+| --- | --- | --- | --- |
+| The embedded registry (`/v2/`) of an upstream Tobby | That instance's synchronizations | `<upstream host>`, or `<upstream host>/<storage.basePrefix>` when one is set | Nothing: it already holds the canonical layout. |
+| A zone registry an upstream Tobby promotes into | `destination.registry` | `<registry host>`, or `<registry host>/<destination.basePath>` when one is set | Nothing beyond the promotion itself: Tobby pushes `docker.io/library/nginx` to `<registry>/docker.io/library/nginx`. On Harbor, the top-level project named after the origin host must exist ([ADR-0013](../../reference/srs-adr/)). |
+| A pull-through proxy: Harbor proxy-cache project, Artifactory or Nexus remote repository | The proxy itself, on demand, from the origin | `<proxy host>` | Create **one proxy per origin host, named exactly after the canonical host** (below). |
+
+The three cases converge on the same layout. A zone registry fed by an
+upstream Tobby gets it for free, because Tobby fetches from the origin
+without substitution and pushes under the origin prefix. A proxy gets it
+from its name.
+
+### Pull-through proxies: one project per origin host
+
+A pull-through proxy rewrites the other way round: its project name
+**replaces** the origin host. A Harbor proxy-cache project named
+`dockerhub` serves `harbor.example/dockerhub/library/nginx` from Docker
+Hub's `library/nginx`. A substitution pointed at that project would ask
+Docker Hub for `docker.io/library/nginx`, which does not exist.
+
+The fix is the proxy maintainer's, and it is only a matter of naming.
+Name the project after the canonical origin host. The path Tobby asks
+for is then exactly the one the proxy expects:
+
+```text
+Tobby asks        harbor.example/docker.io/library/nginx
+Harbor reads      project "docker.io", repository "library/nginx"
+Harbor fetches    library/nginx from Docker Hub
+```
+
+The canonical host is at once the substitution key and the project
+name, and the path asked of the proxy is always `<proxy>/` followed by
+the recipe's `ref` (a port written `_<port>`):
+
+| Origin registry | Substitution key / proxy project | Recipe `ref` |
+| --- | --- | --- |
+| Docker Hub | `docker.io` | `docker.io/library/nginx` |
+| GitHub Container Registry | `ghcr.io` | `ghcr.io/dexidp/dex` |
+| Quay | `quay.io` | `quay.io/jetstack/cert-manager-controller` |
+| Kubernetes | `registry.k8s.io` | `registry.k8s.io/kube-state-metrics/kube-state-metrics` |
+| Google Container Registry | `gcr.io` | `gcr.io/distroless/static` |
+| Google Artifact Registry | `europe-docker.pkg.dev` | `europe-docker.pkg.dev/acme/apps/api` |
+| Microsoft Artifact Registry | `mcr.microsoft.com` | `mcr.microsoft.com/dotnet/runtime` |
+| Amazon ECR Public | `public.ecr.aws` | `public.ecr.aws/docker/library/alpine` |
+| Azure Container Registry | `acme.azurecr.io` | `acme.azurecr.io/team/app` |
+| GitLab.com | `registry.gitlab.com` | `registry.gitlab.com/acme/app/api` |
+| Self-hosted forge on a custom port | key `forge.example.com:5050`, project `forge.example.com_5050` | `forge.example.com:5050/acme/app` |
+
+- **Docker Hub is the only special case, and only for clients.**
+  `docker pull nginx` means `docker.io/library/nginx`. A recipe always
+  writes the host, and `library/` for official images. `index.docker.io`
+  and `registry-1.docker.io` fold into `docker.io` (a closed list,
+  ADR-0013), so the single project `docker.io` covers all three
+  spellings.
+- **A custom port.** This is common on self-hosted forges such as
+  GitLab or Froggit, whose registry often listens on 5050. The key keeps
+  the `:` (`forge.example.com:5050`). The path encodes it as `_`
+  (`forge.example.com_5050`), because a repository name cannot contain
+  `:`. The proxy project is therefore `forge.example.com_5050`.
+- **One host, one project.** This holds even for the same vendor:
+  `gcr.io` and `us.gcr.io`, or two Artifact Registry regions, are two
+  projects.
+- **Check the names.** They contain dots, and an underscore when a port
+  is involved. Check that your proxy accepts them before building on
+  this layout.
+- **Trust does not move.** The proxy authenticates to the origin with
+  its own credentials. Tobby authenticates to the proxy: the credentials
+  file and the allowlist name the proxy host. The proxy is no trust
+  anchor either: signatures and pinned digests are verified exactly as
+  if the bytes came from the origin.
 
 Two policies deliberately read different references:
 
