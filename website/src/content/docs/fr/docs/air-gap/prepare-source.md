@@ -23,11 +23,9 @@ machine qui va toucher un support destiné à une zone isolée :
 - **Linux** — le binaire de release, ou le paquet `.deb`, `.rpm` ou `.apk`,
   tous installables sans aucun dépôt distant configuré.
 - **Windows** — le binaire de release, `tobby-windows-amd64.exe` ou
-  `tobby-windows-arm64.exe`. Il n'y a ni installeur ni canal de gestionnaire
-  de paquets : les manifestes winget et Scoop sont construits et joints à
-  chaque release, mais aucun des deux index ne porte Tobby, si bien que
-  l'archive est la voie d'entrée. Voir
-  [plateformes supportées](../../reference/platforms/).
+  `tobby-windows-arm64.exe`, sans installeur ; sur un poste qui peut les
+  joindre, winget (`tobby-fetch.tobby`) et Scoop installent le même
+  binaire. Voir [plateformes supportées](../../reference/platforms/).
 
 Vérifiez la release avant de lui faire confiance — provenance, SBOM et
 sommes de contrôle sont tous vérifiables indépendamment, et la procédure est

@@ -84,8 +84,8 @@ d'exécution et sans installeur.
 Téléchargez `tobby-windows-amd64.exe` ou `tobby-windows-arm64.exe` depuis la
 [page des releases](https://github.com/tobby-fetch/tobby-fetch/releases) et
 vérifiez-le comme décrit dans
-[Vérifier une release](../../project/verify-a-release/). C'est le seul canal
-d'installation aujourd'hui.
+[Vérifier une release](../../project/verify-a-release/). C'est le canal
+d'une machine sans route vers un index de paquets.
 
 Deux canaux de gestionnaire de paquets portent les mêmes binaires. Les deux
 manifestes sont produits par le workflow de release depuis les
@@ -101,12 +101,19 @@ scoop bucket add tobby https://github.com/tobby-fetch/scoop-bucket
 scoop install tobby
 ```
 
-**[winget](https://learn.microsoft.com/windows/package-manager/) est en
-cours de revue.** Le jeu de manifestes de `tobby-fetch.tobby` est soumis à
-`microsoft/winget-pkgs` ; tant qu'il n'est pas fusionné, `winget install
-tobby` ne fonctionne pas. Cette dernière étape est une pull request sur un
-index communautaire relu par des gens extérieurs au projet, ce qui est la
-raison pour laquelle aucune release ne l'automatise.
+**[winget](https://learn.microsoft.com/windows/package-manager/) est
+publié** sous `tobby-fetch.tobby`, paquet portable épinglé au hash du
+binaire de release :
+
+```powershell
+winget install tobby-fetch.tobby
+```
+
+Chaque nouvelle version arrive dans winget par une pull request sur
+`microsoft/winget-pkgs`, index communautaire relu par des gens extérieurs
+au projet, ce qui est la raison pour laquelle aucune release ne
+l'automatise : winget peut avoir quelques jours de retard sur la dernière
+release.
 
 ### Les permissions sont une liste d'accès, pas des bits de mode
 
