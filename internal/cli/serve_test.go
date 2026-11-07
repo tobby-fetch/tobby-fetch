@@ -157,6 +157,13 @@ func TestRunServeServesRegistry(t *testing.T) {
 		t.Errorf("authenticated /v2/ = %d, want 200", resp.StatusCode)
 	}
 
+	// The client is done talking, so it hangs up. Since Go 1.27 its
+	// transport may have dialed a spare connection while a request waited
+	// for the pooled one; that connection never sends a request, and the
+	// server's Shutdown only counts such a connection as idle after five
+	// seconds — longer than this test's two-second grace period. A drain
+	// with nothing in flight must return nil, which is what this checks.
+	http.DefaultClient.CloseIdleConnections()
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatalf("runServe returned %v, want nil", err)
