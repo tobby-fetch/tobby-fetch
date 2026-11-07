@@ -146,9 +146,27 @@ func renderedScript(src []byte) ([]byte, error) {
 	return bytes.TrimSuffix(out, []byte("</script>")), nil
 }
 
-// secureHeaders stamps the security headers on one handler's responses.
+// maxUIRequestBody bounds every request body the UI reads (B-034).
+//
+// The session gate's anti-forgery check and the sign-in form read their
+// fields with PostFormValue, which also accepts multipart — and net/http
+// spills multipart file parts above 32 MiB to temporary files without any
+// bound, before a handler gets a say. On /login that is an
+// unauthenticated way to fill the disk. The largest legitimate body is a
+// recipe document submitted for publication (cookbook.MaxDocumentBytes,
+// 4 MiB, URL-encoded — which net/http already caps at 10 MiB); 16 MiB
+// leaves that and the certificate upload (2 x tlsadmin.MaxPEMBytes)
+// untouched. Above it the read fails, the form comes back empty, and the
+// request is refused the way an empty form is.
+const maxUIRequestBody = 16 << 20
+
+// secureHeaders stamps the security headers on one handler's responses,
+// and bounds the body it may read.
 func secureHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, maxUIRequestBody)
+		}
 		h := w.Header()
 		h.Set("Content-Security-Policy", cspHeader)
 		h.Set("X-Content-Type-Options", contentTypeNos)
