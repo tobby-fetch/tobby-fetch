@@ -630,7 +630,7 @@ LANDED_B=$(dest_digest "$RELOCATED_B" 1.0.0)
     fail "the private-PKI destination holds $LANDED_B, want the pinned $IMG_B"
 [ -n "$(dest_digest cookbook/zone-app 1.0.1)" ] ||
     fail "the recipe refused a moment ago did not land once policy allowed it"
-inc exec tbc-m4-proxy -- grep -q "CONNECT $DEST_IP:8080" /var/log/proxy.log ||
+inc exec tbc-m4-proxy -- grep -q "CONNECT \"$DEST_IP:8080\"" /var/log/proxy.log ||
     fail "the destination was not reached through the proxy's CONNECT tunnel"
 inc exec tbc-m4-proxy -- grep -q "$SOURCE_IP:8080" /var/log/proxy.log ||
     fail "the source was not fetched through the proxy"
