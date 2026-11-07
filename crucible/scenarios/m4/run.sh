@@ -130,19 +130,6 @@ check "instances launched (source, destination, proxy, node, sealed node)"
 # A freshly launched instance has no address until DHCP completes: wait for
 # each rather than capturing an empty string that only fails minutes later
 # (the m3 acceptance run learned this the hard way).
-instance_ip() {
-    _i=0
-    while :; do
-        _ip=$(inc list "$1" -c 4 -f csv | awk '{print $1}' | head -1)
-        if [ -n "$_ip" ]; then
-            printf '%s' "$_ip"
-            return 0
-        fi
-        _i=$((_i + 1))
-        [ "$_i" -gt 60 ] && fail "instance $1 never received an address"
-        sleep 1
-    done
-}
 SOURCE_IP=$(instance_ip tbc-m4-source)
 DEST_IP=$(instance_ip tbc-m4-dest)
 PROXY_IP=$(instance_ip tbc-m4-proxy)

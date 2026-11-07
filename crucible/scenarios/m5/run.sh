@@ -164,7 +164,7 @@ inc exec tbc-m5-connected -- sh -c '
 check "media formatted (ext4, ext4, FAT32) and mounted on the connected node"
 
 # -- 3. Egress canary: the gap is absence of path, not an unused route -------
-SOURCE_IP=$(inc list tbc-m5-source -c 4 -f csv | awk '{print $1}' | head -1)
+SOURCE_IP=$(instance_ip tbc-m5-source)
 if inc exec tbc-m5-isolated -- wget -q -T 5 -O /dev/null "http://$SOURCE_IP:8080/healthz" >/dev/null 2>&1; then
     fail "the isolated node reached the connected zone: there is no air gap to rehearse"
 fi
@@ -268,7 +268,7 @@ $dest
 EOF"
 }
 
-DEST_IP=$(inc list tbc-m5-dest -c 4 -f csv | awk '{print $1}' | head -1)
+DEST_IP=$(instance_ip tbc-m5-dest)
 inc exec tbc-m5-dest -- sh -c '
     nohup env TOBBY_MODE=passthrough TOBBY_STORAGE_ROOT=/var/lib/tobby \
         TOBBY_STATE_ROOT=/var/lib/tobby-state TOBBY_AUTH_DISABLED=true \
@@ -599,7 +599,7 @@ inc exec tbc-m5-isolated -- sh -c '
 # to both bridges by construction — the air gap is between the two GUEST
 # networks, enforced by the ACL the canary proved, not between the host and
 # its own bridges.
-ISOLATED_IP=$(inc list tbc-m5-isolated -c 4 -f csv | awk '{print $1}' | head -1)
+ISOLATED_IP=$(instance_ip tbc-m5-isolated)
 for method in POST PUT PATCH DELETE MKCOL; do
     CODE=$(curl -s -o /dev/null -w '%{http_code}' -X "$method" \
         "http://$ISOLATED_IP:8080/files/zone-notes/README" || echo 000)

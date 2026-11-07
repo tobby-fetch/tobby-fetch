@@ -108,7 +108,7 @@ check "connected instance ready (store on the medium)"
 # Push through the wire protocol from the host side via the instance's
 # network address; oras/crane may not exist on the acceptance host, so the
 # scenario uses the repository's own seeder through a host proxy port.
-CONNECTED_IP=$(inc list tbc-m1-connected -c 4 -f csv | awk '{print $1}' | head -1)
+CONNECTED_IP=$(instance_ip tbc-m1-connected)
 ( cd "$DIR/../../.." && go run ./test/topology/seed push "$CONNECTED_IP:8080/docker.io/library/sample:1.0.0" ) \
     >/tmp/tbc-m1-digest || fail "pushing into the connected store"
 DIGEST=$(cat /tmp/tbc-m1-digest)
