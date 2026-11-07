@@ -232,9 +232,9 @@ func (inst *instance) signIn(t *testing.T, s *session, path string) {
 	s.run(t, "opening the sign-in page",
 		chromedp.Navigate(inst.URL+"/login?next="+url.QueryEscape(path)))
 	s.run(t, "filling the sign-in form",
-		chromedp.WaitVisible(`#username`, chromedp.ByID),
-		chromedp.SendKeys(`#username`, adminUser, chromedp.ByID),
-		chromedp.SendKeys(`#password`, adminPhrase, chromedp.ByID),
+		chromedp.WaitVisible(chromedp.ID(`#username`)),
+		chromedp.SendKeys(chromedp.ID(`#username`), adminUser),
+		chromedp.SendKeys(chromedp.ID(`#password`), adminPhrase),
 	)
 	s.click(t, "submitting the sign-in form", `form.t-form button[type="submit"]`)
 	s.wait(t, "landing on "+path+" as a signed-in operator",

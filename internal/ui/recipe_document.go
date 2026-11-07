@@ -94,5 +94,5 @@ func (u *UI) contentRecipeDocument(w http.ResponseWriter, r *http.Request, name,
 	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+short+"-"+tag+`.yaml"`)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	_, _ = w.Write([]byte(doc.YAML))
+	_, _ = w.Write([]byte(doc.YAML)) //nolint:gosec // G705: a recipe document served as an application/yaml attachment with nosniff, never rendered as a page
 }

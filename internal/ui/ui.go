@@ -467,7 +467,7 @@ func (u *UI) loginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, ok := u.sessionOf(r); ok {
-		http.Redirect(w, r, sanitizeNext(r.URL.Query().Get("next")), http.StatusFound)
+		http.Redirect(w, r, sanitizeNext(r.URL.Query().Get("next")), http.StatusFound) //nolint:gosec // G710: the target went through sanitizeNext, which only keeps a same-host path (B-033)
 		return
 	}
 	u.render.Page(w, r, "login", loginData{Next: sanitizeNext(r.URL.Query().Get("next"))})
@@ -521,7 +521,7 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		Actor: acct.Name, Action: audit.ActionLogin, Target: "ui",
 		Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r),
 	})
-	http.Redirect(w, r, next, http.StatusSeeOther)
+	http.Redirect(w, r, next, http.StatusSeeOther) //nolint:gosec // G710: next went through sanitizeNext, which only keeps a same-host path (B-033)
 }
 
 // logout closes the session. Runs behind RequireSession, so CSRF is
@@ -551,9 +551,9 @@ func (u *UI) switchLang(w http.ResponseWriter, r *http.Request) {
 	if lang != "en" && lang != "fr" {
 		lang = "en"
 	}
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: HttpOnly and SameSite set; Secure follows cookieSecure, as for the session cookie
 		Name: langCookie, Value: lang, Path: "/",
-		MaxAge: 365 * 24 * 3600, SameSite: http.SameSiteLaxMode, Secure: u.cookieSecure(r),
+		MaxAge: 365 * 24 * 3600, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: u.cookieSecure(r),
 	})
 	u.redirectBack(w, r)
 }
@@ -569,9 +569,9 @@ func (u *UI) switchTheme(w http.ResponseWriter, r *http.Request) {
 	if theme != "light" {
 		theme = "dark"
 	}
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: HttpOnly and SameSite set; Secure follows cookieSecure, as for the session cookie
 		Name: themeCookie, Value: theme, Path: "/",
-		MaxAge: 365 * 24 * 3600, SameSite: http.SameSiteLaxMode, Secure: u.cookieSecure(r),
+		MaxAge: 365 * 24 * 3600, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: u.cookieSecure(r),
 	})
 	u.redirectBack(w, r)
 }
@@ -596,5 +596,5 @@ func (u *UI) redirectBack(w http.ResponseWriter, r *http.Request) {
 	if _, err := url.Parse(back); err != nil {
 		back = "/"
 	}
-	http.Redirect(w, r, back, http.StatusSeeOther)
+	http.Redirect(w, r, back, http.StatusSeeOther) //nolint:gosec // G710: back went through sanitizeNext, which only keeps a same-host path (B-033)
 }

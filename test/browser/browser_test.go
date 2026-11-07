@@ -47,6 +47,7 @@ import (
 	"time"
 
 	cdpbrowser "github.com/chromedp/cdproto/browser"
+	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
@@ -130,16 +131,20 @@ func run(m *testing.M) int {
 
 // findChrome resolves the browser binary without ever fetching one, and
 // returns what it tried so a skip can say it.
+//
+// The two variables are checked with exec.LookPath rather than os.Stat: a
+// value the operator exported is untrusted input to the linter's taint
+// analysis, and "is this an executable file" is the question asked anyway.
 func findChrome() (path, searched string) {
 	if p := os.Getenv(chromeEnv); p != "" {
-		if info, err := os.Stat(p); err == nil && !info.IsDir() {
-			return p, p
+		if resolved, err := exec.LookPath(p); err == nil {
+			return resolved, resolved
 		}
 		return "", fmt.Sprintf("%s=%q, which is not an executable file", chromeEnv, p)
 	}
 	if p := os.Getenv(chromeBinEnv); p != "" {
-		if info, err := os.Stat(p); err == nil && !info.IsDir() {
-			return p, p
+		if resolved, err := exec.LookPath(p); err == nil {
+			return resolved, resolved
 		}
 	}
 	for _, c := range chromeCandidates {
@@ -209,22 +214,18 @@ func newSession(t *testing.T) *session {
 	t.Helper()
 	requireChrome(t)
 
-	ctx, cancelTab := chromedp.NewContext(allocCtx)
+	// A listener rather than an iterator (chromedp.Console): the target
+	// calls it before it reads the next message, so every fault the page
+	// raised is recorded before the command diag runs returns. An iterator
+	// drains its queue from another goroutine and could report a failure
+	// without the exception that explains it. WithListener, not Listen:
+	// attached before the first command, it misses nothing of the tab.
+	s := &session{}
+	ctx, cancelTab := chromedp.NewContext(allocCtx, chromedp.WithListener(s.watch))
 	t.Cleanup(cancelTab)
 	ctx, cancelBudget := context.WithTimeout(ctx, sessionBudget)
 	t.Cleanup(cancelBudget)
-
-	s := &session{ctx: ctx}
-	chromedp.ListenTarget(ctx, func(ev any) {
-		switch e := ev.(type) {
-		case *runtime.EventExceptionThrown:
-			s.fault("uncaught JavaScript exception: " + e.ExceptionDetails.Error())
-		case *runtime.EventConsoleAPICalled:
-			if e.Type == runtime.APITypeError {
-				s.fault("console.error: " + consoleText(e))
-			}
-		}
-	})
+	s.ctx = ctx
 
 	// Cookies live per host, not per port, so a session cookie from a
 	// previous scenario's listener would reach this one's. Start clean.
@@ -232,13 +233,37 @@ func newSession(t *testing.T) *session {
 	// The language is pinned too: the interface negotiates it (FR-063), and
 	// a suite whose behaviour depended on the developer's locale would be
 	// the wrong kind of surprise.
-	if err := chromedp.Run(ctx,
-		network.ClearBrowserCookies(),
-		network.SetExtraHTTPHeaders(network.Headers{"Accept-Language": "en-US,en;q=0.9"}),
+	if err := chromedp.Do(ctx,
+		command(network.ClearBrowserCookies, cdp.Empty{}),
+		command(network.SetExtraHTTPHeaders, network.SetExtraHTTPHeadersParams{
+			Headers: network.Headers{"Accept-Language": "en-US,en;q=0.9"},
+		}),
 	); err != nil {
 		t.Fatalf("starting the browser (%s): %v", chromePath, err)
 	}
 	return s
+}
+
+// watch records the page-side failures of the tab. It runs on the loop that
+// reads the browser's messages, so it only appends under the lock.
+func (s *session) watch(ev any) {
+	switch e := ev.(type) {
+	case *runtime.EventExceptionThrown:
+		s.fault("uncaught JavaScript exception: " +
+			(&chromedp.ExceptionError{ExceptionDetails: e.ExceptionDetails}).Error())
+	case *runtime.EventConsoleAPICalled:
+		if e.Type == runtime.ConsoleAPICalledTypeError {
+			s.fault("console.error: " + consoleText(e))
+		}
+	}
+}
+
+// command sends one protocol command to the session's tab, as a step of run.
+func command[P, R any](cmd cdp.Command[P, R], params P) chromedp.Action[chromedp.Void] {
+	return chromedp.Func(func(ctx context.Context, t *chromedp.Target) error {
+		_, err := cdp.Call(ctx, t, cmd, params)
+		return err
+	})
 }
 
 // consoleText flattens a console call's arguments.
@@ -259,10 +284,10 @@ func (s *session) fault(msg string) {
 // diag reports the page state a failure needs: where the browser is, and
 // anything the page threw on the way.
 func (s *session) diag() string {
-	var where string
 	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
 	defer cancel()
-	if err := chromedp.Run(ctx, chromedp.Evaluate(`location.href`, &where)); err != nil {
+	where, err := chromedp.Run(ctx, chromedp.Evaluate[string](`location.href`))
+	if err != nil {
 		where = "unknown (" + err.Error() + ")"
 	}
 	s.mu.Lock()
@@ -280,13 +305,22 @@ func (s *session) diag() string {
 // their context dies, so an unbounded one would swallow the whole session
 // budget and report "deadline exceeded" from wherever the clock ran out
 // rather than from the selector that never appeared.
-func (s *session) run(t *testing.T, what string, actions ...chromedp.Action) {
+func (s *session) run(t *testing.T, what string, steps ...chromedp.Action[chromedp.Void]) {
+	t.Helper()
+	runFor(t, s, what, chromedp.Steps(steps...))
+}
+
+// runFor is run for an action that returns a value. A free function, not a
+// method: Go methods take no type parameters.
+func runFor[T any](t *testing.T, s *session, what string, action chromedp.Action[T]) T {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(s.ctx, waitBudget)
 	defer cancel()
-	if err := chromedp.Run(ctx, actions...); err != nil {
+	v, err := chromedp.Run(ctx, action)
+	if err != nil {
 		t.Fatalf("%s: %v%s", what, err, s.diag())
 	}
+	return v
 }
 
 // click sends a real mouse click on sel and confirms that the element
@@ -391,7 +425,7 @@ func (s *session) pollFor(expr string, budget time.Duration) bool {
 	deadline := time.Now().Add(budget)
 	for time.Now().Before(deadline) {
 		ctx, cancel := context.WithDeadline(s.ctx, deadline.Add(time.Second))
-		err := chromedp.Run(ctx, chromedp.Poll(expr, nil,
+		_, err := chromedp.Run(ctx, chromedp.Poll[chromedp.Void](expr,
 			chromedp.WithPollingInterval(pollInterval),
 			chromedp.WithPollingTimeout(time.Until(deadline))))
 		cancel()
@@ -430,7 +464,7 @@ func (s *session) wait(t *testing.T, what, expr string) {
 	var last error
 	for time.Now().Before(deadline) {
 		ctx, cancel := context.WithDeadline(s.ctx, deadline)
-		err := chromedp.Run(ctx, chromedp.Poll(expr, nil,
+		_, err := chromedp.Run(ctx, chromedp.Poll[chromedp.Void](expr,
 			chromedp.WithPollingInterval(pollInterval),
 			chromedp.WithPollingTimeout(time.Until(deadline))))
 		cancel()
@@ -466,47 +500,46 @@ func navigationRace(err error) bool {
 	return false
 }
 
-// eval reads a value out of the page into res.
-func (s *session) eval(t *testing.T, what, expr string, res any) {
+// eval reads a value out of the page.
+//
+// A JavaScript null reads as the zero value, as it always has in this
+// suite: chromedp's Evaluate refuses null for a type that cannot be nil
+// (ErrJSNull), so the value is decoded through a pointer. An undefined
+// result is still an error.
+func eval[T any](t *testing.T, s *session, what, expr string, opts ...chromedp.EvaluateOption) T {
 	t.Helper()
-	s.run(t, what, chromedp.Evaluate(expr, res))
+	var zero T
+	if v := runFor(t, s, what, chromedp.Evaluate[*T](expr, opts...)); v != nil {
+		return *v
+	}
+	return zero
 }
 
 // await evaluates an expression that yields a promise and reads what it
 // resolves to — how the clipboard and the frame-settling helper are read.
-func (s *session) await(t *testing.T, what, expr string, res any) {
+func await[T any](t *testing.T, s *session, what, expr string) T {
 	t.Helper()
-	s.run(t, what, chromedp.Evaluate(expr, res, func(p *runtime.EvaluateParams) *runtime.EvaluateParams {
-		return p.WithAwaitPromise(true)
-	}))
+	return eval[T](t, s, what, expr, chromedp.EvalAwaitPromise)
 }
 
 func (s *session) evalInt(t *testing.T, what, expr string) int {
 	t.Helper()
-	var n int
-	s.eval(t, what, expr, &n)
-	return n
+	return eval[int](t, s, what, expr)
 }
 
 func (s *session) evalBool(t *testing.T, what, expr string) bool {
 	t.Helper()
-	var b bool
-	s.eval(t, what, expr, &b)
-	return b
+	return eval[bool](t, s, what, expr)
 }
 
 func (s *session) evalString(t *testing.T, what, expr string) string {
 	t.Helper()
-	var v string
-	s.eval(t, what, expr, &v)
-	return v
+	return eval[string](t, s, what, expr)
 }
 
 func (s *session) evalFloat(t *testing.T, what, expr string) float64 {
 	t.Helper()
-	var v float64
-	s.eval(t, what, expr, &v)
-	return v
+	return eval[float64](t, s, what, expr)
 }
 
 // settle waits for two animation frames. Everything a click scheduled —
@@ -519,9 +552,8 @@ func (s *session) evalFloat(t *testing.T, what, expr string) float64 {
 // says so.
 func (s *session) settle(t *testing.T) {
 	t.Helper()
-	var done bool
-	s.await(t, "waiting for two animation frames",
-		`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))`, &done)
+	await[bool](t, s, "waiting for two animation frames",
+		`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))`)
 }
 
 // chooseOption picks an option of a native <select> and emits the change
@@ -552,19 +584,29 @@ func (s *session) chooseOption(t *testing.T, what, sel, value string) {
 // The copy chips go through navigator.clipboard, and the toast is raised in
 // its resolution handler (B-001): without the grant the promise rejects and
 // the scenario would test the failure path.
+//
+// Browser.grantPermissions is gone from the protocol; Browser.setPermission
+// replaces it, one descriptor at a time. The two descriptors are the two
+// permission types the old grant named: "clipboard-read" is
+// clipboardReadWrite, and "clipboard-write" — sanitized, the default — is
+// clipboardSanitizedWrite.
 func (s *session) grantClipboard(t *testing.T, origin string) {
 	t.Helper()
-	s.run(t, "granting clipboard access", cdpbrowser.GrantPermissions([]cdpbrowser.PermissionType{
-		cdpbrowser.PermissionTypeClipboardReadWrite,
-		cdpbrowser.PermissionTypeClipboardSanitizedWrite,
-	}).WithOrigin(origin))
+	grant := func(name string) chromedp.Action[chromedp.Void] {
+		return command(cdpbrowser.SetPermission, cdpbrowser.SetPermissionParams{
+			Permission: &cdpbrowser.PermissionDescriptor{Name: name},
+			Setting:    cdpbrowser.PermissionSettingGranted,
+			Origin:     origin,
+		})
+	}
+	s.run(t, "granting clipboard access", grant("clipboard-read"), grant("clipboard-write"))
 }
 
 // focusPage brings the tab to the front. navigator.clipboard.readText only
 // answers a focused document.
 func (s *session) focusPage(t *testing.T) {
 	t.Helper()
-	s.run(t, "focusing the page", page.BringToFront())
+	s.run(t, "focusing the page", command(page.BringToFront, cdp.Empty{}))
 }
 
 // copyChip clicks a copy control, having first made sure the clipboard can
@@ -588,7 +630,5 @@ func (s *session) copyChip(t *testing.T, what, sel string) {
 func (s *session) readClipboard(t *testing.T) string {
 	t.Helper()
 	s.focusPage(t)
-	var text string
-	s.await(t, "reading the clipboard", `navigator.clipboard.readText()`, &text)
-	return text
+	return await[string](t, s, "reading the clipboard", `navigator.clipboard.readText()`)
 }

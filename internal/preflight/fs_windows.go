@@ -71,8 +71,8 @@ func (systemInspector) Inspect(path string) (Filesystem, Space, error) {
 	space := Space{}
 	if err := windows.GetDiskFreeSpaceEx(rootPtr, &availableToCaller, &total, &free); err == nil {
 		space = Space{
-			FreeBytes:  int64(availableToCaller), //nolint:gosec // G115: a volume's byte counts stay far below the int64 range
-			TotalBytes: int64(total),             //nolint:gosec // G115: same
+			FreeBytes:  int64(availableToCaller),
+			TotalBytes: int64(total),
 			Known:      true,
 		}
 	}

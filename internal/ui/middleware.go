@@ -47,7 +47,7 @@ func (u *UI) cookieSecure(r *http.Request) bool {
 // setSessionCookie writes the session cookie: HttpOnly, SameSite=Lax,
 // Secure per cookieSecure (NFR-015).
 func (u *UI) setSessionCookie(w http.ResponseWriter, r *http.Request, id string, expires time.Time) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: HttpOnly and SameSite are set; Secure follows cookieSecure on purpose (a plain-HTTP lab instance cannot honor it, see above)
 		Name:     auth.SessionCookie,
 		Value:    id,
 		Path:     "/",
@@ -60,7 +60,7 @@ func (u *UI) setSessionCookie(w http.ResponseWriter, r *http.Request, id string,
 
 // clearSessionCookie expires the session cookie.
 func (u *UI) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: same attributes as setSessionCookie; this one only expires the cookie
 		Name:     auth.SessionCookie,
 		Value:    "",
 		Path:     "/",

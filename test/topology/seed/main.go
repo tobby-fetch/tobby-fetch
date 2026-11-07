@@ -216,7 +216,7 @@ func pushFileSet(ref name.Reference, dir string) error {
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
 	var paths []string
-	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error { //nolint:gosec // G703: test-tool input tree, as the reads below
 		if err != nil || d.IsDir() {
 			return err
 		}

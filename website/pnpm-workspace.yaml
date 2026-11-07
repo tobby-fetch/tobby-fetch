@@ -1,0 +1,5 @@
+# pnpm settings (pnpm >= 11 no longer reads the "pnpm" field of
+# package.json). Only these two dependencies may run install scripts.
+allowBuilds:
+  esbuild: true
+  sharp: true

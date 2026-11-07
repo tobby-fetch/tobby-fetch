@@ -73,7 +73,7 @@ func (f *fakeCert) Fingerprint() string { return "AA:BB" }
 func (f *fakeCert) SelfSigned() bool    { return f.selfSigned }
 func (f *fakeCert) Source() string      { return f.source }
 func (f *fakeCert) TLSConfig() *tls.Config {
-	return &tls.Config{ //nolint:gosec // G402: a stub for the accessor under test; no handshake happens here
+	return &tls.Config{
 		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return f.pair, f.err },
 	}
 }

@@ -240,7 +240,7 @@ func (u *UI) networkRefusal(w http.ResponseWriter, r *http.Request, actor string
 // is the per-document one in readUpload, which is what caps the material
 // this handler actually holds.
 func readCertPair(r *http.Request) (certPEM, keyPEM []byte, err error) {
-	if err := r.ParseMultipartForm(2 * tlsadmin.MaxPEMBytes); err != nil {
+	if err := r.ParseMultipartForm(2 * tlsadmin.MaxPEMBytes); err != nil { //nolint:gosec // G120: the body is bounded at mount (maxUIRequestBody, B-034) and each document by readUpload
 		return nil, nil, taxonomy.New(taxonomy.CodeServerCertReplace, taxonomy.Params{
 			"detail": "the submission is not a certificate/key upload: " + err.Error(),
 		})

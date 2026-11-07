@@ -101,7 +101,7 @@ func (f *fileCert) Adopt() error {
 }
 func (f *fileCert) Source() string { return f.certFile }
 func (f *fileCert) TLSConfig() *tls.Config {
-	return &tls.Config{ //nolint:gosec // G402: a stub for the reload accessor; no handshake happens in these tests
+	return &tls.Config{
 		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 			pair := f.load()
 			if pair == nil {

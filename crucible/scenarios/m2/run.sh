@@ -26,7 +26,7 @@ set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$DIR/../../lib.sh"
 
-IMAGE="${CRUCIBLE_IMAGE:-images:alpine/3.22}"
+IMAGE="${CRUCIBLE_IMAGE:-images:alpine/3.24}"
 ARCH="$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')"
 CRED_USER="admin"
 CRED_PASS="m2-crucible-pass"

@@ -24,10 +24,10 @@ environment:
     packages:
       - busybox
       - ca-certificates-bundle
-      # Wolfi's 1.25 line; tools/release-build.sh then forces the exact
+      # Wolfi's 1.27 line; tools/release-build.sh then forces the exact
       # patch release declared in go.mod via GOTOOLCHAIN, so the toolchain
       # is identical to the one used for the release binaries.
-      - go-1.25
+      - go-1.27
 
 pipeline:
   - name: Reproducible build (same script, flags, and toolchain as the release binaries)

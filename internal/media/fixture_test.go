@@ -281,7 +281,7 @@ func (f *fixture) flip(slash string) {
 		f.t.Fatalf("%s is empty, nothing to flip", slash)
 	}
 	raw[len(raw)-1] ^= 0xff
-	if err := os.WriteFile(p, raw, 0o600); err != nil {
+	if err := os.WriteFile(p, raw, 0o600); err != nil { //nolint:gosec // G703: a path this fixture built under its own t.TempDir
 		f.t.Fatalf("writing %s: %v", slash, err)
 	}
 }

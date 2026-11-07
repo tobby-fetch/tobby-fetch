@@ -191,7 +191,7 @@ func corruptBlob(t *testing.T, root, dgst string) string {
 		t.Fatalf("blob %s is empty: corrupting it would prove nothing", dgst)
 	}
 	raw[len(raw)/2] ^= 0xff
-	if err := os.WriteFile(path, raw, 0o600); err != nil {
+	if err := os.WriteFile(path, raw, 0o600); err != nil { //nolint:gosec // G703: a blob path this test built under its own t.TempDir
 		t.Fatal(err)
 	}
 	return path

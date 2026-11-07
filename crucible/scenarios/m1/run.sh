@@ -28,7 +28,7 @@ set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$DIR/../../lib.sh"
 
-IMAGE="${CRUCIBLE_IMAGE:-images:alpine/3.22}"
+IMAGE="${CRUCIBLE_IMAGE:-images:alpine/3.24}"
 ARCH="$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')"
 MEDIUM_IMG="${CRUCIBLE_MEDIUM_IMG:-/tmp/tbc-m1-medium.img}"
 

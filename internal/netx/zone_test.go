@@ -350,7 +350,7 @@ func (p *testProxy) forward(w http.ResponseWriter, r *http.Request) {
 	out := *r.URL
 	out.Host = target
 	out.Scheme = "http"
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, out.String(), r.Body)
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, out.String(), r.Body) //nolint:gosec // G704: a test proxy forwarding to the httptest target it was built with
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
