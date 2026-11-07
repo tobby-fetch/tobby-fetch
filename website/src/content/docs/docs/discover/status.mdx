@@ -30,13 +30,14 @@ features.
 | 2 — User-experience preview | v0.2.x | Delivered (v0.2.0, 2026-08-12) |
 | 3 — Recipe engine | v0.3.x | Delivered (v0.3.0, 2026-08-16) |
 | 4 — Passthrough | v0.4.x | Delivered (v0.4.0 → v0.4.2) |
-| 5 — Mirror & air-gap | v0.5.x | Delivered (v0.5.0, 2026-08-27) |
+| 5 — Mirror & air-gap | v0.5.x | Delivered (v0.5.0 → v0.5.1) |
 | 6 — Hardened controls & enterprise identity | v0.6.x | Upcoming |
 | 7 — Finishing, documentation & acceptance | v0.7.x → 1.0.0 | Upcoming |
 
 **Observed cadence.** The first five milestones shipped between 2026-08-11
 (v0.1.0) and 2026-08-27 (v0.5.0), with two hardening patches along the way
-(v0.4.1 on 2026-08-18, v0.4.2 on 2026-08-22). That is the cadence of the
+(v0.4.1 on 2026-08-18, v0.4.2 on 2026-08-22) and a maintenance release
+since (v0.5.1 on 2026-11-07). That is the cadence of the
 initial development phase, not a commitment: each milestone ships when its
 acceptance scenarios pass on the [crucible](../../project/tests-and-proofs/),
 not on a date.
@@ -55,6 +56,21 @@ Each milestone train has a raw acceptance report; they are published under
 [acceptance reports](../../project/acceptance-reports/). The full changelog
 lives in the repository
 ([CHANGELOG.md](https://github.com/tobby-fetch/tobby-fetch/blob/main/CHANGELOG.md)).
+
+### v0.5.1 — 2026-11-07 (maintenance)
+
+No new feature: the toolchain moves to Go 1.27.3 and every Go dependency,
+pinned tool and CI action to its latest release, and the whole milestone
+1–5 crucible was replayed on the result.
+
+- **Two web-interface fixes** found by the static analysis that came with
+  the new tools. The post-login redirect could be sent to another host by
+  a link spelled the way a browser, but not a string comparison, reads as
+  protocol-relative (B-033); and request bodies were not bounded, so the
+  sign-in form accepted an unauthenticated upload spilled to disk without
+  limit (B-034). The language and theme cookies are now `HttpOnly`.
+- **The weekly image rebuild works again**: it had been failing since its
+  packaging tool started requiring a newer Go than the release it rebuilds.
 
 ### v0.5.0 — 2026-08-27 (milestone 5)
 

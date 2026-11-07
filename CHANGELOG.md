@@ -8,6 +8,8 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-07
+
 Maintenance release: the toolchain, every Go dependency and every pinned
 tool move to their latest releases. The new static-analysis rules that
 came with them found two real defects in the web UI's request handling,
@@ -1046,7 +1048,8 @@ import, track, browse, pull) behind authentication that is on by default.
 - Release chain groundwork for SLSA Build L3 provenance and signed
   artifacts.
 
-[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.0...v0.4.1
