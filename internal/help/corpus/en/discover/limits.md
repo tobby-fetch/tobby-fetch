@@ -108,12 +108,13 @@ Production scope is deliberately narrow (NFR-018):
 evaluation and authoring only. The per-capability detail is on
 [supported platforms](../../reference/platforms/).
 
-**`winget install tobby` does not work yet.** The manifest set for
-`tobby-fetch.tobby` is submitted to `microsoft/winget-pkgs` and waiting on
-review by people outside this project, which is why no release automates
-that step. **Consequence:** on Windows, install with `scoop install tobby`
-(the [Scoop bucket](https://github.com/tobby-fetch/scoop-bucket) is
-published) or from the release archive, verified as described in
+**winget can lag behind the latest release.** Each version of
+`tobby-fetch.tobby` reaches `microsoft/winget-pkgs` through a pull request
+reviewed by people outside this project, which is why no release automates
+that step. **Consequence:** when you need a version the day it ships,
+install with `scoop install tobby` (the
+[Scoop bucket](https://github.com/tobby-fetch/scoop-bucket) updates
+itself) or from the release archive, verified as described in
 [verify a release](../../project/verify-a-release/).
 
 ### FAT32 media are refused

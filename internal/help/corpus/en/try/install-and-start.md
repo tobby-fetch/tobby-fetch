@@ -27,10 +27,17 @@ brew install tobby-fetch/tap/tobby
 ```
 
 On Windows the binary is portable — a single `.exe`, no installer, no
-runtime dependency. Two package channels are prepared, winget and Scoop;
-until they are accepted into their indexes, download
-`tobby-windows-amd64.exe` (or `-arm64`) from the release and put it on
-your `PATH`. What Tobby supports on Windows, and the handful of things
+runtime dependency. Install it with winget or Scoop:
+
+```powershell
+winget install tobby-fetch.tobby
+# or
+scoop bucket add tobby https://github.com/tobby-fetch/scoop-bucket
+scoop install tobby
+```
+
+or download `tobby-windows-amd64.exe` (or `-arm64`) from the release and
+put it on your `PATH`. What Tobby supports on Windows, and the handful of things
 that behave differently there, are in
 [Supported platforms](../../reference/platforms/).
 
