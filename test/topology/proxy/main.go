@@ -74,7 +74,7 @@ func main() {
 		// never finishes its request line.
 		ReadHeaderTimeout: 30 * time.Second,
 	}
-	log.Printf("proxy: listening on %s, authenticating %s", *addr, username)
+	log.Printf("proxy: listening on %q, authenticating %q", *addr, username) //nolint:gosec // G706: every request-derived value is %q-quoted, so a CR/LF cannot forge a log line
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("proxy: %v", err)
 	}
@@ -91,17 +91,17 @@ type proxy struct {
 // "unauthenticated egress is refused" step meaningful.
 func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !p.authorized(r) {
-		log.Printf("proxy: 407 %s %s (missing or wrong proxy credentials)", r.Method, r.Host)
+		log.Printf("proxy: 407 %q %q (missing or wrong proxy credentials)", r.Method, r.Host) //nolint:gosec // G706: every request-derived value is %q-quoted, so a CR/LF cannot forge a log line
 		w.Header().Set("Proxy-Authenticate", `Basic realm="tobby-topology"`)
 		http.Error(w, "proxy authentication required", http.StatusProxyAuthRequired)
 		return
 	}
 	if r.Method == http.MethodConnect {
-		log.Printf("proxy: CONNECT %s", r.Host)
+		log.Printf("proxy: CONNECT %q", r.Host) //nolint:gosec // G706: every request-derived value is %q-quoted, so a CR/LF cannot forge a log line
 		p.tunnel(w, r)
 		return
 	}
-	log.Printf("proxy: %s %s", r.Method, r.Host)
+	log.Printf("proxy: %q %q", r.Method, r.Host) //nolint:gosec // G706: every request-derived value is %q-quoted, so a CR/LF cannot forge a log line
 	p.forward(w, r)
 }
 
@@ -129,9 +129,9 @@ func (p *proxy) authorized(r *http.Request) bool {
 // destination's certificate — issued by the scenario's private CA — is
 // verified by Tobby end to end, through the proxy rather than by it.
 func (p *proxy) tunnel(w http.ResponseWriter, r *http.Request) {
-	upstream, err := net.DialTimeout("tcp", r.Host, dialTimeout)
+	upstream, err := net.DialTimeout("tcp", r.Host, dialTimeout) //nolint:gosec // G704: dialing the requested host is what a forward proxy is; this one only runs inside the test topology, behind its own authentication
 	if err != nil {
-		log.Printf("proxy: CONNECT %s failed: %v", r.Host, err)
+		log.Printf("proxy: CONNECT %q failed: %v", r.Host, err) //nolint:gosec // G706: every request-derived value is %q-quoted, so a CR/LF cannot forge a log line
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		return
 	}
@@ -172,7 +172,7 @@ func (p *proxy) forward(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := http.DefaultTransport.RoundTrip(out)
 	if err != nil {
-		log.Printf("proxy: %s %s failed: %v", r.Method, r.Host, err)
+		log.Printf("proxy: %q %q failed: %v", r.Method, r.Host, err) //nolint:gosec // G706: every request-derived value is %q-quoted, so a CR/LF cannot forge a log line
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		return
 	}
@@ -186,7 +186,7 @@ func (p *proxy) forward(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 	if _, err := io.Copy(w, resp.Body); err != nil {
-		log.Printf("proxy: relaying the response body of %s: %v", r.Host, err)
+		log.Printf("proxy: relaying the response body of %q: %v", r.Host, err) //nolint:gosec // G706: every request-derived value is %q-quoted, so a CR/LF cannot forge a log line
 	}
 }
 

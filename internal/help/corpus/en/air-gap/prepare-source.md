@@ -23,10 +23,9 @@ that will touch a medium destined for an isolated zone:
 - **Linux** — the release binary, or the `.deb`, `.rpm` or `.apk` package,
   all of which install with no remote repository configured.
 - **Windows** — the release binary, `tobby-windows-amd64.exe` or
-  `tobby-windows-arm64.exe`. There is no installer and no package-manager
-  channel: the winget and Scoop manifests are built and attached to each
-  release but neither index carries Tobby, so the archive is the way in.
-  See [supported platforms](../../reference/platforms/).
+  `tobby-windows-arm64.exe`, with no installer; on a workstation that can
+  reach them, winget (`tobby-fetch.tobby`) and Scoop install the same
+  binary. See [supported platforms](../../reference/platforms/).
 
 Verify the release before you trust it — provenance, SBOM and checksums are
 all independently checkable, and the procedure is on

@@ -23,6 +23,26 @@ fail() {
 # inc: incus scoped to the crucible project.
 inc() { incus --project "$PROJECT" "$@"; }
 
+# instance_ip <instance>: the guest's IPv4, waited for. A freshly launched
+# guest has no address until its DHCP client answers, which takes longer
+# on some images than on others (Alpine 3.24 in the v0.5.1 run): read too
+# early, the address is an empty string that fails minutes later as a
+# request to "http://:8080". m3 and m4 each learned this on their own;
+# every scenario now shares the one helper.
+instance_ip() {
+    _i=0
+    while :; do
+        _ip=$(inc list "$1" -c 4 -f csv | awk '{print $1}' | head -1)
+        if [ -n "$_ip" ]; then
+            printf '%s' "$_ip"
+            return 0
+        fi
+        _i=$((_i + 1))
+        [ "$_i" -gt 60 ] && fail "instance $1 never received an address"
+        sleep 1
+    done
+}
+
 # wait_ready <instance> <url>: poll an HTTP endpoint from inside the guest.
 # busybox wget, not curl: air-gapped guests cannot install anything — no
 # route to a package mirror, by construction.

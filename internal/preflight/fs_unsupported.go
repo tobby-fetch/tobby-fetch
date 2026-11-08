@@ -24,12 +24,12 @@ type systemInspector struct{}
 
 func (systemInspector) Inspect(path string) (Filesystem, Space, error) {
 	return Filesystem{
-			Note:      "this build has no filesystem inspection for " + runtime.GOOS,
-			Detection: "none",
-		}, Space{}, &unsupportedError{
-			goos: runtime.GOOS,
-			path: path,
-		}
+		Note:      "this build has no filesystem inspection for " + runtime.GOOS,
+		Detection: "none",
+	}, Space{}, &unsupportedError{
+		goos: runtime.GOOS,
+		path: path,
+	}
 }
 
 // unsupportedError names the platform rather than the call, because the

@@ -319,7 +319,7 @@ func (e *rbacEnv) probeUI(t *testing.T, role auth.Role, row *rbacRoute) *httptes
 			body += "csrf=" + sess.CSRF
 		}
 		r = httptest.NewRequest(row.Method, row.Path, strings.NewReader(body))
-		r.AddCookie(&http.Cookie{Name: auth.SessionCookie, Value: sess.ID})
+		r.AddCookie(&http.Cookie{Name: auth.SessionCookie, Value: sess.ID}) //nolint:gosec // G124: a request-side cookie in a test; attributes only exist on Set-Cookie
 	} else {
 		r = httptest.NewRequest(row.Method, row.Path, strings.NewReader(body))
 	}

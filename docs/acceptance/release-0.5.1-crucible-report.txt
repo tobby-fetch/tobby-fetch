@@ -1,0 +1,104 @@
+ok   scenario m1 started 2026-11-07T14:10:49Z
+ok   built tobby for linux/amd64
+ok   instances launched (connected + air-gapped)
+ok   block-device medium created (/dev/loop0) and attached to the connected node
+ok   medium formatted (ext4) and mounted on the connected node
+ok   connected instance ready (store on the medium)
+ok   embedded registry round-trip on the connected node (sha256:518bbdf034263e4ff8ae29f52dde5585ac88637f885ccdba3e6e711f6b5c1385)
+ok   medium unmounted and detached (transport begins)
+ok   medium re-attached and mounted on the air-gapped node
+ok   egress canary failed as required (air gap proven by construction)
+ok   media round-trip: content pushed in the connected zone serves across the air gap
+ok   scenario m1 complete — report: crucible-report-m1.txt
+ok   scenario m2 started 2026-11-07T14:11:15Z
+ok   built tobby for linux/amd64
+ok   instances launched (source registry + secure node)
+ok   source registry serving (10.180.10.229:8080)
+ok   R-01: no-account start refused (exit 3, TBY-AUTH-001)
+ok   account created (first account admin), secure node ready
+ok   anonymous refused on API (RFC 9457) and registry (Basic challenge)
+ok   import through the API done (3/3), pinned digest preserved (sha256:fe117c65a8847193f6de72ffd8e5f2fc1d693df1d258265b174501ad339fc23a)
+ok   standard third-party client pulls the import with Basic credentials
+ok   FR-029: task survived a SIGKILL restart, settled done, zero re-transfer
+ok   scenario m2 complete — report: crucible-report-m2.txt
+ok   scenario m3 started 2026-11-07T14:11:33Z
+ok   cosign available (  ______   ______        _______. __    _______ .__   __.)
+ok   built tobby for linux/amd64
+ok   instances launched (source + node + downstream)
+ok   upstream registry serving (10.180.10.43:8080)
+ok   fixtures seeded (image sha256:1c32c153c4e2ef66b0e5253bc88234e995d17696f1fd8894a52cfa4676028c1c, fileset sha256:0fd01b54c31b6df7231329d88e7d95f2069878b94f9b064494ebc31be880eac7), key pairs generated
+ok   cooked recipe signed (trusted 2.0.0, foreign-signed 2.0.1)
+ok   secure node configured (trust root, retriever, fileset) and serving
+ok   signed recipe synchronized: pinned digests intact, sparse index (2/3), signature copied
+ok   foreign-signed recipe refused (TBY-SIG-001), nothing landed
+ok   idempotence: second synchronization transferred zero bytes
+ok   the Sigstore bundle layout (cosign 3.x default) verifies like the classic one
+ok   FileSet served anonymously (opt-in), 206 on ranges, traversal refused
+ok   cascade: unmodified recipe consumed through substitution, identical relocated path, digest intact
+ok   scenario m3 complete — report: crucible-report-m3.txt
+ok   scenario m4 started 2026-11-07T14:12:04Z
+ok   tooling available (helm v4.2.3+g43e8b7f, cosign present, openssl, jq)
+ok   built tobby and the forward proxy for linux/amd64
+ok   instances launched (source, destination, proxy, node, sealed node)
+ok   addresses assigned (source 10.180.10.90, dest 10.180.10.181, proxy 10.180.10.105, node 10.180.10.67, sealed 10.180.30.89)
+ok   private PKI issued (root + leaf for 10.180.10.181)
+ok   fixtures serving: production registry, TLS zone registry (private CA), forward proxy
+ok   cookbook published and signed by the real cosign (1.0.0 → sha256:74cc20eab73a447d4405919fa95f7b8ef3d002e46d69a4c1949de9d1e163e817, 1.0.1 → sha256:09cf2f92289c89034d6f5db0538e94f254bfa9f1477c866512c60ebc3ab2251a)
+ok   node deployed from the reference chart (rendered config, chart-managed roots, hardening asserted)
+ok   secure by default (401 RFC 9457 + Basic challenge); the override opens access with its permanent banner
+ok   cycle 1: recipe verified and promoted, zone cookbook published, pinned digest intact at the destination
+ok   cycle 2: nothing pushed, every destination item already up to date (FR-026, FR-028)
+ok   FR-013: interval changed at runtime, a scheduled cycle fired, the override survived a restart, the change was audited
+ok   FR-030: off-list destination refused before transfer, audited, counted; the refused recipe never landed
+ok   sealed node: no direct route to either registry, and the proxy refuses anonymous egress (407)
+ok   blocked egress: fetched and promoted entirely through the authenticated proxy, over private-PKI TLS
+ok   blocked egress, cycle 2: nothing pushed — idempotent behind the proxy too
+ok   scenario m4 complete — report: crucible-report-m4.txt
+ok   scenario m5 started 2026-11-07T14:13:58Z
+ok   tooling available (skopeo 1.13.3, jq, cosign)
+ok   built tobby for linux/amd64
+ok   instances launched (source, connected, zone registry, isolated)
+ok   three block devices created and attached (/dev/loop0, /dev/loop1, /dev/loop2)
+ok   media formatted (ext4, ext4, FAT32) and mounted on the connected node
+ok   egress canary failed as required (air gap proven by construction)
+ok   two signed deliveries published (zone-app → sha256:2dfc5316a8c32bd1f8fa59926d3900fb169fc3393b626ac402cd6a8a709494ab, zone-tool → sha256:7e30a04f953fc827545436db5c25adef330fb69a62f4b847c75a8b9cbdd120c9)
+ok   the isolated zone's registry is serving on 10.180.20.137:5000
+ok   the undersized medium has 255 KiB free, of which the 99 % reserve leaves a hundredth
+ok   FR-055: undersized medium refused before any transfer, shortfall stated, nothing written
+ok   FR-055: a real FAT32 volume is identified with its 4 GiB per-file ceiling
+ok   FR-014: no cycle fires on its own in mirror mode
+ok   R-04: a plan run leaves the store byte-identical
+ok   FR-054: media manifest written — zone zone-b, 2 deliveries, medium 20261107T141512Z-8ee5e7a933b81e99
+ok   FR-045: prune ran BEFORE the manifest; the manual import survived it; the medium keeps its identity
+ok   NFR-020: a secret planted under the store makes the instance refuse to start, naming the path
+ok   one blob of zone-app truncated; medium unmounted and detached (transport begins)
+ok   medium re-attached and mounted on the isolated node
+ok   FR-054: before verification /v2/ and /files/ serve nothing, and /readyz still answers
+ok   FR-054: a medium for another zone is blocked; the admin waiver clears it and is recorded
+ok   R-19: zone-app blocked whole, naming docker/registry/v2/blobs/sha256/2d/2dfc5316a8c32bd1f8fa59926d3900fb169fc3393b626ac402cd6a8a709494ab/data; zone-tool still pushable
+ok   FR-052/FR-034: the cleared delivery is in the zone registry and its cookbook; the blocked one is not
+ok   content pushed into the isolated zone is pullable there by a standard OCI client
+ok   FR-053/FR-054: the return log is on the medium, outside the manifest's coverage
+ok   R-28: the same medium is not stale — an interrupted import can be retried
+ok   R-28: an older medium is refused naming both timestamps; the admin waiver clears it
+ok   FR-051: skopeo reads the exported layout (10.180.10.174_8080/library/tool:1.0.0 → sha256:7e30a04f953fc827545436db5c25adef330fb69a62f4b847c75a8b9cbdd120c9)
+ok   R-05: the guides are served offline by the instance, in both languages
+ok   R-41: a directory packed on the isolated side becomes a FileSet; /files/ still accepts no write method
+ok   FR-046: a reset without the exact typed confirmation is refused
+ok   scenario m5 complete — report: crucible-report-m5.txt
+#
+# Acceptance host: disposable Scaleway Elastic Metal (EM-A116X-SSD,
+# fr-par-2), Ubuntu 24.04 LTS, Incus 6.0.0. Created 2026-11-07 13:46 UTC,
+# destroyed 14:16 UTC (destruction verified). Full milestone 1-5 suite,
+# 88 checks, replayed for the v0.5.1 maintenance release (Go 1.27.3,
+# every dependency up to date, crucible guests on Alpine 3.24). The
+# report above is unedited, the five scenario reports concatenated in
+# order, from the pushed commit 8cfa74f on chore/update-0.5.1. The only
+# later commit before the tag touches a unit test (internal/cli).
+#
+# Two earlier runs on the same node stopped on staging defects that the
+# Alpine 3.24 guests exposed, both fixed before this run: the mirror
+# install raced the guest's network and failed in silence (m1, m5), and
+# guest addresses were read before DHCP answered (m1, m2, m5 — m3 and m4
+# already waited). A third stopped on m4 reading the test proxy's log in
+# its pre-%q form.

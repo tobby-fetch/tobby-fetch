@@ -96,7 +96,7 @@ func ageStoreContent(t *testing.T, st *Store, when time.Time) {
 			return err
 		}
 		if !d.IsDir() && (d.Name() == "data" || d.Name() == "link") {
-			return os.Chtimes(path, when, when)
+			return os.Chtimes(path, when, when) //nolint:gosec // G122: ageing a store this test owns under t.TempDir; nothing else can race it
 		}
 		return nil
 	})

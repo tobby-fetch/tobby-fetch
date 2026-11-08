@@ -534,9 +534,22 @@ func kindClass(kind any) string {
 // sanitizeNext validates a post-login redirect target: a local path,
 // never protocol-relative, never a reserved prefix. Anything else falls
 // back to the dashboard.
+//
+// "Protocol-relative" is judged the way a browser resolves the Location
+// header, not the way a string reads (B-033): a backslash counts as a
+// slash, and tab, CR and LF are stripped before resolution, so `/\host`
+// and "/\t/host" both land on another host. No legitimate UI path holds
+// either, so both are refused anywhere in the target rather than only
+// after the first slash — together with every other control character,
+// which no form or link of this UI ever produces.
 func sanitizeNext(next string) string {
 	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") {
 		return "/"
+	}
+	for _, c := range next {
+		if c == '\\' || c < 0x20 || c == 0x7f {
+			return "/"
+		}
 	}
 	return next
 }

@@ -117,7 +117,7 @@ func (u *UI) helpAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
-	_, _ = w.Write(body)
+	_, _ = w.Write(body) //nolint:gosec // G705: the bytes are an embedded PNG looked up by name, served as image/png with nosniff; nothing of the request reaches them
 }
 
 // helpLabels resolves the few chrome strings the corpus renderer needs

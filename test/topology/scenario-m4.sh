@@ -535,7 +535,7 @@ curl -fsS --cacert "$GEN/ca.crt" -H "Accept: $ACCEPT_MANIFEST" \
 # reach, so "the traffic went through the proxy" is observed rather than
 # assumed.
 $COMPOSE logs proxy 2>/dev/null >"$GEN/proxy.log" || true
-grep -q 'CONNECT dest-registry-tls:5000' "$GEN/proxy.log" ||
+grep -q 'CONNECT "dest-registry-tls:5000"' "$GEN/proxy.log" ||
     fail "the destination was not reached through the proxy's CONNECT tunnel"
 grep -q 'source-registry:5000' "$GEN/proxy.log" ||
     fail "the source was not fetched through the proxy"

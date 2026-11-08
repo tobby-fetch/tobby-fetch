@@ -9,6 +9,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -472,7 +473,7 @@ func trustFor(t *testing.T, scopes []config.TrustScope, kps ...*sigtest.KeyPair)
 	return tp
 }
 
-func rootName(i int) string { return string(rune('a'+i)) + "-root" }
+func rootName(i int) string { return fmt.Sprintf("%c-root", 'a'+i) }
 
 // retrieverFile writes a Retriever document for one zone to a temp file
 // and returns its path (the FR-010 local-file source form).

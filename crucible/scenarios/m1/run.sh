@@ -28,7 +28,7 @@ set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$DIR/../../lib.sh"
 
-IMAGE="${CRUCIBLE_IMAGE:-images:alpine/3.22}"
+IMAGE="${CRUCIBLE_IMAGE:-images:alpine/3.24}"
 ARCH="$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')"
 MEDIUM_IMG="${CRUCIBLE_MEDIUM_IMG:-/tmp/tbc-m1-medium.img}"
 
@@ -78,7 +78,15 @@ done
 # the container root maps to (/proc/self/uid_map) so the guests own the
 # filesystem after the (unshifted) intercepted mount.
 inc exec tbc-m1-connected -- sh -c '
-    apk add --no-cache e2fsprogs util-linux >/dev/null 2>&1 || true
+    # A freshly launched guest may not have its network yet: the mirror
+    # is retried for a minute, and a failure stops the scenario here, by
+    # name, rather than as a missing mkfs three lines later.
+    n=0
+    until apk add --no-cache e2fsprogs util-linux >/dev/null 2>&1; do
+        n=$((n + 1))
+        [ "$n" -ge 30 ] && { echo "apk add e2fsprogs util-linux: no package mirror reachable" >&2; exit 1; }
+        sleep 2
+    done
     base=$(awk "{print \$2; exit}" /proc/self/uid_map)
     mkfs.ext4 -q -E root_owner="$base:$base" /dev/sdb &&
         mkdir -p /media/tobby && mount -t ext4 /dev/sdb /media/tobby
@@ -100,7 +108,7 @@ check "connected instance ready (store on the medium)"
 # Push through the wire protocol from the host side via the instance's
 # network address; oras/crane may not exist on the acceptance host, so the
 # scenario uses the repository's own seeder through a host proxy port.
-CONNECTED_IP=$(inc list tbc-m1-connected -c 4 -f csv | awk '{print $1}' | head -1)
+CONNECTED_IP=$(instance_ip tbc-m1-connected)
 ( cd "$DIR/../../.." && go run ./test/topology/seed push "$CONNECTED_IP:8080/docker.io/library/sample:1.0.0" ) \
     >/tmp/tbc-m1-digest || fail "pushing into the connected store"
 DIGEST=$(cat /tmp/tbc-m1-digest)

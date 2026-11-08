@@ -134,5 +134,5 @@ func TestMediaScreenIsReachableFromEveryScreen(t *testing.T) {
 	s.click(t, "following the Media entry of the shell", `nav.t-nav a[href="/media"]`)
 	s.wait(t, "landing on the Media screen", mediaScreenReady)
 	s.run(t, "checking the entry is marked current",
-		chromedp.WaitVisible(`nav.t-nav a[href="/media"][aria-current="page"]`, chromedp.ByQuery))
+		chromedp.WaitVisible(chromedp.CSS(`nav.t-nav a[href="/media"][aria-current="page"]`)))
 }

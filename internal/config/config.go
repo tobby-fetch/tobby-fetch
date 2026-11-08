@@ -725,7 +725,7 @@ func (c *Config) validate(scope Scope) error {
 	default:
 		errs = append(errs, fmt.Errorf(`unknown mode %q: valid modes are "passthrough" and "mirror"`, c.Mode))
 	}
-	if _, err := parseLevel(c.Logging.Level); err != nil {
+	if err := checkLevel(c.Logging.Level); err != nil {
 		errs = append(errs, fmt.Errorf("logging.level: %w", err))
 	}
 	if c.Logging.Media.MaxSize < 0 {
@@ -1067,12 +1067,12 @@ func (c *Config) Dump() (string, error) {
 	return string(out), nil
 }
 
-// parseLevel mirrors logging.ParseLevel's accepted values without importing
+// checkLevel mirrors logging.ParseLevel's accepted values without importing
 // the logging package (config stays dependency-free within the module).
-func parseLevel(s string) (struct{}, error) {
+func checkLevel(s string) error {
 	switch s {
 	case "debug", "info", "warn", "warning", "error", "":
-		return struct{}{}, nil
+		return nil
 	}
-	return struct{}{}, fmt.Errorf("unknown log level %q (expected debug, info, warn, or error)", s)
+	return fmt.Errorf("unknown log level %q (expected debug, info, warn, or error)", s)
 }

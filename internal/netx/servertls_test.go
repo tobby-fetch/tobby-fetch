@@ -481,7 +481,7 @@ func copyFile(t *testing.T, src, dst string) {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(dst, raw, 0o600); err != nil {
+	if err := os.WriteFile(dst, raw, 0o600); err != nil { //nolint:gosec // G703: both paths come from t.TempDir and the instance itself
 		t.Fatal(err)
 	}
 }

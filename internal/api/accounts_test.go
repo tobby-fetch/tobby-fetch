@@ -291,7 +291,7 @@ func TestAccountCreateEndpoint(t *testing.T) {
 	}
 
 	// Validation and duplication carry their own codes.
-	for body, want := range map[string]string{
+	for body, want := range map[string]string{ //nolint:gosec // G101: throwaway passwords in a validation table
 		`{"name":"","role":"viewer","password":"pw"}`:      "TBY-AUTH-008",
 		`{"name":"x","role":"root","password":"pw"}`:       "TBY-AUTH-008",
 		`{"name":"x","role":"viewer","password":""}`:       "TBY-AUTH-008",

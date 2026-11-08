@@ -26,7 +26,7 @@ set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$DIR/../../lib.sh"
 
-IMAGE="${CRUCIBLE_IMAGE:-images:alpine/3.22}"
+IMAGE="${CRUCIBLE_IMAGE:-images:alpine/3.24}"
 ARCH="$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')"
 CRED_USER="admin"
 CRED_PASS="m2-crucible-pass"
@@ -58,8 +58,8 @@ inc exec tbc-m2-source -- sh -c '
         TOBBY_AUTH_DISABLED=true \
         TOBBY_SERVER_ADDR=:8080 tobby serve >/var/log/tobby.log 2>&1 &
 '
-SOURCE_IP=$(inc list tbc-m2-source -c 4 -f csv | awk '{print $1}' | head -1)
-NODE_IP=$(inc list tbc-m2-node -c 4 -f csv | awk '{print $1}' | head -1)
+SOURCE_IP=$(instance_ip tbc-m2-source)
+NODE_IP=$(instance_ip tbc-m2-node)
 wait_ready tbc-m2-source http://127.0.0.1:8080/readyz
 check "source registry serving ($SOURCE_IP:8080)"
 

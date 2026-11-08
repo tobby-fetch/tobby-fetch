@@ -197,7 +197,7 @@ func (u *UI) redirectTo(w http.ResponseWriter, r *http.Request, target string) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	http.Redirect(w, r, target, http.StatusSeeOther)
+	http.Redirect(w, r, target, http.StatusSeeOther) //nolint:gosec // G710: every caller passes a path the server composed (a task ID, a query-escaped value), never a client-supplied URL
 }
 
 // importError renders an import failure as its taxonomy entry with the

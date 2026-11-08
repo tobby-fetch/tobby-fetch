@@ -77,7 +77,7 @@ func (d *diskCert) Fingerprint() string { return "AA:BB:CC" }
 func (d *diskCert) SelfSigned() bool    { return d.selfSigned }
 func (d *diskCert) Source() string      { return d.certFile }
 func (d *diskCert) TLSConfig() *tls.Config {
-	return &tls.Config{ //nolint:gosec // G402: a stub for the accessor under test; no handshake happens here
+	return &tls.Config{
 		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 			p, err := tls.LoadX509KeyPair(d.certFile, d.keyFile)
 			if err != nil {

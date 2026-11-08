@@ -317,7 +317,7 @@ func TestAPISessionReadOnly(t *testing.T) {
 	req := func(method string, cookie bool) int {
 		r := httptest.NewRequest(method, "/api/v1/tasks/tsk_x/logs", http.NoBody)
 		if cookie {
-			r.AddCookie(&http.Cookie{Name: SessionCookie, Value: sess.ID})
+			r.AddCookie(&http.Cookie{Name: SessionCookie, Value: sess.ID}) //nolint:gosec // G124: a request-side cookie in a test; attributes only exist on Set-Cookie
 		}
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)

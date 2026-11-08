@@ -18,7 +18,10 @@ replay of every milestone**, run on 2026-08-27 for the v0.5.0 acceptance
 in the same session — every milestone was replayed rather than reasoned
 about, which is what makes the cascade a property and not a memory. The
 milestone-1 to milestone-4 files are that run reproducing them; the
-previous full replay was 2026-08-22, for the v0.4.2 re-acceptance.
+previous full replay was 2026-08-22, for the v0.4.2 re-acceptance. The
+latest full replay is 2026-11-07, for the v0.5.1 maintenance release: the
+same 88 checks after the move to Go 1.27 and every dependency's latest
+release, in one report.
 
 
 ## The reports
@@ -95,6 +98,17 @@ One product defect was found here and nowhere else: `tobby sync` could not
 trigger a serving instance, because it read the API's task envelope as a
 bare task. Its own test suite was green — the fake instance in it answered
 what the client expected instead of what the API sends.
+
+### [release-0.5.1-crucible-report.txt](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/release-0.5.1-crucible-report.txt) — maintenance re-acceptance
+
+Milestones 1 to 5 replayed end to end for v0.5.1 — a release that changes
+the toolchain and every dependency rather than a feature, which is exactly
+when a cascade is worth replaying instead of trusting. The five scenario
+reports are concatenated unedited, 88 checks, all passing. The run also
+caught a regression the release itself had introduced: the m4 scenario
+read the test proxy's log in a form the release had just changed, which
+the hermetic CI tier would have failed on too. Its trailer records the
+two staging defects the new guest image exposed, fixed before the run.
 
 ### [milestone-4-quality-audit.md](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-4-quality-audit.md) — point-in-time audit
 

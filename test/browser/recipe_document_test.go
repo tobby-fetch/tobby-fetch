@@ -101,7 +101,10 @@ type downloads struct {
 func (s *session) captureDownloads(t *testing.T, dir string) *downloads {
 	t.Helper()
 	d := &downloads{finished: make(chan struct{})}
-	chromedp.ListenTarget(s.ctx, func(ev any) {
+	// Listen, not two Events iterators: it keeps the order across the two
+	// event types, so the name is recorded before the completion that
+	// releases wait.
+	err := chromedp.Listen(s.ctx, func(ev any) {
 		switch e := ev.(type) {
 		case *cdpbrowser.EventDownloadWillBegin:
 			d.mu.Lock()
@@ -117,9 +120,15 @@ func (s *session) captureDownloads(t *testing.T, dir string) *downloads {
 			}
 		}
 	})
+	if err != nil {
+		t.Fatalf("listening for downloads: %v%s", err, s.diag())
+	}
 	s.run(t, "routing downloads to a temporary directory",
-		cdpbrowser.SetDownloadBehavior(cdpbrowser.SetDownloadBehaviorBehaviorAllow).
-			WithDownloadPath(dir).WithEventsEnabled(true))
+		command(cdpbrowser.SetDownloadBehavior, cdpbrowser.SetDownloadBehaviorParams{
+			Behavior:      cdpbrowser.SetDownloadBehaviorBehaviorAllow,
+			DownloadPath:  dir,
+			EventsEnabled: new(true),
+		}))
 	return d
 }
 

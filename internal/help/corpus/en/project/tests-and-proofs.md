@@ -34,7 +34,7 @@ contract: *every job gates merges*. By name:
 
 | Job | What blocks the merge |
 |---|---|
-| `lint` | golangci-lint v2.6.1, strict profile, zero suppressions |
+| `lint` | golangci-lint v2.15.0, strict profile, zero suppressions |
 | `test` | race + `-count=2` suite on linux/amd64, linux/arm64 **and** macOS, then the per-package coverage floor |
 | `cross-compile` | all six release targets (linux, windows, darwin × amd64/arm64) must build |
 | `licenses` | every dependency — test-only tree included — against the GPL-3.0 compatibility allowlist |

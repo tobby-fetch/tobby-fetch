@@ -15,8 +15,8 @@ this page adds the context.
 
 Tooling is pinned in
 [`mise.toml`](https://github.com/tobby-fetch/tobby-fetch/blob/main/mise.toml)
-so every machine — and CI — builds with the same versions: Go 1.25.13,
-golangci-lint 2.6.1, gitleaks 8.30.1, and Node 24.18.0 with pnpm 10.33.2
+so every machine — and CI — builds with the same versions: Go 1.27.3,
+golangci-lint 2.15.0, gitleaks 8.30.1, and Node 26.13.0 with pnpm 12.18.0
 (website build only; the product itself has no Node anywhere):
 
 ```sh

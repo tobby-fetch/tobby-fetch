@@ -8,7 +8,62 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-07
+
+Maintenance release: the toolchain, every Go dependency and every pinned
+tool move to their latest releases. The new static-analysis rules that
+came with them found two real defects in the web UI's request handling,
+fixed here.
+
+### Security
+
+- **The post-login redirect could leave the host** (B-033). The `next`
+  target of `/login` (and the `back` target of the language and theme
+  switches) was refused only when it started with `//`. A browser also
+  reads a backslash as a slash and strips tab, CR and LF before
+  resolving a `Location` header, so `/\evil.example` or
+  `/<TAB>/evil.example` sent a user who had just signed in to another
+  host — the classic phishing relay. Any backslash or control character
+  now sends the user to the dashboard. Locked by a unit test over the
+  browser-equivalent spellings and by an end-to-end sign-in, both played
+  against the original code first.
+- **UI request bodies were unbounded** (B-034). The session gate's
+  anti-forgery check and the sign-in form read their fields with
+  `PostFormValue`, which also accepts `multipart/form-data` and spills
+  file parts above 32 MiB to temporary files without limit — on
+  `/login`, before any authentication. Every UI route now reads at most
+  16 MiB, which leaves the largest legitimate submission (a 4 MiB recipe
+  document, a certificate/key pair) untouched. Locked by a test that
+  streams 64 MiB at `/login` and `/lang`, failing on the original code.
+- The language and theme preference cookies are now `HttpOnly`, like
+  the session cookie; no script of the UI reads them.
+
+### Changed
+
+- **Go 1.27.3** (from 1.25.13): the `go` directive, the release
+  binaries, and the Wolfi `go-1.27` line the apk is built with.
+- **Every Go dependency at its latest release**, among them
+  `distribution/v3` 3.1.2, `go-containerregistry` 0.22.1,
+  `klauspost/compress` 1.20.3, `prometheus/client_golang` 1.25.0,
+  `logrus` 1.10.2, `go-i18n` 2.7.0, `golang.org/x/{crypto,net,sys,term,text}`,
+  the OpenTelemetry 1.47 line pulled in by `distribution`, and the
+  `recipe-spec` SDK. The browser suite (R-38) is ported to chromedp
+  0.23, whose API is now generic; every scenario keeps its assertions.
+- **Pinned tools**: golangci-lint 2.15.0, govulncheck 1.9.0, melange
+  0.64.0, apko 1.4.17, nfpm 2.48.0, cyclonedx-gomod 1.12.0, crane 0.22.1,
+  helm 4.3.1 and oras 1.3.6 (checksums re-pinned); GitHub Actions
+  re-pinned to their latest releases by commit digest, among them
+  `withastro/action` v6 and `actions/deploy-pages` v5.
+- **Website**: Node 26 LTS, pnpm 12 (the install-script allowlist moves
+  to `pnpm-workspace.yaml`, the `pnpm` field of `package.json` being no
+  longer read), Astro 7.4 and Starlight 0.42.
+- **Crucible** system containers run Alpine 3.24.
+
 ### Fixed
+
+- **The weekly image rebuild had been failing since melange 0.58**,
+  which requires Go ≥ 1.26.2 while the workflow builds its tools with the
+  toolchain of the release it rebuilds. The Go 1.27 move unblocks it.
 
 - **Source substitution examples doubled the origin host.** The
   configuration reference and the cascade page showed
@@ -993,7 +1048,8 @@ import, track, browse, pull) behind authentication that is on by default.
 - Release chain groundwork for SLSA Build L3 provenance and signed
   artifacts.
 
-[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.0...v0.4.1

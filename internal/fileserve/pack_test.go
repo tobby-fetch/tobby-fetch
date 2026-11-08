@@ -253,7 +253,7 @@ func TestPackingTheSameTreeTwiceYieldsTheSameDigest(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		return os.Chtimes(p, stamp, stamp)
+		return os.Chtimes(p, stamp, stamp) //nolint:gosec // G122: stamping a tree this test just wrote under t.TempDir; nothing else can race it
 	}); err != nil {
 		t.Fatalf("restamping the copy: %v", err)
 	}

@@ -81,8 +81,8 @@ dependency and no installer.
 Download `tobby-windows-amd64.exe` or `tobby-windows-arm64.exe` from the
 [releases page](https://github.com/tobby-fetch/tobby-fetch/releases) and
 verify it as described in
-[Verify a release](../../project/verify-a-release/). That is the only
-installation channel today.
+[Verify a release](../../project/verify-a-release/). That is the channel
+for a machine with no route to a package index.
 
 Two package-manager channels carry the same binaries. Both manifests are
 rendered by the release workflow from that run's own `SHA256SUMS`, so each
@@ -98,11 +98,18 @@ scoop bucket add tobby https://github.com/tobby-fetch/scoop-bucket
 scoop install tobby
 ```
 
-**[winget](https://learn.microsoft.com/windows/package-manager/) is under
-review.** The manifest set for `tobby-fetch.tobby` is submitted to
-`microsoft/winget-pkgs`; until it is merged, `winget install tobby` does
-not work. That last step is a pull request into a community index reviewed
-by people outside this project, which is why no release automates it.
+**[winget](https://learn.microsoft.com/windows/package-manager/) is
+published** as `tobby-fetch.tobby`, a portable package pinned to the
+release binary's hash:
+
+```powershell
+winget install tobby-fetch.tobby
+```
+
+Each new version reaches winget through a pull request into
+`microsoft/winget-pkgs`, a community index reviewed by people outside this
+project, which is why no release automates it: winget can lag behind the
+latest release for a few days.
 
 ### File permissions are an access list, not mode bits
 

@@ -120,6 +120,10 @@ func startServe(t *testing.T, cfg *config.Config) string {
 	done := make(chan error, 1)
 	go func() { done <- runServe(ctx, cfg) }()
 	t.Cleanup(func() {
+		// Hang up before asking for a clean drain: a spare connection the
+		// client transport dialed would otherwise outlive the two-second
+		// grace period (see TestRunServeServesRegistry).
+		http.DefaultClient.CloseIdleConnections()
 		cancel()
 		if err := <-done; err != nil {
 			t.Errorf("runServe returned %v, want nil", err)

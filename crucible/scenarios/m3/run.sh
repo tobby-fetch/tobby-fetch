@@ -33,7 +33,7 @@ set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$DIR/../../lib.sh"
 
-IMAGE="${CRUCIBLE_IMAGE:-images:alpine/3.22}"
+IMAGE="${CRUCIBLE_IMAGE:-images:alpine/3.24}"
 ARCH="$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')"
 CRED_USER="admin"
 CRED_PASS="m3-crucible-pass"
@@ -74,19 +74,6 @@ inc exec tbc-m3-source -- sh -c '
 # A freshly launched instance has no address until DHCP completes, and
 # this scenario reads all three at once: wait for each rather than
 # capturing an empty string that only fails minutes later.
-instance_ip() {
-    i=0
-    while :; do
-        ip=$(inc list "$1" -c 4 -f csv | awk '{print $1}' | head -1)
-        if [ -n "$ip" ]; then
-            printf '%s' "$ip"
-            return 0
-        fi
-        i=$((i + 1))
-        [ "$i" -gt 60 ] && fail "instance $1 never received an address"
-        sleep 1
-    done
-}
 SOURCE_IP=$(instance_ip tbc-m3-source)
 NODE_IP=$(instance_ip tbc-m3-node)
 DOWN_IP=$(instance_ip tbc-m3-downstream)
