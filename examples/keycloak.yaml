@@ -2,19 +2,19 @@
 #
 # PROFILE: cooked.
 #
-# Verified against chart keycloakx 7.2.2 / appVersion 26.6.4 on 2026-08-15.
+# Verified against chart keycloakx 7.4.0 / appVersion 26.8.1 on 2026-11-09.
 apiVersion: recipe.tobby.dev/v1alpha1
 kind: Recipe
 
 metadata:
   name: keycloak
-  version: 26.6.4
+  version: 26.8.1
   description: >-
     Keycloak (Quarkus distribution) with a PostgreSQL database, for a zone
     that has to authenticate its own users without reaching an external
     identity provider.
   annotations:
-    recipe.tobby.dev/cooked-at: "2026-08-15T09:00:00Z"
+    recipe.tobby.dev/cooked-at: "2026-11-09T09:00:00Z"
     org.opencontainers.image.source: https://github.com/codecentric/helm-charts
 
 spec:
@@ -22,15 +22,15 @@ spec:
     - name: keycloakx-chart
       kind: HelmChart
       ref: ghcr.io/codecentric/helm-charts/keycloakx
-      version: 7.2.2
-      digest: sha256:ada9f1083b0fc00486658d71e08d8e511ee345ef25e6411f9656fddcbeedcb3a
+      version: 7.4.0
+      digest: sha256:7ddcf048e91c2fbb928d80ec83d16bbb2393aaf7c563c8a885e0da7d92bf5d31
       vendorDependencies: false
 
     - name: keycloak
       kind: ContainerImage
       ref: quay.io/keycloak/keycloak
-      version: 26.6.4
-      digest: sha256:0aae0de7fca85525f727d3354df17896092de8bb26ae4c12d89c77e5df8cbce4
+      version: 26.8.1
+      digest: sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332
       platforms: [linux/amd64, linux/arm64]
 
     # ------------------------------------------------------------------
@@ -49,14 +49,14 @@ spec:
     # when it finds no match — better a loud failure than a silent
     # architecture swap. Read the real labels off the index:
     #
-    #   oras manifest fetch docker.io/library/postgres:17.6-alpine \
+    #   oras manifest fetch docker.io/library/postgres:17.11-alpine \
     #     | jq -r '.manifests[].platform | .os+"/"+.architecture+(.variant//"" | if .=="" then "" else "/"+. end)'
     # ------------------------------------------------------------------
     - name: postgres
       kind: ContainerImage
       ref: docker.io/library/postgres
-      version: 17.6-alpine
-      digest: sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
+      version: 17.11-alpine
+      digest: sha256:3540c0362c809df084ffac0ae69fe794515f9de92692f02178bcdce0ef0302ac
       platforms: [linux/amd64, linux/arm64/v8]
 
     # ------------------------------------------------------------------

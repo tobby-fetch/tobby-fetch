@@ -5,7 +5,7 @@ plus the Retriever that ties them into one zone. They are written to be read
 as much as to be run: each one carries the reasoning that produced its
 ingredient list, because that reasoning is the hard part.
 
-All five were verified against live upstreams on 2026-08-15 and validate
+All five were verified against live upstreams on 2026-11-09 and validate
 against the specification:
 
 ```bash
@@ -17,14 +17,14 @@ recipe lint -profile draft examples/
 | [`otel-collector.yaml`](otel-collector.yaml) | cooked | The nominal case — and a chart that renders **no** image by default. |
 | [`keycloak.yaml`](keycloak.yaml) | cooked | A dependency the chart never mentions, and platform labels that are not what you'd type. |
 | [`victoria-metrics-operator.yaml`](victoria-metrics-operator.yaml) | cooked | An operator that carries its images in its own defaults. **Read this one.** |
-| [`harbor.yaml`](harbor.yaml) | draft | Single-architecture images, and mutable data that must not be pinned. |
-| [`metallb.yaml`](metallb.yaml) | draft | A chart that is not an OCI artifact, and a sidecar on its own release cadence. |
+| [`metallb.yaml`](metallb.yaml) | cooked | A chart that is an OCI artifact only if you look past the install guide, and a dependency on its own release cadence. |
+| [`harbor.yaml`](harbor.yaml) | draft | A chart that is not an OCI artifact, single-architecture images, and mutable data that must not be pinned. |
 | [`retriever.yaml`](retriever.yaml) | — | The desired state of a zone, with version constraints. |
 
 **Draft or cooked.** A *cooked* recipe pins every ingredient by digest and is
-what a cookbook publishes. A *draft* leaves digests out. Two of these are
-drafts for the same honest reason: their Helm chart is only published to a
-legacy `index.yaml` repository, so it has to be republished into a registry
+what a cookbook publishes. A *draft* leaves digests out. Harbor is a draft
+for an honest reason: its Helm chart is only published to a legacy
+`index.yaml` repository, so it has to be republished into a registry
 **you** control before it can be an ingredient at all — and the digest is
 then the one your registry returns, not one we can print here.
 
@@ -46,8 +46,9 @@ is not sufficient. Here are four ways an image escapes it, one per example.
 
 The OpenTelemetry Collector chart ships `image.repository: ""`. It refuses to
 choose between the core and the contrib distribution, so rendering the
-defaults yields an empty inventory — and a zone that receives a chart with
-nothing to run.
+defaults stops with an error — which a `helm template | grep image:`
+pipeline without `pipefail` turns into an empty inventory, and a zone that
+receives a chart with nothing to run.
 
 **Rule:** inventory the manifests rendered from *your* values, never the
 chart's defaults.
@@ -68,7 +69,7 @@ This is the one that bites hardest, and the reason the VictoriaMetrics
 example exists. Render its chart and you get a single image:
 
 ```
-victoriametrics/operator:v0.74.0
+victoriametrics/operator:v0.75.2
 ```
 
 Carry that in and the operator starts, healthy and green. Then someone
@@ -81,10 +82,10 @@ An operator does not deploy its own image. It deploys the images written in
 variable. So ask the operator:
 
 ```bash
-docker run --rm victoriametrics/operator:v0.74.0 --printDefaults | grep -E 'IMAGE|VERSION'
+docker run --rm victoriametrics/operator:v0.75.2 --printDefaults | grep -E 'IMAGE|VERSION'
 ```
 
-Around twenty-five images come back, and the versions are *templates*
+Over twenty images come back, and the versions are *templates*
 (`${VM_METRICS_VERSION}`, `${VM_METRICS_VERSION}-cluster`) that must be
 resolved before pinning. The recipe lists the seven a single-node metrics
 stack needs, and names the ones it leaves out so the omission reads as a
@@ -100,19 +101,25 @@ admission, in the open, rather than at pull time in a cluster nobody watches.
 
 ### 4. The chart is not an OCI artifact at all
 
-MetalLB and Harbor publish only to `index.yaml` repositories. The recipe
+Harbor publishes its chart only to an `index.yaml` repository. The recipe
 format takes those out of scope on purpose ([RECIPE-SPEC §7.2][spec]): an
 ingredient is an OCI artifact, full stop. Republish the chart once, into your
 own registry:
 
 ```bash
-helm repo add metallb https://metallb.github.io/metallb
-helm pull metallb/metallb --version 0.16.1
-helm push metallb-0.16.1.tgz oci://registry.example.com/charts
+helm repo add harbor https://helm.goharbor.io
+helm pull harbor/harbor --version 1.19.4
+helm push harbor-1.19.4.tgz oci://registry.example.com/charts
 ```
 
 The archive is not rewritten — the bytes, and therefore the upstream
 signature, survive the move.
+
+Check before you republish, though. MetalLB's installation guide only cites
+its `index.yaml` repository, yet its release pipeline pushes the very same
+archive to `oci://quay.io/metallb/chart` at every release — so that recipe
+points straight at upstream and is cooked as it stands. The repository a
+project advertises is not always the only one it publishes to.
 
 ## Three more things that are learned the expensive way
 
@@ -122,7 +129,7 @@ the ingredient rather than guessing — a loud failure beats a silent
 architecture swap. Read the labels off the index instead of typing them:
 
 ```bash
-oras manifest fetch docker.io/library/postgres:17.6-alpine \
+oras manifest fetch docker.io/library/postgres:17.11-alpine \
   | jq -r '.manifests[].platform | .os + "/" + .architecture + (if .variant then "/" + .variant else "" end)'
 ```
 
@@ -132,7 +139,7 @@ so a `platforms:` list there is ignored — and tells a reader something false.
 Check the media type before writing one:
 
 ```bash
-oras manifest fetch --descriptor docker.io/goharbor/harbor-core:v2.15.2
+oras manifest fetch --descriptor docker.io/goharbor/harbor-core:v2.15.4
 ```
 
 **Mutable data does not belong in a slow recipe.** Harbor's Trivy adapter
@@ -148,7 +155,7 @@ ships a subcommand for it anyway, because the interesting part is not the
 transport — it is refusing to publish something a zone will reject later:
 
 ```bash
-tobby recipe push metallb.yaml registry.example.com/cookbook/metallb:0.16.1
+tobby recipe push metallb.yaml registry.example.com/cookbook/metallb:0.16.2
 ```
 
 It declines a document that is not a valid recipe, one that is not fully
@@ -160,7 +167,7 @@ published digest goes to stdout, ready for the signing step:
 ```bash
 cosign sign --key cosign.key \
   --use-signing-config=false --tlog-upload=false \
-  registry.example.com/cookbook/metallb@$(tobby recipe push metallb.yaml registry.example.com/cookbook/metallb:0.16.1)
+  registry.example.com/cookbook/metallb@$(tobby recipe push metallb.yaml registry.example.com/cookbook/metallb:0.16.2)
 ```
 
 Signing stays outside Tobby, which never holds a private key.
@@ -171,7 +178,7 @@ title a published recipe is expected to have:
 
 ```bash
 cp metallb.yaml recipe.yaml
-oras push registry.example.com/cookbook/metallb:0.16.1 \
+oras push registry.example.com/cookbook/metallb:0.16.2 \
   --artifact-type application/vnd.tobby.recipe.v1+yaml \
   recipe.yaml:application/vnd.tobby.recipe.v1+yaml
 ```

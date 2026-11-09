@@ -17,12 +17,13 @@ import (
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 )
 
-// cooked lists the examples that claim full pinning. The others are drafts on
-// purpose: their Helm chart only exists in a legacy index.yaml repository, so
-// it must be republished into the operator's own registry before a digest
-// exists to record (RECIPE-SPEC §7.2).
+// cooked lists the examples that claim full pinning. The other is a draft on
+// purpose: its Helm chart only exists in a legacy index.yaml repository, so it
+// must be republished into the operator's own registry before a digest exists
+// to record (RECIPE-SPEC §7.2).
 var cooked = map[string]bool{
 	"keycloak.yaml":                  true,
+	"metallb.yaml":                   true,
 	"otel-collector.yaml":            true,
 	"victoria-metrics-operator.yaml": true,
 }
