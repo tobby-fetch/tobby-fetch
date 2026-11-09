@@ -51,6 +51,11 @@ jobs:
       # golangci-lint only sees the files the current GOOS selects. Six real
       # findings were sitting in the Windows sources when this step was
       # added, in code the milestone-5 release had already shipped.
+      # The reference chart deploys "v" + appVersion by default, and every
+      # release publishes it to an OCI registry: a chart left behind the
+      # changelog ships the wrong image to everyone who installs it (B-035).
+      - name: Reference chart tracks the released version
+        run: sh tools/check-chart-version.sh
       - name: Lint the Windows and macOS sources
         run: |
           for goos in windows darwin; do
