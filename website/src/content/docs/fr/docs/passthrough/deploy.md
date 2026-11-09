@@ -30,11 +30,11 @@ identiques. Voir
 
 ## Kubernetes
 
-Le déploiement de référence vit dans le dépôt sous
-[`deploy/`](https://github.com/tobby-fetch/tobby-fetch/tree/main/deploy) :
-un chart Helm dans `deploy/charts/tobby/` et le même pod écrit en YAML
-brut numéroté dans `deploy/manifests/`, pour les clusters qui ne font
-pas tourner Helm. Les deux produisent un conteneur non-root sur un
+Le déploiement de référence existe sous deux formes : un chart Helm,
+publié à chaque release comme artefact OCI sous
+`oci://ghcr.io/tobby-fetch/charts/tobby`, et le même pod écrit en YAML brut numéroté
+dans [`deploy/manifests/`](https://github.com/tobby-fetch/tobby-fetch/tree/main/deploy/manifests),
+pour les clusters qui ne font pas tourner Helm. Les deux produisent un conteneur non-root sur un
 système de fichiers racine en lecture seule, toutes capacités
 abandonnées, probes câblées, et des PersistentVolumeClaims distincts
 pour le store (100Gi par défaut) et l'état (20Gi par défaut — l'état
@@ -44,10 +44,28 @@ accueille aussi les spools de téléchargements reprenables, voir
 ### Avec Helm
 
 ```sh
-helm install tobby ./deploy/charts/tobby \
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.5.2 \
   --namespace tobby --create-namespace \
   --set config.mode=passthrough
 ```
+
+La version du chart **est** la version de Tobby : le chart `0.5.2`
+déploie l'image `v0.5.2`, et rien d'autre. Épinglez `--version` — sans
+elle, Helm prend le chart le plus récent, c'est-à-dire une mise à jour que
+vous n'avez pas choisie. Chaque chart publié est signé sans clé par le
+workflow de release, comme l'image :
+
+```sh
+cosign verify ghcr.io/tobby-fetch/charts/tobby:0.5.2 \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
+```
+
+Un cluster sans route vers `ghcr.io` reçoit le chart comme tout le
+reste : le chart et l'image qu'il désigne sont deux ingrédients d'une
+recette, transportés par Tobby et tirés depuis le registre de la zone
+(`oci://registry.zone.example/…`). Depuis un clone du dépôt,
+`./deploy/charts/tobby` est le même chart, pour le développement.
 
 `config.mode` est la seule valeur sans défaut utilisable : une instance
 doit dire ce qu'elle est (FR-001). La valeur `config` du chart devient
@@ -69,7 +87,8 @@ kubectl -n tobby create secret docker-registry tobby-registry-credentials \
   --docker-username=tobby \
   --docker-password="$(cat ./token)"
 
-helm upgrade tobby ./deploy/charts/tobby --namespace tobby --reuse-values \
+helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.5.2 \
+  --namespace tobby --reuse-values \
   --set registryCredentials.enabled=true \
   --set registryCredentials.existingSecret=tobby-registry-credentials
 ```

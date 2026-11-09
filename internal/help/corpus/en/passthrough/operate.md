@@ -171,8 +171,11 @@ formats are carried across versions — lives in
 - **Packages:** verify the new package, then install it over the old one
   (`dpkg -i` / `rpm -U` / `apk add --allow-untrusted`) and restart the
   service. Packages are scriptless; nothing runs on install.
-- **Kubernetes:** `helm upgrade tobby ./deploy/charts/tobby --namespace
-  tobby --reuse-values --set image.tag=v0.4.2` — pin `image.digest` in
+- **Kubernetes:** `helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version
+  <new version> --namespace tobby --reuse-values` — the chart version is
+  the Tobby version, so it moves the image with it. If an earlier upgrade
+  set `image.tag`, `--reuse-values` keeps it: clear it with
+  `--set image.tag=` or the image will not move. Pin `image.digest` in
   production. The strategy is `Recreate` with a single replica: the old
   pod releases the volumes before the new one starts, so there are never
   two writers on one store. Expect a short outage per upgrade; both

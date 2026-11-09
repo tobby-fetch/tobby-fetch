@@ -53,11 +53,28 @@ written into the configuration file and never inside the store.
 
 ## Installing with Helm
 
+Every release publishes this chart as an OCI artifact, signed with cosign
+like the image:
+
 ```sh
-helm install tobby ./deploy/charts/tobby \
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.5.2 \
   --namespace tobby --create-namespace \
   --set config.mode=passthrough
 ```
+
+The chart version is the Tobby version — chart `0.5.2` deploys image
+`v0.5.2` — so pin `--version`. Verify before installing:
+
+```sh
+cosign verify ghcr.io/tobby-fetch/charts/tobby:0.5.2 \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
+```
+
+Behind an air gap, carry the chart and its image in with Tobby itself
+(two ingredients of one recipe) and install from the zone registry. From
+this checkout, `./deploy/charts/tobby` is the same chart — use it to try a
+change, not to deploy a release.
 
 ### Required values
 
@@ -85,7 +102,8 @@ kubectl -n tobby create secret docker-registry tobby-registry-credentials \
   --docker-username=tobby \
   --docker-password="$(cat ./token)"
 
-helm upgrade tobby ./deploy/charts/tobby --namespace tobby --reuse-values \
+helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.5.2 \
+  --namespace tobby --reuse-values \
   --set registryCredentials.enabled=true \
   --set registryCredentials.existingSecret=tobby-registry-credentials
 ```
@@ -135,7 +153,7 @@ value to change instead:
 Reviewing what you are about to install:
 
 ```sh
-helm template tobby ./deploy/charts/tobby --set config.mode=passthrough
+helm template tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.5.2 --set config.mode=passthrough
 ```
 
 ---
@@ -385,9 +403,13 @@ Full guide: [`docs/release-verification.md`](../docs/release-verification.md).
 ## Upgrading
 
 ```sh
-helm upgrade tobby ./deploy/charts/tobby --namespace tobby --reuse-values \
-  --set image.tag=v0.4.0
+helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version <new version> \
+  --namespace tobby --reuse-values
 ```
+
+The chart version selects the image. If an earlier upgrade set
+`image.tag`, `--reuse-values` keeps it and the image does not move —
+clear it with `--set image.tag=`.
 
 The deployment strategy is `Recreate` with a single replica: the old pod
 releases the volumes before the new one starts, so there are never two
