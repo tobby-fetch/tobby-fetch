@@ -187,9 +187,12 @@ politique de compatibilité — ce qui est déjà stable, ce qui se fige en
   l'ancien (`dpkg -i` / `rpm -U` / `apk add --allow-untrusted`) et
   redémarrez le service. Les paquets sont sans script ; rien ne s'exécute
   à l'installation.
-- **Kubernetes :** `helm upgrade tobby ./deploy/charts/tobby --namespace
-  tobby --reuse-values --set image.tag=v0.4.2` — épinglez `image.digest`
-  en production. La stratégie est `Recreate` avec un seul replica : l'ancien
+- **Kubernetes :** `helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version
+  <nouvelle version> --namespace tobby --reuse-values` — la version du
+  chart est celle de Tobby, elle fait donc bouger l'image avec elle. Si
+  une mise à jour précédente a fixé `image.tag`, `--reuse-values` le
+  conserve : videz-le avec `--set image.tag=`, sinon l'image ne bouge
+  pas. Épinglez `image.digest` en production. La stratégie est `Recreate` avec un seul replica : l'ancien
   pod relâche les volumes avant que le nouveau ne démarre, il n'y a donc
   jamais deux écrivains sur un même store. Attendez-vous à une courte
   interruption à chaque montée de version ; les deux PVC portent

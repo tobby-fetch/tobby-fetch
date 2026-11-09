@@ -30,14 +30,14 @@ features.
 | 2 — User-experience preview | v0.2.x | Delivered (v0.2.0, 2026-08-12) |
 | 3 — Recipe engine | v0.3.x | Delivered (v0.3.0, 2026-08-16) |
 | 4 — Passthrough | v0.4.x | Delivered (v0.4.0 → v0.4.2) |
-| 5 — Mirror & air-gap | v0.5.x | Delivered (v0.5.0 → v0.5.1) |
+| 5 — Mirror & air-gap | v0.5.x | Delivered (v0.5.0 → v0.5.2) |
 | 6 — Hardened controls & enterprise identity | v0.6.x | Upcoming |
 | 7 — Finishing, documentation & acceptance | v0.7.x → 1.0.0 | Upcoming |
 
 **Observed cadence.** The first five milestones shipped between 2026-08-11
 (v0.1.0) and 2026-08-27 (v0.5.0), with two hardening patches along the way
-(v0.4.1 on 2026-08-18, v0.4.2 on 2026-08-22) and a maintenance release
-since (v0.5.1 on 2026-11-07). That is the cadence of the
+(v0.4.1 on 2026-08-18, v0.4.2 on 2026-08-22) and two maintenance releases
+since (v0.5.1 on 2026-11-07, v0.5.2 on 2026-11-09). That is the cadence of the
 initial development phase, not a commitment: each milestone ships when its
 acceptance scenarios pass on the [crucible](../../project/tests-and-proofs/),
 not on a date.
@@ -56,6 +56,15 @@ Each milestone train has a raw acceptance report; they are published under
 [acceptance reports](../../project/acceptance-reports/). The full changelog
 lives in the repository
 ([CHANGELOG.md](https://github.com/tobby-fetch/tobby-fetch/blob/main/CHANGELOG.md)).
+
+### v0.5.2 — 2026-11-09 (maintenance)
+
+- **The Helm chart is published with every release** as a signed OCI
+  artifact: `helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby
+  --version 0.5.2`. The chart version is the Tobby version.
+- **The chart deploys the right image again.** Its default image had
+  stayed at v0.3.0 since milestone 3 (B-035); a check now fails the build
+  and the release when the chart lags.
 
 ### v0.5.1 — 2026-11-07 (maintenance)
 
