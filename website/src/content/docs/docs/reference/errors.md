@@ -263,7 +263,7 @@ its published rendering.
 - **Probable cause:** *\<reference\>* is not a valid image or chart
   reference.
 - **Corrective action:** use the form `registry/repository:tag` or
-  `registry/repository@sha256:…` — for example `docker.io/library/redis:7.2`.
+  `registry/repository@sha256:…` — for example `docker.io/library/redis:8.10`.
 - **Fixable offline:** yes · **Blocks:** the operation using that reference
 
 ### TBY-REG-002

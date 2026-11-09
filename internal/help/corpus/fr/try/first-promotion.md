@@ -82,10 +82,10 @@ de registry locale.
 ## 2. Épingler l'image
 
 Une recipe désigne le contenu par digest, jamais par simple tag. Lisez le
-digest que `alpine:3.22.1` résout aujourd'hui :
+digest que `alpine:3.24.4` résout aujourd'hui :
 
 ```sh
-docker buildx imagetools inspect docker.io/library/alpine:3.22.1
+docker buildx imagetools inspect docker.io/library/alpine:3.24.4
 ```
 
 Les premières lignes affichent `Digest: sha256:…` — **gardez ce digest**,
@@ -104,7 +104,7 @@ kind: Recipe
 
 metadata:
   name: alpine
-  version: 3.22.1
+  version: 3.24.4
   description: Première promotion — une image épinglée
 
 spec:
@@ -112,7 +112,7 @@ spec:
     - name: alpine
       kind: ContainerImage
       ref: docker.io/library/alpine   # référence nominale, sans tag
-      version: 3.22.1
+      version: 3.24.4
       digest: sha256:<le digest affiché par imagetools>
 ```
 
@@ -128,7 +128,7 @@ jetable parle HTTP simple, ce qui exige un accord explicite par hôte :
 
 ```sh
 export TOBBY_REGISTRIES_INSECURE=127.0.0.1:5001
-tobby recipe push alpine.yaml 127.0.0.1:5001/cookbook/alpine:3.22.1
+tobby recipe push alpine.yaml 127.0.0.1:5001/cookbook/alpine:3.24.4
 ```
 
 Le digest publié sort sur stdout, prêt pour la signature. Signer reste
@@ -163,10 +163,10 @@ spec:
   cookbook: 127.0.0.1:5001/cookbook
   recipes:
     - name: alpine
-      version: "3.22.1"
+      version: "3.24.4"
 ```
 
-Une version exacte est prise au mot ; une contrainte (`6.x`, `~0.16.1`)
+Une version exacte est prise au mot ; une contrainte (`6.x`, `~0.16.2`)
 se résout contre le cookbook à chaque synchronisation — une version
 corrective arrive en la publiant, sans fichier à modifier.
 
@@ -226,7 +226,7 @@ Docker s'authentifie avec le même compte que l'interface :
 
 ```sh
 docker login 127.0.0.1:8080    # le compte créé par le quickstart
-docker pull 127.0.0.1:8080/docker.io/library/alpine:3.22.1
+docker pull 127.0.0.1:8080/docker.io/library/alpine:3.24.4
 ```
 
 Si votre daemon Docker tourne dans une VM (Rancher Desktop, certains
@@ -279,15 +279,15 @@ qui préserve l'origine — `docker push` affiche le digest que votre recipe
 épingle ensuite :
 
 ```sh
-docker pull docker.io/library/alpine:3.22.1
-docker tag docker.io/library/alpine:3.22.1 127.0.0.1:8092/docker.io/library/alpine:3.22.1
-docker push 127.0.0.1:8092/docker.io/library/alpine:3.22.1
+docker pull docker.io/library/alpine:3.24.4
+docker tag docker.io/library/alpine:3.24.4 127.0.0.1:8092/docker.io/library/alpine:3.24.4
+docker push 127.0.0.1:8092/docker.io/library/alpine:3.24.4
 ```
 
 Adaptez la recipe : épinglez le digest affiché par `docker push` — ce que
 vous avez poussé est un manifeste mono-plateforme, son digest diffère donc
 de celui de l'index d'origine. Publiez-la et signez-la contre
-`127.0.0.1:8092/cookbook/alpine:3.22.1` exactement comme ci-dessus,
+`127.0.0.1:8092/cookbook/alpine:3.24.4` exactement comme ci-dessus,
 pointez le `cookbook` du Retriever dessus, et remplacez le bloc
 `registries` de votre `tobby.yaml` par :
 

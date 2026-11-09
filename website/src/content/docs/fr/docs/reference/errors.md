@@ -301,7 +301,7 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
   d'image ou de chart.
 - **Action corrective :** utilisez la forme `registry/repository:tag` ou
   `registry/repository@sha256:…` — par exemple
-  `docker.io/library/redis:7.2`.
+  `docker.io/library/redis:8.10`.
 - **Remédiable hors-ligne :** oui · **Bloque :** l'opération utilisant cette référence
 
 ### TBY-REG-002

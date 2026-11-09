@@ -413,7 +413,7 @@ Signing stays outside Tobby, which never holds a private key. In text mode
 the published digest is printed alone on stdout, ready for cosign:
 
 ```sh
-tobby recipe push harbor.yaml registry.example.com/cookbook/harbor:2.15.2
+tobby recipe push harbor.yaml registry.example.com/cookbook/harbor:2.15.4
 cosign sign --key cosign.key --use-signing-config=false --tlog-upload=false \
   registry.example.com/cookbook/harbor@<the printed digest>
 ```

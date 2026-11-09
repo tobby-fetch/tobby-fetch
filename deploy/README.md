@@ -206,7 +206,7 @@ claim:
 kubectl -n tobby scale deploy/tobby --replicas=0
 
 kubectl -n tobby run tobby-bootstrap --rm -it --restart=Never \
-  --image=ghcr.io/tobby-fetch/tobby-fetch:v0.3.0 \
+  --image=ghcr.io/tobby-fetch/tobby-fetch:v0.5.2 \
   --overrides='{
     "spec": {
       "securityContext": {
@@ -215,7 +215,7 @@ kubectl -n tobby run tobby-bootstrap --rm -it --restart=Never \
       },
       "containers": [{
         "name": "tobby-bootstrap",
-        "image": "ghcr.io/tobby-fetch/tobby-fetch:v0.3.0",
+        "image": "ghcr.io/tobby-fetch/tobby-fetch:v0.5.2",
         "stdin": true, "tty": true,
         "args": ["user", "add", "admin", "--state-root", "/var/lib/tobby/state"],
         "securityContext": {
