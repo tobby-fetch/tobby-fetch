@@ -11,11 +11,15 @@ name: tobby
 description: Secure artifact fetch-and-relocate tool with an embedded OCI registry
 type: application
 
-# version is the chart's own version and moves independently of the tool.
-# appVersion is the Tobby release the default image tag points at; the
-# release process bumps it in the same commit as the tag.
-version: 0.1.0
-appVersion: "0.3.0"
+# appVersion is the Tobby release the default image tag points at
+# ("v" + appVersion). version follows it: every release publishes this
+# chart to oci://ghcr.io/tobby-fetch/charts/tobby under the release's own
+# version, so the two cannot drift apart. The release-cut commit moves
+# both together with CHANGELOG.md; tools/check-chart-version.sh fails CI
+# when it does not, and fails the release when they disagree with the tag
+# (B-035 — appVersion once sat at 0.3.0 for three releases).
+version: 0.5.2
+appVersion: "0.5.2"
 
 # HTTP probes use the `GET /path` httpGet form and `Recreate` deployment
 # strategy; both are long-standing APIs. 1.25 is the floor because the

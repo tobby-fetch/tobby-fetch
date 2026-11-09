@@ -8,6 +8,40 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-09
+
+The reference Helm chart is now published with every release, as a signed
+OCI artifact, and it deploys the release it ships with again.
+
+### Fixed
+
+- **The reference chart deployed v0.3.0** (B-035). Its default image tag
+  is `v` + `appVersion`, and `appVersion` had stayed at `0.3.0` since the
+  milestone-3 release: a default `helm install` of a v0.4.x, v0.5.0 or
+  v0.5.1 checkout ran the v0.3.0 image — without passthrough hardening,
+  without mirror and air-gap, without B-033/B-034. The only thing meant
+  to move it was a sentence in a comment. `tools/check-chart-version.sh`
+  now fails CI when the chart's `version`/`appVersion` lag the newest
+  release in this changelog or when the install docs pin another
+  version, and fails the release when they differ from the tag. If you
+  installed with `--set image.tag=…`, you were not affected.
+
+### Added
+
+- **The chart is published to `oci://ghcr.io/tobby-fetch/charts/tobby`**
+  by the release workflow, after the image passed its CVE gate, and
+  signed with cosign keyless like the image. The release notes carry its
+  digest and the verification command. The chart's `version` now equals
+  the Tobby version: chart `0.5.2` deploys image `v0.5.2`.
+
+### Changed
+
+- **The install documentation installs from the OCI chart**, with
+  `--version` pinned, rather than from a repository checkout
+  (`deploy/README.md`, the Kubernetes deployment and upgrade pages, EN
+  and FR). The upgrade instructions warn that `--reuse-values` keeps an
+  `image.tag` set by an earlier upgrade.
+
 ## [0.5.1] - 2026-11-07
 
 Maintenance release: the toolchain, every Go dependency and every pinned
@@ -1048,7 +1082,8 @@ import, track, browse, pull) behind authentication that is on by default.
 - Release chain groundwork for SLSA Build L3 provenance and signed
   artifacts.
 
-[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.1...v0.4.2
