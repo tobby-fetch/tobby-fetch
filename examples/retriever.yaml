@@ -28,21 +28,21 @@ spec:
     # registry is the one component you upgrade on purpose, at a chosen
     # moment, never because a constraint resolved higher overnight.
     - name: harbor
-      version: "2.15.2"
+      version: "2.15.4"
 
     # Networking and identity: patch releases welcome, minor ones reviewed.
     - name: metallb
-      version: "~0.16.1"
+      version: "~0.16.2"
 
     - name: keycloak
       version: "26.x"
 
     # Observability moves faster and breaks less.
     - name: otel-collector
-      version: "^0.158.0"
+      version: "^0.163.2"
 
     - name: victoria-metrics-operator
-      version: "~0.74.0"
+      version: "~0.75.2"
 
 # If no published version satisfies a constraint, that entry fails and says
 # so — there is no silent fallback to a neighbouring version. The other

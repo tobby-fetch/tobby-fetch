@@ -16,7 +16,7 @@ in milestone 2 and has been part of every release since.
 The **Import** screen (`/import`, operator role) is a two-step,
 inspect-before-import flow:
 
-1. **Inspect.** Paste a reference — `docker.io/library/nginx:1.29`,
+1. **Inspect.** Paste a reference — `docker.io/library/nginx:1.30`,
    `ghcr.io/org/chart:2.0.1` — and the instance contacts the registry
    through the same shared transport as everything else (proxy, private
    CAs, credentials file, allowlist). One inspection is bounded by
@@ -42,13 +42,13 @@ The UI is a strict mirror of the API (FR-061):
 ```sh
 # Inspect: platforms, digests, sizes, local status
 curl -su "$USER:$PASS" \
-  "https://tobby.zone.example/api/v1/import/inspect?ref=docker.io/library/nginx:1.29"
+  "https://tobby.zone.example/api/v1/import/inspect?ref=docker.io/library/nginx:1.30"
 
 # Import (operator role): returns the tracked task. Platforms are named
 # with the digest the inspection reported — the pin travels with the request.
 curl -su "$USER:$PASS" -X POST \
   -H 'Content-Type: application/json' \
-  -d '{"reference":"docker.io/library/nginx:1.29",
+  -d '{"reference":"docker.io/library/nginx:1.30",
        "platforms":[{"name":"linux/amd64","digest":"sha256:…"}]}' \
   "https://tobby.zone.example/api/v1/import"
 ```

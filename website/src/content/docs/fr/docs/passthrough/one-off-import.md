@@ -17,7 +17,7 @@ chaque release depuis.
 L'écran **Import** (`/import`, rôle operator) est un parcours en deux
 étapes, l'inspection avant l'import :
 
-1. **Inspecter.** Collez une référence — `docker.io/library/nginx:1.29`,
+1. **Inspecter.** Collez une référence — `docker.io/library/nginx:1.30`,
    `ghcr.io/org/chart:2.0.1` — et l'instance contacte la registry par le
    même transport partagé que tout le reste (proxy, CA privées, fichier
    de credentials, liste blanche). Une inspection est bornée par
@@ -47,13 +47,13 @@ L'interface est un miroir strict de l'API (FR-061) :
 ```sh
 # Inspect: platforms, digests, sizes, local status
 curl -su "$USER:$PASS" \
-  "https://tobby.zone.example/api/v1/import/inspect?ref=docker.io/library/nginx:1.29"
+  "https://tobby.zone.example/api/v1/import/inspect?ref=docker.io/library/nginx:1.30"
 
 # Import (operator role): returns the tracked task. Platforms are named
 # with the digest the inspection reported — the pin travels with the request.
 curl -su "$USER:$PASS" -X POST \
   -H 'Content-Type: application/json' \
-  -d '{"reference":"docker.io/library/nginx:1.29",
+  -d '{"reference":"docker.io/library/nginx:1.30",
        "platforms":[{"name":"linux/amd64","digest":"sha256:…"}]}' \
   "https://tobby.zone.example/api/v1/import"
 ```

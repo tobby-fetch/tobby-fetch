@@ -120,7 +120,7 @@ usage or I/O error — CI-friendly by construction. Full usage lives in the
 ## Publish with `tobby recipe push`
 
 ```sh
-tobby recipe push harbor.yaml registry.example.com/cookbook/harbor:2.15.2
+tobby recipe push harbor.yaml registry.example.com/cookbook/harbor:2.15.4
 ```
 
 Any OCI push tool can publish a recipe — that is the point of the format —
@@ -171,7 +171,7 @@ produces an unsigned artifact and you sign the digest yourself. With
 cosign 3.x and a key pair:
 
 ```sh
-DIGEST=$(tobby recipe push harbor.yaml registry.example.com/cookbook/harbor:2.15.2)
+DIGEST=$(tobby recipe push harbor.yaml registry.example.com/cookbook/harbor:2.15.4)
 
 cosign sign --key cosign.key \
   --use-signing-config=false --tlog-upload=false \

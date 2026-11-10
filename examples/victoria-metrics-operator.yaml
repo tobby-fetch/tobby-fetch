@@ -2,7 +2,7 @@
 #
 # PROFILE: cooked.
 #
-# Verified against chart 0.67.2 / appVersion v0.74.0 on 2026-08-15.
+# Verified against chart 0.68.2 / appVersion v0.75.2 on 2026-11-09.
 #
 # ====================================================================
 # WHY THIS ONE IS DIFFERENT
@@ -10,8 +10,8 @@
 # Rendering the chart returns exactly one image:
 #
 #   $ helm template t oci://ghcr.io/victoriametrics/helm-charts/victoria-metrics-operator \
-#       --version 0.67.2 | grep -E '^\s*image:'
-#   victoriametrics/operator:v0.74.0
+#       --version 0.68.2 | grep -E '^\s*image:'
+#   victoriametrics/operator:v0.75.2
 #
 # Carry that one image into the zone and the operator starts, healthy and
 # green. Then someone applies a VMSingle, and the pod it creates sits in
@@ -25,13 +25,13 @@
 # Ask the operator itself. This is the authoritative list, and it is
 # reproducible without a cluster:
 #
-#   $ docker run --rm victoriametrics/operator:v0.74.0 --printDefaults \
+#   $ docker run --rm victoriametrics/operator:v0.75.2 --printDefaults \
 #       | grep -E 'IMAGE|VERSION'
 #
-#   VM_METRICS_VERSION                          v1.148.0
-#   VM_LOGS_VERSION                             v1.52.0
-#   VM_ANOMALY_VERSION                          v1.30.0
-#   VM_TRACES_VERSION                           v0.10.0
+#   VM_METRICS_VERSION                          v1.155.0
+#   VM_LOGS_VERSION                             v1.53.0
+#   VM_ANOMALY_VERSION                          v1.31.1
+#   VM_TRACES_VERSION                           v0.12.1
 #   VM_CONFIG_RELOADER_IMAGE                    victoriametrics/operator:config-reloader-${VM_OPERATOR_VERSION}
 #   VM_VMSINGLEDEFAULT_IMAGE                    victoriametrics/victoria-metrics
 #   VM_VMAGENTDEFAULT_IMAGE                     victoriametrics/vmagent
@@ -41,8 +41,14 @@
 #   … and ~20 more for logs, traces, anomaly, cluster and backup
 #
 # Note the indirection: the versions are TEMPLATES. VM_VMSINGLEDEFAULT_VERSION
-# is "${VM_METRICS_VERSION}", so the tag is v1.148.0; the cluster components
+# is "${VM_METRICS_VERSION}", so the tag is v1.155.0; the cluster components
 # resolve to "${VM_METRICS_VERSION}-cluster". Resolve them before pinning.
+#
+# One template does not resolve from this output at all: the Alertmanager
+# tag is "${VM_ALERTMANAGER_VERSION}", a default the operator applies but
+# does not print. Its value lives in the operator source, in the
+# defaultEnvs map of internal/config/config.go at the release tag:
+# v0.34.1 for operator v0.75.2.
 #
 # The same question applies to every operator you take through a boundary —
 # cert-manager, Strimzi, Prometheus, ECK. If the answer is not in a rendered
@@ -54,14 +60,14 @@ kind: Recipe
 
 metadata:
   name: victoria-metrics-operator
-  version: 0.74.0
+  version: 0.75.2
   description: >-
     VictoriaMetrics operator and the single-node metrics stack it deploys:
     VMSingle, VMAgent, VMAlert, VMAuth and Alertmanager. The components are
     listed explicitly because the operator carries them in its defaults,
     not in the chart.
   annotations:
-    recipe.tobby.dev/cooked-at: "2026-08-15T09:00:00Z"
+    recipe.tobby.dev/cooked-at: "2026-11-09T09:00:00Z"
     org.opencontainers.image.source: https://github.com/VictoriaMetrics/operator
 
 spec:
@@ -69,16 +75,16 @@ spec:
     - name: vm-operator-chart
       kind: HelmChart
       ref: ghcr.io/victoriametrics/helm-charts/victoria-metrics-operator
-      version: 0.67.2
-      digest: sha256:454e94bbc58a44edf760c69d69d3e2cbc4a355b90b5adda2dcc28069213fb442
+      version: 0.68.2
+      digest: sha256:93bc3993a31b39f3c97ba7d9113cacf2bfc944beff29c4e366934f8f16ea086e
       vendorDependencies: false
 
     # --- The only image the chart itself names -------------------------
     - name: vm-operator
       kind: ContainerImage
       ref: docker.io/victoriametrics/operator
-      version: v0.74.0
-      digest: sha256:c4fde419a4f03c7c45d7ee554e7039c12c75af161f7f7e1baef1b343015e3df9
+      version: v0.75.2
+      digest: sha256:237fac68b608c7ed7bc4c47ad25ebcb1cbe973c9a789661d2b6cfaa83093f87a
       platforms: [linux/amd64, linux/arm64]
 
     # --- Everything below comes from --printDefaults -------------------
@@ -89,51 +95,53 @@ spec:
     - name: config-reloader
       kind: ContainerImage
       ref: docker.io/victoriametrics/operator
-      version: config-reloader-v0.74.0
-      digest: sha256:2ad04439b0cb092765126f7947eff5ad6949d0332c5dbadf5fdd45b418569120
+      version: config-reloader-v0.75.2
+      digest: sha256:6a997c5fe38692bff0384c0f113f8ab560f429d215649b16afc102ff81c80299
       platforms: [linux/amd64, linux/arm64]
 
     # VM_VMSINGLEDEFAULT_IMAGE, tag from VM_METRICS_VERSION.
     - name: victoria-metrics
       kind: ContainerImage
       ref: docker.io/victoriametrics/victoria-metrics
-      version: v1.148.0
-      digest: sha256:407013e902f9a0ba1d4b2d4c077c47bbaf917c893c52ff39b19efe83a654afda
+      version: v1.155.0
+      digest: sha256:f60dc268b54ecf87f6e09d740c2b732838aa9193090cc741417c9f6386a130df
       platforms: [linux/amd64, linux/arm64]
 
     # VM_VMAGENTDEFAULT_IMAGE.
     - name: vmagent
       kind: ContainerImage
       ref: docker.io/victoriametrics/vmagent
-      version: v1.148.0
-      digest: sha256:7da85e2d2fc24452979d0ff19b957901ba14e50217e7cc1de1146d3d5e698ab4
+      version: v1.155.0
+      digest: sha256:8e3c03905be15bba8312d4868e8ae6f9fc2fefee0a41d544472034249ca42bb4
       platforms: [linux/amd64, linux/arm64]
 
     # VM_VMALERTDEFAULT_IMAGE.
     - name: vmalert
       kind: ContainerImage
       ref: docker.io/victoriametrics/vmalert
-      version: v1.148.0
-      digest: sha256:268ab5df69360a236e1382db0dbde44d5c32362b85501f761d61fc25c76f05ce
+      version: v1.155.0
+      digest: sha256:3256cba5ddaca5974eae6141105cec4ce37871f1c213f0a5c267ec0111bc68e1
       platforms: [linux/amd64, linux/arm64]
 
     # VM_VMAUTHDEFAULT_IMAGE.
     - name: vmauth
       kind: ContainerImage
       ref: docker.io/victoriametrics/vmauth
-      version: v1.148.0
-      digest: sha256:46b832a5a25bf3888783a8bbf84273825129aba8977972c85605765bcb49448b
+      version: v1.155.0
+      digest: sha256:dfeb63e5eff4bc32ed0fa2d43d8e85b717e8442c8b5c753e83c216669665a7de
       platforms: [linux/amd64, linux/arm64]
 
     # VM_VMALERTMANAGER_ALERTMANAGERDEFAULTBASEIMAGE — an upstream Prometheus
     # image, pinned by VM_VMALERTMANAGER_ALERTMANAGERVERSION, on its own
     # release cadence. It moves when Alertmanager moves, not when
-    # VictoriaMetrics does.
+    # VictoriaMetrics does. The tag comes from VM_ALERTMANAGER_VERSION,
+    # which --printDefaults does not show: read it from the source (see
+    # the header).
     - name: alertmanager
       kind: ContainerImage
       ref: docker.io/prom/alertmanager
-      version: v0.31.0
-      digest: sha256:cc54cc450174ada901b32eb2538de5fc70ee259a1ac551ed38023f2ca2ad00e3
+      version: v0.34.1
+      digest: sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
       platforms: [linux/amd64, linux/arm64]
 
     # ------------------------------------------------------------------
@@ -144,7 +152,7 @@ spec:
     #   VMCluster        vmselect / vmstorage / vminsert, tagged
     #                    ${VM_METRICS_VERSION}-cluster
     #   VictoriaLogs     VLogs, VLAgent, VLSingle, VLCluster — ${VM_LOGS_VERSION}
-    #   VictoriaTraces   VTSingle, VTCluster — ${VM_TRACES_VERSION}
+    #   VictoriaTraces   VTSingle, VTAgent, VTCluster — ${VM_TRACES_VERSION}
     #   VMAnomaly        victoriametrics/vmanomaly — ${VM_ANOMALY_VERSION}
     #   VMBackup         victoriametrics/vmbackupmanager, tagged
     #                    ${VM_METRICS_VERSION}-enterprise (licensed)

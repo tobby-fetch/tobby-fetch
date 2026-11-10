@@ -81,7 +81,7 @@
 
 "TBY-REG-001.what": "La référence n'a pas pu être interprétée."
 "TBY-REG-001.cause": "{{.reference}} n'est pas une référence valide d'image ou de chart."
-"TBY-REG-001.action": "Utilisez la forme registry/repository:tag ou registry/repository@sha256:… — par exemple docker.io/library/redis:7.2."
+"TBY-REG-001.action": "Utilisez la forme registry/repository:tag ou registry/repository@sha256:… — par exemple docker.io/library/redis:8.10."
 
 "TBY-REG-002.what": "Le registre source est injoignable."
 "TBY-REG-002.cause": "Aucune route réseau vers {{.host}}, ou le registre est arrêté (DNS, proxy ou pare-feu sur le chemin)."

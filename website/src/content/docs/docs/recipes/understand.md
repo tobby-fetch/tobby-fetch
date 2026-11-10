@@ -47,7 +47,7 @@ A recipe exists in exactly one of two states, and the state is not a field —
 it is determined by where the document lives and what it contains:
 
 - A **draft** is a recipe under construction: it lives in your workspace or
-  git, version constraints are allowed (`~0.16.1`, `26.x`), digests are
+  git, version constraints are allowed (`~0.16.2`, `26.x`), digests are
   optional. It is freely editable and diff-reviewed like any other file.
 - A **cooked** recipe is published in a cookbook: every ingredient carries
   an exact tag **and** a digest, and the artifact is immutable and signed.
@@ -199,7 +199,7 @@ recipe, on its own cadence.
 ## Version constraints, and what actually moves
 
 An ingredient's `version` — and a retriever entry's — is either an exact
-tag or a constraint: `~0.16.1` (patch-level), `^0.158.0` (compatible),
+tag or a constraint: `~0.16.2` (patch-level), `^0.163.2` (compatible),
 `26.x` (series), comparisons and conjunctions. The complete grammar,
 including semantics that differ from common libraries, is normative in
 [§9](https://github.com/tobby-fetch/recipe-spec/blob/main/RECIPE-SPEC.md#9-version-constraint-syntax).

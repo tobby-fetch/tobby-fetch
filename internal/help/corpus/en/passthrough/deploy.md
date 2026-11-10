@@ -136,9 +136,9 @@ verify (`SHA256SUMS` or SLSA provenance), copy the file across, install
 with no network:
 
 ```sh
-dpkg -i tobby_0.4.2_linux_amd64.deb                    # Debian/Ubuntu
-rpm -i tobby_0.4.2_linux_amd64.rpm                     # RHEL/SUSE/Fedora
-apk add --allow-untrusted tobby_0.4.2_linux_amd64.apk  # Alpine
+dpkg -i tobby_0.5.2_linux_amd64.deb                    # Debian/Ubuntu
+rpm -i tobby_0.5.2_linux_amd64.rpm                     # RHEL/SUSE/Fedora
+apk add --allow-untrusted tobby_0.5.2_linux_amd64.apk  # Alpine
 ```
 
 The packages deliberately carry no package-manager signature: trust
@@ -191,7 +191,7 @@ docker run -d --name tobby --read-only \
   -v /srv/tobby/store:/var/lib/tobby/store \
   -v /srv/tobby/state:/var/lib/tobby/state \
   -v /srv/tobby/config.yaml:/etc/tobby/config.yaml:ro \
-  ghcr.io/tobby-fetch/tobby-fetch:v0.4.2 \
+  ghcr.io/tobby-fetch/tobby-fetch:v0.5.2 \
   serve --config /etc/tobby/config.yaml
 ```
 
