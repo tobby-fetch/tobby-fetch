@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -66,39 +67,61 @@ func Require(t testing.TB) Env {
 	return e
 }
 
-// VulnerableLayer is one filesystem layer that makes an image read, to
-// Trivy, as Alpine 3.10.0 with musl 1.1.22-r2 installed.
+// VulnerableFiles make an image read, to Trivy, as Alpine 3.10.0 with
+// musl 1.1.22-r2 installed.
+var VulnerableFiles = map[string]string{
+	"etc/alpine-release": "3.10.0\n",
+	"etc/os-release":     "NAME=\"Alpine Linux\"\nID=alpine\nVERSION_ID=3.10.0\nPRETTY_NAME=\"Alpine Linux v3.10\"\n",
+	"lib/apk/db/installed": "C:Q1rjZG3xDQ6yzcn8Hc2GpL7K4WtEk=\nP:musl\nV:1.1.22-r2\nA:x86_64\nS:368301\nI:598016\n" +
+		"T:the musl c library (libc) implementation\nU:http://www.musl-libc.org/\nL:MIT\no:musl\nm:Timo Teräs <timo.teras@iki.fi>\n" +
+		"t:1560960413\nc:4d2a74eee3a2d4c3bd2bd7e2ad41ad4a14b0f9ba\nF:lib\nR:libc.musl-x86_64.so.1\nR:ld-musl-x86_64.so.1\n\n",
+}
+
+// VulnerableLayer is the one filesystem layer of the known-vulnerable image.
 func VulnerableLayer(t testing.TB) []byte {
 	t.Helper()
-	return TarGz(t, map[string]string{
-		"etc/alpine-release": "3.10.0\n",
-		"etc/os-release":     "NAME=\"Alpine Linux\"\nID=alpine\nVERSION_ID=3.10.0\nPRETTY_NAME=\"Alpine Linux v3.10\"\n",
-		"lib/apk/db/installed": "C:Q1rjZG3xDQ6yzcn8Hc2GpL7K4WtEk=\nP:musl\nV:1.1.22-r2\nA:x86_64\nS:368301\nI:598016\n" +
-			"T:the musl c library (libc) implementation\nU:http://www.musl-libc.org/\nL:MIT\no:musl\nm:Timo Teräs <timo.teras@iki.fi>\n" +
-			"t:1560960413\nc:4d2a74eee3a2d4c3bd2bd7e2ad41ad4a14b0f9ba\nF:lib\nR:libc.musl-x86_64.so.1\nR:ld-musl-x86_64.so.1\n\n",
-	})
+	return TarGz(t, VulnerableFiles)
 }
 
 // VulnerableImage builds the known-vulnerable image (linux/amd64).
 func VulnerableImage(t testing.TB) v1.Image {
 	t.Helper()
-	layer := static.NewLayer(VulnerableLayer(t), types.OCILayer)
-	img, err := mutate.AppendLayers(mutate.MediaType(empty.Image, types.OCIManifestSchema1), layer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	img = mutate.ConfigMediaType(img, types.OCIConfigJSON)
-	cfg, err := img.ConfigFile()
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg = cfg.DeepCopy()
-	cfg.OS, cfg.Architecture = "linux", "amd64"
-	img, err = mutate.ConfigFile(img, cfg)
+	img, err := BuildVulnerableImage()
 	if err != nil {
 		t.Fatal(err)
 	}
 	return img
+}
+
+// BuildVulnerableImage is VulnerableImage for a caller without a test —
+// the crucible's seeding tool.
+func BuildVulnerableImage() (v1.Image, error) {
+	layerBytes, err := TarGzBytes(VulnerableFiles)
+	if err != nil {
+		return nil, err
+	}
+	img, err := mutate.AppendLayers(mutate.MediaType(empty.Image, types.OCIManifestSchema1), static.NewLayer(layerBytes, types.OCILayer))
+	if err != nil {
+		return nil, err
+	}
+	img = mutate.ConfigMediaType(img, types.OCIConfigJSON)
+	cfg, err := img.ConfigFile()
+	if err != nil {
+		return nil, err
+	}
+	cfg = cfg.DeepCopy()
+	cfg.OS, cfg.Architecture = "linux", "amd64"
+	return mutate.ConfigFile(img, cfg)
+}
+
+// BuildDBArtifact wraps a database layer as upstream publishes it, for a
+// caller without a test.
+func BuildDBArtifact(layer []byte) (v1.Image, error) {
+	img, err := mutate.AppendLayers(mutate.MediaType(empty.Image, types.OCIManifestSchema1), static.NewLayer(layer, DBLayerType))
+	if err != nil {
+		return nil, err
+	}
+	return mutate.ConfigMediaType(img, DBConfigType), nil
 }
 
 // DBLayer returns the database layer: the file at path as it is (the
@@ -162,34 +185,49 @@ func SyntheticDBLayer(t testing.TB, metadataJSON string) []byte {
 // publishes: one layer of DBLayerType, config of DBConfigType.
 func DBArtifact(t testing.TB, layer []byte) v1.Image {
 	t.Helper()
-	img, err := mutate.AppendLayers(mutate.MediaType(empty.Image, types.OCIManifestSchema1), static.NewLayer(layer, DBLayerType))
+	img, err := BuildDBArtifact(layer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return mutate.ConfigMediaType(img, DBConfigType)
+	return img
 }
 
 // TarGz packs files into a gzip-compressed tar.
 func TarGz(t testing.TB, files map[string]string) []byte {
 	t.Helper()
+	b, err := TarGzBytes(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// TarGzBytes packs files into a gzip-compressed tar, in name order.
+func TarGzBytes(files map[string]string) ([]byte, error) {
+	names := make([]string, 0, len(files))
+	for n := range files {
+		names = append(names, n)
+	}
+	sort.Strings(names)
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(zw)
-	for name, data := range files {
+	for _, name := range names {
+		data := files[name]
 		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(data)), Typeflag: tar.TypeReg}); err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 		if _, err := io.WriteString(tw, data); err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 	}
 	if err := tw.Close(); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	if err := zw.Close(); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }
 
 // FileDigest is the sha256 digest of a file, in OCI notation — the pin a

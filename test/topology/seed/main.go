@@ -37,7 +37,9 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/static"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/google/go-containerregistry/pkg/v1/validate"
+
 	"github.com/opencontainers/go-digest"
+	"github.com/tobby-fetch/tobby-fetch/internal/scan/trivytest"
 )
 
 // platformedIndex builds a 3-platform index the way production images are
@@ -132,6 +134,30 @@ func run(args []string) error {
 			return fmt.Errorf("usage: seed push-fileset <ref> <dir>")
 		}
 		return pushFileSet(ref, args[2])
+
+	case "push-vulnerable":
+		// The known-vulnerable image of the scanning tests (milestone 6):
+		// Alpine 3.10.0's package database listing musl 1.1.22-r2
+		// (CVE-2019-14697, CVSS 9.8), built from nothing.
+		img, err := trivytest.BuildVulnerableImage()
+		if err != nil {
+			return err
+		}
+		return pushImage(ref, img)
+
+	case "push-trivy-db":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: seed push-trivy-db <ref> <db.tar.gz>")
+		}
+		layer, err := os.ReadFile(args[2]) //nolint:gosec // G304: test-tool input path
+		if err != nil {
+			return err
+		}
+		img, err := trivytest.BuildDBArtifact(layer)
+		if err != nil {
+			return err
+		}
+		return pushImage(ref, img)
 
 	case "pull":
 		if len(args) != 3 {
@@ -259,6 +285,19 @@ func pushFileSet(ref name.Reference, dir string) error {
 	}
 	if err := remote.Write(ref, img, options()...); err != nil {
 		return fmt.Errorf("pushing fileset: %w", err)
+	}
+	d, err := img.Digest()
+	if err != nil {
+		return err
+	}
+	fmt.Println(d)
+	return nil
+}
+
+// pushImage writes img to ref and prints its digest.
+func pushImage(ref name.Reference, img v1.Image) error {
+	if err := remote.Write(ref, img, options()...); err != nil {
+		return fmt.Errorf("pushing %s: %w", ref, err)
 	}
 	d, err := img.Digest()
 	if err != nil {
