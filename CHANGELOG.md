@@ -8,6 +8,48 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+### Added — vulnerability scanning (milestone 6, track A: 6.1, 6.2, R-13)
+
+- **Every container image is scanned at retrieval**, in passthrough as in
+  mirror mode, with Trivy run as a **pinned external binary** (0.76.2),
+  offline (`--offline-scan`, `--skip-db-update`, `--skip-java-db-update`
+  and the other skip flags), out of process on a private copy of the
+  image, with a minimal environment, a deadline (`scan.timeout`, 10m) and
+  bounded outputs; its digest is verified before every execution
+  (FR-031, ADR-0008).
+- **A policy in three levels**: the instance (`scan.mode`, advisory by
+  default, `scan.threshold` 7.0, `scan.exceptions`), the Retriever
+  (`spec.scanPolicy`) and the recipe annotation
+  `recipe.tobby.dev/scan-threshold`, which can only lower the threshold.
+  A threshold posed by a Retriever or a recipe is blocking for its
+  perimeter. A finding without CVSS sits at the lower bound of its
+  severity band; `UNKNOWN` is reported, never compared; expired
+  exceptions no longer apply and are reported.
+- **A refusal withholds the recipe whole** (R-19 grain): not stored as a
+  cookbook entry, not recorded on the medium, not pushed; the other
+  recipes cross. Audited as `scan.block`. Under a blocking policy an item
+  that could not be scanned is refused too.
+- **Per-item reports** in the task document (`items[].scan`, the API and
+  the task screen): findings, verdict, the policy and the levels that set
+  it, exceptions, reasons, and the **database age in every report**.
+- **The database and the scanner travel by the `tobby-system` channel**
+  (FR-032, 6.2): the database as an OCIArtifact, the binary as a FileSet
+  for Linux and Windows hosts, both found in the recipe graph even on a
+  medium written by another instance; the container image bundles the
+  pinned binary at `/usr/libexec/tobby/trivy`; macOS takes it from the
+  `PATH`. A Retriever listing `tobby-system` first arms the scanner in the
+  same run.
+- **R-13 freshness**: `scan.maxDbAge` (168h) and `scan.maxDbAgeAction`
+  (`warn`, or `block` — refused with `TBY-SCN-004`).
+- **A degraded mode that is never silent**: banners (degraded, advisory,
+  stale), a startup log record, the Retriever screen's scanning indicator,
+  and the `tobby_scan_*` metric families.
+- `TOBBY_SCAN_*` environment variables; error codes `TBY-SCN-001..007` and
+  `020..022` are emitted; documentation: *Vulnerability scanning*, *The
+  vulnerability database across the air gap* (EN/FR), configuration and
+  metrics references; ADR-0008 amended (its example configuration follows
+  the FR-031 amendment).
+
 ## [0.5.2] - 2026-11-09
 
 The reference Helm chart is now published with every release, as a signed

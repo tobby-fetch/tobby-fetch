@@ -272,14 +272,18 @@ features:
   - id: "6.1"
     en: Vulnerability scanning with policy (Trivy, blocking or advisory)
     fr: Analyse de vulnérabilités avec politique (Trivy, bloquante ou consultative)
-    status: upcoming
-    milestone: 6
+    status: available
+    note:
+      en: Implemented on the milestone-6 branch; ships with v0.6.0.
+      fr: Implémenté sur la branche du jalon 6 ; livré avec la v0.6.0.
     security: true
   - id: "R-13"
     en: Guaranteed freshness of the vulnerability database
     fr: Fraîcheur garantie de la base de vulnérabilités
-    status: upcoming
-    milestone: 6
+    status: available
+    note:
+      en: Implemented on the milestone-6 branch; ships with v0.6.0.
+      fr: Implémenté sur la branche du jalon 6 ; livré avec la v0.6.0.
     security: true
   - id: "R-14"
     en: Authentication hardening (rate limiting, session and token expiry)
@@ -293,8 +297,10 @@ features:
   - id: "6.2"
     en: Offline vulnerability database, carried by Tobby itself
     fr: Base de vulnérabilités hors-ligne, transportée par Tobby lui-même
-    status: upcoming
-    milestone: 6
+    status: available
+    note:
+      en: Implemented on the milestone-6 branch; ships with v0.6.0.
+      fr: Implémenté sur la branche du jalon 6 ; livré avec la v0.6.0.
     security: true
   - id: "R-25"
     en: Tobby updates through its own channel, across the air gap

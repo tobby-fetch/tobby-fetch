@@ -65,6 +65,7 @@ only, with the same compatibility discipline as the REST API
 | `layout.export`, `layout.import` | OCI image layout leaving or entering the store (FR-051) | v0.5.x |
 | `fileset.pack` | a host directory packed into the store as a FileSet (FR-048) | v0.5.x |
 | `prune.active` | startup while retriever-aligned pruning is on (FR-045) | v0.5.x |
+| `scan.block` | an item refused by the vulnerability policy — violation, not scanned under a blocking policy, or stale database under the block action (FR-031); the target is the item's `reference@digest`, the outcome `denied` | v0.6.x |
 
 The media events joined the catalogue with v0.5.0: the two audited waivers
 of a media import — a medium addressed to another zone and a medium older

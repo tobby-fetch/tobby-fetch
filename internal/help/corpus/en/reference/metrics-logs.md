@@ -43,6 +43,16 @@ Domain metrics registered today:
 | `tobby_store_occupancy_bytes` | gauge | — | On-disk size of the store's deduplicated blob tree at the last sample; `0` while no `storage.occupancyThreshold` is configured and nothing is sampled. |
 | `tobby_store_occupancy_threshold_bytes` | gauge | — | The configured threshold; `0` means no threshold is set and the store is not monitored. |
 | `tobby_store_occupancy_exceeded` | gauge | — | `1` while the store exceeds its threshold, `0` otherwise. A gauge, not a counter, on purpose: clearing the condition must be as visible as raising it. All three exist from the first scrape. |
+| `tobby_scan_items_total` | counter | `verdict` = `pass` \| `warn` \| `block` \| `not-scanned` | Items scanned at retrieval, by verdict (FR-031). All four series exist from the first scrape. |
+| `tobby_scan_findings_total` | counter | `severity` = `UNKNOWN` \| `LOW` \| `MEDIUM` \| `HIGH` \| `CRITICAL` | Findings reported by item scans. |
+| `tobby_scan_policy_blocking` | gauge | — | `1` when the policy blocks (`scan.mode: block`, or a threshold the served Retriever poses), `0` when it is advisory — the advisory banner, as a metric. |
+| `tobby_scan_scanner_available` | gauge | — | `1` when a verified scanner binary is usable, `0` in the degraded mode. |
+| `tobby_scan_db_present` | gauge | — | `1` when a vulnerability database is present, `0` in the absent-database degraded mode. |
+| `tobby_scan_db_age_seconds` | gauge | — | Database age from the build timestamp it records (R-13). Exposed **only while a database is present**: `tobby_scan_db_present` tells "absent" from "fresh". |
+| `tobby_scan_db_stale` | gauge | — | `1` while the age exceeds `scan.maxDbAge`; exposed with the age. |
+
+The scan gauges are computed at scrape time from the scanner's state, so
+the age moves on its own between two scans.
 
 The standard Go runtime and process collectors are registered alongside.
 
@@ -113,6 +123,12 @@ With the means of the current series:
   carry the host and reference.
 - **`rate(tobby_policy_rejections_total[…]) > 0`** — same reasoning on the
   fetch side.
+- **`tobby_scan_scanner_available == 0` or `tobby_scan_db_present == 0`** —
+  the scanning degraded mode: content is reported not scanned, and refused
+  under a blocking policy.
+- **`tobby_scan_db_stale == 1`** — the vulnerability database has not
+  crossed recently enough; findings published since it was built are
+  unknown to the scanner.
 - **Absence of `tobby_promotion_pushes_total` movement** (neither `pushed`
   nor `skipped` increasing) on a passthrough instance with a configured
   retriever — the reconciliation loop stopped cycling.

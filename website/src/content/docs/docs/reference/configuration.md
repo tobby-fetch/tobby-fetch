@@ -134,6 +134,38 @@ bypass. The full model is on
 | `trust.roots[]` | list | Trusted public keys (cosign, key-based). Each root has a `name` and exactly one of `key` (inline PEM), `keyFile`, `keyURL` (`https://` only, fetched and cached at configuration time — never at verification time). Multiple roots enable rotation by overlap. |
 | `trust.scopes[]` | list | Declared relaxation perimeters, evaluated in order, first match wins. Each scope has a `name`, `repositories` glob patterns on the recipe's **canonical nominal** cookbook path (`*` within a segment, `**` across; a port's `:` is written `_`), and must change something: `allowUnsigned: true` and/or a `roots` restriction. Relaxed scopes are reported on every surface, never silent. |
 
+### Vulnerability scanning
+
+Every container image is scanned at retrieval, in passthrough as in
+mirror mode (FR-031, ADR-0008). There is deliberately no `enabled` switch:
+the scan always runs and its results are always visible — the default
+**advisory** mode reports violations on every surface and lets the content
+through, with a permanent banner saying so. The Retriever's
+`spec.scanPolicy` and the recipe annotation `recipe.tobby.dev/scan-threshold`
+refine the instance level; the model is on
+[Vulnerability scanning](../../security/vulnerability-scanning/).
+
+| Key | Type | Default | Environment | Purpose |
+|---|---|---|---|---|
+| `scan.mode` | string | `warn` | `TOBBY_SCAN_MODE` | `warn` (advisory) or `block`: a violating item is then refused — never pushed, never written on a medium — and so is an item that could not be scanned. A threshold posed by the Retriever or a recipe makes the policy blocking for its perimeter even under `warn`. |
+| `scan.threshold` | number | `7.0` | `TOBBY_SCAN_THRESHOLD` | CVSS base score from which a finding violates the policy, inclusive, `0`–`10`. A finding without a CVSS score sits at the lower bound of its severity band (`LOW` 0.1, `MEDIUM` 4.0, `HIGH` 7.0, `CRITICAL` 9.0); an `UNKNOWN` one is reported as unscored, never compared. |
+| `scan.exceptions[]` | list | none | — | CVE identifiers tolerated beyond the threshold: `id`, optional `justification`, optional `expires` (RFC 3339). Added to the Retriever's own list. An expired exception no longer applies and is reported as expired. Configuration file only. |
+| `scan.maxDbAge` | duration | `168h` | `TOBBY_SCAN_MAX_DB_AGE` | Maximum age of the vulnerability database, measured from the build timestamp it records (R-13). Must be positive. |
+| `scan.maxDbAgeAction` | string | `warn` | `TOBBY_SCAN_MAX_DB_AGE_ACTION` | Beyond `maxDbAge`: `warn` reports staleness on the report, the UI and the metrics; `block` refuses items scanned with a stale database (`TBY-SCN-004`), whatever `scan.mode` says. |
+| `scan.timeout` | duration | `10m` | `TOBBY_SCAN_TIMEOUT` | Bound of one scan, the scanner process included. A timed-out item is reported not scanned. |
+| `scan.dbRepository` | string | relocation of `ghcr.io/aquasecurity/trivy-db` | `TOBBY_SCAN_DB_REPOSITORY` | Repository of this store holding the database, when it is not the relocation of the upstream one the `tobby-system` recipe carries. |
+| `scan.trivy.path` | string | none | `TOBBY_SCAN_TRIVY_PATH` | An explicit scanner binary, absolute. Without `scan.trivy.digest` it is accepted only when it is the release this build pins (Trivy 0.76.2); on macOS any `trivy` is accepted, unpinned. |
+| `scan.trivy.digest` | string | none | `TOBBY_SCAN_TRIVY_DIGEST` | `sha256:<hex>` pin of `scan.trivy.path`, verified before every execution. |
+| `scan.trivy.ref` | string | `ghcr.io/aquasecurity/trivy` | `TOBBY_SCAN_TRIVY_REF` | Nominal reference of the `tobby-system` FileSet carrying the binary on Linux and Windows hosts. Exclusive with `scan.trivy.path`. |
+
+Where the binary comes from, per platform: the container image bundles
+the pinned release at `/usr/libexec/tobby/trivy`; a Linux or Windows host
+binary takes it from the `tobby-system` channel; macOS takes the first
+`trivy` on the `PATH`. Missing or unverifiable, it is the **degraded
+mode**: a startup log record, a danger banner, `tobby_scan_scanner_available
+0`, and every item reported not scanned with the reason — refused under a
+blocking policy.
+
 ### FileSets
 
 Configuration file only. Serving is disabled by default: only FileSets
@@ -235,6 +267,16 @@ sync:
 
 preflight:
   safetyMarginPercent: 10           # refuse before filling the volume (FR-055)
+
+scan:
+  mode: block                       # refuse what violates the policy (FR-031)
+  threshold: 7.0                    # CVSS, inclusive
+  exceptions:
+    - id: CVE-2024-12345
+      justification: vulnerable parser disabled in our build
+      expires: 2027-03-31T00:00:00Z
+  maxDbAge: 168h                    # the database must have crossed this week
+  maxDbAgeAction: warn
 
 logging:
   level: info
