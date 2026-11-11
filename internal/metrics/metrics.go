@@ -62,6 +62,10 @@ type Registry struct {
 	StoreBytes             prometheus.Gauge
 	StoreThresholdBytes    prometheus.Gauge
 	StoreOccupancyExceeded prometheus.Gauge
+
+	// Scan holds the vulnerability-scanning families (FR-031, FR-032,
+	// R-13).
+	Scan *ScanMetrics
 }
 
 // New builds the registry with the standard process and Go collectors and
@@ -138,6 +142,8 @@ func New() *Registry {
 		StoreBytes:             storeBytes,
 		StoreThresholdBytes:    storeThreshold,
 		StoreOccupancyExceeded: storeExceeded,
+
+		Scan: newScanMetrics(reg),
 	}
 }
 

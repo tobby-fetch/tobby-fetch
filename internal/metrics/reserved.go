@@ -19,30 +19,8 @@ package metrics
 // one exception, "scope", takes the names of the operator's own declared
 // trust scopes — bounded by configuration.
 const (
-	// Track A — vulnerability scanning (6.1, 6.2, R-13).
-
-	// MetricScanItems counts scanned items by verdict:
-	// counter, label verdict = pass | warn | block | not-scanned.
-	MetricScanItems = "tobby_scan_items_total"
-	// MetricScanFindings counts findings by severity:
-	// counter, label severity = UNKNOWN | LOW | MEDIUM | HIGH | CRITICAL.
-	MetricScanFindings = "tobby_scan_findings_total"
-	// MetricScanPolicyBlocking is 1 when scan.mode is block, 0 when the
-	// policy is advisory — the advisory banner, as a metric: gauge.
-	MetricScanPolicyBlocking = "tobby_scan_policy_blocking"
-	// MetricScanScannerAvailable is 1 when a verified scanner binary is
-	// usable, 0 in the degraded mode: gauge.
-	MetricScanScannerAvailable = "tobby_scan_scanner_available"
-	// MetricScanDBPresent is 1 when a vulnerability database is present,
-	// 0 in the absent-database degraded mode: gauge.
-	MetricScanDBPresent = "tobby_scan_db_present"
-	// MetricScanDBAge is the database age, from the build timestamp it
-	// records (R-13): gauge, seconds. Registered only with a database to
-	// measure; MetricScanDBPresent tells "absent" from "fresh".
-	MetricScanDBAge = "tobby_scan_db_age_seconds"
-	// MetricScanDBStale is 1 while the age exceeds scan.maxDbAge: gauge,
-	// so clearing it is as visible as raising it (the R-33 rule).
-	MetricScanDBStale = "tobby_scan_db_stale"
+	// Track A — vulnerability scanning (6.1, 6.2, R-13): registered in
+	// New since they are fed — see scan.go.
 
 	// Track B — authentication hardening and federation (R-14, 6.3, R-20).
 
@@ -80,8 +58,6 @@ const (
 // moving a name from here to New.
 func ReservedFamilies() []string {
 	return []string{
-		MetricScanItems, MetricScanFindings, MetricScanPolicyBlocking,
-		MetricScanScannerAvailable, MetricScanDBPresent, MetricScanDBAge, MetricScanDBStale,
 		MetricAuthAttempts, MetricAuthSessionsExpired, MetricAuthIDPReachable, MetricAuthLocalUnderFederation,
 		MetricIntegrityVerifications, MetricIntegrityLastVerification, MetricAssuranceReduced,
 	}
