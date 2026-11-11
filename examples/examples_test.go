@@ -28,6 +28,20 @@ var cooked = map[string]bool{
 	"victoria-metrics-operator.yaml": true,
 }
 
+// placeholderDigest is the all-zero sha256: a value no registry returns, so
+// a recipe still carrying it pins nothing and fails at its first fetch.
+const placeholderDigest = "sha256:" +
+	"0000000000000000000000000000000000000000000000000000000000000000"
+
+// placeholder lists the examples that are cooked in shape but whose digests
+// only a release can produce — the Tobby recipe, written before the release
+// it describes exists (R-25). They must validate as cooked, since the shape
+// is the point, and EVERY digest must be the placeholder: one real-looking
+// pin among placeholders would read as verified when nothing was.
+var placeholder = map[string]bool{
+	"tobby.yaml": true,
+}
+
 func TestExamplesParse(t *testing.T) {
 	files, err := filepath.Glob("*.yaml")
 	if err != nil {
@@ -58,6 +72,18 @@ func TestExamplesParse(t *testing.T) {
 			}
 
 			err = recipe.Validate(spec.ProfileCooked)
+			if placeholder[file] {
+				if err != nil {
+					t.Errorf("a placeholder example must still be cooked in shape: %v", err)
+				}
+				for _, ing := range recipe.Spec.Ingredients {
+					if ing.Digest != placeholderDigest {
+						t.Errorf("ingredient %s: digest %q is not the placeholder; "+
+							"a placeholder example holds no real pin", ing.Name, ing.Digest)
+					}
+				}
+				return
+			}
 			switch {
 			case cooked[file] && err != nil:
 				t.Errorf("announced as cooked but not fully pinned: %v", err)
