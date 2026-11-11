@@ -69,7 +69,7 @@ const (
 	// CodeTokenExpired is a static token presented after its expiry (FR-072
 	// amendment, R-14). Distinct from CodeAuthFailed — the corrective action
 	// is a new token, not a corrected one — and parameter-free like it: the
-	// message names no token (NFR-015). Reserved: emitter lands with R-14.
+	// message names no token (NFR-015).
 	CodeTokenExpired Code = "TBY-AUTH-013" //nolint:gosec // G101: a stable error code, not a credential
 	// CodeOIDCFailed is a federated OIDC sign-in whose callback did not
 	// validate — state, nonce, PKCE verifier, signature, issuer or audience

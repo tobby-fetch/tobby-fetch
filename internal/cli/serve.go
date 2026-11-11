@@ -122,14 +122,35 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			return taxonomy.New(taxonomy.CodeNoAccount, nil)
 		}
 	}
+	reg := metrics.New()
+	authMetrics := metrics.RegisterAuth(reg)
+	sessions := auth.NewSessions(time.Duration(cfg.Auth.SessionTTL))
 	authn := &auth.Authenticator{
 		Store:    accounts,
-		Sessions: auth.NewSessions(time.Duration(cfg.Auth.SessionTTL)),
+		Sessions: sessions,
 		Disabled: cfg.Auth.Disabled,
 		Logger:   logger,
+		Observer: authObserver{authMetrics},
 	}
-
-	reg := metrics.New()
+	if accounts != nil {
+		accounts.SetDefaultTokenLifetime(time.Duration(cfg.Auth.Tokens.DefaultLifetime))
+	}
+	// Session expiry (R-14, FR-072 amendment): the idle bound on top of the
+	// absolute lifetime, and one audit record plus one metric increment
+	// per expiry, whoever finds it — the request that presented the dead
+	// cookie, or the periodic sweep for a session nobody came back to.
+	sessions.SetIdleTimeout(time.Duration(cfg.Auth.Session.IdleTimeout))
+	sessions.OnExpire(func(sess *auth.Session, reason auth.ExpiryReason, origin string) {
+		authMetrics.SessionExpired(string(reason))
+		audit.Log(context.Background(), logger, &audit.Event{
+			Actor:   sess.Account,
+			Action:  audit.ActionSessionExpire,
+			Target:  string(reason),
+			Outcome: audit.OutcomeSuccess,
+			Origin:  origin,
+		})
+	})
+	go sweepSessions(ctx, sessions)
 	srv := server.New(cfg.Server.Addr, time.Duration(cfg.Shutdown.GracePeriod), reg, logger)
 	if serveHook != nil {
 		serveHook(srv)
@@ -856,18 +877,18 @@ func filesAuth(a *auth.Authenticator, anonymous map[string]bool, next http.Handl
 			next.ServeHTTP(w, r)
 			return
 		}
-		presented := r.Header.Get("Authorization") != ""
-		origin := auth.ClientOrigin(r)
-		if presented && !a.FailureAllowed(origin) {
+		id, v := a.Check(r, auth.SurfaceFiles)
+		switch v {
+		case auth.VerdictOK:
+		case auth.VerdictThrottled:
 			w.Header().Set("Retry-After", auth.RetryAfter)
 			http.Error(w, "too many failed authentication attempts", http.StatusTooManyRequests)
 			return
-		}
-		id, ok := a.Authenticate(r)
-		if !ok {
-			if presented {
-				a.RecordFailure(origin)
-			}
+		case auth.VerdictExpired:
+			w.Header().Set("WWW-Authenticate", `Basic realm="tobby"`)
+			http.Error(w, "the token has expired (TBY-AUTH-013)", http.StatusUnauthorized)
+			return
+		default:
 			w.Header().Set("WWW-Authenticate", `Basic realm="tobby"`)
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return
@@ -878,6 +899,36 @@ func filesAuth(a *auth.Authenticator, anonymous map[string]bool, next http.Handl
 		}
 		next.ServeHTTP(w, r.WithContext(auth.WithIdentity(r.Context(), id)))
 	})
+}
+
+// authObserver adapts the metric families to auth.Observer: the auth
+// package states what happened, the metrics package counts it, and
+// neither imports the other.
+type authObserver struct{ m *metrics.Auth }
+
+func (o authObserver) Attempt(method auth.Method, outcome string) {
+	o.m.Attempt(string(method), outcome)
+}
+func (o authObserver) SessionExpired(reason auth.ExpiryReason) { o.m.SessionExpired(string(reason)) }
+func (o authObserver) LocalUnderFederation()                   { o.m.LocalUnderFederation() }
+
+// sessionSweepInterval paces the periodic session sweep: a minute keeps
+// the session.expire record of an abandoned session within a minute of
+// the expiry itself, for a map walk per minute.
+const sessionSweepInterval = time.Minute
+
+// sweepSessions expires abandoned sessions until ctx ends (R-14).
+func sweepSessions(ctx context.Context, sessions *auth.Sessions) {
+	t := time.NewTicker(sessionSweepInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-t.C:
+			sessions.Sweep(now)
+		}
+	}
 }
 
 // syncFileSets resolves the declared FileSets and hands what resolved to

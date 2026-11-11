@@ -776,6 +776,14 @@ paths:
                   description: Unique name among the active tokens.
                 role:
                   $ref: "#/components/schemas/Role"
+                expires:
+                  type: string
+                  format: date-time
+                  description: >-
+                    Optional expiry, in the future (R-14). Absent applies
+                    auth.tokens.defaultLifetime, or no expiry when none is
+                    configured. From this instant on the token is refused
+                    with TBY-AUTH-013 and the refusal is audit-logged.
       responses:
         "201":
           description: The created token with its one-time secret.
@@ -793,6 +801,10 @@ paths:
                     description: >-
                       The clear token secret ("tby_…") — shown exactly
                       once, never re-displayable.
+                  expires:
+                    type: string
+                    format: date-time
+                    description: The token's expiry; absent for a long-lived token.
         default:
           $ref: "#/components/responses/Problem"
   /api/v1/tokens/{name}/revoke:

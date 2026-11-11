@@ -53,8 +53,8 @@ only, with the same compatibility discipline as the REST API
 | `instance.start`, `instance.stop` | process lifecycle | v0.1.x |
 | `auth.override_active` | startup while `auth.disabled` is set (FR-075) | v0.4.x |
 | `account.create`, `account.password_change`, `account.delete`, `account.role_change` | account lifecycle — host CLI, self-service, admin surfaces | v0.2.x–v0.4.x |
-| `session.login`, `session.logout` | interactive UI sessions | v0.4.x |
-| `auth.authenticate` | one credential verification on a machine surface (`/v2/`, `/api/v1`) | v0.4.x |
+| `session.login`, `session.logout` | interactive UI sessions — local and, since v0.6.x, federated (`target` `oidc` or `saml`) | v0.4.x |
+| `auth.authenticate` | one credential verification on a machine surface (`/v2/`, `/api/v1`, `/files/` since v0.6.x) | v0.4.x |
 | `ui.access`, `api.access`, `registry.access` | authorization refusals, per surface — refusals only, by design: permitted traffic lives in the operational log | v0.4.x |
 | `token.create`, `token.revoke` | static token lifecycle (FR-072) | v0.4.x |
 | `import.create`, `sync.create`, `recipe.publish`, `content.delete` | content-affecting actions with their actor | v0.4.x |
@@ -65,6 +65,9 @@ only, with the same compatibility discipline as the REST API
 | `layout.export`, `layout.import` | OCI image layout leaving or entering the store (FR-051) | v0.5.x |
 | `fileset.pack` | a host directory packed into the store as a FileSet (FR-048) | v0.5.x |
 | `prune.active` | startup while retriever-aligned pruning is on (FR-045) | v0.5.x |
+| `session.expire` | a UI session ended by expiry; the target is the reason, `idle` (`auth.session.idleTimeout`) or `lifetime` (`auth.sessionTTL`) (R-14) | v0.6.x |
+| `token.expire` | each refusal of a token past its expiry, under the token's name (R-14); a revoked token's refusal is an `auth.authenticate` failure under its name | v0.6.x |
+| `auth.local_under_federation` | a local-account sign-in while OIDC or SAML is enabled — break-glass use, kept filterable on its own; target `ui` or the machine surface (FR-078, R-20) | v0.6.x |
 
 The media events joined the catalogue with v0.5.0: the two audited waivers
 of a media import — a medium addressed to another zone and a medium older
@@ -73,8 +76,7 @@ Both the attempt and the applied waiver are recorded, with the actor and
 the network origin they came from.
 
 :::note[Upcoming — milestone 6]
-Scanning policy events (FR-031) and the authentication-hardening lifecycle
-events of R-14 join the catalogue with milestone 6.
+Scanning policy events (FR-031) join the catalogue with milestone 6.
 :::
 
 ## Durability — and the trail that crosses the air gap

@@ -81,6 +81,8 @@ Value syntax in the environment:
 |---|---|---|---|---|
 | `auth.disabled` | bool | `false` | `TOBBY_AUTH_DISABLED` | Switches authentication off for every surface. A deliberate opt-in — settable in the file or the environment, **never by flag** — audited at startup and bannered permanently in the UI. See [Authentication, accounts and RBAC](../../security/auth-rbac/). |
 | `auth.sessionTTL` | duration | `12h` | `TOBBY_AUTH_SESSION_TTL` | UI session lifetime. Sessions live in memory: a restart signs everyone out. |
+| `auth.session.idleTimeout` | duration | `30m` | *(file only)* | Ends a UI session after this long without an authenticated request; any request renews it. Must be positive. `auth.sessionTTL` still bounds the session's whole life. Each expiry is audited as `session.expire` (R-14). |
+| `auth.tokens.defaultLifetime` | duration | *(none)* | *(file only)* | Gives API tokens created without an explicit expiry one this far in the future. Unset keeps the long-lived token. An expired token is refused with `TBY-AUTH-013` and the refusal is audited as `token.expire` (R-14). |
 
 ### Outbound network
 

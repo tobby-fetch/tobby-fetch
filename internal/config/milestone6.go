@@ -363,8 +363,7 @@ func (c *Config) pendingOptIns() []error {
 	// Track A — 6.1 / R-13.
 	pending(c.Scan.Mode == ScanModeBlock, `scan.mode: block`, "6.1")
 	pending(c.Scan.MaxDBAgeAction == ScanModeBlock, `scan.maxDbAgeAction: block`, "R-13")
-	// Track B — R-14 / 6.3.
-	pending(c.Auth.Tokens.DefaultLifetime > 0, "auth.tokens.defaultLifetime", "R-14")
+	// Track B — 6.3 (R-14's token lifetime is implemented).
 	pending(c.Auth.OIDC.Enabled, "auth.oidc.enabled", "6.3")
 	pending(c.Auth.SAML.Enabled, "auth.saml.enabled", "6.3")
 	return errs

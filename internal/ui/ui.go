@@ -458,6 +458,10 @@ type loginData struct {
 	Failed *ErrView
 }
 
+// loginExpiredParam marks a redirect to the login page caused by a dead
+// session (R-14): the page then explains it with TBY-AUTH-005.
+const loginExpiredParam = "expired"
+
 // loginPage serves the sign-in form. With authentication disabled there is
 // nothing to sign into: 302 to the dashboard, where the permanent banner
 // explains the state (FR-075).
@@ -470,7 +474,11 @@ func (u *UI) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, sanitizeNext(r.URL.Query().Get("next")), http.StatusFound) //nolint:gosec // G710: the target went through sanitizeNext, which only keeps a same-host path (B-033)
 		return
 	}
-	u.render.Page(w, r, "login", loginData{Next: sanitizeNext(r.URL.Query().Get("next"))})
+	d := loginData{Next: sanitizeNext(r.URL.Query().Get("next"))}
+	if r.URL.Query().Get(loginExpiredParam) == "1" {
+		d.Failed = errView(requestLang(r), taxonomy.New(taxonomy.CodeSessionExpired, nil))
+	}
+	u.render.Page(w, r, "login", d)
 }
 
 // loginSubmit verifies the credentials, opens the session, and redirects
@@ -503,6 +511,7 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	acct, ok := u.authn.Store.VerifyPassword(name, r.PostFormValue("password"), u.now())
 	if !ok {
 		u.authn.RecordFailure(origin)
+		u.authn.Observe(auth.MethodBasic, auth.OutcomeFailure)
 		audit.Log(r.Context(), u.logger, &audit.Event{
 			Actor: name, Action: audit.ActionLogin, Target: "ui",
 			Outcome: audit.OutcomeDenied, Origin: origin,
@@ -515,12 +524,16 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess := u.authn.Sessions.Create(acct.Name, acct.Role, u.now())
+	sess := u.authn.Sessions.CreateWith(acct.Name, acct.Role, auth.MethodBasic, u.now())
 	u.setSessionCookie(w, r, sess.ID, sess.Expires)
+	u.authn.Observe(auth.MethodBasic, auth.OutcomeSuccess)
 	audit.Log(r.Context(), u.logger, &audit.Event{
 		Actor: acct.Name, Action: audit.ActionLogin, Target: "ui",
-		Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r),
+		Outcome: audit.OutcomeSuccess, Origin: origin,
 	})
+	// Break-glass visibility (FR-078): with a federated method enabled, a
+	// local sign-in gets its own record on top of the ordinary one.
+	u.authn.LocalUnderFederation(r.Context(), acct.Name, audit.SurfaceUI, origin)
 	http.Redirect(w, r, next, http.StatusSeeOther) //nolint:gosec // G710: next went through sanitizeNext, which only keeps a same-host path (B-033)
 }
 

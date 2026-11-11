@@ -841,6 +841,14 @@
 "login.local_under_federation": "Connexion par compte local — consignée à part dans le journal d'audit."
 "tokens.expires": "Expire"
 "tokens.expires_never": "Jamais"
+"tokens.expired_badge": "expiré"
+"tokens.lifetime_label": "Expire après (jours)"
+"tokens.lifetime_hint_default": "Vide : le défaut de l'instance, {{.Days}} j."
+"tokens.lifetime_hint_never": "Vide : le jeton n'expire jamais."
+"login.local_heading": "Compte local"
+"login.federated_heading": "Connexion de l'organisation"
+"login.or": "ou"
+"account.federated": "Votre identité est gérée par {{.Provider}} : il n'y a pas ici de mot de passe local à changer."
 
 # Piste C — intégrité à la demande et assurance réduite (R-31, R-22).
 "assurance.reduced": "Assurance réduite"

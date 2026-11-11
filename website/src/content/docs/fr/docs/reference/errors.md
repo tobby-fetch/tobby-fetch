@@ -109,9 +109,12 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 ### TBY-AUTH-005
 
 - **Quoi :** votre session a expiré.
-- **Cause probable :** aucune activité pendant une durée supérieure à la
-  vie de la session (`auth.sessionTTL`, 12 h par défaut), ou l'instance a
-  redémarré — les sessions vivent en mémoire.
+- **Cause probable :** aucune activité pendant plus que le délai
+  d'inactivité (`auth.session.idleTimeout`, 30 min par défaut), la session
+  a atteint sa durée de vie absolue (`auth.sessionTTL`, 12 h par défaut),
+  ou l'instance a redémarré — les sessions vivent en mémoire. Chaque
+  expiration est consignée par un événement d'audit `session.expire` avec
+  sa raison, `idle` ou `lifetime`.
 - **Action corrective :** reconnectez-vous ; vous reviendrez à la page où
   vous étiez.
 - **Remédiable hors-ligne :** oui · **Bloque :** la session seulement
@@ -200,7 +203,7 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 - **Quoi :** Le jeton d'API a expiré.
 - **Cause probable :** Le jeton a été créé avec une date d'expiration, et cette date est passée. Un jeton expiré est refusé comme un jeton révoqué, et le refus est journalisé dans l'audit.
 - **Action corrective :** Demandez un nouveau jeton à un administrateur (écran des comptes ou `POST /api/v1/tokens`), puis remplacez le jeton expiré dans le client qui l'a présenté.
-- **Remédiable hors-ligne :** oui · **Bloque :** la requête ; le jeton reste refusé · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui · **Bloque :** la requête ; le jeton reste refusé
 
 ### TBY-AUTH-014
 

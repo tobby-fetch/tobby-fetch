@@ -78,9 +78,11 @@ its published rendering.
 ### TBY-AUTH-005
 
 - **What happened:** your session has expired.
-- **Probable cause:** no activity for longer than the session lifetime
-  (`auth.sessionTTL`, default 12h), or the instance restarted — sessions
-  live in memory.
+- **Probable cause:** no activity for longer than the idle timeout
+  (`auth.session.idleTimeout`, default 30m), the session reached its
+  absolute lifetime (`auth.sessionTTL`, default 12h), or the instance
+  restarted — sessions live in memory. Each expiry is recorded as a
+  `session.expire` audit event with its reason, `idle` or `lifetime`.
 - **Corrective action:** sign in again; you will be returned to the page
   you were on.
 - **Fixable offline:** yes · **Blocks:** the session only
@@ -166,7 +168,7 @@ its published rendering.
 - **What happened:** The API token has expired.
 - **Probable cause:** The token was created with an expiry date, and that date has passed. An expired token is refused like a revoked one, and the refusal is audit-logged.
 - **Corrective action:** Ask an administrator for a new token (the accounts screen or `POST /api/v1/tokens`), then replace the expired one in the client that presented it.
-- **Fixable offline:** yes · **Blocks:** the request; the token stays refused · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** the request; the token stays refused
 
 ### TBY-AUTH-014
 

@@ -839,6 +839,14 @@
 "login.local_under_federation": "Local account sign-in — recorded separately in the audit log."
 "tokens.expires": "Expires"
 "tokens.expires_never": "Never"
+"tokens.expired_badge": "expired"
+"tokens.lifetime_label": "Expires after (days)"
+"tokens.lifetime_hint_default": "Empty: the instance default, {{.Days}} d."
+"tokens.lifetime_hint_never": "Empty: the token never expires."
+"login.local_heading": "Local account"
+"login.federated_heading": "Organization sign-in"
+"login.or": "or"
+"account.federated": "Your identity is managed by {{.Provider}}: there is no local password to change here."
 
 # Track C — on-demand integrity and reduced assurance (R-31, R-22).
 "assurance.reduced": "Reduced assurance"

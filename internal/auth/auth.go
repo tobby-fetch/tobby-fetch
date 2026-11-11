@@ -76,9 +76,10 @@ type Token struct {
 	Revoked bool      `yaml:"revoked,omitempty"`
 	// Expires is the token's optional expiry (FR-072 amendment, R-14);
 	// zero is the long-lived FR-072 token. Additive in the accounts
-	// file: a store written before the field reads as "no expiry".
-	// Nothing sets or enforces it yet — that is the R-14 work, which also
-	// audits creation, revocation and expiry (FR-094).
+	// file: a store written before the field reads as "no expiry". Set at
+	// creation (explicitly, or by auth.tokens.defaultLifetime) and
+	// enforced by VerifyToken; a refusal of an expired token is audited
+	// as token.expire (FR-094).
 	Expires time.Time `yaml:"expires,omitempty"`
 }
 
@@ -95,10 +96,12 @@ type Identity struct {
 	Token bool
 	// Anonymous is true under the FR-075 authentication override.
 	Anonymous bool
-	// Method is how the caller authenticated. Empty until the surfaces
-	// set it (milestone 6): FR-078 needs it to tell a local sign-in under
-	// federation — a break-glass use, audited on its own — from an
-	// ordinary one.
+	// Method is how the caller authenticated: basic or token on the
+	// machine surfaces, the session's method in the UI. FR-078 needs it to
+	// tell a local sign-in under federation — a break-glass use, audited
+	// on its own — from an ordinary one, and the account screen to know
+	// that a federated identity has no local password to change. Empty
+	// only under the FR-075 override.
 	Method Method
 }
 

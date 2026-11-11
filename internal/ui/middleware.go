@@ -84,13 +84,13 @@ func (u *UI) RequireSession(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
-		sess, ok := u.sessionOf(r)
-		if !ok {
-			u.toLogin(w, r)
+		sess, state := u.lookupSession(r)
+		if state != auth.SessionLive {
+			u.toLogin(w, r, state)
 			return
 		}
 		ctx := withSession(r.Context(), &sess)
-		ctx = auth.WithIdentity(ctx, auth.Identity{Name: sess.Account, Role: sess.Role})
+		ctx = auth.WithIdentity(ctx, auth.Identity{Name: sess.Account, Role: sess.Role, Method: sess.Method})
 		r = r.WithContext(ctx)
 
 		switch r.Method {
@@ -128,21 +128,41 @@ func (u *UI) RequireRole(floor auth.Role, next http.Handler) http.Handler {
 
 // sessionOf resolves the request's session cookie.
 func (u *UI) sessionOf(r *http.Request) (auth.Session, bool) {
+	sess, state := u.lookupSession(r)
+	return sess, state == auth.SessionLive
+}
+
+// sessionNone is the state of a request that presented no session cookie
+// at all — told apart from SessionUnknown, a cookie that matches nothing.
+const sessionNone auth.SessionState = -1
+
+// lookupSession resolves the request's session cookie, renewing a live
+// session (R-14: any authenticated request restarts the idle timer) and
+// reporting why a dead one is dead.
+func (u *UI) lookupSession(r *http.Request) (auth.Session, auth.SessionState) {
 	c, err := r.Cookie(auth.SessionCookie)
 	if err != nil || c.Value == "" {
-		return auth.Session{}, false
+		return auth.Session{}, sessionNone
 	}
-	return u.authn.Sessions.Get(c.Value, u.now())
+	return u.authn.Sessions.Lookup(c.Value, auth.ClientOrigin(r), u.now())
 }
 
 // toLogin sends an unauthenticated request to the login page, preserving
-// the destination. htmx gets 401 + HX-Redirect (ADR-0015 §6).
-func (u *UI) toLogin(w http.ResponseWriter, r *http.Request) {
+// the destination. htmx gets 401 + HX-Redirect (ADR-0015 §6). A request
+// that presented a session cookie which is no longer alive — expired by
+// its idle timeout or its lifetime, or lost with an instance restart —
+// lands on the login page with TBY-AUTH-005 (R-14), so the person learns
+// why they are asked to sign in again.
+func (u *UI) toLogin(w http.ResponseWriter, r *http.Request, state auth.SessionState) {
 	next := r.URL.Path
 	if r.URL.RawQuery != "" {
 		next += "?" + r.URL.RawQuery
 	}
 	target := "/login?next=" + url.QueryEscape(next)
+	if state != sessionNone {
+		u.clearSessionCookie(w, r)
+		target += "&" + loginExpiredParam + "=1"
+	}
 	if r.Header.Get("HX-Request") == "true" {
 		w.Header().Set("HX-Redirect", target)
 		w.WriteHeader(http.StatusUnauthorized)

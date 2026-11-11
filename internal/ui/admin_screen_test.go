@@ -120,8 +120,8 @@ func TestTokenCreateSecretShownOnce(t *testing.T) {
 		t.Error("secret block misses the copy chip")
 	}
 	// The secret authenticates with the requested role.
-	if tok, ok := u.authn.Store.VerifyToken(secret); !ok || tok.Role != auth.RoleOperator {
-		t.Errorf("created secret does not verify as operator: %+v ok=%v", tok, ok)
+	if tok, st := u.authn.Store.VerifyToken(secret, t0); st != auth.TokenValid || tok.Role != auth.RoleOperator {
+		t.Errorf("created secret does not verify as operator: %+v state=%v", tok, st)
 	}
 
 	// The next GET lists the token but never the secret.
@@ -169,7 +169,7 @@ func TestTokenRevoke(t *testing.T) {
 	if !strings.Contains(w.Body.String(), "revoked") {
 		t.Error("revoked token misses its status badge")
 	}
-	if _, ok := u.authn.Store.VerifyToken(secret); ok {
+	if _, st := u.authn.Store.VerifyToken(secret, t0); st == auth.TokenValid {
 		t.Error("secret still verifies after revocation")
 	}
 

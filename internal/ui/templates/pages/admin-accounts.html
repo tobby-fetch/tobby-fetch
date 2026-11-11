@@ -140,6 +140,7 @@
         <th scope="col">{{.T "admin.th_name"}}</th>
         <th scope="col">{{.T "admin.th_role"}}</th>
         <th scope="col" class="t-num">{{.T "admin.th_issued"}}</th>
+        <th scope="col" class="t-num">{{.T "tokens.expires"}}</th>
         <th scope="col">{{.T "admin.th_status"}}</th>
         <th scope="col"><span class="t-visually-hidden">{{.T "admin.th_actions"}}</span></th>
       </tr>
@@ -150,7 +151,8 @@
         <td class="t-mono" translate="no">{{$t.Name}}</td>
         <td><span class="t-badge" translate="no" lang="en">{{$t.Role}}</span></td>
         <td class="t-num t-muted"><time datetime="{{$.TimeAttr $t.Created}}">{{$.FmtTime $t.Created}}</time></td>
-        <td>{{if $t.Revoked}}<span class="t-badge t-badge--failed">{{$.T "admin.token_revoked_badge"}}</span>{{else}}<span class="t-badge t-badge--done">{{$.T "admin.token_active"}}</span>{{end}}</td>
+        <td class="t-num t-muted" data-token-expires>{{if $t.Expires.IsZero}}{{$.T "tokens.expires_never"}}{{else}}<time datetime="{{$.TimeAttr $t.Expires}}">{{$.FmtTime $t.Expires}}</time>{{end}}</td>
+        <td>{{if $t.Revoked}}<span class="t-badge t-badge--failed">{{$.T "admin.token_revoked_badge"}}</span>{{else if $t.Expired $.Data.Now}}<span class="t-badge t-badge--failed">{{$.T "tokens.expired_badge"}}</span>{{else}}<span class="t-badge t-badge--done">{{$.T "admin.token_active"}}</span>{{end}}</td>
         <td class="t-num">
           {{if not $t.Revoked}}
           <button type="button" class="t-btn t-btn--danger t-btn--sm" data-dialog="revoke-dlg-{{$i}}">{{$.T "admin.revoke"}}</button>
@@ -183,6 +185,12 @@
           <option value="operator">operator</option>
           <option value="admin">admin</option>
         </select>
+      </div>
+      <div>
+        <label for="token-lifetime">{{.T "tokens.lifetime_label"}}</label>
+        <input id="token-lifetime" class="t-input" type="number" name="lifetimeDays" min="1" max="3650" step="1"
+               inputmode="numeric" aria-describedby="token-lifetime-hint">
+        <p id="token-lifetime-hint" class="t-hint">{{if .Data.DefaultLifetimeDays}}{{.T "tokens.lifetime_hint_default" "Days" .Data.DefaultLifetimeDays}}{{else}}{{.T "tokens.lifetime_hint_never"}}{{end}}</p>
       </div>
       <button type="submit" class="t-btn t-btn--primary">{{.T "admin.create_submit"}}</button>
     </div>
