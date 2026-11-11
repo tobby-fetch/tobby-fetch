@@ -215,6 +215,15 @@ starting with `v0.1.0`.
   commands now open the store for inspection, without the purger; `tobby
   serve` keeps it.
 
+- **A sparse index no longer keeps someone else's blob alive** (B-043).
+  Since the embedded registry accepts partial indexes (B-036), any client
+  could push an index naming, as a child, the digest of a blob it never
+  uploaded — a layer of another repository. The garbage collector marked
+  every child digest, held or not, so that blob survived the removal of
+  its repository and was no longer reported as orphaned by the store
+  verification. Only children the repository actually holds are marked
+  now.
+
 ### Security
 
 - **Go 1.27.4** (from 1.27.3), which fixes GO-2026-6859 in `net/http`:
