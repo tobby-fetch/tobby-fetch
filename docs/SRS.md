@@ -948,6 +948,28 @@ verification has completed; per-recipe verdicts name blocked recipes and their
 offending files; a zone mismatch and a stale medium each render their refusal
 with the admin override path.
 
+*Amendment 2026-11-12 (R-07) — transfer slip.* The Media screen SHALL offer a
+printable, bilingual (English and French) **transfer slip** derived from it:
+the medium summary (zone identity, freshness, inventory), the verification
+report, the vulnerability-scan report per recipe and element with the age of
+the database and the mode in which it was evaluated (advisory or blocking),
+and the reduced-assurance markers (FR-037), shown beside the recipes they
+qualify. It SHALL be exportable as self-contained HTML (inline print rules, no
+external resource) and as plain text, through the interface, the API
+(`GET /api/v1/media/slip`, FR-061) and the command line (`tobby media slip`),
+on the same role floor as the screen. It introduces no engine behaviour,
+hashes nothing and runs no verification. It SHALL state, at its head and at
+its foot and in every format and language, that it is an unsigned aid document
+and not proof of authenticity: Tobby signs nothing (ADR-0006, ADR-0016,
+decision n°10).
+*Acceptance:* the slip renders in English and French as HTML and as text, and
+each rendering carries the unsigned-aid notice at its head and its foot; the
+HTML is autonomous (no external resource) and a browser enforcing its own
+policy still applies its print stylesheet; the scan section lists, per recipe
+and element, the verdict, the mode and the database age; a recipe admitted
+under a relaxed trust scope is marked wherever the slip names it; a viewer can
+read it and nobody can obtain it without authenticating.
+
 **FR-063 — Internationalization.**
 All UI labels SHALL be externalized and provided in English and French, with the
 active language selectable; adding a language SHALL NOT require code changes beyond a

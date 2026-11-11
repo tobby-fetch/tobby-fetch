@@ -72,6 +72,10 @@ leurs signatures.
 
 <!-- TODO: screenshot: l'écran Média côté destination — l'enchaînement en trois étapes avec une vérification en cours et sa progression -->
 
+L'écran établit aussi le [bordereau de transfert](../../air-gap/transfer-slip/) :
+le même contenu sous forme de page imprimable, bilingue et **non signée**, ou
+de fichier HTML ou texte, à remettre avec le disque.
+
 Lire l'écran est une action `viewer`. Vérifier et importer sont des actions
 `operator`. Lever l'un des deux refus ci-dessous est une action
 d'administrateur, et les cases de dérogation ne sont rendues que pour lui.

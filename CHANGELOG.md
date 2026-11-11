@@ -10,6 +10,22 @@ starting with `v0.1.0`.
 
 ### Added
 
+- **The transfer slip** (R-07): the Media screen as a printable,
+  bilingual (EN/FR) document — the medium's identity, freshness and
+  inventory, the verification report, the vulnerability-scan reports per
+  recipe and element with the database age and the mode (advisory or
+  blocking), and the reduced-assurance markers, shown beside the recipes
+  they qualify as well as in a section of their own. Exported as
+  self-contained HTML (inline print rules, nothing loaded, its own
+  `Content-Security-Policy`) or plain text, from the Media screen
+  (`GET /media/slip`), the API (`GET /api/v1/media/slip`, `format=html|text|json`,
+  `lang=en|fr`, `download=1`, role viewer) and the command line
+  (`tobby media slip`, which verifies a destination medium first and
+  writes nothing). It hashes nothing and runs no verification. It is
+  **unsigned and says so at its head and its foot**, in every format and
+  language: an aid, not proof of authenticity (ADR-0006, ADR-0016). A
+  browser test opens and prints it under its policy. Documentation: *The
+  transfer slip* (EN/FR).
 - **Every container image is scanned at retrieval**, in passthrough as in
   mirror mode, with Trivy run as a **pinned external binary** (0.76.2),
   offline (`--offline-scan`, `--skip-db-update`, `--skip-java-db-update`
@@ -148,8 +164,22 @@ starting with `v0.1.0`.
 
 ### Changed
 
-- **Upgrading from v0.5.x: nothing to change** unless you enable a
-  federated method — every new key is off or defaulted. When you do, the
+- **Upgrading from v0.5.x: nothing to change to keep an instance running,
+  but one default is new — vulnerability scanning now runs, in advisory
+  mode.** Every container image retrieved is scanned (there is no "enabled"
+  switch), and with `scan.mode` left at `warn` the findings are reported —
+  in the task report, the API, the interface and the metrics, with the
+  database age — and **nothing is withheld**. An instance with no scanner
+  or no database shows the degraded-mode banner instead. To refuse what
+  violates a threshold, set `scan.mode: block` (or `TOBBY_SCAN_MODE=block`;
+  `scan.threshold`, 7.0 by default, is the CVSS score from which a finding
+  violates the policy), or pose a threshold for one perimeter: a Retriever's
+  `spec.scanPolicy.threshold` or a recipe's
+  `recipe.tobby.dev/scan-threshold` annotation, either of which is blocking
+  for what it covers. A refusal withholds the whole recipe. See
+  [Vulnerability scanning](website/src/content/docs/docs/security/vulnerability-scanning.md).
+  Federated sign-in changes nothing unless you enable it — every new key
+  is off or defaulted. When you do, the
   callback URLs registered at the provider must be the `/auth/` paths
   (`auth.oidc.redirectURL` ending in `/auth/oidc/callback`,
   `auth.saml.acsURL` in `/auth/saml/acs`; the SP descriptor is at
