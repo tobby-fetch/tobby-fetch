@@ -996,6 +996,52 @@ paths:
                   bytes: { type: integer, format: int64 }
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/store/verify:
+    post:
+      summary: >-
+        Verify the whole store on demand (FR-057, R-31), in both modes:
+        every blob re-hashed against the digest it is stored under, every
+        manifest reachable from a recorded recipe checked for completeness,
+        every recorded recipe signature re-verified against the trust
+        roots configured on this instance (scopes applied, reduced
+        assurance re-reported), and content reachable from no recipe nor
+        protected root listed as orphaned. Read-only: it repairs and
+        deletes nothing. Enqueues one tracked task and answers 201 with it;
+        the report is on the task once it finishes, and at
+        /api/v1/store/verification. One at a time: a second request while
+        one is pending or running answers 409 TBY-INT-004 naming it. A
+        store with defects is a failed task carrying its principal code.
+        Audited (FR-094): the finished verification writes a store.verify
+        event with the requester and the verdict. Role operator.
+      responses:
+        "201":
+          description: The created task.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/store/verification:
+    get:
+      summary: >-
+        The last on-demand store verification and where it stands (FR-057,
+        R-31): the timestamped report of the most recent verification task,
+        or, while it runs, a snapshot carrying its progress. The same
+        document the Store integrity screen renders. "verification" is null
+        before any verification has been requested. Role viewer.
+      responses:
+        "200":
+          description: The last verification.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrityStatus"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v1/network:
     get:
       summary: >-
@@ -2075,6 +2121,14 @@ components:
         vendor_dependencies:
           type: boolean
           description: True when the FR-025 vendoring opt-in was requested.
+        verification:
+          $ref: "#/components/schemas/IntegrityReport"
+        origin:
+          type: string
+          description: >-
+            Where the request for the task came from (a client address, or
+            "local"); recorded for the audit event a store verification
+            writes when it finishes.
         error:
           $ref: "#/components/schemas/ItemError"
         items:
@@ -2574,6 +2628,120 @@ components:
           description: >-
             Optional expiry (FR-072 amendment, R-14); absent for a
             long-lived token.
+    IntegrityStatus:
+      type: object
+      description: The last on-demand store verification (FR-057).
+      required: [verification]
+      properties:
+        task_id:
+          type: string
+          description: The task that ran it.
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        verification:
+          oneOf:
+            - $ref: "#/components/schemas/IntegrityReport"
+            - type: "null"
+    IntegrityReport:
+      type: object
+      description: >-
+        The timestamped report of one on-demand store verification (FR-057).
+        Codes and parameters, never sentences: every defect is a taxonomy
+        code naming the file or object concerned, re-rendered in the
+        reader's language. While the verification runs the report is a
+        snapshot with only started_at, store and progress.
+      required: [started_at, store, checked, defect_count, finding_count]
+      properties:
+        run_id:
+          type: string
+          description: The FR-090 correlation identifier.
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        verdict:
+          type: string
+          enum: [clean, defects]
+          description: >-
+            Empty while running. "defects" when a blob does not match its
+            digest, a manifest is incomplete or unreadable, or a recipe
+            signature no longer verifies; orphaned content never makes it.
+        store:
+          type: object
+          properties:
+            root: { type: string }
+            media_id: { type: string }
+            transportable:
+              type: boolean
+              description: >-
+                True when the store carries a media manifest — the delivery
+                unit of a mirror synchronization, or a medium that arrived.
+        checked:
+          type: object
+          properties:
+            blobs: { type: integer }
+            bytes: { type: integer, format: int64 }
+            manifests: { type: integer }
+            recipes: { type: integer }
+        recipes:
+          type: array
+          description: One row per recorded recipe.
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              version: { type: string }
+              cookbook_repo: { type: string }
+              complete: { type: boolean }
+              signature:
+                type: string
+                enum: [verified, unsigned-admitted, refused, not-checked]
+              key_fingerprint: { type: string }
+              trust_scope: { type: string }
+              assurance:
+                $ref: "#/components/schemas/Assurance"
+        defects:
+          type: array
+          description: Blocking findings, bounded; defect_count is exact.
+          items:
+            $ref: "#/components/schemas/IntegrityDefect"
+        defects_omitted: { type: integer }
+        findings:
+          type: array
+          description: Non-blocking findings (orphaned content), bounded.
+          items:
+            $ref: "#/components/schemas/IntegrityDefect"
+        findings_omitted: { type: integer }
+        defect_count: { type: integer }
+        finding_count: { type: integer }
+        progress:
+          type: object
+          description: Present only while the verification runs.
+          properties:
+            stage:
+              type: string
+              enum: [blobs, manifests, signatures, orphans]
+            done: { type: integer }
+            total: { type: integer }
+            bytes: { type: integer, format: int64 }
+    IntegrityDefect:
+      type: object
+      required: [code, path]
+      properties:
+        code:
+          type: string
+          description: >-
+            TBY-INT-001 (blob does not match its digest), TBY-INT-002
+            (incomplete manifest), TBY-INT-003 (orphan, non-blocking),
+            TBY-INT-005 (unreadable manifest) or TBY-SIG-001 (a recipe
+            signature that no longer verifies, naming the scope).
+        path:
+          type: string
+          description: >-
+            The file or object concerned: a blob path relative to the store
+            root, a repository@digest or repository:tag reference, or a
+            recipe (name@version).
+        params:
+          type: object
+          additionalProperties: { type: string }
     MediaSummary:
       type: object
       description: >-

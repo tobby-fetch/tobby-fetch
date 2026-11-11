@@ -273,6 +273,73 @@
       "$ref": "#/$defs/task",
       "title": "tobby media import --output json",
       "description": "The task the import ran, in the same shape a queued import leaves behind (FR-061), so the two surfaces narrate one operation in one vocabulary."
+    },
+
+    "tobby store verify": {
+      "title": "tobby store verify --output json",
+      "description": "The on-demand store verification report of FR-057 — the same document GET /api/v1/store/verification serves under \"verification\". Codes and parameters, never sentences: every defect names the file or object it is about.",
+      "type": "object",
+      "required": ["verdict", "started_at", "finished_at", "store", "checked", "defect_count", "finding_count"],
+      "properties": {
+        "run_id": { "type": "string" },
+        "started_at": { "type": "string", "format": "date-time" },
+        "finished_at": { "type": "string", "format": "date-time" },
+        "verdict": { "type": "string", "enum": ["clean", "defects"] },
+        "store": {
+          "type": "object",
+          "required": ["root", "transportable"],
+          "properties": {
+            "root": { "type": "string" },
+            "media_id": { "type": "string" },
+            "transportable": { "type": "boolean" }
+          }
+        },
+        "checked": {
+          "type": "object",
+          "required": ["blobs", "bytes", "manifests", "recipes"],
+          "properties": {
+            "blobs": { "type": "integer" },
+            "bytes": { "type": "integer" },
+            "manifests": { "type": "integer" },
+            "recipes": { "type": "integer" }
+          }
+        },
+        "recipes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "version", "complete", "signature"],
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" },
+              "cookbook_repo": { "type": "string" },
+              "complete": { "type": "boolean" },
+              "signature": { "type": "string", "enum": ["verified", "unsigned-admitted", "refused", "not-checked"] },
+              "key_fingerprint": { "type": "string" },
+              "trust_scope": { "type": "string" },
+              "assurance": { "type": "object" }
+            }
+          }
+        },
+        "defects": { "type": "array", "items": { "$ref": "#/$defs/integrityDefect" } },
+        "defects_omitted": { "type": "integer" },
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/integrityDefect" } },
+        "findings_omitted": { "type": "integer" },
+        "defect_count": { "type": "integer" },
+        "finding_count": { "type": "integer" }
+      }
+    },
+
+    "integrityDefect": {
+      "title": "Store verification defect",
+      "description": "One finding of a store verification: a taxonomy code, the file or object it is about, and the parameters its message needs.",
+      "type": "object",
+      "required": ["code", "path"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^TBY-[A-Z]{3,4}-[0-9]{3}$" },
+        "path": { "type": "string" },
+        "params": { "type": "object" }
+      }
     }
   }
 }

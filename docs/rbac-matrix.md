@@ -61,6 +61,8 @@ possible at all.
 | `POST /recipes/plan` | operator | A plan mutates nothing, but it makes this instance reach out to every registry the submitted Retriever names. |
 | `GET /media` | viewer | The Media screen (FR-062 amendment R-02): the medium's inventory summary, the verification verdicts, and the guided sequence. Reading it is a listing like any other. |
 | `POST /media/verify` | operator | Starts the FR-054 verification: it re-reads and re-hashes the whole medium, which is work rather than a read. The two waivers below need admin. |
+| `GET /integrity` | viewer | The Store integrity screen (FR-057, R-31): the last on-demand verification report of the store, in both modes. Reading it is a listing like any other. |
+| `POST /integrity/verify` | operator | Starts the on-demand verification: it re-reads and re-hashes the whole store, which is work rather than a read — disk I/O for minutes, holding the serial task worker. It repairs and deletes nothing. |
 | `POST /media/import` | operator | Pushes the transported medium into the zone registry (FR-052). Audited (FR-094). The two waivers below need admin. |
 | `GET /account` | viewer | Self-service: every authenticated role manages its own account (R-34). |
 | `POST /account/password` | viewer | Own password only. Administrators manage others on `/admin/accounts`. |
@@ -117,6 +119,8 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `GET /api/v1/media/verification` | viewer | the serving gate and the verification in progress — what `GET /media` polls |
 | `POST /api/v1/media/verify` | operator | `POST /media/verify` |
 | `POST /api/v1/media/import` | operator | `POST /media/import` |
+| `GET /api/v1/store/verification` | viewer | the last store verification report — what `GET /integrity` polls |
+| `POST /api/v1/store/verify` | operator | `POST /integrity/verify` |
 | `GET /api/v1/network` | admin | `GET /admin/network` |
 | `PUT /api/v1/network/certificate` | admin | `POST /admin/network/certificate` |
 | `GET /api/v1/retriever` | admin | `GET /admin/retriever` |

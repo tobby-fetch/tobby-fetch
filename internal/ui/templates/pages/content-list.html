@@ -8,6 +8,7 @@
 <section>
   <h1 class="t-page-title">{{.T "content.title"}}</h1>
 <p class="t-page-guide">{{template "help-cta" (withData . (.Guide "passthrough/connect-clients"))}}</p>
+  <p class="t-muted"><a href="/integrity">{{.T "integrity.link"}}</a></p>
   {{if .Err}}
   {{template "error-block" .}}
   {{else}}

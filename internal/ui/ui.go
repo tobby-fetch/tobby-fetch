@@ -92,6 +92,8 @@ type UI struct {
 	// verdict the last one reached. Nil on an instance that guards
 	// nothing, which renders the sequence unavailable rather than broken.
 	mediaGate *mediagate.Gate
+	// integrity runs the on-demand store verification (FR-057, R-31).
+	integrity IntegrityVerifier
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -182,6 +184,11 @@ type Options struct {
 	// screen and its mirror cannot answer differently (FR-061).
 	MediaZone MediaZone
 	MediaGate *mediagate.Gate
+	// Integrity backs the Store integrity screen (FR-057, R-31) — the
+	// service the /api/v1/store endpoints use, so the screen and its
+	// mirror answer alike (FR-061). Nil: the screen says this instance
+	// cannot verify.
+	Integrity IntegrityVerifier
 }
 
 // New assembles the UI.
@@ -226,6 +233,7 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		projector:         opts.Projector,
 		mediaZone:         opts.MediaZone,
 		mediaGate:         opts.MediaGate,
+		integrity:         opts.Integrity,
 	}
 }
 
@@ -321,6 +329,14 @@ func (u *UI) Mount(rt Router) {
 	mux.Handle("GET /media", app(u.mediaScreen))
 	mux.Handle("POST /media/verify", operator(u.mediaVerify))
 	mux.Handle("POST /media/import", operator(u.mediaImport))
+
+	// The Store integrity screen (FR-057, R-31): the on-demand verification
+	// of the whole store, in both modes. Reading the last report is a
+	// listing like any other; starting a verification re-hashes the disk
+	// and holds the serial task worker, so it is an operator action — the
+	// same floor as the Media screen's, mirrored at /api/v1/store/verify.
+	mux.Handle("GET /integrity", app(u.integrityScreen))
+	mux.Handle("POST /integrity/verify", operator(u.integrityVerify))
 
 	// Account self-service (R-34, FR-061): every authenticated role,
 	// viewer included — the admin gate stays on /admin/accounts.

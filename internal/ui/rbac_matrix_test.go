@@ -106,6 +106,8 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "POST /recipes/plan", Floor: auth.RoleOperator, Why: "a plan mutates nothing, but it makes this instance reach out to every registry the submitted Retriever names", Method: "POST", Path: "/recipes/plan", Form: "retriever=&document="},
 	{Pattern: "GET /recipes/{recipe}/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/recipes/no-such-recipe/mapping"},
 	{Pattern: "GET /media", Floor: auth.RoleViewer, Why: "the medium's inventory summary is a listing like any other (R-02)", Method: "GET", Path: "/media"},
+	{Pattern: "GET /integrity", Floor: auth.RoleViewer, Why: "the last store verification report (FR-057): reading, and pollable while one runs", Method: "GET", Path: "/integrity"},
+	{Pattern: "POST /integrity/verify", Floor: auth.RoleOperator, Why: "re-hashing the whole store is work, not a read (FR-057): disk I/O for minutes, holding the serial task worker", Method: "POST", Path: "/integrity/verify"},
 	{Pattern: "POST /media/verify", Floor: auth.RoleOperator, Why: "re-hashing a whole medium is work, not a read (FR-054); the two waivers inside it need admin, enforced in the handler", Method: "POST", Path: "/media/verify"},
 	{Pattern: "POST /media/import", Floor: auth.RoleOperator, Why: "pushing a transported medium into the zone registry (FR-052), audited (FR-094); the waivers need admin, enforced in the handler", Method: "POST", Path: "/media/import"},
 	{Pattern: "GET /account", Floor: auth.RoleViewer, Why: "self-service: every authenticated role manages its own account (R-34)", Method: "GET", Path: "/account"},
@@ -163,6 +165,8 @@ var apiMatrix = []rbacRoute{
 	{Pattern: "POST /api/v1/recipes/publish", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/recipes/publish", Body: `{"reference":"","document":""}`},
 	{Pattern: "GET /api/v1/media/verification", Floor: auth.RoleViewer, Why: "the serving gate and the verification in progress (FR-054), mirror of what the Media screen polls: reading, and pollable because it hashes nothing", Method: "GET", Path: "/api/v1/media/verification"},
 	{Pattern: "GET /api/v1/media", Floor: auth.RoleViewer, Why: "the medium's identity and the zone's last import (FR-052, R-28): reading, like every other inventory view", Method: "GET", Path: "/api/v1/media"},
+	{Pattern: "GET /api/v1/store/verification", Floor: auth.RoleViewer, Why: "the last store verification report (FR-057), mirror of what the Store integrity screen polls: reading", Method: "GET", Path: "/api/v1/store/verification"},
+	{Pattern: "POST /api/v1/store/verify", Floor: auth.RoleOperator, Why: "re-hashing the whole store is work, not a read (FR-057), mirror of POST /integrity/verify", Method: "POST", Path: "/api/v1/store/verify"},
 	{Pattern: "POST /api/v1/media/verify", Floor: auth.RoleOperator, Why: "re-hashing a whole medium is work, not a read (FR-054); the FR-054 waivers inside it need admin, enforced in the handler", Method: "POST", Path: "/api/v1/media/verify", Body: `{}`},
 	{Pattern: "POST /api/v1/media/import", Floor: auth.RoleOperator, Why: "pushing a transported medium into the zone registry (FR-052), audited (FR-094); the waivers need admin, enforced in the handler", Method: "POST", Path: "/api/v1/media/import", Body: `{}`},
 	{Pattern: "GET /api/v1/network", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/network"},
@@ -285,6 +289,8 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	// matrix probes the gate, and every row is decided before the
 	// handler runs.
 	api.RegisterMedia(restAPI, &api.MediaOptions{})
+	// FR-057: registered with no service — the gate is what is probed.
+	api.RegisterIntegrity(restAPI, &api.IntegrityOptions{})
 	api.RegisterOpenAPI(restAPI)
 	rec.mux.Handle("/api/v1/", restAPI.Handler())
 

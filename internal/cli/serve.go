@@ -29,6 +29,8 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
+	"github.com/tobby-fetch/tobby-fetch/internal/integrity"
+	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check"
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
@@ -483,6 +485,15 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			slog.String("requirement", "FR-052/R-28"))
 	}
 	queue.Register(tasks.TypeMediaImport, eng.MediaImportRunner())
+
+	// FR-057 (R-31): the on-demand verification of the whole store, as a
+	// tracked task. One service behind the API, the screen and the queue
+	// (FR-061), verifying against THIS instance's trust roots — never keys
+	// carried by the store — and feeding the integrity metrics.
+	integritySvc := check.NewService(st, queue, engine.MediaTrust{Policy: trust}, func(rep *integrity.Report) {
+		reg.ObserveIntegrityVerification(string(rep.Verdict), rep.FinishedAt)
+	})
+	integritySvc.Register()
 	eng.SetDestination(destination)
 	if destination != nil {
 		logger.LogAttrs(ctx, slog.LevelInfo, "promotion destination configured",
@@ -595,6 +606,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	api.RegisterMedia(restAPI, &api.MediaOptions{
 		Engine: eng, Queue: queue, StorageRoot: cfg.Storage.Root, Gate: mediaGate,
 	})
+	api.RegisterIntegrity(restAPI, &api.IntegrityOptions{Verifier: integritySvc})
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{
 		Cert:     serverCert,
 		CertFile: cfg.Server.TLS.CertFile,
@@ -636,6 +648,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Projector:          eng,
 		MediaZone:          eng,
 		MediaGate:          mediaGate,
+		Integrity:          integritySvc,
 	})
 	webUI.Mount(srv.Mux())
 

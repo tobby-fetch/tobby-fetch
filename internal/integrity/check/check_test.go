@@ -4,26 +4,18 @@
 package check_test
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"io"
-	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/opencontainers/go-digest"
-
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check"
+	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check/checktest"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify/sigtest"
@@ -36,16 +28,8 @@ import (
 // a failing disk or a careless copy does. The defects have to bite on the
 // layout the product actually writes, not on a hand-drawn imitation.
 
-const (
-	mtManifest = "application/vnd.oci.image.manifest.v1+json"
-	mtConfig   = "application/vnd.oci.image.config.v1+json"
-	mtLayer    = "application/vnd.oci.image.layer.v1.tar+gzip"
-	mtIndex    = "application/vnd.oci.image.index.v1+json"
-
-	cookbook = "registry.example.com/cookbook"
-)
-
 type fixture struct {
+	*checktest.Fixture
 	t    *testing.T
 	root string
 	st   *store.Store
@@ -64,149 +48,32 @@ func (t trust) Decide(string) media.TrustDecision {
 	return media.TrustDecision{Keys: t.keys, AllowUnsigned: t.allowUnsigned, Scope: t.scope}
 }
 
-func keysOf(t *testing.T, kp *sigtest.KeyPair) *sigverify.Keys {
-	t.Helper()
-	pem, err := kp.PublicPEM()
-	if err != nil {
-		t.Fatal(err)
-	}
-	keys, err := sigverify.ParsePublicKeys(pem)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return keys
-}
-
-func newKeyPair(t *testing.T) *sigtest.KeyPair {
-	t.Helper()
-	kp, err := sigtest.GenerateKeyPair(sigtest.ECDSAP256)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return kp
-}
+func keysOf(t *testing.T, kp *sigtest.KeyPair) *sigverify.Keys { return checktest.KeysOf(t, kp) }
+func newKeyPair(t *testing.T) *sigtest.KeyPair                 { return checktest.NewKeyPair(t) }
+func dgstOf(b []byte) string                                   { return checktest.Digest(b) }
+func blobPathOf(d string) string                               { return checktest.BlobPath(d) }
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	root := t.TempDir()
-	st, err := store.Open(context.Background(), root, slog.New(slog.DiscardHandler))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	kp := newKeyPair(t)
-	return &fixture{t: t, root: root, st: st, kp: kp, keys: keysOf(t, kp)}
+	f := checktest.New(t)
+	return &fixture{Fixture: f, t: t, root: f.Root, st: f.St, kp: f.KP, keys: f.Keys}
 }
 
-func dgstOf(b []byte) string {
-	sum := sha256.Sum256(b)
-	return "sha256:" + hex.EncodeToString(sum[:])
-}
-
-func (f *fixture) putBlob(repo string, payload []byte) string {
-	f.t.Helper()
-	d := dgstOf(payload)
-	if err := f.st.WriteBlob(context.Background(), repo, digest.Digest(d), bytes.NewReader(payload)); err != nil {
-		f.t.Fatalf("writing blob into %s: %v", repo, err)
-	}
-	return d
-}
-
+func (f *fixture) putBlob(repo string, b []byte) string { return f.PutBlob(repo, b) }
 func (f *fixture) putImage(repo, tag string, layer []byte) string {
-	f.t.Helper()
-	config := []byte(`{"architecture":"amd64","os":"linux"}`)
-	cd, ld := f.putBlob(repo, config), f.putBlob(repo, layer)
-	raw, err := json.Marshal(map[string]any{
-		"schemaVersion": 2, "mediaType": mtManifest,
-		"config": map[string]any{"mediaType": mtConfig, "digest": cd, "size": len(config)},
-		"layers": []any{map[string]any{"mediaType": mtLayer, "digest": ld, "size": len(layer)}},
-	})
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	d, err := f.st.PutManifest(context.Background(), repo, mtManifest, raw, tag)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	return d.String()
+	return f.PutImage(repo, tag, layer)
 }
-
 func (f *fixture) putIndex(repo, tag string, children ...string) string {
-	f.t.Helper()
-	descs := make([]any, 0, len(children))
-	for _, c := range children {
-		descs = append(descs, map[string]any{"mediaType": mtManifest, "digest": c, "size": 100})
-	}
-	raw, err := json.Marshal(map[string]any{"schemaVersion": 2, "mediaType": mtIndex, "manifests": descs})
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	d, err := f.st.PutManifest(context.Background(), repo, mtIndex, raw, tag)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	return d.String()
+	return f.PutIndex(repo, tag, children...)
 }
-
-// sign publishes a cosign attached signature over subject, signed by kp.
-func (f *fixture) sign(kp *sigtest.KeyPair, repo, subject string) {
-	f.t.Helper()
-	payload, err := sigtest.SimpleSigningPayload("registry.example.com/"+repo, subject)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	sig, err := kp.Sign(payload)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	config := []byte("{}")
-	cd, pd := f.putBlob(repo, config), f.putBlob(repo, payload)
-	raw, err := json.Marshal(map[string]any{
-		"schemaVersion": 2, "mediaType": mtManifest,
-		"config": map[string]any{"mediaType": mtConfig, "digest": cd, "size": len(config)},
-		"layers": []any{map[string]any{
-			"mediaType": sigverify.MediaTypeSimpleSigning, "digest": pd, "size": len(payload),
-			"annotations": map[string]string{sigverify.AnnotationSignature: sig},
-		}},
-	})
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	if _, err := f.st.PutManifest(context.Background(), repo, mtManifest, raw, "sha256-"+subject[len("sha256:"):]+".sig"); err != nil {
-		f.t.Fatal(err)
-	}
-}
-
-// addRecipe puts one complete delivery in the store: the ingredient, the
-// recipe artifact, its signature (by signer, unless nil) and the graph
-// entry. It returns the record and the ingredient's layer digest.
+func (f *fixture) sign(kp *sigtest.KeyPair, repo, subject string) { f.Sign(kp, repo, subject) }
 func (f *fixture) addRecipe(name string, signer *sigtest.KeyPair) (store.RecipeRecord, string) {
-	f.t.Helper()
-	ingRepo := "docker.io/library/" + name
-	layer := []byte("layer bytes of " + name + " — long enough to be a real blob")
-	ingDigest := f.putImage(ingRepo, "1.0", layer)
-	artifactRepo := cookbook + "/" + name
-	artifactDigest := f.putImage(artifactRepo, "1.0.0", []byte("recipe document of "+name))
-	if signer != nil {
-		f.sign(signer, artifactRepo, artifactDigest)
-	}
-	rec := store.RecipeRecord{
-		Name: name, Version: "1.0.0",
-		CookbookRepo: artifactRepo, ArtifactRepo: artifactRepo, ArtifactTag: "1.0.0",
-		Digest: artifactDigest, Zone: "zone-a", ResolvedAt: time.Now().UTC(), Verified: signer != nil,
-		Ingredients: []store.IngredientRecord{{Name: name, Kind: "Image", Repo: ingRepo, Tag: "1.0", Digest: ingDigest}},
-	}
-	if err := f.st.PutRecipeRecord(&rec); err != nil {
-		f.t.Fatal(err)
-	}
-	if err := f.st.SetProvenance(ingRepo, &store.Provenance{Class: store.ProvenanceRecipe, Recipe: name, RecipeVersion: "1.0.0"}); err != nil {
-		f.t.Fatal(err)
-	}
-	if err := f.st.SetProvenance(artifactRepo, &store.Provenance{Class: store.ProvenanceRecipe, Recipe: name, RecipeVersion: "1.0.0"}); err != nil {
-		f.t.Fatal(err)
-	}
-	return rec, dgstOf(layer)
+	return f.AddRecipe(name, signer)
 }
+
+func fingerprint(t *testing.T, root string) string { return checktest.Fingerprint(t, root) }
+
+const cookbook = checktest.Cookbook
 
 func (f *fixture) verify(opts check.Options) *integrity.Report {
 	f.t.Helper()
@@ -218,43 +85,6 @@ func (f *fixture) verify(opts check.Options) *integrity.Report {
 		f.t.Fatalf("verify: %v", err)
 	}
 	return rep
-}
-
-func blobPathOf(dgst string) string {
-	h := dgst[len("sha256:"):]
-	return "docker/registry/v2/blobs/sha256/" + h[:2] + "/" + h + "/data"
-}
-
-// fingerprint hashes the whole tree under root — every file's name, mode
-// and content — so "the store is byte-identical afterwards" is checked on
-// the real directory, not on a list of files somebody thought of.
-func fingerprint(t *testing.T, root string) string {
-	t.Helper()
-	var names []string
-	h := sha256.New()
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, _ := filepath.Rel(root, p)
-		if d.IsDir() {
-			names = append(names, "d "+filepath.ToSlash(rel))
-			return nil
-		}
-		raw, rerr := os.ReadFile(p) //nolint:gosec // G304: the fixture's own tree
-		if rerr != nil {
-			return rerr
-		}
-		sum := sha256.Sum256(raw)
-		names = append(names, "f "+filepath.ToSlash(rel)+" "+hex.EncodeToString(sum[:]))
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	sort.Strings(names)
-	_, _ = io.WriteString(h, strings.Join(names, "\n"))
-	return hex.EncodeToString(h.Sum(nil))
 }
 
 func codesOf(l []integrity.Defect) []taxonomy.Code {

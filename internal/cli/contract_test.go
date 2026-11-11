@@ -74,6 +74,9 @@ func fixtures() []commandFixture {
 		{path: "tobby media import", args: func(t *testing.T) []string {
 			return []string{"--storage-root", tmp(t), "--zone", "zone-a"}
 		}},
+		{path: "tobby store verify", args: func(t *testing.T) []string {
+			return []string{"--storage-root", tmp(t)}
+		}},
 		{path: "tobby recipe push", args: func(t *testing.T) []string {
 			file := filepath.Join(tmp(t), "recipe.yaml")
 			if err := os.WriteFile(file, []byte("not: a recipe\n"), 0o600); err != nil {

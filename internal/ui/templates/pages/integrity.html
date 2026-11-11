@@ -1,0 +1,145 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /integrity — on-demand store verification (FR-057, R-31), both modes.
+     One polled body with the auto-terminating contract of UI-SPEC §8.3:
+     the polling attributes are re-emitted only while a verification is
+     pending or running. The screen reports; it never offers to repair or
+     delete — the report names what is wrong, and fixing it is done with
+     the tools the product already has. */}}
+{{define "title"}}{{.T "integrity.section_title"}}{{end}}
+{{define "main"}}
+<section class="t-integrity">
+  {{template "integrity-body" .}}
+</section>
+{{end}}
+
+{{define "integrity-body"}}
+<div id="integrity-body"{{if .Data.Running}} hx-get="/integrity" hx-trigger="every 2s" hx-swap="morph:outerHTML" hx-target="this"{{end}}>
+  <div class="t-titlerow">
+    <h1 class="t-page-title">{{.T "integrity.section_title"}}</h1>
+    {{if .Data.Report}}
+    <span class="t-chip"><span class="t-chip-label">{{.T "integrity.chip_mode"}}</span>
+      {{if .Data.Report.Store.Transportable}}{{.T "integrity.mode_transportable"}}{{else}}{{.T "integrity.mode_instance"}}{{end}}</span>
+    {{end}}
+  </div>
+  <p class="t-page-sub">{{.T "integrity.subtitle"}}</p>
+
+  {{if .Err}}{{template "error-block" .}}{{end}}
+
+  {{if not .Data.Available}}
+  <div class="t-card"><p>{{.T "integrity.unavailable"}}</p></div>
+  {{else}}
+
+  <div class="t-card">
+    {{if .Data.Running}}
+    <p>
+      <span class="t-badge t-badge--running">{{.T "integrity.running"}}</span>
+      {{if .Data.Progress}}
+      <span translate="no">{{.T (printf "integrity.stage_%s" .Data.Progress.Stage)}}</span>
+      {{if .Data.Progress.Total}}· {{.Data.Progress.Done}} / {{.Data.Progress.Total}}{{end}}
+      {{if .Data.Progress.Bytes}}· {{.FmtBytes .Data.Progress.Bytes}}{{end}}
+      {{end}}
+      <a href="/tasks/{{.Data.TaskID}}">{{.T "integrity.task_link"}}</a>
+    </p>
+    {{if .Data.Progress}}{{if .Data.Progress.Total}}
+    <progress max="100" value="{{.Data.Percent}}" aria-label="{{.T "integrity.progress_label"}}">{{.Data.Percent}}%</progress>
+    {{end}}{{end}}
+    {{else if .Data.CanVerify}}
+    <p class="t-muted">{{.T "integrity.verify_help"}}</p>
+    <form method="post" action="/integrity/verify"
+          hx-post="/integrity/verify" hx-target="#integrity-body" hx-swap="morph:outerHTML"
+          hx-disabled-elt="find button[type='submit']">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button id="integrity-verify" type="submit" class="t-btn t-btn--primary">{{.T "integrity.verify_action"}}</button>
+      <span class="htmx-indicator t-pulse-dot" aria-hidden="true"></span>
+    </form>
+    {{else}}
+    <p class="t-muted">{{.T "integrity.verify_no_role"}}</p>
+    {{end}}
+    {{if .Data.Failure}}{{template "error-block" (withErr . .Data.Failure)}}{{end}}
+  </div>
+
+  {{if not .Data.Has}}
+  <div class="t-card"><p>{{.T "integrity.never"}}</p></div>
+  {{else if and .Data.Report (not .Data.Running)}}
+  {{with .Data.Report}}
+  <div class="t-row t-integrity-verdict"{{if not $.Data.Running}} tabindex="-1" data-focus-target{{end}}>
+    {{if eq .Verdict "clean"}}<span class="t-badge t-badge--done" data-verdict="clean">✓ {{$.T "integrity.verdict_clean"}}</span>
+    {{else}}<span class="t-badge t-badge--failed" data-verdict="defects">✗ {{$.TN "integrity.verdict_defects" .DefectCount "Count" .DefectCount}}</span>{{end}}
+    <span class="t-muted">{{$.T "integrity.checked" "Blobs" .Checked.Blobs "Size" ($.FmtBytes .Checked.Bytes) "Manifests" .Checked.Manifests "Recipes" .Checked.Recipes}}</span>
+    <a class="t-btn t-btn--secondary t-btn--sm" href="{{$.Data.ReportHref}}"
+       download="store-verification.json" hx-boost="false">↓ {{$.T "integrity.report_download"}}</a>
+  </div>
+  <dl class="t-deflist">
+    <dt>{{$.T "integrity.f_started"}}</dt>
+    <dd><time datetime="{{$.TimeAttr .StartedAt}}">{{$.FmtTime .StartedAt}}</time></dd>
+    <dt>{{$.T "integrity.f_finished"}}</dt>
+    <dd><time datetime="{{$.TimeAttr .FinishedAt}}">{{$.FmtTime .FinishedAt}}</time> <span class="t-muted">({{$.FmtAgo .FinishedAt}})</span></dd>
+    {{if .RunID}}<dt>{{$.T "integrity.f_run"}}</dt>
+    <dd><span class="t-chip"><span class="t-chip-label" lang="en">run</span> <span translate="no">{{.RunID}}</span></span> · <a href="/tasks/{{$.Data.TaskID}}">{{$.T "integrity.task_link"}}</a></dd>{{end}}
+    <dt>{{$.T "integrity.f_root"}}</dt>
+    <dd class="t-mono t-muted" translate="no">{{.Store.Root}}</dd>
+  </dl>
+  {{end}}
+
+  {{if .Data.Defects}}
+  <p class="t-kick">{{.T "integrity.defects_title"}}</p>
+  <ul class="t-integrity-defects">
+    {{range .Data.Defects}}
+    <li>
+      <details class="t-errrow" open>
+        <summary><span class="t-badge t-badge--failed">{{$.T "integrity.defect"}}</span>
+          <span class="t-chip t-chip--code" translate="no">{{.Err.Code}}</span>
+          <span class="t-mono" translate="no">{{.Path}}</span></summary>
+        {{template "error-block" (withErr $ .Err)}}
+      </details>
+    </li>
+    {{end}}
+  </ul>
+  {{if .Data.Report.DefectsOmitted}}<p class="t-muted t-note">{{.TN "integrity.omitted" .Data.Report.DefectsOmitted "Count" .Data.Report.DefectsOmitted}}</p>{{end}}
+  {{end}}
+
+  {{if .Data.Report.Recipes}}
+  <p class="t-kick">{{.T "integrity.recipes_title"}}</p>
+  <table class="t-table t-integrity-recipes">
+    <caption class="t-visually-hidden">{{.T "integrity.recipes_title"}}</caption>
+    <thead><tr>
+      <th scope="col">{{.T "integrity.th_recipe"}}</th>
+      <th scope="col">{{.T "integrity.th_manifests"}}</th>
+      <th scope="col">{{.T "integrity.th_signature"}}</th>
+    </tr></thead>
+    <tbody>
+      {{range .Data.Report.Recipes}}
+      <tr>
+        <td class="t-mono" translate="no">{{.Name}}@{{.Version}}</td>
+        <td>{{if .Complete}}<span class="t-badge t-badge--done">✓ {{$.T "integrity.complete_yes"}}</span>{{else}}<span class="t-badge t-badge--failed">✗ {{$.T "integrity.complete_no"}}</span>{{end}}</td>
+        <td>
+          {{if eq .Signature "verified"}}<span class="t-badge t-badge--done">✓ {{$.T "integrity.signature_verified"}}</span>
+          {{else if eq .Signature "unsigned-admitted"}}<span class="t-badge t-badge--done-errors">◈ {{$.T "integrity.signature_unsigned_admitted"}}</span>
+          {{else if eq .Signature "refused"}}<span class="t-badge t-badge--failed">✗ {{$.T "integrity.signature_refused"}}</span>
+          {{else}}<span class="t-badge t-badge--pending">– {{$.T "integrity.signature_not_checked"}}</span>{{end}}
+          {{if .KeyFingerprint}}<span class="t-chip"><span class="t-chip-label">{{$.T "media.key"}}</span> <span translate="no" title="{{.KeyFingerprint}}">{{$.Trunc .KeyFingerprint 20}}</span></span>{{end}}
+          {{if .TrustScope}}<span class="t-chip"><span class="t-chip-label">{{$.T "media.scope"}}</span> <span translate="no">{{.TrustScope}}</span></span>{{end}}
+          {{template "assurance-badge" (withData $ .Assurance)}}
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{end}}
+
+  {{if .Data.Findings}}
+  <details class="t-media-findings">
+    <summary>{{.TN "integrity.findings_title" .Data.Report.FindingCount "Count" .Data.Report.FindingCount}}</summary>
+    <p class="t-muted t-note">{{.T "integrity.findings_note"}}</p>
+    <ul>
+      {{range .Data.Findings}}
+      <li><span class="t-chip t-chip--code" translate="no">{{.Err.Code}}</span> <span class="t-mono" translate="no">{{.Path}}</span></li>
+      {{end}}
+    </ul>
+    {{if .Data.Report.FindingsOmitted}}<p class="t-muted t-note">{{.TN "integrity.omitted" .Data.Report.FindingsOmitted "Count" .Data.Report.FindingsOmitted}}</p>{{end}}
+  </details>
+  {{end}}
+  {{end}}
+  {{end}}
+</div>
+{{end}}

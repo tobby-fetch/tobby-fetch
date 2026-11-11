@@ -18,6 +18,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/clischema"
+	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check/checktest"
 )
 
 // The FR-066 acceptance, verbatim: "every reporting command accepts
@@ -154,6 +155,22 @@ func TestEveryReportedDocumentMatchesItsSchema(t *testing.T) {
 		cfgPath := mediumConfig(t, root, servedZone, registry.Listener.Addr().String())
 		stdout, stderr = runJSON(t, "", "media", "import", "--config", cfgPath)
 		assertDocument(t, "tobby media import", stdout, stderr)
+	})
+
+	t.Run("tobby store verify", func(t *testing.T) {
+		f := checktest.New(t)
+		f.AddRecipe("alpha", f.KP)
+		cfg := storeVerifyConfig(t, f.Root, "", f.KP)
+		stdout, stderr := runJSON(t, "", "store", "verify", "--config", cfg)
+		assertDocument(t, "tobby store verify", stdout, stderr)
+
+		// A damaged store reports AND fails: the document has to be valid
+		// when it does, because that is when a pipeline reads it.
+		damaged := checktest.New(t)
+		damaged.BuildAcceptance()
+		cfg = storeVerifyConfig(t, damaged.Root, "", damaged.KP)
+		stdout, stderr = runJSON(t, "", "store", "verify", "--config", cfg)
+		assertDocument(t, "tobby store verify", stdout, stderr)
 	})
 
 	t.Run("tobby recipe push", func(t *testing.T) {
