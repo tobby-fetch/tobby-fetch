@@ -82,6 +82,6 @@ run = "sh tools/check-coverage.sh"
 # call path, not noise. The version is pinned (sumdb-verified by `go run`)
 # and tracked by renovate — same policy as every other pinned tool.
 [tasks.vuln]
-description = "Reachable known vulnerabilities (govulncheck, stdlib included)"
-# renovate: datasource=go depName=golang.org/x/vuln
-run = "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./..."
+description = "Reachable known vulnerabilities (govulncheck, stdlib included, reviewed allow-list)"
+# The pinned version lives in tools/govulncheck.sh (renovate hint there).
+run = "sh tools/govulncheck.sh"

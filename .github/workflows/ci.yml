@@ -389,8 +389,13 @@ jobs:
         run: |
           go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      # tools/govulncheck.sh: every reachable finding fails, except the
+      # reviewed entries of tools/govulncheck-allow.yaml (wrong database
+      # entries only, each with evidence and a review date that expires).
       - name: Reachable known vulnerabilities (stdlib included)
-        run: govulncheck ./...
+        env:
+          GOVULNCHECK: govulncheck
+        run: sh tools/govulncheck.sh
 
   secrets:
     name: Secret scan (gitleaks, full history)

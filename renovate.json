@@ -63,6 +63,14 @@
       "matchStrings": [
         "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\nrun = \"go run [^@\"]+@(?<currentValue>v?[0-9][^\"\\s]*)"
       ]
+    },
+    {
+      "customType": "regex",
+      "description": "Track the govulncheck version the vulnerability gate wrapper pins (tools/govulncheck.sh)",
+      "managerFilePatterns": ["/^tools/govulncheck\\.sh$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\nVERSION=\"(?<currentValue>v?[0-9][^\"\\s]*)\""
+      ]
     }
   ]
 }
