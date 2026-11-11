@@ -319,6 +319,12 @@ starting with `v0.1.0`.
   advisory reached in two modules kept only the last finding read: when
   that was the allow-listed module, the other one passed. They are now
   indexed by advisory and module.
+- **What a withheld recipe leaves in the store is stated.** Its
+  ingredients are fetched before they are scanned, so their bytes stay in
+  the store and travel on a medium, delivered by nothing. The refusal's
+  log line now says so, `tobby store verify` reports that content as
+  reachable from no recipe (locked by a test), and *Vulnerability
+  scanning* and *Managing media* (EN/FR) document it.
 
 ## [0.5.2] - 2026-11-09
 

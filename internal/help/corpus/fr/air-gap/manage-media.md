@@ -72,6 +72,15 @@ d'une panne réseau n'est pas un compromis que ce produit accepte. Et chaque
 élément retiré est nommé — dépôt, tag, digest, et la recipe qui l'avait
 apporté — dans le journal de la course, pas seulement compté.
 
+Une recipe que la politique de vulnérabilités **retient** est l'une de ces
+recipes en échec. Ses ingrédients ont été récupérés avant de pouvoir être
+analysés : leurs octets restent sur le support et voyagent avec lui —
+sans que rien ne les livre : la recipe est absente du manifest du support,
+aucune destination ne les vérifie ni ne les pousse, et `tobby store verify`
+liste ce contenu comme atteint par aucune recipe (`TBY-INT-003`). Il part
+une fois la recipe corrigée ou retirée du Retriever et un prune passé, ou
+quand le support repart de zéro.
+
 Le résultat, c'est qu'un support qui tourne reste proportionnel aux besoins
 *courants* de la zone plutôt qu'à son historique.
 
