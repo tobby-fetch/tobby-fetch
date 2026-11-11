@@ -39,6 +39,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/validate"
 
 	"github.com/opencontainers/go-digest"
+
 	"github.com/tobby-fetch/tobby-fetch/internal/scan/trivytest"
 )
 
