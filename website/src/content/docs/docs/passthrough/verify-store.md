@@ -99,9 +99,9 @@ reads task statuses see it the way they see any other failure.
 The verification runs on a **lane of its own**, beside the serial task
 worker: a synchronization — including the continuous promotion of a
 passthrough instance — never waits behind it, and it never holds one up. It
-holds the shared side of the instance's content lock for the walk, so a
-garbage collection cannot remove a blob under it (a removal asked for in the
-meantime waits for it).
+keeps removals away for the walk, so a garbage collection cannot remove a
+blob under it: a removal asked for in the meantime waits for it, while
+content writes carry on.
 
 It can be cancelled — **Cancel the verification** on the screen, or
 `POST /api/v1/store/verify/cancel`. The task then ends failed with

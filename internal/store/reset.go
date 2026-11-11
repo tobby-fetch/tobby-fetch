@@ -55,8 +55,7 @@ func (s *Store) Reset(ctx context.Context, logger *slog.Logger) (ResetResult, er
 	// numbers reported must describe what was actually discarded, and a
 	// count taken outside the lock describes a store somebody was still
 	// writing to.
-	s.gcMu.Lock()
-	defer s.gcMu.Unlock()
+	defer s.exclusive()()
 
 	repos, err := s.Repositories(ctx)
 	if err != nil {

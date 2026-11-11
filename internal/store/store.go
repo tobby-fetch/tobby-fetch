@@ -59,6 +59,24 @@ type Store struct {
 	// gcMu is the FR-044 exclusive lock: content writes hold it shared
 	// (write.go, B-017), garbage collection holds it exclusively (gc.go).
 	gcMu sync.RWMutex
+	// inspectMu keeps removals out of an integrity verification's way
+	// (verify.go) without touching gcMu: the verification holds it shared,
+	// every exclusive path takes it before gcMu (exclusive). A removal
+	// asked for during a verification therefore waits on inspectMu — not
+	// queued on gcMu, where Go's writer-preferring RWMutex would block
+	// every content write behind it until the walk ends.
+	inspectMu sync.RWMutex
+}
+
+// exclusive takes the FR-044 lock exclusively — after any running
+// integrity verification has finished — and returns its release.
+func (s *Store) exclusive() (release func()) {
+	s.inspectMu.Lock()
+	s.gcMu.Lock()
+	return func() {
+		s.gcMu.Unlock()
+		s.inspectMu.Unlock()
+	}
 }
 
 // Open initializes the embedded registry on the given storage root.

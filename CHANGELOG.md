@@ -200,6 +200,13 @@ starting with `v0.1.0`.
   it no longer renews the session, and the template check covers every
   page.
 
+- **A store verification no longer stalls content writes** (B-041). It
+  held the shared side of the content lock for its whole walk; a removal
+  asked for meanwhile queued on the exclusive side, and Go's
+  writer-preferring lock then blocked every later write — a passthrough
+  promotion, a synchronization — until the walk ended. The verification
+  now holds a lock of its own that only removals wait on.
+
 ### Security
 
 - **Go 1.27.4** (from 1.27.3), which fixes GO-2026-6859 in `net/http`:

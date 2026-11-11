@@ -21,21 +21,23 @@ import (
 //
 // Everything here reads and reports. Nothing repairs, nothing deletes,
 // nothing is written — not even a timestamp: the verification's contract
-// is a store byte-identical afterwards, and the one lock it takes is the
-// shared side of the content lock.
+// is a store byte-identical afterwards, and the one lock it takes keeps
+// removals out of its way (HoldContent), never content writes.
 
-// HoldContent takes the shared side of the FR-044 content lock and returns
-// the function that releases it. While it is held a garbage collection
-// cannot remove a blob under the walk's feet — which would read as a
-// defect that was never there — and content writes carry on, since they
-// hold the same side.
+// HoldContent keeps garbage collection and every other removal away for
+// the duration of a verification, and returns the function that releases
+// it. While it is held a removal cannot take a blob from under the walk's
+// feet — which would read as a defect that was never there.
 //
-// The cost is stated, not hidden: a removal asked for during a long
-// verification waits for it. The verification is one at a time and
-// read-only, and a removal that waits is an operator who sees why.
+// It is not the shared side of the FR-044 content lock: a removal asked
+// for meanwhile waits on a lock of its own (Store.exclusive), so content
+// writes carry on for the whole walk instead of queuing behind the
+// pending removal. The cost is stated, not hidden: the removal waits for
+// the verification. The verification is one at a time and read-only, and
+// a removal that waits is an operator who sees why.
 func (s *Store) HoldContent() (release func()) {
-	s.gcMu.RLock()
-	return s.gcMu.RUnlock
+	s.inspectMu.RLock()
+	return s.inspectMu.RUnlock
 }
 
 // BlobFile is one blob of the filesystem backend, as the walk found it.

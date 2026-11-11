@@ -92,8 +92,8 @@ func Verify(ctx context.Context, st *store.Store, opts Options) (*integrity.Repo
 		seen: map[string]bool{},
 		memo: map[string]bool{},
 	}
-	// The content lock is shared and held for the whole walk (see
-	// store.HoldContent for what that costs and why it is worth it).
+	// Removals are kept away for the whole walk, content writes are not
+	// (see store.HoldContent for what that costs and why it is worth it).
 	release := st.HoldContent()
 	defer release()
 

@@ -102,9 +102,9 @@ voit comme n'importe quel autre échec.
 La vérification s'exécute sur une **voie qui lui est propre**, à côté du
 travailleur de tâches : une synchronisation — y compris la promotion continue
 d'une instance passthrough — ne l'attend jamais, et elle n'en retarde aucune.
-Elle tient le côté partagé du verrou de contenu de l'instance pendant le
-parcours, si bien qu'un ramasse-miettes ne peut rien supprimer sous elle (une
-suppression demandée entre-temps l'attend).
+Elle tient les suppressions à l'écart pendant le parcours, si bien qu'un
+ramasse-miettes ne peut rien supprimer sous elle : une suppression demandée
+entre-temps l'attend, tandis que les écritures de contenu continuent.
 
 Elle est annulable — **Annuler la vérification** sur l'écran, ou
 `POST /api/v1/store/verify/cancel`. La tâche se termine alors en échec avec

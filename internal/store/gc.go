@@ -68,8 +68,7 @@ func (s *Store) DeleteRepository(ctx context.Context, name string, logger *slog.
 	if managing := s.ManagingRecipes(name); len(managing) > 0 {
 		return &RecipeManagedError{Repo: name, Recipes: managing}
 	}
-	s.gcMu.Lock()
-	defer s.gcMu.Unlock()
+	defer s.exclusive()()
 
 	dir := filepath.Join(s.root, "docker", "registry", "v2", "repositories", filepath.FromSlash(name))
 	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
@@ -96,8 +95,7 @@ func (s *Store) DeleteRepository(ctx context.Context, name string, logger *slog.
 // recipe-removal path unlinks content tag by tag (relocated repositories
 // are shared across recipes; reachability decides what survives, FR-044).
 func (s *Store) DeleteTag(ctx context.Context, name, tag string) error {
-	s.gcMu.Lock()
-	defer s.gcMu.Unlock()
+	defer s.exclusive()()
 	if err := s.untag(ctx, name, tag); err != nil {
 		return err
 	}
@@ -174,8 +172,7 @@ func (s *Store) PruneTags(ctx context.Context, refs []TagRef, logger *slog.Logge
 	if len(refs) == 0 {
 		return res, nil
 	}
-	s.gcMu.Lock()
-	defer s.gcMu.Unlock()
+	defer s.exclusive()()
 
 	touched := make([]string, 0, len(refs))
 	seen := map[string]bool{}
@@ -267,8 +264,7 @@ func (e *RecipeManagedError) Error() string {
 // blobs under the exclusive lock. Exposed for the recipe-removal flow,
 // which untags several repositories before one sweep.
 func (s *Store) Sweep(ctx context.Context, logger *slog.Logger) error {
-	s.gcMu.Lock()
-	defer s.gcMu.Unlock()
+	defer s.exclusive()()
 	res, err := s.sweep(ctx)
 	if err != nil {
 		return err
