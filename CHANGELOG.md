@@ -197,6 +197,13 @@ starting with `v0.1.0`.
   the `go` directive, the pinned development toolchain and therefore the
   release binaries and the apk, built from Wolfi's `go-1.27` line with the
   exact patch release forced from `go.mod`.
+- **The release CVE gate now sees the Go binaries** (B-037). Trivy's
+  image scan reads the apk database and does not look inside the files a
+  package installed, so the dependencies of Tobby and of the Trivy it
+  embeds went unscanned. The `image-scan` job of the release, and the
+  weekly rebuild, now extract `/usr/bin/tobby` and
+  `/usr/libexec/tobby/trivy` from the image for both architectures and
+  scan them as a root filesystem, at the same CRITICAL/HIGH threshold.
 
 ## [0.5.2] - 2026-11-09
 

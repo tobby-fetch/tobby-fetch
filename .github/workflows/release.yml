@@ -386,6 +386,48 @@ jobs:
           scanners: vuln
           severity: CRITICAL,HIGH
           exit-code: "1"
+      # B-037: the image scan above reads the apk database, and Trivy does
+      # not look inside the files an apk package installed — so it never
+      # saw the Go dependencies of the two binaries the image is made of,
+      # Tobby and the pinned Trivy it embeds. Those binaries are taken out
+      # of the published image, for both architectures, and scanned as a
+      # root filesystem, where Trivy reads the module list each Go binary
+      # carries. Same threshold, same no-ignore rule as the gate above.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Install crane (version pinned, sumdb-verified)
+        env:
+          # GOTOOLCHAIN rationale: see the nfpm step in the build job.
+          GOTOOLCHAIN: auto
+        run: |
+          go install "github.com/google/go-containerregistry/cmd/crane@${CRANE_VERSION}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Extract the embedded binaries from the published image
+        env:
+          IMAGE_REF: "${{ needs.image.outputs.image }}@${{ needs.image.outputs.digest }}"
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          printf '%s' "${REGISTRY_TOKEN}" | crane auth login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for platform in linux/amd64 linux/arm64; do
+            dir="${RUNNER_TEMP}/binaries-rootfs/${platform#linux/}"
+            mkdir -p "${dir}"
+            crane export --platform "${platform}" "${IMAGE_REF}" - |
+              tar -x -C "${dir}" --wildcards '*usr/bin/tobby' '*usr/libexec/tobby/trivy'
+            # An empty extraction would scan nothing and pass: refuse it.
+            test -x "${dir}/usr/bin/tobby"
+            test -x "${dir}/usr/libexec/tobby/trivy"
+          done
+      - name: Scan the embedded Go binaries — critical and high block the release
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: rootfs
+          scan-ref: "${{ runner.temp }}/binaries-rootfs"
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          exit-code: "1"
 
   image-sign:
     name: Sign image (cosign keyless)
