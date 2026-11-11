@@ -104,13 +104,13 @@ func TestValidateAuthMilestone6(t *testing.T) {
 		//nolint:gosec // G101: a test fixture naming a secret FILE path, not a credential
 		c.Auth.OIDC = OIDC{
 			Enabled: true, Issuer: "https://idp.example.com/realms/tobby", ClientID: "tobby",
-			ClientSecretFile: "/etc/tobby/oidc-secret", RedirectURL: "https://tobby.example.com/-/oidc/callback",
+			ClientSecretFile: "/etc/tobby/oidc-secret", RedirectURL: "https://tobby.example.com/auth/oidc/callback",
 			Roles: RoleMapping{Admin: []string{"tobby-admins"}},
 		}
 	}
 	saml := func(c *Config) {
 		c.Auth.SAML = SAML{
-			Enabled: true, EntityID: "https://tobby.example.com/-/saml", ACSURL: "https://tobby.example.com/-/saml/acs",
+			Enabled: true, EntityID: "https://tobby.example.com/auth/saml/metadata", ACSURL: "https://tobby.example.com/auth/saml/acs",
 			IDPMetadataFile: "/etc/tobby/idp.xml", CertFile: "/etc/tobby/sp.crt", KeyFile: "/etc/tobby/sp.key",
 			ClockSkew: Duration(90 * time.Second), Roles: RoleMapping{Viewer: []string{"staff"}},
 		}
@@ -121,6 +121,19 @@ func TestValidateAuthMilestone6(t *testing.T) {
 		want  []string
 	}{
 		{"zero idle timeout", func(c *Config) { c.Auth.Session.IdleTimeout = 0 }, []string{"auth.session.idleTimeout must be positive"}},
+		{"oidc callback elsewhere", func(c *Config) {
+			oidc(c)
+			c.Auth.OIDC.RedirectURL = "https://tobby.example.com/callback"
+		}, []string{"auth.oidc.redirectURL", "/auth/oidc/callback"}},
+		{"saml acs elsewhere", func(c *Config) {
+			saml(c)
+			c.Auth.SAML.ACSURL = "https://tobby.example.com/saml/acs?x=1"
+		}, []string{"auth.saml.acsURL", "/auth/saml/acs"}},
+		{"saml metadata url without a pinned certificate", func(c *Config) {
+			saml(c)
+			c.Auth.SAML.IDPMetadataFile = ""
+			c.Auth.SAML.IDPMetadataURL = "https://idp.example.com/metadata"
+		}, []string{"auth.saml.idpCertificateFile is required"}},
 		{"idle longer than the lifetime is tolerated", func(c *Config) { c.Auth.SessionTTL = Duration(10 * time.Minute) }, nil},
 		{"negative token lifetime", func(c *Config) { c.Auth.Tokens.DefaultLifetime = -1 }, []string{"auth.tokens.defaultLifetime"}},
 		{"oidc over http", func(c *Config) { oidc(c); c.Auth.OIDC.Issuer = "http://idp.example.com" }, []string{"auth.oidc.issuer", "https://"}},
@@ -155,7 +168,6 @@ func TestPendingOptInsAreRefused(t *testing.T) {
 	}{
 		{"blocking scan", func(c *Config) { c.Scan.Mode = ScanModeBlock }, "scan.mode: block"},
 		{"blocking stale database", func(c *Config) { c.Scan.MaxDBAgeAction = ScanModeBlock }, "scan.maxDbAgeAction: block"},
-		{"oidc", func(c *Config) { c.Auth.OIDC.Enabled = true }, "auth.oidc.enabled is not implemented"},
 		{"saml", func(c *Config) { c.Auth.SAML.Enabled = true }, "auth.saml.enabled is not implemented"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

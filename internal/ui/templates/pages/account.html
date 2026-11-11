@@ -21,6 +21,12 @@
     </dl>
   </div>
 
+  {{if .Data.Federated}}
+  <div class="t-card" data-account-federated>
+    {{with .Data.Err}}{{template "error-block" (withErr $ .)}}{{end}}
+    <p>{{.T "account.federated" "Provider" .Data.Federated}}</p>
+  </div>
+  {{else}}
   {{/* Classic POST — the response is this page again: the taxonomized
        block on failure, the confirmation toast on success. */}}
   <form class="t-card t-form" method="post" action="/account/password">
@@ -39,5 +45,6 @@
     <button type="submit" class="t-btn t-btn--primary">{{.T "account.pw_submit"}}</button>
     <p class="t-muted t-note">{{.T "account.pw_note"}}</p>
   </form>
+  {{end}}
 </section>
 {{end}}

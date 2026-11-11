@@ -134,6 +134,9 @@ func (m *RoleMapping) empty() bool {
 // FR-081) and never anywhere else (NFR-019).
 type OIDC struct {
 	Enabled bool `yaml:"enabled,omitempty"`
+	// DisplayName labels the sign-in button ("Sign in with <name>").
+	// Empty shows "OpenID Connect".
+	DisplayName string `yaml:"displayName,omitempty"`
 	// Issuer is the provider's issuer URL, https only, matched exactly
 	// against the tokens' iss claim.
 	Issuer string `yaml:"issuer,omitempty"`
@@ -163,6 +166,8 @@ type OIDC struct {
 // explicitly (NFR-019).
 type SAML struct {
 	Enabled bool `yaml:"enabled,omitempty"`
+	// DisplayName labels the sign-in button. Empty shows "SAML".
+	DisplayName string `yaml:"displayName,omitempty"`
 	// EntityID is this service provider's entity identifier — the
 	// audience assertions must name.
 	EntityID string `yaml:"entityID,omitempty"`
@@ -175,6 +180,12 @@ type SAML struct {
 	// IDPMetadataURL fetches the metadata over https — an explicit
 	// outbound connection the operator chose.
 	IDPMetadataURL string `yaml:"idpMetadataURL,omitempty"`
+	// IDPCertificateFile pins the identity provider's signing certificate
+	// (PEM). Required with IDPMetadataURL: a fetched descriptor that is
+	// not itself signed (Keycloak's is not) must not be able to swap the
+	// key that assertions are verified with. With IDPMetadataFile it is
+	// optional and, when set, replaces the certificates of the file.
+	IDPCertificateFile string `yaml:"idpCertificateFile,omitempty"`
 	// CertFile and KeyFile are the service provider's key pair. The key
 	// file is secret material and must sit outside the store (NFR-020).
 	CertFile string `yaml:"certFile,omitempty"`
@@ -196,6 +207,11 @@ const (
 	DefaultSAMLClockSkew   = 90 * time.Second
 	maxSAMLClockSkew       = 5 * time.Minute
 	defaultOIDCGroupsClaim = "groups"
+	// The federated round trips live under the "/auth/" prefix reserved
+	// for them (internal/server, internal/federation): the configured
+	// callback URLs must name exactly these paths.
+	oidcCallbackPath = "/auth/oidc/callback"
+	samlACSPath      = "/auth/saml/acs"
 )
 
 var (
@@ -314,6 +330,8 @@ func (o *OIDC) validate() []error {
 	}
 	if u, err := url.Parse(o.RedirectURL); o.RedirectURL == "" || err != nil || u.Host == "" {
 		errs = append(errs, fmt.Errorf("auth.oidc.redirectURL: %q must be the absolute callback URL registered with the provider", o.RedirectURL))
+	} else if u.Path != oidcCallbackPath || u.RawQuery != "" || u.Fragment != "" {
+		errs = append(errs, fmt.Errorf("auth.oidc.redirectURL: %q must name this instance's callback path %s, with no query", o.RedirectURL, oidcCallbackPath))
 	}
 	for _, alg := range o.SigningAlgorithms {
 		if strings.EqualFold(alg, "none") || strings.HasPrefix(strings.ToUpper(alg), "HS") {
@@ -333,12 +351,16 @@ func (s *SAML) validate() []error {
 	}
 	if u, err := url.Parse(s.ACSURL); s.ACSURL == "" || err != nil || u.Host == "" {
 		errs = append(errs, fmt.Errorf("auth.saml.acsURL: %q must be the absolute assertion consumer service URL", s.ACSURL))
+	} else if u.Path != samlACSPath || u.RawQuery != "" || u.Fragment != "" {
+		errs = append(errs, fmt.Errorf("auth.saml.acsURL: %q must name this instance's assertion consumer service path %s, with no query", s.ACSURL, samlACSPath))
 	}
 	switch {
 	case (s.IDPMetadataFile == "") == (s.IDPMetadataURL == ""):
 		errs = append(errs, errors.New("auth.saml: exactly one of idpMetadataFile and idpMetadataURL is required"))
 	case s.IDPMetadataURL != "" && !strings.HasPrefix(s.IDPMetadataURL, "https://"):
 		errs = append(errs, fmt.Errorf("auth.saml.idpMetadataURL: %q must be https://", s.IDPMetadataURL))
+	case s.IDPMetadataURL != "" && s.IDPCertificateFile == "":
+		errs = append(errs, errors.New("auth.saml.idpCertificateFile is required with idpMetadataURL: the signing certificate is pinned in configuration, never taken from a fetched descriptor"))
 	}
 	if s.CertFile == "" || s.KeyFile == "" {
 		errs = append(errs, errors.New("auth.saml.certFile and auth.saml.keyFile are both required: the service provider signs its requests"))
@@ -364,7 +386,6 @@ func (c *Config) pendingOptIns() []error {
 	pending(c.Scan.Mode == ScanModeBlock, `scan.mode: block`, "6.1")
 	pending(c.Scan.MaxDBAgeAction == ScanModeBlock, `scan.maxDbAgeAction: block`, "R-13")
 	// Track B — 6.3 (R-14's token lifetime is implemented).
-	pending(c.Auth.OIDC.Enabled, "auth.oidc.enabled", "6.3")
 	pending(c.Auth.SAML.Enabled, "auth.saml.enabled", "6.3")
 	return errs
 }

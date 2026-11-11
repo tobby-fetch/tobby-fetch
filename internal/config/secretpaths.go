@@ -107,6 +107,15 @@ func (c *Config) SecretPaths() []SecretPath {
 	add("state.root", c.State.Root)
 	add("registries.credentialsFile", c.Registries.CredentialsFile)
 	add("server.tls.keyFile", c.Server.TLS.KeyFile)
+	// Track B — federated sign-in (6.3): the OIDC client secret and the
+	// SAML service provider's private key are credentials of this
+	// instance at the identity provider.
+	if c.Auth.OIDC.Enabled {
+		add("auth.oidc.clientSecretFile", c.Auth.OIDC.ClientSecretFile)
+	}
+	if c.Auth.SAML.Enabled {
+		add("auth.saml.keyFile", c.Auth.SAML.KeyFile)
+	}
 	return out
 }
 

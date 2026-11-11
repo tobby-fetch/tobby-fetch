@@ -5,8 +5,10 @@ go 1.27.3
 require (
 	github.com/chromedp/cdproto v0.159.2
 	github.com/chromedp/chromedp v0.23.0
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/distribution/distribution/v3 v3.1.2
 	github.com/distribution/reference v0.6.0
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/google/go-containerregistry v0.22.1
 	github.com/klauspost/compress v1.20.3
 	github.com/nicksnyder/go-i18n/v2 v2.7.0
@@ -20,6 +22,7 @@ require (
 	github.com/tobby-fetch/recipe-spec v0.0.0-20260826173239-13ced6b60cfc
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.62.0
+	golang.org/x/oauth2 v0.38.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
 	golang.org/x/text v0.43.0

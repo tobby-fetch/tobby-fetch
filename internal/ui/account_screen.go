@@ -27,12 +27,25 @@ type accountData struct {
 	// (TBY-AUTH-006 / TBY-AUTH-007) inline; the profile card comes from the
 	// View's Identity.
 	Err *ErrView
+	// Federated names the identity provider of a federated session: such
+	// an identity has no local password, and the form is replaced by a
+	// line saying where its credential lives.
+	Federated string
+}
+
+// accountPageData builds the page for the request's identity.
+func (u *UI) accountPageData(r *http.Request, errv *ErrView) *accountData {
+	d := &accountData{Err: errv}
+	if id, ok := auth.IdentityFrom(r.Context()); ok && (id.Method == auth.MethodOIDC || id.Method == auth.MethodSAML) {
+		d.Federated = u.federatedProviderName(id.Method)
+	}
+	return d
 }
 
 // accountScreen serves GET /account: profile and password form, every
 // authenticated role including viewer.
 func (u *UI) accountScreen(w http.ResponseWriter, r *http.Request) {
-	u.render.Page(w, r, "account", &accountData{})
+	u.render.Page(w, r, "account", u.accountPageData(r, nil))
 }
 
 // accountPassword serves POST /account/password: verify the current
@@ -47,6 +60,13 @@ func (u *UI) accountPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := auth.IdentityFrom(r.Context())
+	if id.Method == auth.MethodOIDC || id.Method == auth.MethodSAML {
+		// A federated identity is not a local account, whatever its name:
+		// there is no password here to verify or replace (TBY-AUTH-010).
+		u.auditPassword(r, id.Name, audit.OutcomeDenied)
+		u.renderAccountError(w, r, taxonomy.New(taxonomy.CodeAccountUnknown, taxonomy.Params{"name": id.Name}))
+		return
+	}
 	current := r.PostFormValue("current")
 	next := r.PostFormValue("new")
 
@@ -75,7 +95,7 @@ func (u *UI) accountPassword(w http.ResponseWriter, r *http.Request) {
 		u.authn.Sessions.DeleteOthers(sess.Account, sess.ID)
 	}
 	u.auditPassword(r, id.Name, audit.OutcomeSuccess)
-	v := u.render.view(r, &accountData{})
+	v := u.render.view(r, u.accountPageData(r, nil))
 	v.Toasts = append(v.Toasts, v.T("account.pw_changed"))
 	u.render.render(w, r, "account", http.StatusOK, v)
 }
@@ -93,5 +113,5 @@ func (u *UI) auditPassword(r *http.Request, name, outcome string) {
 // and the entry's real HTTP status (admin-screen pattern).
 func (u *UI) renderAccountError(w http.ResponseWriter, r *http.Request, e *taxonomy.Error) {
 	ev := errView(requestLang(r), e)
-	u.render.render(w, r, "account", ev.Status, u.render.view(r, &accountData{Err: ev}))
+	u.render.render(w, r, "account", ev.Status, u.render.view(r, u.accountPageData(r, ev)))
 }

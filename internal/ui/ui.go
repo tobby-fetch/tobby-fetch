@@ -12,6 +12,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
@@ -28,6 +29,10 @@ import (
 // shared listener. It owns the root of the URL space; machine surfaces
 // live under the reserved prefixes (ADR-0015 §2).
 type UI struct {
+	// federation is the federated sign-in; nil (a nil *Service answers
+	// "nothing enabled") offers local sign-in only.
+	federation *federation.Service
+
 	render *Renderer
 	authn  *auth.Authenticator
 	store  *store.Store
@@ -182,6 +187,10 @@ type Options struct {
 	// screen and its mirror cannot answer differently (FR-061).
 	MediaZone MediaZone
 	MediaGate *mediagate.Gate
+	// Federation is the federated sign-in (FR-070, FR-071, FR-078): the
+	// provider buttons of the sign-in page and the /auth/ round trips
+	// (MountFederation). Nil offers local sign-in only.
+	Federation *federation.Service
 }
 
 // New assembles the UI.
@@ -226,6 +235,7 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		projector:         opts.Projector,
 		mediaZone:         opts.MediaZone,
 		mediaGate:         opts.MediaGate,
+		federation:        opts.Federation,
 	}
 }
 
@@ -456,6 +466,15 @@ type loginData struct {
 	// Failed switches the taxonomized failure block on (generic message:
 	// the page never reveals whether the account exists, NFR-015).
 	Failed *ErrView
+	// Providers are the federated sign-in buttons (FR-070, FR-071), each
+	// with its unavailability block while its provider is unreachable
+	// (FR-078). Empty without federation.
+	Providers []loginProvider
+}
+
+// loginPageData assembles the sign-in page.
+func (u *UI) loginPageData(r *http.Request, next string, failed *ErrView) loginData {
+	return loginData{Next: next, Failed: failed, Providers: u.loginProviders(r, next)}
 }
 
 // loginExpiredParam marks a redirect to the login page caused by a dead
@@ -474,11 +493,11 @@ func (u *UI) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, sanitizeNext(r.URL.Query().Get("next")), http.StatusFound) //nolint:gosec // G710: the target went through sanitizeNext, which only keeps a same-host path (B-033)
 		return
 	}
-	d := loginData{Next: sanitizeNext(r.URL.Query().Get("next"))}
+	var failed *ErrView
 	if r.URL.Query().Get(loginExpiredParam) == "1" {
-		d.Failed = errView(requestLang(r), taxonomy.New(taxonomy.CodeSessionExpired, nil))
+		failed = errView(requestLang(r), taxonomy.New(taxonomy.CodeSessionExpired, nil))
 	}
-	u.render.Page(w, r, "login", d)
+	u.render.Page(w, r, "login", u.loginPageData(r, sanitizeNext(r.URL.Query().Get("next")), failed))
 }
 
 // loginSubmit verifies the credentials, opens the session, and redirects
@@ -500,10 +519,8 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	// to brute-force what the machine surfaces now bound. Same taxonomy
 	// entry as the 429 the API serves (FR-061 parity).
 	if !u.authn.FailureAllowed(origin) {
-		v := u.render.view(r, loginData{
-			Next:   next,
-			Failed: errView(requestLang(r), taxonomy.New(taxonomy.CodeAuthRateLimited, nil)),
-		})
+		v := u.render.view(r, u.loginPageData(r, next,
+			errView(requestLang(r), taxonomy.New(taxonomy.CodeAuthRateLimited, nil))))
 		u.render.render(w, r, "login", http.StatusTooManyRequests, v)
 		return
 	}
@@ -516,10 +533,8 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 			Actor: name, Action: audit.ActionLogin, Target: "ui",
 			Outcome: audit.OutcomeDenied, Origin: origin,
 		})
-		v := u.render.view(r, loginData{
-			Next:   next,
-			Failed: errView(requestLang(r), taxonomy.New(taxonomy.CodeAuthFailed, nil)),
-		})
+		v := u.render.view(r, u.loginPageData(r, next,
+			errView(requestLang(r), taxonomy.New(taxonomy.CodeAuthFailed, nil))))
 		u.render.render(w, r, "login", http.StatusUnauthorized, v)
 		return
 	}

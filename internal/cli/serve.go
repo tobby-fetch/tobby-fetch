@@ -27,6 +27,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/buildinfo"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
+	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
@@ -323,6 +324,23 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	logger.LogAttrs(ctx, slog.LevelInfo, "outbound network configured",
 		slog.String("egress", egress.Describe()),
 		slog.String("requirement", "FR-080/FR-081"))
+
+	// Federated sign-in (FR-070, FR-071) on the same egress — the
+	// identity provider sits behind the same proxy and private CA as
+	// everything else. Building it reads the operator's files and
+	// contacts nobody: an identity provider that is down never stops the
+	// instance from starting (FR-078); the probe runs in the background.
+	fed, err := federation.New(&federation.Options{
+		OIDC: cfg.Auth.OIDC, SAML: cfg.Auth.SAML,
+		Client:   egress.Client(federationTimeout),
+		Logger:   logger,
+		Observer: authMetrics,
+	})
+	if err != nil {
+		return err
+	}
+	authn.Federated = fed.Enabled
+	go fed.Run(ctx)
 
 	// In-blob resumption of large downloads (FR-029, R-29). One resumer
 	// for the instance, on the same shared transport as everything else,
@@ -640,8 +658,10 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Projector:          eng,
 		MediaZone:          eng,
 		MediaGate:          mediaGate,
+		Federation:         fed,
 	})
 	webUI.Mount(srv.Mux())
+	webUI.MountFederation(srv.Mux())
 
 	if cfg.Auth.Disabled {
 		// The FR-075 override is loud on every channel: audit record at
@@ -911,6 +931,11 @@ func (o authObserver) Attempt(method auth.Method, outcome string) {
 }
 func (o authObserver) SessionExpired(reason auth.ExpiryReason) { o.m.SessionExpired(string(reason)) }
 func (o authObserver) LocalUnderFederation()                   { o.m.LocalUnderFederation() }
+
+// federationTimeout bounds one request to an identity provider: a
+// black-holed provider costs a refused federated sign-in after this long,
+// never a hung page (FR-078).
+const federationTimeout = 15 * time.Second
 
 // sessionSweepInterval paces the periodic session sweep: a minute keeps
 // the session.expire record of an abandoned session within a minute of
