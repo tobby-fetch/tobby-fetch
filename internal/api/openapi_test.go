@@ -42,6 +42,7 @@ var registeredRoutes = []string{
 	"POST /api/v1/oci-layout/plan",
 	"GET /api/v1/import/inspect",
 	"GET /api/v1/media",
+	"GET /api/v1/media/slip",
 	"GET /api/v1/media/verification",
 	"POST /api/v1/media/import",
 	"POST /api/v1/media/verify",

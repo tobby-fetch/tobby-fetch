@@ -343,6 +343,9 @@ func (u *UI) Mount(rt Router) {
 	// actions — with the two FR-054 waivers reserved to an administrator
 	// in the handler, exactly as the API mirror enforces them.
 	mux.Handle("GET /media", app(u.mediaScreen))
+	// The transfer slip (R-07): a read of the same records the screen
+	// shows, drawn as a printable document — viewer, like the screen.
+	mux.Handle("GET /media/slip", app(u.mediaSlip))
 	mux.Handle("POST /media/verify", operator(u.mediaVerify))
 	mux.Handle("POST /media/import", operator(u.mediaImport))
 

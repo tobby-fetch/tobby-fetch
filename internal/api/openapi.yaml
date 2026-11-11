@@ -1171,6 +1171,49 @@ paths:
                 $ref: "#/components/schemas/MediaVerification"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/media/slip:
+    get:
+      summary: >-
+        The transfer slip (R-07): the Media screen's content as a printable
+        document — the medium's identity and freshness, its inventory, the
+        verification report, the vulnerability-scan reports per recipe and
+        element with the database age and the mode (advisory or blocking),
+        and the reduced-assurance markers. "html" (the default) is a
+        self-contained page whose print rules are inline and which loads
+        nothing; "text" is the same document in plain text; "json" is the
+        language-neutral form. English or French. The document is UNSIGNED
+        and says so at its head and its foot: it is an aid and does not
+        prove authenticity (ADR-0006, decision 10). It hashes nothing and
+        runs no verification — the verdict is the last one reached — and it
+        works on both sides of a transfer. Role viewer.
+      parameters:
+        - name: format
+          in: query
+          schema: { type: string, enum: [html, text, json], default: html }
+        - name: lang
+          in: query
+          description: >-
+            Language of the document; the Accept-Language header when
+            absent.
+          schema: { type: string, enum: [en, fr] }
+        - name: download
+          in: query
+          description: >-
+            "1" answers with a Content-Disposition attachment header, so
+            the document is saved rather than shown.
+          schema: { type: string, enum: ["1"] }
+      responses:
+        "200":
+          description: The transfer slip.
+          content:
+            text/html:
+              schema: { type: string }
+            text/plain:
+              schema: { type: string }
+            application/json:
+              schema: { type: object }
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v1/media/verify:
     post:
       summary: >-

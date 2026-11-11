@@ -62,6 +62,7 @@ possible at all.
 | `GET /recipes/plan` | operator | The plan form (FR-055 amendment R-04): only a role that can trigger a synchronization is offered a simulation of one. |
 | `POST /recipes/plan` | operator | A plan mutates nothing, but it makes this instance reach out to every registry the submitted Retriever names. |
 | `GET /media` | viewer | The Media screen (FR-062 amendment R-02): the medium's inventory summary, the verification verdicts, and the guided sequence. Reading it is a listing like any other. |
+| `GET /media/slip` | viewer | The transfer slip (R-07): the Media screen's content as a printable, bilingual, unsigned document (HTML or text). A read of records the instance already holds — it hashes nothing and runs no verification — hence a listing like the screen itself. |
 | `POST /media/verify` | operator | Starts the FR-054 verification: it re-reads and re-hashes the whole medium, which is work rather than a read. The two waivers below need admin. |
 | `GET /integrity` | viewer | The Store integrity screen (FR-057, R-31): the last on-demand verification report of the store, in both modes. Reading it is a listing like any other. |
 | `POST /integrity/verify` | operator | Starts the on-demand verification: it re-reads and re-hashes the whole store, which is work rather than a read — disk I/O for minutes, holding the serial task worker. It repairs and deletes nothing. |
@@ -120,6 +121,7 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `POST /api/v1/recipes/publish` | operator | `POST /recipes/publish` |
 | `GET /api/v1/media` | viewer | the Media screen's summary (`GET /media`) |
 | `GET /api/v1/media/verification` | viewer | the serving gate and the verification in progress — what `GET /media` polls |
+| `GET /api/v1/media/slip` | viewer | `GET /media/slip` (`format=html\|text\|json`, `lang=en\|fr`, `download=1`) |
 | `POST /api/v1/media/verify` | operator | `POST /media/verify` |
 | `POST /api/v1/media/import` | operator | `POST /media/import` |
 | `GET /api/v1/store/verification` | viewer | the last store verification report — what `GET /integrity` polls |

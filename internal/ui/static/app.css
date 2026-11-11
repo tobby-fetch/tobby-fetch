@@ -774,6 +774,7 @@ button.t-lang:hover { color: var(--tobby-accent-text); }
 
 /* Task detail: header actions, meta chips, per-item error disclosure. */
 .t-taskactions { margin-left: auto; display: inline-flex; gap: 0.5rem; }
+.t-media-slip-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0; }
 .t-taskmeta { margin-bottom: 1rem; font-size: var(--tobby-text-sm); }
 .t-errrow summary { cursor: pointer; display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
 .t-errrow[open] summary { margin-bottom: 0.5rem; }
