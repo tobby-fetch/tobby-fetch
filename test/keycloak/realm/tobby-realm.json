@@ -1,0 +1,144 @@
+{
+  "realm": "tobby",
+  "displayName": "Tobby test identity provider (fixture, fictitious credentials)",
+  "attributes": {
+    "tobby.fixture.notice": "FIXTURE ONLY: every credential in this realm is a made-up test value that protects nothing.",
+    "tobby.fixture.accounts": "viewer/viewer-test-pw (group tobby-viewer); operator/operator-test-pw (tobby-operator); admin/admin-test-pw (tobby-admin); nogroup/nogroup-test-pw (no group)",
+    "tobby.fixture.oidc": "client tobby-oidc, secret tobby-oidc-test-secret; authorization code only, PKCE S256 required; redirect URI from TOBBY_OIDC_REDIRECT_URI",
+    "tobby.fixture.saml": "client ${TOBBY_SAML_ENTITY_ID}: signed assertions and responses, persistent NameID, groups attribute, IdP-initiated SSO disabled; ACS from TOBBY_SAML_ACS_URL"
+  },
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": true,
+  "bruteForceProtected": false,
+  "accessTokenLifespan": 300,
+  "groups": [
+    { "name": "tobby-viewer" },
+    { "name": "tobby-operator" },
+    { "name": "tobby-admin" }
+  ],
+  "users": [
+    {
+      "username": "viewer",
+      "email": "viewer@tobby.test",
+      "firstName": "Vera",
+      "lastName": "Viewer",
+      "enabled": true,
+      "emailVerified": true,
+      "groups": ["/tobby-viewer"],
+      "credentials": [{ "type": "password", "value": "viewer-test-pw", "temporary": false }]
+    },
+    {
+      "username": "operator",
+      "email": "operator@tobby.test",
+      "firstName": "Oscar",
+      "lastName": "Operator",
+      "enabled": true,
+      "emailVerified": true,
+      "groups": ["/tobby-operator"],
+      "credentials": [{ "type": "password", "value": "operator-test-pw", "temporary": false }]
+    },
+    {
+      "username": "admin",
+      "email": "admin@tobby.test",
+      "firstName": "Ada",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "groups": ["/tobby-admin"],
+      "credentials": [{ "type": "password", "value": "admin-test-pw", "temporary": false }]
+    },
+    {
+      "username": "nogroup",
+      "email": "nogroup@tobby.test",
+      "firstName": "Nora",
+      "lastName": "Nogroup",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "nogroup-test-pw", "temporary": false }]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "tobby-oidc",
+      "name": "Tobby (OIDC)",
+      "protocol": "openid-connect",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "tobby-oidc-test-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "consentRequired": false,
+      "fullScopeAllowed": false,
+      "redirectUris": ["${TOBBY_OIDC_REDIRECT_URI}"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+"
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "${TOBBY_SAML_ENTITY_ID}",
+      "name": "Tobby (SAML SP)",
+      "protocol": "saml",
+      "enabled": true,
+      "frontchannelLogout": true,
+      "consentRequired": false,
+      "fullScopeAllowed": false,
+      "redirectUris": ["${TOBBY_SAML_ACS_URL}"],
+      "attributes": {
+        "saml.assertion.signature": "true",
+        "saml.server.signature": "true",
+        "saml.server.signature.keyinfo.ext": "false",
+        "saml.signature.algorithm": "RSA_SHA256",
+        "saml.client.signature": "false",
+        "saml.encrypt": "false",
+        "saml.force.post.binding": "true",
+        "saml.authnstatement": "true",
+        "saml_force_name_id_format": "true",
+        "saml_name_id_format": "persistent",
+        "saml_assertion_consumer_url_post": "${TOBBY_SAML_ACS_URL}",
+        "saml_assertion_consumer_url_redirect": "${TOBBY_SAML_ACS_URL}",
+        "saml_idp_initiated_sso_url_name": "",
+        "saml_idp_initiated_sso_relay_state": ""
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "saml",
+          "protocolMapper": "saml-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "attribute.name": "groups",
+            "attribute.nameformat": "Basic",
+            "friendly.name": "groups",
+            "single": "false",
+            "full.path": "false"
+          }
+        }
+      ]
+    }
+  ]
+}
