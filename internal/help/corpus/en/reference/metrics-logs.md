@@ -43,6 +43,10 @@ Domain metrics registered today:
 | `tobby_store_occupancy_bytes` | gauge | — | On-disk size of the store's deduplicated blob tree at the last sample; `0` while no `storage.occupancyThreshold` is configured and nothing is sampled. |
 | `tobby_store_occupancy_threshold_bytes` | gauge | — | The configured threshold; `0` means no threshold is set and the store is not monitored. |
 | `tobby_store_occupancy_exceeded` | gauge | — | `1` while the store exceeds its threshold, `0` otherwise. A gauge, not a counter, on purpose: clearing the condition must be as visible as raising it. All three exist from the first scrape. |
+| `tobby_auth_attempts_total` | counter | `method` = `basic` \| `token` \| `oidc` \| `saml`, `outcome` = `success` \| `failure` \| `expired` | Credential checks on the machine surfaces and sign-ins on the UI (R-14). `expired` is a token refused past its expiry. Every series exists from the first scrape. |
+| `tobby_auth_sessions_expired_total` | counter | `reason` = `idle` \| `lifetime` | UI sessions ended by `auth.session.idleTimeout` or `auth.sessionTTL` (R-14), each also a `session.expire` audit record. |
+| `tobby_auth_idp_reachable` | gauge | `method` = `oidc` \| `saml` | `1` while the identity provider answers the background probe, `0` while it does not (R-20). Absent until first probed, and absent for SAML with pinned metadata, which needs no server-to-server call. |
+| `tobby_auth_local_logins_under_federation_total` | counter | — | Local-account sign-ins while OIDC or SAML is enabled — break-glass use, each also an `auth.local_under_federation` audit record (FR-078). |
 
 The standard Go runtime and process collectors are registered alongside.
 
@@ -113,6 +117,13 @@ With the means of the current series:
   carry the host and reference.
 - **`rate(tobby_policy_rejections_total[…]) > 0`** — same reasoning on the
   fetch side.
+- **`tobby_auth_idp_reachable == 0`** — the identity provider is
+  unreachable: people sign in with the local break-glass account meanwhile
+  (FR-078), which **`increase(tobby_auth_local_logins_under_federation_total[…]) > 0`**
+  shows — worth an alert on its own when the provider is up.
+- **`rate(tobby_auth_attempts_total{outcome="expired"}[…]) > 0`** — a
+  client still presents an expired token: replace it before it is the
+  one that matters.
 - **Absence of `tobby_promotion_pushes_total` movement** (neither `pushed`
   nor `skipped` increasing) on a passthrough instance with a configured
   retriever — the reconciliation loop stopped cycling.
