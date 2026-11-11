@@ -17,15 +17,17 @@
 // run out of process); additional scanners and upstream VEX consumption
 // plug in at this same seam, as additive v1.x extensions.
 //
-// This package carries no behaviour beyond trivial accessors. The Trivy
-// adapter, the combination of the three policy levels, the evaluation
-// itself and the database bookkeeping belong to the milestone-6 scanning
-// work; the shapes below are the contract it fills.
+// The combination of the three policy levels (Combine) and the evaluation
+// of one result against it (Evaluate, NotScanned) live here, pure and
+// scanner-neutral. The Trivy adapter is package scan/trivy.
 //
 // # The policy, as the SRS fixes it (FR-031 amendment 2026-11-11)
 //
-//   - Mode is advisory ("warn") unless the instance says "block", and is
-//     set at the instance only.
+//   - Mode is advisory ("warn") unless the instance says "block" — or a
+//     Retriever or a recipe poses a threshold: a threshold posed for a
+//     perimeter is blocking for that perimeter (milestone-6 opening,
+//     correction of 2026-11-11). A recipe can make its own evaluation
+//     blocking, never advisory.
 //   - A finding violates the policy when its CVSS base score is >= the
 //     threshold. Several sources: the highest score counts. No score: the
 //     lower bound of its severity band (LowerBound). UNKNOWN: never
