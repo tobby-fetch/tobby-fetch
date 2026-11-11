@@ -395,11 +395,98 @@ non-compliant artifacts when the policy is blocking.
 CVE is fetched, reported, and not pushed; with an advisory policy, it is pushed and
 the finding appears in the task report. *(ADR-0008)*
 
+*Amendment 2026-11-11 (6.1) — the shape of the policy.* "Severity thresholds;
+blocking or advisory" above is made precise as follows, and this paragraph
+governs:
+
+- **Advisory by default.** The policy mode is `warn` unless the instance
+  configures `block`. The scan always runs and its results are always
+  visible — per item in the task report, in the API, in the metrics, and as a
+  persistent UI banner stating that the policy is advisory — so the advisory
+  default is not a silent removal of a control in the sense of FR-075. In
+  `block` mode a violating item fails with a policy refusal and is never
+  pushed to a destination (ADR-0008 decision 2).
+- **A numeric threshold.** A finding violates the policy when its CVSS base
+  score is greater than or equal to the threshold, a number from 0 to 10
+  (default 7.0). When several sources score one finding, the highest score
+  counts. A finding without a CVSS score is placed at the lower bound of its
+  scanner severity band — `LOW` 0.1, `MEDIUM` 4.0, `HIGH` 7.0, `CRITICAL` 9.0.
+  A finding of `UNKNOWN` severity is not compared with the threshold: it is
+  reported as unscored on every surface, never dropped, and never decides a
+  verdict without saying so.
+- **Three levels, combined one way.** The policy is set at the instance
+  (configuration `scan.*`), at the Retriever (`spec.scanPolicy`,
+  RECIPE-SPEC §10.4), and by the recipe annotation
+  `recipe.tobby.dev/scan-threshold` (RECIPE-SPEC §6.1) — a setting, not a
+  selection criterion. For the threshold the most specific level wins:
+  recipe, then Retriever, then instance; but a recipe can only **lower** the
+  value the two others produce, and a higher recipe value is ignored and
+  reported — a third-party recipe author never relaxes a zone. The mode is
+  set at the instance only.
+- **Exceptions.** CVE identifiers tolerated beyond the threshold, listed by
+  hand at the instance and at the Retriever; the two lists add up, and a
+  recipe carries none. Each exception MAY carry a `justification` and an
+  `expires` timestamp, both optional in this release (R-15 makes the expiry
+  mandatory and adds scope and VEX, additively). An exception past its
+  `expires` no longer applies and is reported as expired.
+- **An evaluated policy per item.** Each scanned item reports its findings
+  (identifier, severity, CVSS score when known, package, fixed-in version),
+  the database it was scanned with (FR-032), and the evaluated policy: the
+  verdict, the effective threshold and the level that set it, the reasons,
+  and the exceptions that applied.
+- **The scanner is a pinned external binary** (ADR-0008 decision 4), run out
+  of process. The container image bundles it (linux/amd64, linux/arm64); the
+  Linux and Windows binaries obtain it through the `tobby-system` channel like
+  the database (FR-032), its digest verified before every execution; on
+  macOS it is taken from the `PATH` when present, without channel
+  distribution. A missing or unverifiable binary is a **degraded mode**,
+  never a silent one: a startup log record, a persistent UI banner, a metric,
+  and every item reported as not scanned with the reason. Under `block` an
+  item that could not be scanned is not pushed — no configuration path
+  relaxes security implicitly (FR-075).
+
+*Acceptance:* with `block` and a threshold of 7.0, an image carrying a CVE
+scored 9.8 is fetched, reported with the finding, and not pushed; listing that
+CVE as a Retriever exception pushes it and the report names the exception
+applied; a recipe annotated `"5.0"` in that zone blocks a finding scored 6.1,
+while a recipe annotated `"9.0"` keeps the zone at 7.0 and the report says the
+annotation was ignored; with the default configuration the same image is
+pushed, the finding appears in the task report and the advisory banner is
+shown; with the scanner binary removed, the banner, the log record and the
+metric report the degraded mode, every item is reported not scanned, and under
+`block` none is pushed.
+
 **FR-032 — Offline vulnerability database.**
 Tobby SHALL support consuming the Trivy vulnerability database as an OCI artifact
 transferable by Tobby itself, so scanning works in restricted and air-gapped zones.
 *Acceptance:* with all external Trivy endpoints unreachable, scanning succeeds using
 a database previously imported as an OCI artifact. *(ADR-0008)*
+
+*Amendment 2026-11-11 (R-13) — freshness, guaranteed.* The database is only as
+good as its last transfer, so its age is a first-class fact:
+
+- The **age** of the database is the time elapsed since the build timestamp
+  the database itself records. Every scan report carries it, together with
+  the database version.
+- A configurable **maximum age** (`scan.maxDbAge`, default 168h) has an
+  action beyond it: `warn` (default) — the scan proceeds and every report,
+  the UI and the metrics say the database is stale — or `block` — items
+  scanned with a stale database are not pushed, whatever the policy mode.
+- A dedicated metric exposes the age, another whether the database is
+  stale, and a UI indicator shows both.
+- An **absent** database is the degraded mode of FR-031, explicit and
+  visible (log, banner, metric), never silent; under `block` nothing that
+  could not be scanned is pushed.
+- **Bootstrap** is documented: the `tobby-system` recipe carrying the
+  database (and the scanner binary, FR-031) is synchronized first; media
+  verification on the destination side (FR-052, FR-054) does not depend on
+  the database.
+
+*Acceptance:* a scan report states the database age; with a database older
+than the maximum age, `warn` reports staleness on the report, the UI and the
+metric while the push proceeds, and `block` refuses the push with a dedicated
+code; deleting the database yields the visible degraded mode; a destination
+instance with no database still verifies and imports a medium.
 
 **FR-033 — Signature verification.**
 Tobby SHALL verify cosign (key-based) signatures of Recipes and of Ingredients
@@ -446,6 +533,43 @@ nominal→effective mapping.
 fetched from the zone registry without any modification of the recipe; a
 substitute host absent from the allowlist fails policy before transfer; logs show
 both references. *(ADR-0013)*
+
+**FR-037 — Reduced-assurance marker. *(amendment 2026-11-11, R-22)***
+Every recipe admitted under a relaxed trust-root scope (FR-033 — today, a
+scope admitting unsigned recipes), and every item it reaches, SHALL carry an
+assurance marker — level `reduced`, the name of the scope, and the reason — on
+every surface that reports it: the per-item task report, the API, the UI, a
+dedicated field of the log records (FR-090), a metric (FR-091), and the
+per-recipe entry of the media manifest (FR-054), which the destination side
+re-reads and re-displays. The marker SHALL NOT be written into the destination
+registry: transferred content stays bit-exact. On the destination side, the
+manifest's marker is a claim of the source zone, displayed as such; the
+destination's own trust verdict — its own trust roots and scopes — decides
+its own marker, and a manifest claiming full assurance never hides it. The
+marker extends the FR-075 principle from configuration to content: what was
+admitted with less assurance is never presented as if it had full assurance.
+*Acceptance:* an unsigned recipe admitted in a declared scope carries the
+marker in the task report, the API, the UI, the log field and the metric; the
+manifest of a medium carrying it records it per recipe and the destination's
+verification report shows it; a signed recipe verified against a trust root
+carries none.
+
+**FR-038 — Releases consumable through Tobby's own channel. *(amendment 2026-11-11, R-25)***
+Each release SHALL be published as OCI artifacts that a recipe can reference
+by digest: the container image, and the Linux and Windows binaries as
+`FileSet` or `OCIArtifact` ingredients, each with its SBOM and provenance
+attached, together with an example `tobby-system` recipe referencing them.
+An update then crosses zones, the air gap included, through the standard
+passthrough and mirror flows, exactly like the vulnerability database
+(FR-032). The recipe deployed in production is signed by the site's own
+qualification chain: destination trust roots never trust the project's key
+implicitly (FR-033). Tobby never replaces its own binary and never checks for
+updates (NFR-019).
+*Acceptance:* the example recipe, re-signed with a test site key, carries a
+release's image and binaries through a mirror medium into an air-gapped zone,
+where the binary is served under `/files/` (FR-047) and the image under
+`/v2/` with the digests of the release; no connection other than the
+configured ones is observed.
 
 ### 3.5 Embedded registry
 
@@ -760,6 +884,26 @@ failing media lose at most the entries of the task in progress.
 after a task completes leaves that task's entries readable on the media; rotation
 keeps the log within the configured size budget. *(ADR-0012)*
 
+**FR-057 — On-demand integrity verification. *(amendment 2026-11-11, R-31)***
+Tobby SHALL verify a whole store on demand, in both modes, from the command
+line and from the UI with its API mirror (FR-061): every blob hashes to the
+digest it is stored under; every manifest reachable from a recorded recipe is
+complete (its referenced blobs and child manifests present); every recorded
+recipe signature verifies against the trust roots configured on this instance
+(FR-033, scopes applied, reduced assurance re-reported per FR-037); and
+content reachable from no recipe nor from a protected root (FR-045) is listed
+as orphaned. The verification is read-only — it repairs and deletes nothing —
+runs as a tracked task (FR-062), one at a time, and produces a timestamped
+report: start and end, run identifier (FR-090), verdict, and every defect as a
+taxonomy code naming the file or object concerned. Recurring scheduling is out
+of scope for v1.
+*Acceptance:* on a store holding one truncated blob, one manifest missing a
+referenced blob, one recipe whose signing key is no longer a trust root, and
+one orphan blob, the command exits with the verification class (FR-066) and
+the report names each defect with its object; the same verification started
+from the UI yields the same report through the API; an intact store verifies
+clean with exit code 0; the store is byte-identical afterwards.
+
 ### 3.7 API and UI
 
 **FR-060 — Versioned REST API.**
@@ -878,6 +1022,28 @@ plaintext at rest.
 rejected immediately; token stores and configuration dumps contain only hashes.
 *(ADR-0009)*
 
+*Amendment 2026-11-11 (R-14) — expiry and lifecycle.* The local credentials
+gain bounded lifetimes, and every step of their life leaves a trace:
+
+- **Idle expiry of UI sessions.** On top of the absolute lifetime
+  (`auth.sessionTTL`), a session expires after `auth.session.idleTimeout`
+  without an authenticated request (default 30m); any authenticated request
+  renews it. An expired session is answered with TBY-AUTH-005, and the expiry
+  is audit-logged (FR-094) with its reason, idle or lifetime.
+- **Optional token expiry.** A token MAY be given an expiry when it is
+  created; `auth.tokens.defaultLifetime` applies one to tokens created
+  without (default: none — long-lived tokens remain the FR-072 default). The
+  expiry is shown wherever tokens are listed, and an expired token is refused
+  with a code of its own, distinct from an unknown or revoked one.
+- **Lifecycle audit.** Token creation, revocation and expiry, and every
+  refusal of an expired or revoked token, are FR-094 events.
+
+*Acceptance:* a session left idle past the timeout is refused with
+TBY-AUTH-005 and the audit log records an idle expiry, while a session kept
+active survives the same delay; a token created with an expiry authorizes calls
+until it and is refused afterwards with the dedicated code and an audit record;
+a token created without expiry behaves exactly as before.
+
 **FR-073 — Basic authentication.**
 Tobby SHALL support HTTP basic authentication with locally managed accounts.
 *Acceptance:* basic-auth credentials grant UI and API access per the assigned role;
@@ -921,6 +1087,24 @@ any log or response).
 one and signs in with the new password; a wrong current password is refused
 with a stable error code and produces an audit record; the API mirror behaves
 identically.
+
+**FR-078 — Continuity when the identity provider is unreachable. *(amendment 2026-11-11, R-20)***
+When OIDC (FR-070) or SAML (FR-071) is enabled, the local methods — static
+tokens (FR-072) and local accounts (FR-073) — SHALL remain operational in
+parallel (ADR-0009): enabling federation never disables them implicitly. An
+unreachable identity provider (discovery, key set, token endpoint, or a
+configured metadata URL failing or timing out) SHALL NOT prevent the instance
+from starting, SHALL NOT end existing sessions, and SHALL NOT block the local
+methods: the sign-in page states explicitly, with a dedicated code naming the
+provider, that federated sign-in is unavailable, and keeps offering local
+sign-in. Every sign-in with a local account while federation is enabled SHALL
+produce a dedicated audit event (FR-094), distinct from an ordinary local
+sign-in, so that break-glass use is filterable on its own.
+*Acceptance:* with the test identity provider stopped, the instance starts, the
+sign-in page shows the explicit unavailability with its code, the local
+administrator signs in, tokens keep authorizing API calls, and the audit log
+carries the dedicated local-under-federation event; once the provider is back,
+federated sign-in works without a restart.
 
 ### 3.9 Network
 
