@@ -8,6 +8,30 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+### Added
+
+- **Releases are recipe-ready** (R-25, publication half). Every release
+  now also publishes the Linux and Windows binaries (amd64 and arm64) to
+  `ghcr.io/tobby-fetch/binaries/tobby:vX.Y.Z` as a `FileSet`: one
+  multi-platform image index whose children each hold the release binary,
+  byte-for-byte, so a recipe pins it by digest and keeps only the
+  platforms its zone runs. The index is signed keyless and carries SLSA
+  provenance from the trusted container builder; each binary's CycloneDX
+  SBOM is attached to its child as a signed cosign attestation. The
+  existing image and chart are referenced as they are, not republished.
+  `examples/tobby.yaml` carries Tobby into a zone — image, chart and
+  binaries — with placeholder digests to replace from the release notes;
+  that recipe is signed by the site's own chain, never by the project's
+  key, and nothing updates by itself. `docs/release-verification.md`
+  shows how to verify the new artifacts.
+- **The release workflow can be rehearsed.** A `workflow_dispatch` run of
+  `release.yml` is always a dry run: it runs every job, publishes only
+  under `ghcr.io/tobby-fetch/dry-run/`, and creates no GitHub release,
+  pushes nothing to the Homebrew tap and attaches no winget or Scoop
+  manifest — those results are kept as workflow artifacts instead.
+  `tools/check-publish-target.sh` re-checks the target name in every
+  publishing job.
+
 ## [0.5.2] - 2026-11-09
 
 The reference Helm chart is now published with every release, as a signed
