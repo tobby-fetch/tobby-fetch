@@ -1,0 +1,84 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* Vulnerability scanning (FR-031, FR-032, R-13).
+
+     "scan-indicator": the Retriever screen's indicator — the policy, the
+     scanner, the database with its age and staleness, shown whether or
+     not anything is wrong. Invoked with (withData $ indicator).
+
+     "scan-report": one task item's report — verdict, policy, database
+     age (in every report), counts, the worst findings, exceptions and
+     reasons. Invoked with (withData $ report). */}}
+{{define "scan-indicator"}}{{$s := .Data}}
+<h2 class="t-kick" id="scan-status">{{.T "scan.status_title"}}</h2>
+<dl class="t-dl" data-scan-indicator>
+  <dt>{{.T "scan.status_title"}}</dt>
+  <dd>{{if $s.Blocking}}<span class="t-badge t-badge--done">{{.T "scan.mode_blocking"}}</span>{{else}}<span class="t-badge t-badge--pending">{{.T "scan.mode_advisory"}}</span>{{end}}</dd>
+  <dt>{{.T "scan.status_scanner"}}</dt>
+  <dd>{{if $s.Available}}<span class="t-mono" translate="no">{{$s.Scanner.Name}}</span> {{.T "scan.status_origin" "Version" $s.Scanner.Version "Origin" (.T (printf "scan.origin_%s" $s.Origin))}}{{else}}<span class="t-badge t-badge--failed">{{.T "scan.status_scanner_none"}}</span>{{end}}
+    {{if $s.CauseCode}} <span class="t-chip t-chip--code" translate="no">{{$s.CauseCode}}</span>{{end}}</dd>
+  <dt>{{.T "scan.status_database"}}</dt>
+  <dd data-scan-db>{{if $s.HasDB}}{{.T "scan.db_age" "Age" $s.DBAge}}{{if $s.DBStale}} <span class="t-badge t-badge--failed">{{.T "scan.db_stale"}}</span>{{end}}
+    <span class="t-muted t-note">{{.T "scan.db_version" "Version" $s.DBVersion}} · {{.T "scan.db_built" "When" (.FmtTime $s.DBBuiltAt)}} · {{.T "scan.status_max_age" "Max" $s.MaxAge}}</span>
+    {{else}}<span class="t-badge t-badge--failed">{{.T "scan.db_absent"}}</span>{{end}}</dd>
+</dl>
+{{end}}
+
+{{define "scan-report"}}{{$r := .Data}}
+<div class="t-scan" data-scan-verdict="{{$r.Verdict}}">
+  <p class="t-kick">{{.T "scan.section_title"}} —
+    {{if eq $r.Verdict "pass"}}<span class="t-badge t-badge--done">{{.T "scan.verdict_pass"}}</span>
+    {{- else if eq $r.Verdict "warn"}}<span class="t-badge t-badge--done-errors">{{.T "scan.verdict_warn"}}</span>
+    {{- else if eq $r.Verdict "block"}}<span class="t-badge t-badge--failed">{{.T "scan.verdict_block"}}</span>
+    {{- else}}<span class="t-badge t-badge--failed">{{.T "scan.verdict_not_scanned"}}</span>{{end}}
+  </p>
+  <p class="t-muted t-note">
+    {{if eq $r.Mode "block"}}{{if or (eq $r.ModeLevel "instance") (eq $r.ModeLevel "")}}{{.T "scan.mode_blocking"}}{{else}}{{.T "scan.mode_blocking_by" "Level" (.T (printf "scan.level_%s" $r.ModeLevel))}}{{end}}{{else}}{{.T "scan.mode_advisory"}}{{end}}
+    · {{.T "scan.threshold" "Threshold" $r.Threshold "Level" (.T (printf "scan.level_%s" $r.Level))}}
+    {{if $r.Scanner}}· {{.T "scan.scanner" "Name" $r.Scanner.Name "Version" $r.Scanner.Version}}{{end}}
+    {{if $r.HasDB}}· {{.T "scan.db_age" "Age" $r.DBAge}} ({{.T "scan.db_version" "Version" $r.DBVersion}}){{if $r.DBStale}} <span class="t-badge t-badge--failed">{{.T "scan.db_stale"}}</span>{{end}}{{end}}
+  </p>
+  {{if $r.Scanner}}<p class="t-note">{{.T "scan.counts" "Critical" $r.Counts.Critical "High" $r.Counts.High "Medium" $r.Counts.Medium "Low" $r.Counts.Low "Unknown" $r.Counts.Unknown}}</p>{{end}}
+  {{range $r.Reasons}}
+  <details class="t-errrow">
+    <summary><span class="t-chip t-chip--code" translate="no">{{.Code}}</span> {{.What}}</summary>
+    {{template "error-block" (withErr $ .)}}
+  </details>
+  {{end}}
+  {{if $r.Applied}}
+  <p class="t-note">{{.T "scan.exceptions_applied"}} :
+    {{range $i, $e := $r.Applied}}{{if $i}}, {{end}}<span class="t-mono" translate="no">{{$e.ID}}</span> ({{$.T (printf "scan.level_%s" $e.Level)}}{{if $e.Justification}} — {{$e.Justification}}{{end}}){{end}}</p>
+  {{end}}
+  {{if $r.Expired}}
+  <p class="t-note">{{.T "scan.exceptions_expired"}} :
+    {{range $i, $e := $r.Expired}}{{if $i}}, {{end}}<span class="t-mono" translate="no">{{$e.ID}}</span>{{end}}</p>
+  {{end}}
+  {{if $r.Findings}}
+  <table class="t-table">
+    <caption class="t-visually-hidden">{{.T "scan.findings_title"}}</caption>
+    <thead>
+      <tr>
+        <th scope="col">{{.T "scan.th_id"}}</th>
+        <th scope="col">{{.T "scan.th_severity"}}</th>
+        <th scope="col" class="t-num">{{.T "scan.th_score"}}</th>
+        <th scope="col">{{.T "scan.th_package"}}</th>
+        <th scope="col">{{.T "scan.th_installed"}}</th>
+        <th scope="col">{{.T "scan.th_fixed"}}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range $r.Findings}}
+      <tr{{if .Violates}} data-scan-violation{{end}}>
+        <td class="t-mono" translate="no">{{.ID}}{{if .Violates}} <span class="t-badge t-badge--failed">{{$.T "scan.finding_violates"}}</span>{{else if .Excepted}} <span class="t-badge t-badge--pending">{{$.T "scan.finding_excepted"}}</span>{{end}}</td>
+        <td translate="no">{{.Severity}}</td>
+        <td class="t-num">{{with .Score}}{{.}}{{else}}—{{end}}</td>
+        <td class="t-mono" translate="no">{{.Package}}</td>
+        <td class="t-mono" translate="no">{{.Installed}}</td>
+        <td class="t-mono" translate="no">{{with .Fixed}}{{.}}{{else}}—{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{if $r.More}}<p class="t-muted t-note">{{.T "scan.findings_more" "Count" $r.More}}</p>{{end}}
+  {{end}}
+</div>
+{{end}}

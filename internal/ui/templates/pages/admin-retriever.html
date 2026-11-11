@@ -37,6 +37,8 @@
   <p class="t-muted">{{.T "retriever.destination_none"}}</p>
   {{end}}
 
+  {{if .Data.Scan}}{{template "scan-indicator" (withData . .Data.Scan)}}{{end}}
+
   <h2 class="t-kick">{{.T "retriever.interval_title"}}</h2>
   {{/* The one editable control on this screen (FR-013: the interval is
        changeable without redeployment). Everything else here comes from

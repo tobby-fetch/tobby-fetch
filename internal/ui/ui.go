@@ -182,6 +182,9 @@ type Options struct {
 	// screen and its mirror cannot answer differently (FR-061).
 	MediaZone MediaZone
 	MediaGate *mediagate.Gate
+	// Scan reads the vulnerability-scanning state for the banners and the
+	// Retriever screen's indicator (FR-031, FR-032, R-13).
+	Scan func() ScanState
 }
 
 // New assembles the UI.
@@ -198,6 +201,7 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 	if opts.Occupancy != nil {
 		render.Occupancy = opts.Occupancy.Current
 	}
+	render.Scan = opts.Scan
 	return &UI{
 		render:            render,
 		authn:             authn,

@@ -157,6 +157,8 @@ type taskItemView struct {
 	// handful of rows on the multi-gigabyte ones — which is exactly when
 	// "running" stops being an answer an operator can act on.
 	LargeBlobs []taskBlobView
+	// Scan is the item's vulnerability-scan report (FR-031), localized.
+	Scan *scanItemView
 }
 
 // taskBlobView is one large blob's progress row.
@@ -260,7 +262,7 @@ func (u *UI) taskDetail(w http.ResponseWriter, r *http.Request) {
 		data.TaskErr = itemErrView(lang, t.Error, t.RunID)
 	}
 	for _, it := range t.Items {
-		iv := taskItemView{Item: it, State: string(it.Status), LargeBlobs: blobViews(&it)}
+		iv := taskItemView{Item: it, State: string(it.Status), LargeBlobs: blobViews(&it), Scan: scanItemViewOf(lang, it.Scan)}
 		if it.Error != nil {
 			iv.Err = itemErrView(lang, it.Error, t.RunID)
 		}

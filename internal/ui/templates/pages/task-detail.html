@@ -139,6 +139,13 @@
         </td>
       </tr>
       {{end}}
+      {{/* The item's vulnerability-scan report (FR-031): verdict, policy,
+           database age, findings. Never absent for a scanned kind. */}}
+      {{if .Scan}}
+      <tr class="t-scanrow">
+        <td colspan="4">{{template "scan-report" (withData $ .Scan)}}</td>
+      </tr>
+      {{end}}
       {{end}}
     </tbody>
   </table>
