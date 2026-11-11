@@ -356,43 +356,39 @@ const (
 	//
 	// CodeScannerUnavailable is the degraded mode of FR-031: no usable
 	// scanner binary. Never silent — banner, log record, metric, and every
-	// item reported not scanned with this code. Reserved: emitter lands with
-	// 6.1.
+	// item reported not scanned with this code.
 	CodeScannerUnavailable Code = "TBY-SCN-001"
 	// CodeScannerUnverified is a scanner binary whose digest does not match
-	// its pin: it is never executed (FR-031). Reserved: emitter lands with
-	// 6.1.
+	// its pin: it is never executed (FR-031).
 	CodeScannerUnverified Code = "TBY-SCN-002"
 	// CodeScanDBMissing is the absent-database degraded mode of FR-032
-	// (R-13): explicit and visible, never silent. Reserved: emitter lands
-	// with R-13.
+	// (R-13): explicit and visible, never silent.
 	CodeScanDBMissing Code = "TBY-SCN-003"
 	// CodeScanDBStale is a vulnerability database older than scan.maxDbAge
 	// (R-13): reported on every surface, and a refusal when
-	// scan.maxDbAgeAction is block. Reserved: emitter lands with R-13.
+	// scan.maxDbAgeAction is block.
 	CodeScanDBStale Code = "TBY-SCN-004"
 	// CodeScanPolicyBlocked is an item refused by a blocking scan policy
 	// (FR-031): findings at or above the threshold that no exception
-	// covers. Reserved: emitter lands with 6.1.
+	// covers.
 	CodeScanPolicyBlocked Code = "TBY-SCN-005"
 	// CodeScanPolicyAdvisory reports the same violation under the advisory
 	// default: the item proceeds, the finding stays visible. Non-blocking.
-	// Reserved: emitter lands with 6.1.
 	CodeScanPolicyAdvisory Code = "TBY-SCN-006"
 	// CodeScanFailed is a scan the scanner started and could not finish —
-	// the item is reported not scanned. Reserved: emitter lands with 6.1.
+	// the item is reported not scanned.
 	CodeScanFailed Code = "TBY-SCN-007"
 	// CodeScanRecipeThresholdIgnored reports a recipe annotation that would
 	// have RAISED the threshold: a recipe can only harden a zone's policy
-	// (RECIPE-SPEC §10.4). Non-blocking. Reserved: emitter lands with 6.1.
+	// (RECIPE-SPEC §10.4). Non-blocking.
 	CodeScanRecipeThresholdIgnored Code = "TBY-SCN-020"
 	// CodeScanExceptionExpired reports an exception past its expiry: it no
 	// longer applies. Non-blocking by itself — the finding it covered is
-	// evaluated again. Reserved: emitter lands with 6.1.
+	// evaluated again.
 	CodeScanExceptionExpired Code = "TBY-SCN-021"
 	// CodeScanUnscored reports findings of UNKNOWN severity with no CVSS
 	// score: never compared with the threshold, never dropped (FR-031
-	// amendment). Non-blocking. Reserved: emitter lands with 6.1.
+	// amendment). Non-blocking.
 	CodeScanUnscored Code = "TBY-SCN-022"
 
 	// On-demand store integrity verification (FR-057, R-31 — milestone

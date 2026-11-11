@@ -511,70 +511,70 @@ Réservés à l'ouverture du jalon 6 (FR-031, FR-032) : la politique est consult
 - **Quoi :** L'analyseur de vulnérabilités est indisponible : le contenu n'est pas analysé.
 - **Cause probable :** `<detail>`
 - **Action corrective :** Rendez l'analyseur disponible pour cette plateforme : il est intégré à l'image conteneur ; sur un hôte Linux ou Windows, synchronisez la recipe tobby-system qui le transporte ; sous macOS, installez trivy dans le PATH. Sous `scan.mode: block`, rien de ce qui n'a pu être analysé n'est poussé d'ici là.
-- **Remédiable hors-ligne :** oui, une fois la recipe tobby-system transférée · **Bloque :** l'analyse ; en mode bloquant, tout push · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui, une fois la recipe tobby-system transférée · **Bloque :** l'analyse ; en mode bloquant, tout push
 
 ### TBY-SCN-002
 
 - **Quoi :** Le binaire de l'analyseur `<path>` ne correspond pas à son digest épinglé et n'a pas été exécuté.
 - **Cause probable :** Attendu `<expected>`, trouvé `<actual>` : le fichier a été remplacé ou endommagé après son épinglage.
 - **Action corrective :** Restaurez le binaire depuis la recipe tobby-system (ou depuis la release épinglée), ou mettez à jour `scan.trivy.digest` si le changement est voulu. Le contenu est signalé non analysé d'ici là.
-- **Remédiable hors-ligne :** oui · **Bloque :** l'analyse · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui · **Bloque :** l'analyse
 
 ### TBY-SCN-003
 
 - **Quoi :** Aucune base de vulnérabilités n'est disponible : le contenu n'est pas analysé.
 - **Cause probable :** Le store ne contient aucune base sous `<repository>`.
 - **Action corrective :** Synchronisez d'abord la recipe tobby-system qui transporte la base — par le support miroir en zone isolée. La vérification des supports n'a pas besoin de la base.
-- **Remédiable hors-ligne :** oui, une fois la recipe tobby-system transférée · **Bloque :** l'analyse ; en mode bloquant, tout push · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui, une fois la recipe tobby-system transférée · **Bloque :** l'analyse ; en mode bloquant, tout push
 
 ### TBY-SCN-004
 
 - **Quoi :** La base de vulnérabilités a `<age>`, au-delà des `<max>` acceptés par cette instance.
 - **Cause probable :** La base n'a pas été rafraîchie assez récemment : les vulnérabilités publiées depuis sa construction sont inconnues de l'analyseur.
 - **Action corrective :** Synchronisez la recipe tobby-system pour apporter une base fraîche — par le prochain support en zone isolée. Sous `scan.maxDbAgeAction: block`, les éléments analysés avec une base périmée ne sont pas poussés d'ici là.
-- **Remédiable hors-ligne :** oui, une fois une base fraîche transférée · **Bloque :** rien en mode avertir ; le push de l'élément en mode bloquer · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui, une fois une base fraîche transférée · **Bloque :** rien en mode avertir ; le push de l'élément en mode bloquer
 
 ### TBY-SCN-005
 
 - **Quoi :** `<reference>` enfreint la politique de vulnérabilités et n'a pas été poussé.
 - **Cause probable :** Des vulnérabilités au niveau du seuil de `<threshold>` ou au-delà (posé au niveau `<level>`) ne sont couvertes par aucune exception : `<violations>`.
 - **Action corrective :** Publiez une version corrigée en amont et mettez à jour la recipe, ou — si le risque est accepté dans cette zone — listez la CVE en exception dans le `spec.scanPolicy` du Retriever ou dans `scan.exceptions`, avec sa justification.
-- **Remédiable hors-ligne :** non : le correctif vient de l'amont, ou d'une exception décidée par la zone · **Bloque :** l'élément et sa recipe · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** non : le correctif vient de l'amont, ou d'une exception décidée par la zone · **Bloque :** l'élément et sa recipe
 
 ### TBY-SCN-006
 
 - **Quoi :** `<reference>` enfreint la politique de vulnérabilités ; il a été poussé car la politique est consultative.
 - **Cause probable :** Des vulnérabilités au niveau du seuil de `<threshold>` ou au-delà (posé au niveau `<level>`) ne sont couvertes par aucune exception : `<violations>`.
 - **Action corrective :** Examinez les vulnérabilités. Pour refuser un tel contenu plutôt que le signaler, réglez `scan.mode: block` ; pour accepter une CVE précise dans cette zone, listez-la en exception avec sa justification.
-- **Remédiable hors-ligne :** oui · **Bloque :** rien · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui · **Bloque :** rien
 
 ### TBY-SCN-007
 
 - **Quoi :** `<reference>` n'a pas pu être analysé.
 - **Cause probable :** L'analyseur s'est arrêté sur une erreur : `<detail>`
 - **Action corrective :** Relancez la synchronisation. Si l'erreur persiste, le journal de l'instance porte la sortie de l'analyseur sous le même identifiant de corrélation. Sous `scan.mode: block`, l'élément n'est pas poussé tant qu'il n'est pas analysé.
-- **Remédiable hors-ligne :** oui · **Bloque :** l'élément en mode bloquer ; rien en mode avertir · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui · **Bloque :** l'élément en mode bloquer ; rien en mode avertir
 
 ### TBY-SCN-020
 
 - **Quoi :** Le seuil d'analyse porté par `<recipe>` a été ignoré.
 - **Cause probable :** La recipe demande `<annotation>`, au-dessus des `<threshold>` en vigueur pour cette zone ; une recipe peut abaisser le seuil, jamais le relever.
 - **Action corrective :** Rien à faire sur cette instance : le seuil de la zone s'applique. L'auteur de la recipe peut retirer ou abaisser l'annotation `recipe.tobby.dev/scan-threshold`.
-- **Remédiable hors-ligne :** oui · **Bloque :** rien · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui · **Bloque :** rien
 
 ### TBY-SCN-021
 
 - **Quoi :** L'exception pour `<id>` a expiré le `<expires>` et ne s'applique plus.
 - **Cause probable :** L'exception déclarée au niveau `<level>` porte une date d'expiration dépassée.
 - **Action corrective :** Renouvelez l'exception avec un nouveau `expires` et sa justification si le risque reste accepté, ou retirez-la et traitez la vulnérabilité.
-- **Remédiable hors-ligne :** oui · **Bloque :** rien en soi · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui · **Bloque :** rien en soi
 
 ### TBY-SCN-022
 
 - **Quoi :** `<reference>` porte des vulnérabilités sans score de criticité : `<ids>`.
 - **Cause probable :** Les sources d'avis ne donnent à ces vulnérabilités ni score CVSS ni sévérité : la politique ne peut pas les comparer à son seuil.
 - **Action corrective :** Examinez-les à la main. Elles ne comptent pas face au seuil ; si l'une doit être refusée, faites corriger le contenu en amont.
-- **Remédiable hors-ligne :** oui · **Bloque :** rien · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui · **Bloque :** rien
 
 ## Limites de la destination (TBY-DST)
 
