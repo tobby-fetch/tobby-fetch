@@ -109,6 +109,11 @@ func (u *UI) adminAccountCreate(w http.ResponseWriter, r *http.Request) {
 				taxonomy.New(taxonomy.CodeAccountExists, taxonomy.Params{"name": name}))
 			return
 		}
+		if errors.Is(err, auth.ErrReservedName) {
+			u.renderAccountsError(w, r, name,
+				taxonomy.New(taxonomy.CodeLocalNameReserved, taxonomy.Params{"name": name}))
+			return
+		}
 		u.render.Error(w, r, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))
 		return
 	}
@@ -280,6 +285,16 @@ func (u *UI) adminTokenCreate(w http.ResponseWriter, r *http.Request) {
 			d := u.adminScreenData(r)
 			d.FormError, d.Name = "admin.err_name_taken", name
 			u.renderAdmin(w, r, http.StatusConflict, d)
+			return
+		}
+		if errors.Is(err, auth.ErrReservedName) {
+			audit.Log(r.Context(), u.logger, &audit.Event{
+				Actor: id.Name, Action: audit.ActionTokenCreate, Target: name,
+				Outcome: audit.OutcomeFailure, Origin: auth.ClientOrigin(r),
+			})
+			d := u.adminScreenData(r)
+			d.FormError, d.Name = "admin.err_name_reserved", name
+			u.renderAdmin(w, r, http.StatusUnprocessableEntity, d)
 			return
 		}
 		u.render.Error(w, r, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))

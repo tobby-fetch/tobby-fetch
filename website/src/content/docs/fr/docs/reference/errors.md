@@ -240,6 +240,13 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 - **Action corrective :** Patientez quelques secondes puis reconnectez-vous — une fois. S'il s'agit d'une adresse de sortie partagée, un autre client derrière elle boucle peut-être sur la page de connexion.
 - **Remédiable hors-ligne :** oui · **Bloque :** l'ouverture d'une connexion fédérée depuis cette adresse, quelques secondes ; les comptes locaux et les tokens ne sont pas touchés
 
+### TBY-AUTH-019
+
+- **Quoi :** Le nom `<name>` ne peut pas désigner un compte ou un token local.
+- **Cause probable :** Le caractère « : » est réservé aux identités fédérées, dont la clé est `oidc:<sujet>` ou `saml:<NameID>` ; un compte ou un token local nommé comme l'une d'elles s'en distinguerait mal dans la piste d'audit.
+- **Action corrective :** Choisissez un nom sans « : » (par exemple un tiret ou un point à la place).
+- **Remédiable hors-ligne :** oui · **Bloque :** la création de ce compte ou de ce token
+
 ## Configuration (TBY-CFG)
 
 ### TBY-CFG-001

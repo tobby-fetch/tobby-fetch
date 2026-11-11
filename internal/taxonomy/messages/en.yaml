@@ -75,6 +75,10 @@
 "TBY-AUTH-018.cause": "Every sign-in started holds a little memory on this instance until it completes, and may contact the identity provider, before anyone is authenticated. The instance bounds how often one network address may start one, so that a flood from one address can never push out the sign-ins other people have in flight."
 "TBY-AUTH-018.action": "Wait a few seconds and sign in again — once. If this is a shared egress address, another client behind it may be looping on the sign-in page."
 
+"TBY-AUTH-019.what": "The name {{.name}} cannot name a local account or token."
+"TBY-AUTH-019.cause": "The character `:` is reserved for federated identities, which are keyed `oidc:<subject>` and `saml:<NameID>`; a local account or token named like one would be indistinguishable from it in the audit trail."
+"TBY-AUTH-019.action": "Choose a name without `:` (for example a dash or a dot instead)."
+
 "TBY-CFG-001.what": "The configuration is invalid."
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Fix the reported setting (precedence: flags, then TOBBY_* environment variables, then the YAML file), check the result with `tobby config dump`, then restart."

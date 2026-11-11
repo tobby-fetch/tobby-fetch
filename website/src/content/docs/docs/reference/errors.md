@@ -205,6 +205,13 @@ its published rendering.
 - **Corrective action:** Wait a few seconds and sign in again — once. If this is a shared egress address, another client behind it may be looping on the sign-in page.
 - **Fixable offline:** yes · **Blocks:** starting a federated sign-in from that address, for a few seconds; local accounts and tokens are not affected
 
+### TBY-AUTH-019
+
+- **What happened:** The name `<name>` cannot name a local account or token.
+- **Probable cause:** The character `:` is reserved for federated identities, which are keyed `oidc:<subject>` and `saml:<NameID>`; a local account or token named like one would be indistinguishable from it in the audit trail.
+- **Corrective action:** Choose a name without `:` (for example a dash or a dot instead).
+- **Fixable offline:** yes · **Blocks:** the creation of that account or token
+
 ## Configuration (TBY-CFG)
 
 ### TBY-CFG-001

@@ -39,7 +39,9 @@ accounts and tokens are untouched.
 **Identity key and display name.** A federated identity is keyed on what
 the provider guarantees stable — the OIDC `sub`, the SAML persistent
 `NameID` — as `oidc:<sub>` or `saml:<NameID>`: never confused with a local
-account, never reassigned when someone is renamed. The readable name
+account — a local account or token name cannot contain `:`
+([TBY-AUTH-019](../../reference/errors/#tby-auth-019)) — never reassigned
+when someone is renamed. The readable name
 (`auth.oidc.nameClaim`, default `preferred_username`; `auth.saml.nameAttribute`)
 is shown on screen and recorded as `actor_name` beside `actor` in the logs
 and the audit trail. It is display only: no role, no session and no

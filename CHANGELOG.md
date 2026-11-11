@@ -296,6 +296,12 @@ starting with `v0.1.0`.
   one every 2 s, refused with the new `TBY-AUTH-018`, HTTP 429), one
   origin holds at most 32 entries, and a full table evicts from the origin
   holding the most.
+- **A local account or token can no longer be named like a federated
+  identity** (B-050). `oidc:<sub>` and `saml:<NameID>` key federated
+  identities, but an account or token could be created as `oidc:…`, and
+  the audit trail then showed two principals under one name. `:` is now
+  refused in local account and token names, from the CLI, the interface
+  and the API, with the new `TBY-AUTH-019`.
 
 ## [0.5.2] - 2026-11-09
 

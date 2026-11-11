@@ -75,6 +75,10 @@
 "TBY-AUTH-018.cause": "Chaque connexion entamée retient un peu de mémoire sur cette instance jusqu'à son terme, et peut contacter le fournisseur d'identité, avant que quiconque soit authentifié. L'instance borne la fréquence à laquelle une même adresse réseau peut en entamer, pour qu'un afflux depuis une adresse ne chasse jamais les connexions que d'autres personnes ont en cours."
 "TBY-AUTH-018.action": "Patientez quelques secondes puis reconnectez-vous — une fois. S'il s'agit d'une adresse de sortie partagée, un autre client derrière elle boucle peut-être sur la page de connexion."
 
+"TBY-AUTH-019.what": "Le nom {{.name}} ne peut pas désigner un compte ou un token local."
+"TBY-AUTH-019.cause": "Le caractère « : » est réservé aux identités fédérées, dont la clé est `oidc:<sujet>` ou `saml:<NameID>` ; un compte ou un token local nommé comme l'une d'elles s'en distinguerait mal dans la piste d'audit."
+"TBY-AUTH-019.action": "Choisissez un nom sans « : » (par exemple un tiret ou un point à la place)."
+
 "TBY-CFG-001.what": "La configuration est invalide."
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Corrigez le réglage indiqué (précédence : drapeaux, puis variables d'environnement TOBBY_*, puis fichier YAML), vérifiez le résultat avec `tobby config dump`, puis redémarrez."

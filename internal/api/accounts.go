@@ -212,6 +212,8 @@ func accountProblem(name string, err error) *taxonomy.Error {
 		return taxonomy.New(taxonomy.CodeAccountUnknown, taxonomy.Params{"name": name})
 	case errors.Is(err, auth.ErrExists):
 		return taxonomy.New(taxonomy.CodeAccountExists, taxonomy.Params{"name": name})
+	case errors.Is(err, auth.ErrReservedName):
+		return taxonomy.New(taxonomy.CodeLocalNameReserved, taxonomy.Params{"name": name})
 	default:
 		return taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err)
 	}
@@ -301,6 +303,10 @@ func (c *accountsAPI) createToken(w http.ResponseWriter, r *http.Request) {
 			Actor: id.Name, Action: audit.ActionTokenCreate, Target: req.Name,
 			Outcome: audit.OutcomeFailure, Origin: auth.ClientOrigin(r),
 		})
+		if errors.Is(err, auth.ErrReservedName) {
+			c.api.Problem(w, r, taxonomy.New(taxonomy.CodeLocalNameReserved, taxonomy.Params{"name": req.Name}))
+			return
+		}
 		c.api.Problem(w, r, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))
 		return
 	}

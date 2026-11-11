@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -106,6 +107,21 @@ var ErrNotFound = errors.New("not found")
 
 // ErrExists reports a duplicate account or token name.
 var ErrExists = errors.New("already exists")
+
+// ErrReservedName refuses a local account or token name holding ":".
+// Federated identities are keyed "oidc:<sub>" and "saml:<NameID>"; a
+// local principal named like one would share its name in the audit
+// trail and in every surface that shows who acted (FR-094), so the
+// separator is reserved to them.
+var ErrReservedName = errors.New(`":" is reserved for federated identities ("oidc:…", "saml:…")`)
+
+// CheckLocalName reports whether name may name a local account or token.
+func CheckLocalName(name string) error {
+	if strings.ContainsRune(name, ':') {
+		return fmt.Errorf("auth: %q: %w", name, ErrReservedName)
+	}
+	return nil
+}
 
 // ErrLastAdmin refuses a removal or a demotion that would leave the
 // instance with no administrator. The invariant is enforced here, under
@@ -207,6 +223,9 @@ func (s *Store) adminsLocked(except string) int {
 func (s *Store) AddAccount(name string, role Role, password string, now time.Time) error {
 	if name == "" {
 		return errors.New("auth: account name is required")
+	}
+	if err := CheckLocalName(name); err != nil {
+		return err
 	}
 	hash, err := hashPassword(password)
 	if err != nil {
@@ -439,6 +458,9 @@ func (s *Store) CreateToken(name string, role Role, now time.Time) (string, Toke
 func (s *Store) CreateTokenExpiring(name string, role Role, now, expires time.Time) (string, Token, error) {
 	if name == "" {
 		return "", Token{}, errors.New("auth: token name is required")
+	}
+	if err := CheckLocalName(name); err != nil {
+		return "", Token{}, err
 	}
 	if !expires.IsZero() && !expires.After(now) {
 		return "", Token{}, fmt.Errorf("auth: token %q: %w", name, ErrExpiryPast)

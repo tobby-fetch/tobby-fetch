@@ -347,3 +347,30 @@ func TestAccountRoleAndDeleteEndpoints(t *testing.T) {
 		t.Error("the last administrator lost its role or its existence")
 	}
 }
+
+// TestLocalNamesCannotPoseAsFederatedIdentities: federated identities are
+// keyed "oidc:<sub>" and "saml:<NameID>"; a local account or token named
+// like one would share its name in the audit trail, so ":" is refused in
+// both, with TBY-AUTH-019, and nothing is created.
+func TestLocalNamesCannotPoseAsFederatedIdentities(t *testing.T) {
+	mux, store, _ := newAccountsAPI(t)
+	for _, name := range []string{"oidc:u-1", "saml:alice", "a:b"} {
+		w := adminDo(t, mux, http.MethodPost, "/api/v1/accounts",
+			`{"name":"`+name+`","role":"admin","password":"pw-reserved"}`)
+		if got := problemCode(t, w); got != "TBY-AUTH-019" {
+			t.Errorf("account %s: code = %q (%d), want TBY-AUTH-019", name, got, w.Code)
+		}
+		if _, ok := store.Account(name); ok {
+			t.Errorf("account %s was created", name)
+		}
+		w = adminDo(t, mux, http.MethodPost, "/api/v1/tokens", `{"name":"`+name+`","role":"viewer"}`)
+		if got := problemCode(t, w); got != "TBY-AUTH-019" {
+			t.Errorf("token %s: code = %q (%d), want TBY-AUTH-019", name, got, w.Code)
+		}
+	}
+	for _, tok := range store.Tokens() {
+		if strings.Contains(tok.Name, ":") {
+			t.Errorf("token %q was created", tok.Name)
+		}
+	}
+}

@@ -22,6 +22,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
+	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
 // newUserCmd wires `tobby user` (R-01): local accounts are created and
@@ -128,6 +129,9 @@ func newUserAddCmd() *cobra.Command {
 				return err
 			}
 			if err := store.AddAccount(name, role, password, time.Now()); err != nil {
+				if errors.Is(err, auth.ErrReservedName) {
+					return taxonomy.New(taxonomy.CodeLocalNameReserved, taxonomy.Params{"name": name})
+				}
 				return err
 			}
 			auditLocal(cmd, &audit.Event{

@@ -96,6 +96,11 @@ const (
 	// authentications (TBY-AUTH-012). Operational, parameter-free but for
 	// the provider name.
 	CodeFederatedThrottled Code = "TBY-AUTH-018"
+	// CodeLocalNameReserved refuses a local account or token name holding
+	// ":", the separator of federated identity keys ("oidc:<sub>",
+	// "saml:<NameID>"): two principals never share a name in the audit
+	// trail (FR-094).
+	CodeLocalNameReserved Code = "TBY-AUTH-019"
 
 	// CodeConfigInvalid is a rejected configuration (FR-003 validation).
 	CodeConfigInvalid Code = "TBY-CFG-001"
@@ -458,6 +463,7 @@ var catalog = map[Code]Entry{
 	CodeSAMLFailed:         {Code: CodeSAMLFailed, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized, Params: []string{"provider"}},
 	CodeIDPUnreachable:     {Code: CodeIDPUnreachable, Class: ClassOperational, HTTPStatus: http.StatusBadGateway, Params: []string{"provider"}},
 	CodeFederatedNoRole:    {Code: CodeFederatedNoRole, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"provider"}},
+	CodeLocalNameReserved:  {Code: CodeLocalNameReserved, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"name"}},
 	CodeFederatedThrottled: {Code: CodeFederatedThrottled, Class: ClassOperational, HTTPStatus: http.StatusTooManyRequests, Params: []string{"provider"}},
 
 	CodeConfigInvalid: {Code: CodeConfigInvalid, Class: ClassOperational, Params: []string{"detail"}},

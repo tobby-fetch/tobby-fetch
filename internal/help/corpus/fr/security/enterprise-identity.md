@@ -42,8 +42,9 @@ comptes locaux et les jetons ne sont pas touchés.
 **Clé d'identité et nom affiché.** Une identité fédérée a pour clé ce que
 le fournisseur garantit stable — le `sub` OIDC, le `NameID` SAML
 persistant — sous la forme `oidc:<sub>` ou `saml:<NameID>` : jamais
-confondue avec un compte local, jamais réattribuée quand quelqu'un est
-renommé. Le nom lisible (`auth.oidc.nameClaim`, par défaut
+confondue avec un compte local — un nom de compte ou de token local ne
+peut pas contenir `:` ([TBY-AUTH-019](../../reference/errors/#tby-auth-019))
+—, jamais réattribuée quand quelqu'un est renommé. Le nom lisible (`auth.oidc.nameClaim`, par défaut
 `preferred_username` ; `auth.saml.nameAttribute`) est affiché à l'écran et
 consigné en `actor_name` à côté d'`actor` dans les journaux et l'audit. Il
 ne sert qu'à l'affichage : aucun rôle, aucune session, aucune décision ne

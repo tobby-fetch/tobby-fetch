@@ -292,6 +292,7 @@
 "admin.create_role_label": "Role"
 "admin.create_submit": "Create the token"
 "admin.err_invalid": "A token name and a valid role are required."
+"admin.err_name_reserved": "A token name cannot contain \":\" — it is reserved for federated identities (oidc:…, saml:…)."
 "admin.err_name_taken": "An active token already carries this name — revoke it first or choose another name."
 "admin.secret_created": "Token {{.Name}} created. This secret will never be shown again — copy it now."
 "admin.secret_copy": "Copy the token secret"

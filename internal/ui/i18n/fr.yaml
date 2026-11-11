@@ -292,6 +292,7 @@
 "admin.create_role_label": "Rôle"
 "admin.create_submit": "Créer le token"
 "admin.err_invalid": "Un nom de token et un rôle valide sont requis."
+"admin.err_name_reserved": "Un nom de token ne peut pas contenir « : » — ce caractère est réservé aux identités fédérées (oidc:…, saml:…)."
 "admin.err_name_taken": "Un token actif porte déjà ce nom — révoquez-le d'abord ou choisissez un autre nom."
 "admin.secret_created": "Token {{.Name}} créé. Ce secret ne sera plus jamais affiché — copiez-le maintenant."
 "admin.secret_copy": "Copier le secret du token"
