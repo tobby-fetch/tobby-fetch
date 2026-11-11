@@ -56,12 +56,20 @@ Les codes de sortie suivent la [table publiée](../../reference/cli/#exit-codes)
 trouvé. Un script peut s'y brancher, et lire le rapport avec `--output json` ;
 le document est décrit par le schéma publié à côté du document OpenAPI.
 
-:::caution
-Quand une instance **sert** le store, préférez l'écran ou l'API ci-dessous. Ils
-tiennent le verrou de contenu de l'instance, si bien qu'une suppression en
-cours ne peut pas se lire comme un défaut, et ils laissent une tâche suivie. La
-ligne de commande ne voit pas ce verrou.
-:::
+Quand une instance **sert** le store, cette forme refuse et dit quoi faire :
+elle ne voit pas le verrou de contenu de l'instance, si bien qu'une
+suppression en cours se lirait comme un défaut. Confiez le travail à
+l'instance :
+
+```sh
+tobby store verify --instance https://tobby.example:8443 --wait
+```
+
+La vérification s'exécute alors **sur l'instance**, comme tâche suivie, et
+`--wait` la suit jusqu'au bout et sort selon son issue — `0`, `4` pour un
+défaut, `1` si elle a été annulée ou a échoué. Sans `--wait`, la commande
+affiche la tâche créée. Le jeton est lu dans `TOBBY_API_TOKEN`, comme pour
+`tobby sync`.
 
 ## Depuis l'interface
 
@@ -91,10 +99,17 @@ membre `verification`). Un store avec des défauts est une tâche **en échec**
 portant son défaut principal : la supervision qui lit les états de tâches la
 voit comme n'importe quel autre échec.
 
-Une conséquence à connaître : la vérification s'exécute sur l'unique
-travailleur de tâches de l'instance, elle occupe donc la file le temps qu'elle
-dure — des minutes sur un gros store. Les autres tâches attendent ; rien n'est
-perdu.
+La vérification s'exécute sur une **voie qui lui est propre**, à côté du
+travailleur de tâches : une synchronisation — y compris la promotion continue
+d'une instance passthrough — ne l'attend jamais, et elle n'en retarde aucune.
+Elle tient le côté partagé du verrou de contenu de l'instance pendant le
+parcours, si bien qu'un ramasse-miettes ne peut rien supprimer sous elle (une
+suppression demandée entre-temps l'attend).
+
+Elle est annulable — **Annuler la vérification** sur l'écran, ou
+`POST /api/v1/store/verify/cancel`. La tâche se termine alors en échec avec
+[`TBY-INT-006`](../../reference/errors/#tby-int-006) et ne dit rien du store,
+qu'une vérification ne fait que lire.
 
 ## Lire le rapport
 
@@ -150,4 +165,5 @@ sauvegarde, ou quand un disque commence à inquiéter.
   dernière et est **absente** tant qu'aucune n'a abouti — alertez sur son âge,
   ou sur son absence.
 - Une vérification terminée écrit un événement d'audit `store.verify` avec le
-  demandeur, l'origine et le verdict comme issue.
+  demandeur, l'origine et le verdict comme issue. Une vérification qui échoue
+  ou est annulée avant un verdict est enregistrée aussi, comme `failure`.

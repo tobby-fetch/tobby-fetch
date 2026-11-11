@@ -35,6 +35,7 @@ import (
 type IntegrityVerifier interface {
 	Start(actor, origin string) (*tasks.Task, error)
 	Latest() (*tasks.Task, bool)
+	Cancel() bool
 }
 
 // integrityDefectView is one defect or finding, localized.
@@ -113,6 +114,22 @@ func (u *UI) integrityVerify(w http.ResponseWriter, r *http.Request) {
 	if isFragment(r) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(status)
+		u.render.Fragment(w, r, "integrity", "integrity-body", d)
+		return
+	}
+	u.render.Page(w, r, "integrity", d)
+}
+
+// integrityCancel serves POST /integrity/cancel: stop the verification in
+// flight, then show the screen as it now is.
+func (u *UI) integrityCancel(w http.ResponseWriter, r *http.Request) {
+	if u.integrity != nil {
+		u.integrity.Cancel()
+	}
+	// The task settles a moment after the cancel lands; the polled body
+	// picks the final state up.
+	d := u.integrityData(r)
+	if isFragment(r) {
 		u.render.Fragment(w, r, "integrity", "integrity-body", d)
 		return
 	}

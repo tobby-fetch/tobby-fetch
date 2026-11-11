@@ -40,6 +40,12 @@
       {{end}}
       <a href="/tasks/{{.Data.TaskID}}">{{.T "integrity.task_link"}}</a>
     </p>
+    {{if .Data.CanVerify}}
+    <form method="post" action="/integrity/cancel" hx-post="/integrity/cancel" hx-target="#integrity-body" hx-swap="morph:outerHTML">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="t-btn t-btn--secondary t-btn--sm">{{.T "integrity.cancel_action"}}</button>
+    </form>
+    {{end}}
     {{if .Data.Progress}}{{if .Data.Progress.Total}}
     <progress max="100" value="{{.Data.Percent}}" aria-label="{{.T "integrity.progress_label"}}">{{.Data.Percent}}%</progress>
     {{end}}{{end}}

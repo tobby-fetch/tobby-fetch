@@ -685,6 +685,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// Storage checked and configuration valid: the instance can serve
 	// (FR-092 readiness conditions at this milestone).
 	srv.SetReady(true)
+	// `tobby store verify` refuses a store an instance is serving (it
+	// cannot see this instance's content lock); the marker is how it knows.
+	defer markServing(cfg, srv.Addr)()
 
 	runErr := srv.Run(ctx)
 

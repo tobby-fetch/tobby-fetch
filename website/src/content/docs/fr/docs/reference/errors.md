@@ -941,6 +941,13 @@ Levés par la vérification d'intégrité à la demande (FR-057) : `tobby store 
 - **Action corrective :** Re-synchronisez la recipe qui l'atteint, ou restaurez le store depuis une copie saine ; ce que ce manifest référence n'a pas pu être contrôlé.
 - **Remédiable hors-ligne :** selon : re-télécharger demande une source ; restaurer une copie non · **Bloque :** rien — le rapport le constate
 
+### TBY-INT-006
+
+- **Quoi :** La vérification du store a été annulée.
+- **Cause probable :** La vérification `<task>` a été arrêtée avant d'atteindre un verdict : elle ne dit rien du store.
+- **Action corrective :** Lancez une nouvelle vérification quand vous voulez une réponse. Rien n'a été modifié : une vérification ne fait que lire.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien
+
 ## Export et import OCI image layout (TBY-LAY)
 
 La sortie d'interopérabilité (FR-051) : le store écrit dans le format

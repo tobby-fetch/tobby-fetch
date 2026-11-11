@@ -39,6 +39,8 @@ func (s *stubIntegrity) Start(actor, origin string) (*tasks.Task, error) {
 	return t, nil
 }
 
+func (s *stubIntegrity) Cancel() bool { c := s.running != ""; s.running = ""; return c }
+
 func (s *stubIntegrity) Latest() (*tasks.Task, bool) { return s.latest, s.latest != nil }
 
 func newIntegrityAPI(t *testing.T, v api.IntegrityVerifier) *http.ServeMux {

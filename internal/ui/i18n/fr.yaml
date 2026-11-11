@@ -893,3 +893,4 @@
   other: "{{.Count}} éléments de contenu orphelin (pas des défauts)"
 "integrity.findings_note": "Contenu qu'aucune recipe enregistrée ni aucune racine protégée (imports unitaires, contenu amorcé, base de vulnérabilités) n'atteint. La vérification ne supprime rien ici ; élaguez selon le Retriever ou retirez la recipe qui le portait pour récupérer l'espace. Le contenu qu'une synchronisation est encore en train d'écrire peut apparaître ici jusqu'à sa fin."
 "integrity.link": "Vérifier l'intégrité du store"
+"integrity.cancel_action": "Annuler la vérification"

@@ -55,12 +55,19 @@ found. A script can branch on it, and read the report with
 `--output json`; the document is described by the schema published beside
 the OpenAPI document.
 
-:::caution
-When an instance **is** serving the store, prefer the screen or the API
-below. They hold the instance's content lock, so a removal in progress
-cannot read as a defect, and they leave a tracked task. The command line
-cannot see that lock.
-:::
+When an instance **is** serving the store, this form refuses and tells you
+what to do: it cannot see the instance's content lock, so a removal in
+progress would read as a defect. Hand the work to the instance instead:
+
+```sh
+tobby store verify --instance https://tobby.example:8443 --wait
+```
+
+The verification then runs **on the instance**, as a tracked task, and
+`--wait` follows it to its end and exits on its outcome — `0`, `4` for a
+defect, `1` if it was cancelled or failed. Without `--wait` the command
+prints the task it created. The token is read from `TOBBY_API_TOKEN`, like
+`tobby sync`.
 
 ## From the interface
 
@@ -89,9 +96,17 @@ The same report is on the task itself (`GET /api/v1/tasks/{id}`, member
 principal defect, so `tobby sync`-style `--wait` logic and monitoring that
 reads task statuses see it the way they see any other failure.
 
-One consequence worth knowing: the verification runs on the instance's
-serial task worker, so it holds the queue for as long as it takes — minutes
-on a large store. Other tasks wait; nothing is lost.
+The verification runs on a **lane of its own**, beside the serial task
+worker: a synchronization — including the continuous promotion of a
+passthrough instance — never waits behind it, and it never holds one up. It
+holds the shared side of the instance's content lock for the walk, so a
+garbage collection cannot remove a blob under it (a removal asked for in the
+meantime waits for it).
+
+It can be cancelled — **Cancel the verification** on the screen, or
+`POST /api/v1/store/verify/cancel`. The task then ends failed with
+[`TBY-INT-006`](../../reference/errors/#tby-int-006) and reports nothing
+about the store, which a verification only reads.
 
 ## Reading the report
 
@@ -145,5 +160,6 @@ backup, or when a disk starts to worry you.
   the last one and is **absent** until one has completed — alert on its age,
   or on its absence. See [metrics and logs](../../reference/metrics-logs/).
 - A finished verification writes a `store.verify` audit event with the
-  requester, the origin and the verdict as its outcome. See the
+  requester, the origin and the verdict as its outcome. A verification that
+  fails or is cancelled before a verdict is recorded too, as a `failure`. See the
   [audit log](../../security/audit-log/).

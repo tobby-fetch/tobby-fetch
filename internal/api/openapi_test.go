@@ -58,6 +58,7 @@ var registeredRoutes = []string{
 	"POST /api/v1/store/reset",
 	"GET /api/v1/store/verification",
 	"POST /api/v1/store/verify",
+	"POST /api/v1/store/verify/cancel",
 	"POST /api/v1/sync",
 	"GET /api/v1/sync/prune-preview",
 	"GET /api/v1/tasks",

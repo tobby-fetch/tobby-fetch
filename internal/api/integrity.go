@@ -27,6 +27,9 @@ type IntegrityVerifier interface {
 	Start(actor, origin string) (*tasks.Task, error)
 	// Latest is the most recent verification task, finished or not.
 	Latest() (*tasks.Task, bool)
+	// Cancel stops the verification in flight and reports whether there
+	// was one.
+	Cancel() bool
 }
 
 // IntegrityOptions is what RegisterIntegrity needs wired.
@@ -46,6 +49,7 @@ func RegisterIntegrity(a *API, opts *IntegrityOptions) {
 	i := &integrityAPI{api: a, opts: opts}
 	a.Handle("GET /api/v1/store/verification", a.RequireRole(auth.RoleViewer, i.latest))
 	a.Handle("POST /api/v1/store/verify", a.RequireRole(auth.RoleOperator, i.start))
+	a.Handle("POST /api/v1/store/verify/cancel", a.RequireRole(auth.RoleOperator, i.cancel))
 }
 
 type integrityAPI struct {
@@ -98,6 +102,17 @@ func (i *integrityAPI) start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	i.api.JSON(w, http.StatusCreated, map[string]any{"task": newTaskJSON(t)})
+}
+
+// cancel serves POST /api/v1/store/verify/cancel: stop the verification in
+// flight. 200 with {"cancelled": false} when none is running — cancelling
+// nothing is not an error. The task ends failed with TBY-INT-006.
+func (i *integrityAPI) cancel(w http.ResponseWriter, r *http.Request) {
+	if i.opts == nil || i.opts.Verifier == nil {
+		i.api.Problem(w, r, unavailable())
+		return
+	}
+	i.api.JSON(w, http.StatusOK, map[string]bool{"cancelled": i.opts.Verifier.Cancel()})
 }
 
 // unavailable is the answer of an instance with no task queue to run a

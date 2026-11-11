@@ -337,6 +337,7 @@ func (u *UI) Mount(rt Router) {
 	// same floor as the Media screen's, mirrored at /api/v1/store/verify.
 	mux.Handle("GET /integrity", app(u.integrityScreen))
 	mux.Handle("POST /integrity/verify", operator(u.integrityVerify))
+	mux.Handle("POST /integrity/cancel", operator(u.integrityCancel))
 
 	// Account self-service (R-34, FR-061): every authenticated role,
 	// viewer included — the admin gate stays on /admin/accounts.

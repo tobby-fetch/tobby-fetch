@@ -29,7 +29,13 @@ starting with `v0.1.0`.
   its schema published beside the others; exit 0 for an intact store, 4 for
   a defect. Metrics `tobby_integrity_verifications_total` and
   `tobby_integrity_last_verification_timestamp_seconds`, and a `store.verify`
-  audit event. No recurring schedule: v1 verifies on demand.
+  audit event. The
+  verification runs on a lane of its own, so a synchronization never waits
+  behind it, holds the content lock in read, and is cancellable
+  (`POST /api/v1/store/verify/cancel`, `TBY-INT-006`). `tobby store verify
+  --instance <url> [--wait]` drives a running instance; without it, the
+  command refuses a store an instance is serving. No recurring schedule: v1
+  verifies on demand.
 - **A reduced-assurance marker on content admitted under a relaxed trust
   scope** (R-22, FR-037). A recipe admitted unsigned by a declared scope,
   and every item it reaches, carries the marker (`level: reduced`, the scope,

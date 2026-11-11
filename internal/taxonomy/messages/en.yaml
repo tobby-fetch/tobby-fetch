@@ -351,6 +351,10 @@
 "TBY-INT-005.cause": "{{.detail}}"
 "TBY-INT-005.action": "Re-synchronize the recipe that reaches it, or restore the store from a sound copy; what this manifest references could not be checked."
 
+"TBY-INT-006.what": "The store verification was cancelled."
+"TBY-INT-006.cause": "Verification {{.task}} was stopped before it reached a verdict, so it says nothing about the store."
+"TBY-INT-006.action": "Start a new verification when you want an answer. Nothing was changed: a verification only reads."
+
 "TBY-TSK-001.what": "The task does not exist."
 "TBY-TSK-001.cause": "No task with identifier {{.id}} on this instance — wrong link, or the store was reset."
 "TBY-TSK-001.action": "Open the task list and follow the link of an existing task."

@@ -275,7 +275,23 @@
       "description": "The task the import ran, in the same shape a queued import leaves behind (FR-061), so the two surfaces narrate one operation in one vocabulary."
     },
 
+    "storeVerifyTrigger": {
+      "title": "tobby store verify --instance --output json (without --wait)",
+      "description": "The task the instance created for the verification; with --wait the report itself is printed instead.",
+      "type": "object",
+      "required": ["instance", "waited", "task"],
+      "properties": {
+        "instance": { "type": "string" },
+        "waited": { "type": "boolean" },
+        "task": { "$ref": "#/$defs/task" }
+      }
+    },
+
     "tobby store verify": {
+      "oneOf": [{ "$ref": "#/$defs/storeVerifyReport" }, { "$ref": "#/$defs/storeVerifyTrigger" }]
+    },
+
+    "storeVerifyReport": {
       "title": "tobby store verify --output json",
       "description": "The on-demand store verification report of FR-057 — the same document GET /api/v1/store/verification serves under \"verification\". Codes and parameters, never sentences: every defect names the file or object it is about.",
       "type": "object",

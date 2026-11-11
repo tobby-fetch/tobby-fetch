@@ -10,11 +10,14 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check/checktest"
@@ -122,6 +125,16 @@ func TestInstanceVerifiesItsStoreThroughTheAPIAndTheScreen(t *testing.T) {
 			Name: "lab", Repositories: []string{"registry.example.com/cookbook/bare"}, AllowUnsigned: true,
 		}},
 	}
+	// A token for the command line to drive the instance with.
+	accounts, err := auth.Open(cfg.State.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret, _, err := accounts.CreateToken("cli", auth.RoleOperator, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(EnvAPIToken, secret)
 	base := bootInstance(t, &cfg)
 
 	// Nothing verified yet: an explicit null, not an error.
@@ -164,7 +177,7 @@ func TestInstanceVerifiesItsStoreThroughTheAPIAndTheScreen(t *testing.T) {
 		if err := json.Unmarshal(raw, &status); err != nil {
 			t.Fatal(err)
 		}
-		if status.Verification != nil && !status.Verification.Running() {
+		if status.Verification != nil && !status.Verification.Running() && status.Status != "running" && status.Status != "pending" {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -262,6 +275,56 @@ func TestInstanceVerifiesItsStoreThroughTheAPIAndTheScreen(t *testing.T) {
 	}
 	if got := defectKeys(cliRep.Defects); strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("defects through the command line:\n  got  %v\n  want %v", got, want)
+	}
+
+	// `--instance --wait`: the command drives the RUNNING instance, follows
+	// the task and exits on its outcome — against the real API, so what the
+	// command decodes is what the instance really sends (B-031).
+	instCfg := storeVerifyConfig(t, f.Root, "", f.KP)
+	stdout, _, ierr := runSplit(t, "store", "verify", "--config", instCfg, "--instance", base, "--wait", "--output", "json")
+	if ierr == nil || exitCodeFor(ierr) != taxonomy.ExitVerification {
+		t.Errorf("--instance --wait on a damaged store = %v, want the verification exit class", ierr)
+	}
+	var remote integrity.Report
+	if err := json.Unmarshal([]byte(stdout), &remote); err != nil {
+		t.Fatalf("--instance --wait did not print the report: %v\n%s", err, stdout)
+	}
+	if got := defectKeys(remote.Defects); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("defects through --instance:\n  got  %v\n  want %v", got, want)
+	}
+	assertDocument(t, "tobby store verify", stdout, "")
+	// Without --wait: the task, as the schema says.
+	stdout, _, ierr = runSplit(t, "store", "verify", "--config", instCfg, "--instance", base, "--output", "json")
+	if ierr != nil {
+		t.Errorf("--instance without --wait = %v, want the task created and exit 0", ierr)
+	}
+	assertDocument(t, "tobby store verify", stdout, "")
+	if !strings.Contains(stdout, `"waited": false`) || !strings.Contains(stdout, `"type": "store-verify"`) {
+		t.Errorf("trigger document = %s", stdout)
+	}
+
+	// A store an instance is serving is refused by the in-process form,
+	// with the way out in the message — not merely discouraged in a page.
+	servedCfg := storeVerifyConfig(t, f.Root, "", f.KP)
+	body, rerr := os.ReadFile(servedCfg)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	if err := os.WriteFile(servedCfg, append(body, []byte("state:\n  root: "+strconv.Quote(cfg.State.Root)+"\nserver:\n  addr: "+strconv.Quote(strings.TrimPrefix(base, "http://"))+"\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, serr := runSplit(t, "store", "verify", "--config", servedCfg)
+	if !isTaxonomy(serr, taxonomy.CodeConfigInvalid) || !strings.Contains(serr.Error(), "--instance") {
+		t.Errorf("store verify on a served store = %v, want a refusal naming --instance", serr)
+	}
+
+	// Let the verification the trigger above left behind finish.
+	for i := 0; i < 600; i++ {
+		_, raw = apiCall(t, http.MethodGet, base+"/api/v1/store/verification")
+		if strings.Contains(string(raw), `"status":"failed"`) || strings.Contains(string(raw), `"status":"done"`) {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 
 	// One at a time is enforced on the instance: the second verification

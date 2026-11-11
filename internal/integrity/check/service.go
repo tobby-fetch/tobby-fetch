@@ -5,6 +5,7 @@ package check
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -32,6 +33,16 @@ type Service struct {
 	trust   media.Trust
 	observe func(*integrity.Report)
 
+	// cancelMu guards cancel, the way to stop the verification in flight.
+	cancelMu sync.Mutex
+	cancel   context.CancelFunc
+
+	// walkGate, when set, holds a verification before its walk until it is
+	// closed or the verification is cancelled. A test seam: it is how the
+	// tests keep a verification running while they prove what happens
+	// beside it.
+	walkGate <-chan struct{}
+
 	// startMu makes "is one running?" and "create one" a single step: two
 	// requests arriving together must not both pass the first.
 	startMu sync.Mutex
@@ -44,9 +55,10 @@ func NewService(st *store.Store, queue *tasks.Queue, trust media.Trust, observe 
 	return &Service{st: st, queue: queue, trust: trust, observe: observe}
 }
 
-// Register installs the runner for tasks.TypeStoreVerify. Call before the
-// queue starts.
-func (s *Service) Register() { s.queue.Register(tasks.TypeStoreVerify, s.Runner()) }
+// Register installs the runner for tasks.TypeStoreVerify on its OWN lane of
+// the queue, so a verification of hours neither waits for a synchronization
+// nor holds one up. Call before the queue starts.
+func (s *Service) Register() { s.queue.RegisterLane(tasks.TypeStoreVerify, s.Runner()) }
 
 // Start enqueues one verification and returns its task. A verification
 // already pending or running is refused with TBY-INT-004 naming it: a
@@ -73,6 +85,19 @@ func (s *Service) Start(actor, origin string) (*tasks.Task, error) {
 	return t, nil
 }
 
+// Cancel stops the verification in flight, if any, and reports whether
+// there was one. The task ends failed with TBY-INT-006; the store, which a
+// verification only reads, is untouched.
+func (s *Service) Cancel() bool {
+	s.cancelMu.Lock()
+	defer s.cancelMu.Unlock()
+	if s.cancel == nil {
+		return false
+	}
+	s.cancel()
+	return true
+}
+
 // Latest returns the most recent verification task, finished or not, and
 // whether there is one.
 func (s *Service) Latest() (*tasks.Task, bool) {
@@ -86,6 +111,19 @@ func (s *Service) Latest() (*tasks.Task, bool) {
 // Runner returns the task runner of tasks.TypeStoreVerify.
 func (s *Service) Runner() tasks.Runner {
 	return func(ctx context.Context, t *tasks.Task, logger *slog.Logger, save func()) error {
+		// The verification is cancellable by an operator, apart from the
+		// instance shutting down: its own context, whose cancel the
+		// service keeps for as long as it runs.
+		runCtx, cancel := context.WithCancel(ctx)
+		s.cancelMu.Lock()
+		s.cancel = cancel
+		s.cancelMu.Unlock()
+		defer func() {
+			s.cancelMu.Lock()
+			s.cancel = nil
+			s.cancelMu.Unlock()
+			cancel()
+		}()
 		started := time.Now().UTC()
 		var lastPublish time.Time
 		current := integrity.Stage("")
@@ -110,13 +148,26 @@ func (s *Service) Runner() tasks.Runner {
 			save()
 		}
 
-		rep, err := Verify(ctx, s.st, Options{
+		if s.walkGate != nil {
+			select {
+			case <-s.walkGate:
+			case <-runCtx.Done():
+			}
+		}
+		rep, err := Verify(runCtx, s.st, Options{
 			Trust: s.trust, RunID: t.RunID, Progress: progress, Logger: logger,
 		})
 		if err != nil {
-			// Interrupted by shutdown: the queue leaves the task running
-			// and resumes it (FR-029). Anything else is an operational
-			// failure of the walk itself.
+			// Interrupted by shutdown (the queue leaves the task running
+			// and resumes it, FR-029) or failed outright: either way the
+			// verification did not reach a verdict, and that is audited
+			// with the outcome it had — failure — never left unrecorded.
+			s.audit(ctx, logger, t, audit.OutcomeFailure)
+			if ctx.Err() == nil && errors.Is(err, context.Canceled) {
+				// An operator cancelled it (the instance is not shutting
+				// down): the task ends, it is not resumed.
+				return taxonomy.New(taxonomy.CodeIntegrityCancelled, taxonomy.Params{"task": t.ID})
+			}
 			return err
 		}
 		rep.StartedAt = started
@@ -131,14 +182,7 @@ func (s *Service) Runner() tasks.Runner {
 		if rep.Verdict == integrity.VerdictDefects {
 			outcome = audit.OutcomeFailure
 		}
-		origin := t.Origin
-		if origin == "" {
-			origin = audit.OriginLocal
-		}
-		audit.Log(ctx, logger, &audit.Event{
-			Actor: t.Actor, Action: audit.ActionIntegrityVerify,
-			Target: s.st.Root(), Outcome: outcome, Origin: origin,
-		})
+		s.audit(ctx, logger, t, outcome)
 		// A store with defects is a failed verification: the task carries
 		// the principal defect, which is what gives it its exit class
 		// (FR-066) on every surface.
@@ -187,4 +231,19 @@ func settleItems(t *tasks.Task, rep *integrity.Report) {
 			item.Error = tasks.FromTaxonomy(d.Error())
 		}
 	}
+}
+
+// audit writes the FR-094 store.verify event for a verification that ended,
+// whatever its outcome. It uses a context that outlives a cancelled one:
+// the event of an interrupted verification is exactly the one written while
+// the instance is shutting down.
+func (s *Service) audit(ctx context.Context, logger *slog.Logger, t *tasks.Task, outcome string) {
+	origin := t.Origin
+	if origin == "" {
+		origin = audit.OriginLocal
+	}
+	audit.Log(context.WithoutCancel(ctx), logger, &audit.Event{
+		Actor: t.Actor, Action: audit.ActionIntegrityVerify,
+		Target: s.st.Root(), Outcome: outcome, Origin: origin,
+	})
 }

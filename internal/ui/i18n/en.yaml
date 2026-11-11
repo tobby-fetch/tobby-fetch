@@ -891,3 +891,4 @@
   other: "{{.Count}} pieces of orphaned content (not defects)"
 "integrity.findings_note": "Content that no recorded recipe and no protected root (unit imports, seeded content, the vulnerability database) reaches. Nothing here is deleted by the verification; prune to the Retriever or remove the recipe that used to hold it to reclaim the space. Content a synchronization is still writing can appear here until it finishes."
 "integrity.link": "Verify the store's integrity"
+"integrity.cancel_action": "Cancel the verification"

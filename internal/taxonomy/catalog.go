@@ -415,6 +415,9 @@ const (
 	// CodeIntegrityUnreadable is a manifest or index in the store that cannot
 	// be parsed, so the walk cannot establish what it reaches (FR-057).
 	CodeIntegrityUnreadable Code = "TBY-INT-005"
+	// CodeIntegrityCancelled is a verification an operator cancelled before
+	// it reached a verdict (FR-057): it reports nothing about the store.
+	CodeIntegrityCancelled Code = "TBY-INT-006"
 
 	// CodeTaskNotFound is a task identifier unknown to this instance.
 	CodeTaskNotFound Code = "TBY-TSK-001"
@@ -569,6 +572,7 @@ var catalog = map[Code]Entry{
 	CodeIntegrityIncomplete: {Code: CodeIntegrityIncomplete, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "missing"}},
 	CodeIntegrityOrphan:     {Code: CodeIntegrityOrphan, Class: ClassOperational, Params: []string{"path"}},
 	CodeIntegrityRunning:    {Code: CodeIntegrityRunning, Class: ClassOperational, HTTPStatus: http.StatusConflict, Params: []string{"task"}},
+	CodeIntegrityCancelled:  {Code: CodeIntegrityCancelled, Class: ClassOperational, Params: []string{"task"}},
 	CodeIntegrityUnreadable: {Code: CodeIntegrityUnreadable, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
 
 	CodeTaskNotFound: {Code: CodeTaskNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound, Params: []string{"id"}},

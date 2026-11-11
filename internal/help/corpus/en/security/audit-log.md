@@ -65,7 +65,7 @@ only, with the same compatibility discipline as the REST API
 | `layout.export`, `layout.import` | OCI image layout leaving or entering the store (FR-051) | v0.5.x |
 | `fileset.pack` | a host directory packed into the store as a FileSet (FR-048) | v0.5.x |
 | `prune.active` | startup while retriever-aligned pruning is on (FR-045) | v0.5.x |
-| `store.verify` | a finished on-demand store verification (FR-057): the requester, the store, and the verdict as the outcome — `success` for a clean store, `failure` when defects were found. Written when the verification ends, with the origin the request came from (a client address, or `local` for `tobby store verify`) | v0.6.x |
+| `store.verify` | a finished on-demand store verification (FR-057): the requester, the store, and the verdict as the outcome — `success` for a clean store, `failure` when defects were found. Written when the verification ends — including when it fails or is cancelled, as a `failure` — with the origin the request came from (a client address, or `local` for `tobby store verify`) | v0.6.x |
 
 The media events joined the catalogue with v0.5.0: the two audited waivers
 of a media import — a medium addressed to another zone and a medium older

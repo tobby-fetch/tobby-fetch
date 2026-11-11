@@ -351,6 +351,10 @@
 "TBY-INT-005.cause": "{{.detail}}"
 "TBY-INT-005.action": "Re-synchronisez la recipe qui l'atteint, ou restaurez le store depuis une copie saine ; ce que ce manifest référence n'a pas pu être contrôlé."
 
+"TBY-INT-006.what": "La vérification du store a été annulée."
+"TBY-INT-006.cause": "La vérification {{.task}} a été arrêtée avant d'atteindre un verdict : elle ne dit rien du store."
+"TBY-INT-006.action": "Lancez une nouvelle vérification quand vous voulez une réponse. Rien n'a été modifié : une vérification ne fait que lire."
+
 "TBY-TSK-001.what": "La tâche n'existe pas."
 "TBY-TSK-001.cause": "Aucune tâche d'identifiant {{.id}} sur cette instance — lien erroné, ou store réinitialisé."
 "TBY-TSK-001.action": "Ouvrez la liste des tâches et suivez le lien d'une tâche existante."

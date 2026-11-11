@@ -1025,6 +1025,24 @@ paths:
                     $ref: "#/components/schemas/Task"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/store/verify/cancel:
+    post:
+      summary: >-
+        Cancel the store verification in flight (FR-057). The task ends
+        failed with TBY-INT-006 and reports nothing about the store, which a
+        verification only reads. Answers 200 with cancelled=false when none
+        is running. Role operator.
+      responses:
+        "200":
+          description: Whether a verification was cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cancelled: { type: boolean }
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v1/store/verification:
     get:
       summary: >-

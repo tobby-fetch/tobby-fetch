@@ -877,6 +877,13 @@ Raised by the on-demand store verification (FR-057): `tobby store verify`, the S
 - **Corrective action:** Re-synchronize the recipe that reaches it, or restore the store from a sound copy; what this manifest references could not be checked.
 - **Fixable offline:** depends: re-fetching needs a source; restoring a copy does not · **Blocks:** nothing — the report states it
 
+### TBY-INT-006
+
+- **What happened:** The store verification was cancelled.
+- **Probable cause:** Verification `<task>` was stopped before it reached a verdict, so it says nothing about the store.
+- **Corrective action:** Start a new verification when you want an answer. Nothing was changed: a verification only reads.
+- **Fixable offline:** yes · **Blocks:** nothing
+
 ## OCI image layout export and import (TBY-LAY)
 
 The interoperability exit (FR-051): the store written out in the standard

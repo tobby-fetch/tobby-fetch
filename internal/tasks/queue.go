@@ -61,6 +61,9 @@ type Queue struct {
 	tasks   map[string]*Task
 	runners map[string]Runner
 	pending chan string
+	// lanes holds the dedicated workers of RegisterLane: task types that
+	// must not wait behind — nor hold up — the serial worker.
+	lanes map[string]chan string
 	// resuming is the FR-029 backlog: the tasks Open found active, oldest
 	// first, waiting for the worker to reach them (B-019). It is a slice
 	// and not the channel on purpose — the channel is bounded and nothing
@@ -125,6 +128,7 @@ func Open(storeRoot string, logger *slog.Logger, opts ...QueueOption) (*Queue, e
 		tasks:   map[string]*Task{},
 		runners: map[string]Runner{},
 		pending: make(chan string, pendingCapacity),
+		lanes:   map[string]chan string{},
 		Now:     time.Now,
 	}
 	for _, opt := range opts {
@@ -185,6 +189,25 @@ func (q *Queue) Register(taskType string, r Runner) {
 	q.runners[taskType] = r
 }
 
+// laneCapacity bounds the pending tasks of one lane. Lanes carry
+// operations that run one at a time and refuse a second request while one
+// is in flight, so a handful is generous.
+const laneCapacity = 8
+
+// RegisterLane installs the runner for a task type that runs on its OWN
+// worker, beside the serial one: it neither waits for a long synchronization
+// nor holds one up. The on-demand store verification (FR-057) is the
+// reason — a promotion service cannot stall for hours behind a disk walk.
+// Tasks of a lane run one after the other, like everything else here;
+// whoever creates them enforces "one at a time" (Queue.ActiveOfType).
+// Call before Start.
+func (q *Queue) RegisterLane(taskType string, r Runner) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.runners[taskType] = r
+	q.lanes[taskType] = make(chan string, laneCapacity)
+}
+
 // TaskOption adjusts a task at creation time (Queue.Create).
 type TaskOption func(*Task)
 
@@ -243,8 +266,12 @@ func (q *Queue) Create(taskType, reference, actor string, items []Item, opts ...
 	// was told "queue is full". Refusing first leaves no trace. The
 	// worker cannot observe the id before the map insert below: execute
 	// takes q.mu, which this function holds until it returns.
+	ch := q.pending
+	if lane, ok := q.lanes[taskType]; ok {
+		ch = lane
+	}
 	select {
-	case q.pending <- t.ID:
+	case ch <- t.ID:
 	default:
 		return nil, errors.New("tasks: queue is full")
 	}
@@ -345,6 +372,41 @@ func (q *Queue) ActiveOfType(taskType string) (string, bool) {
 // accepted, and running them first is the order Open used to obtain by
 // filling the channel ahead of any caller.
 func (q *Queue) Start(ctx context.Context) {
+	// Lanes first: each gets its own worker, and the tasks of a lane type
+	// found active at Open (FR-029) are handed to it rather than to the
+	// serial worker, which they would otherwise occupy for hours.
+	q.mu.Lock()
+	rest := q.resuming[:0:0]
+	for _, id := range q.resuming {
+		if lane, ok := q.lanes[q.tasks[id].Type]; ok {
+			select {
+			case lane <- id:
+				continue
+			default:
+			}
+		}
+		rest = append(rest, id)
+	}
+	q.resuming = rest
+	lanes := make([]chan string, 0, len(q.lanes))
+	for _, lane := range q.lanes {
+		lanes = append(lanes, lane)
+	}
+	q.mu.Unlock()
+	for _, lane := range lanes {
+		q.worker.Add(1)
+		go func() {
+			defer q.worker.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case id := <-lane:
+					q.execute(ctx, id)
+				}
+			}
+		}()
+	}
 	q.worker.Add(1)
 	go func() {
 		defer q.worker.Done()
