@@ -40,6 +40,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
@@ -212,6 +213,11 @@ type mediaRecipeView struct {
 	// a delivery admitted without a signature says so, in words.
 	TrustScope string
 	Unsigned   bool
+	// Assurance is THIS instance's reduced-assurance marker for the
+	// delivery (FR-037); SourceAssurance is the source zone's claim from
+	// the manifest, shown beside it as a claim. Nil is full assurance.
+	Assurance       *assurance.Marker
+	SourceAssurance *assurance.Marker
 	// Err is the refusal, localized, and Path the file it names.
 	Err  *ErrView
 	Path string
@@ -296,6 +302,8 @@ func (d *mediaData) readManifest(lang, root string) {
 			Digest: rc.Digest, ResolvedAt: rc.ResolvedAt,
 			Ingredients: len(rc.Ingredients),
 			Signature:   stateWaiting, Content: stateWaiting,
+			// Before any verification only the claim exists.
+			SourceAssurance: rc.Assurance,
 		})
 	}
 	sort.SliceStable(d.Recipes, func(a, b int) bool { return d.Recipes[a].ID < d.Recipes[b].ID })
@@ -383,6 +391,7 @@ func (d *mediaData) mergeVerdicts(lang string) {
 func applyVerdict(lang string, row *mediaRecipeView, v *media.RecipeVerdict) {
 	row.Verified, row.Pushable = true, v.Pushable
 	row.KeyFingerprint, row.TrustScope, row.Unsigned = v.KeyFingerprint, v.TrustScope, v.Unsigned
+	row.Assurance, row.SourceAssurance = v.Assurance, v.SourceAssurance
 	row.Files, row.Bytes = v.Files, v.Bytes
 	if v.Pushable {
 		row.Signature, row.Content = statePassed, statePassed

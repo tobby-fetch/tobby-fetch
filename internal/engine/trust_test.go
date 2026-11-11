@@ -365,3 +365,69 @@ func TestEngineSurfaces(t *testing.T) {
 		t.Errorf("RelaxedScopes() = %v, want [lab]", got)
 	}
 }
+
+// TestSignatureRefusalNamesTheScope locks the trust-root compartment of
+// plan §2.6: a recipe signed by a key that IS a configured trust root —
+// but not one the scope matching the recipe lists — is refused, and the
+// refusal names the scope that refused it (TBY-SIG-001, parameter
+// "scope"). Outside any scope the same refusal names none: the strict
+// default has no scope to speak of.
+func TestSignatureRefusalNamesTheScope(t *testing.T) {
+	src, imgDig := seedTrustCookbook(t)
+	canonicalRepo := strings.ReplaceAll(src.addr, ":", "_") + "/cookbook/*"
+	// Two valid keys: a-root (index 0) is the scope's only root, b-root
+	// (index 1) is valid for the zone and signs the recipe.
+	scoped, other := newKeyPair(t), newKeyPair(t)
+	dig := publishRecipe(t, src.st, "cookbook/app", "1.0.0", trustRecipeYAML(t, src, "app", imgDig))
+	signManifest(t, src.st, "cookbook/app", dig, other)
+	retr := retrieverFile(t, testZone, src.addr+"/cookbook", []spec.RecipeSelector{{Name: "app", Version: "1.0.0"}})
+
+	run := func(t *testing.T, scopes []config.TrustScope) *tasks.Task {
+		t.Helper()
+		eng := New(openStore(t), newRemotes(t, nil), trustFor(t, scopes, scoped, other), retr, "", syncCfg())
+		task, err := runSync(t, eng)
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+		return task
+	}
+
+	t.Run("a key valid for another scope is refused inside this one", func(t *testing.T) {
+		it := itemByName(t, run(t, []config.TrustScope{{Name: "tenant-a", Repositories: []string{canonicalRepo}, Roots: []string{rootName(0)}}}), "app@1.0.0")
+		if it.Status != tasks.StatusFailed || it.Error == nil || it.Error.Code != taxonomy.CodeSignature {
+			t.Fatalf("item = %+v, want failed TBY-SIG-001", it)
+		}
+		if got, _ := it.Error.Params["scope"].(string); got != "tenant-a" {
+			t.Errorf("scope parameter = %q, want tenant-a: the refusal must name the scope that refused it", got)
+		}
+		// The rendered message carries it, in both languages.
+		for _, lang := range taxonomy.Languages() {
+			m := taxonomy.Localize(lang, taxonomy.New(it.Error.Code, taxonomy.Params(it.Error.Params)))
+			if !strings.Contains(m.Cause, "tenant-a") || !strings.Contains(m.Action, "tenant-a") {
+				t.Errorf("%s message does not name the scope:\n  cause:  %s\n  action: %s", lang, m.Cause, m.Action)
+			}
+		}
+	})
+
+	t.Run("the same key is admitted where its scope lists it", func(t *testing.T) {
+		task := run(t, []config.TrustScope{{Name: "tenant-b", Repositories: []string{canonicalRepo}, Roots: []string{rootName(1)}}})
+		if agg := task.Aggregate(); agg.Failed != 0 {
+			t.Fatalf("aggregates = %+v (items %s), want admitted under the scope that lists the signing key", agg, itemNames(task))
+		}
+	})
+
+	t.Run("no scope, no name", func(t *testing.T) {
+		eng := New(openStore(t), newRemotes(t, nil), trustFor(t, nil, scoped), retr, "", syncCfg())
+		task, err := runSync(t, eng)
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+		it := itemByName(t, task, "app@1.0.0")
+		if it.Error == nil || it.Error.Code != taxonomy.CodeSignature {
+			t.Fatalf("item = %+v, want TBY-SIG-001", it)
+		}
+		if got, _ := it.Error.Params["scope"].(string); got != "" {
+			t.Errorf("scope parameter = %q, want none outside a declared scope", got)
+		}
+	})
+}

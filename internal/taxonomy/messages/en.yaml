@@ -148,8 +148,8 @@
 "TBY-POL-004.action": "Publish the change under a new metadata.version and tag. Republishing a version onto different content would silently change what zones already resolved."
 
 "TBY-SIG-001.what": "The recipe signature could not be verified."
-"TBY-SIG-001.cause": "No configured trust root validates the signature of {{.recipe}} (keys tried: {{.fingerprints}})."
-"TBY-SIG-001.action": "Check that the zone's trust roots include the key that signed this recipe. An unverified recipe is never admitted."
+"TBY-SIG-001.cause": "{{if .scope}}No trust root allowed by the trust scope {{.scope}} validates the signature of {{.recipe}} (keys tried: {{.fingerprints}}). A key that is valid for another scope does not apply inside this one.{{else}}No configured trust root validates the signature of {{.recipe}} (keys tried: {{.fingerprints}}).{{end}}"
+"TBY-SIG-001.action": "{{if .scope}}Check the roots listed by the scope {{.scope}} (trust.scopes[].roots): they must include the key that signed this recipe, or the recipe belongs under another scope.{{else}}Check that the zone's trust roots include the key that signed this recipe.{{end}} An unverified recipe is never admitted."
 
 "TBY-SIG-002.what": "A pinned digest does not match the fetched content."
 "TBY-SIG-002.cause": "{{.reference}} pins {{.expected}} but the registry served {{.actual}} — the content changed or was tampered with."
@@ -350,6 +350,10 @@
 "TBY-INT-005.what": "{{.path}} cannot be read as a manifest."
 "TBY-INT-005.cause": "{{.detail}}"
 "TBY-INT-005.action": "Re-synchronize the recipe that reaches it, or restore the store from a sound copy; what this manifest references could not be checked."
+
+"TBY-INT-006.what": "The store verification was cancelled."
+"TBY-INT-006.cause": "Verification {{.task}} was stopped before it reached a verdict, so it says nothing about the store."
+"TBY-INT-006.action": "Start a new verification when you want an answer. Nothing was changed: a verification only reads."
 
 "TBY-TSK-001.what": "The task does not exist."
 "TBY-TSK-001.cause": "No task with identifier {{.id}} on this instance — wrong link, or the store was reset."

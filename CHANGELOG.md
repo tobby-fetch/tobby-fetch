@@ -8,6 +8,56 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+### Added
+
+- **On-demand store verification** (R-31, FR-057). `tobby store verify`
+  verifies a whole store, in either mode — an instance's store and a
+  transportable one are verified the same way: every blob is re-hashed
+  against the digest it is stored under; every manifest reachable from a
+  recorded recipe is complete (a platform-filtered index stays complete);
+  every recorded recipe signature verifies against the trust roots
+  configured now, scopes applied; content that no recipe and no protected
+  root reaches is listed as orphaned. The same verification runs from the
+  new Store integrity screen (`/integrity`) and `POST /api/v1/store/verify`,
+  as a tracked task, one at a time (`TBY-INT-004`); `GET
+  /api/v1/store/verification` serves the last report. The report is
+  timestamped, carries the run identifier, and names every defect as a
+  taxonomy code (`TBY-INT-001`, `-002`, `-005`, `TBY-SIG-001`) with the file
+  or object concerned; orphans (`TBY-INT-003`) are notes that never make
+  the verdict "defects". It only reads: it repairs and deletes nothing and
+  leaves the store byte-identical. `--output json` carries the report, with
+  its schema published beside the others; exit 0 for an intact store, 4 for
+  a defect. Metrics `tobby_integrity_verifications_total` and
+  `tobby_integrity_last_verification_timestamp_seconds`, and a `store.verify`
+  audit event. The
+  verification runs on a lane of its own, so a synchronization never waits
+  behind it, holds the content lock in read, and is cancellable
+  (`POST /api/v1/store/verify/cancel`, `TBY-INT-006`). `tobby store verify
+  --instance <url> [--wait]` drives a running instance; without it, the
+  command refuses a store an instance is serving. No recurring schedule: v1
+  verifies on demand.
+- **A reduced-assurance marker on content admitted under a relaxed trust
+  scope** (R-22, FR-037). A recipe admitted unsigned by a declared scope,
+  and every item it reaches, carries the marker (`level: reduced`, the scope,
+  the reason) in the task report and the API, the recipes, task and media
+  screens, an `assurance` log field (with `assurance_scope`) present only on
+  such records, the `tobby_assurance_reduced_recipes` metric by scope, and
+  its entry in the media manifest. The destination re-reads the manifest's
+  marker and shows it as a claim of the source zone, beside the marker its
+  own trust verdict gives — a manifest claiming nothing never hides it.
+  Nothing is written into the destination registry: transferred content
+  stays bit-exact.
+
+### Changed
+
+- **A signature refusal names the trust scope that refused it.**
+  `TBY-SIG-001` gains an additive `scope` parameter (empty under the strict
+  default): a recipe signed by a key that is a valid trust root, but not
+  one the scope matching its repository lists, is refused with the scope
+  named in the message and the corrective action, in both languages — on
+  synchronization, on the pre-push re-verification, in a plan and in
+  destination-side media verification.
+
 ## [0.5.2] - 2026-11-09
 
 The reference Helm chart is now published with every release, as a signed

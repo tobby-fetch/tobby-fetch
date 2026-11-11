@@ -397,28 +397,27 @@ const (
 
 	// On-demand store integrity verification (FR-057, R-31 — milestone
 	// 6). Read-only: every code reports, none repairs; signatures that no
-	// longer verify reuse CodeSignature.
+	// longer verify reuse CodeSignature, which names the scope.
 	//
 	// CodeIntegrityBlobDigest is a blob whose bytes do not hash to the digest
 	// it is stored under, found by an on-demand verification (FR-057, R-31).
-	// Reserved: emitter lands with R-31.
 	CodeIntegrityBlobDigest Code = "TBY-INT-001"
 	// CodeIntegrityIncomplete is a manifest reachable from a recorded recipe
-	// that references content the store does not hold (FR-057). Reserved:
-	// emitter lands with R-31.
+	// that references content the store does not hold (FR-057).
 	CodeIntegrityIncomplete Code = "TBY-INT-002"
 	// CodeIntegrityOrphan reports content no recipe and no protected root
 	// reaches (FR-057, FR-045). Non-blocking: listed, never deleted by the
-	// verification. Reserved: emitter lands with R-31.
+	// verification.
 	CodeIntegrityOrphan Code = "TBY-INT-003"
 	// CodeIntegrityRunning is a second on-demand verification asked for while
-	// one is running: one at a time (FR-057). Reserved: emitter lands with
-	// R-31.
+	// one is running: one at a time (FR-057).
 	CodeIntegrityRunning Code = "TBY-INT-004"
 	// CodeIntegrityUnreadable is a manifest or index in the store that cannot
 	// be parsed, so the walk cannot establish what it reaches (FR-057).
-	// Reserved: emitter lands with R-31.
 	CodeIntegrityUnreadable Code = "TBY-INT-005"
+	// CodeIntegrityCancelled is a verification an operator cancelled before
+	// it reached a verdict (FR-057): it reports nothing about the store.
+	CodeIntegrityCancelled Code = "TBY-INT-006"
 
 	// CodeTaskNotFound is a task identifier unknown to this instance.
 	CodeTaskNotFound Code = "TBY-TSK-001"
@@ -489,7 +488,7 @@ var catalog = map[Code]Entry{
 	// source does not publish.
 	CodePlatformMissing: {Code: CodePlatformMissing, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "platforms", "available"}},
 
-	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "fingerprints"}},
+	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "fingerprints", "scope"}},
 	CodeDigestMismatch: {Code: CodeDigestMismatch, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "expected", "actual"}},
 	CodeArtifactType:   {Code: CodeArtifactType, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "expected", "actual"}},
 
@@ -573,6 +572,7 @@ var catalog = map[Code]Entry{
 	CodeIntegrityIncomplete: {Code: CodeIntegrityIncomplete, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "missing"}},
 	CodeIntegrityOrphan:     {Code: CodeIntegrityOrphan, Class: ClassOperational, Params: []string{"path"}},
 	CodeIntegrityRunning:    {Code: CodeIntegrityRunning, Class: ClassOperational, HTTPStatus: http.StatusConflict, Params: []string{"task"}},
+	CodeIntegrityCancelled:  {Code: CodeIntegrityCancelled, Class: ClassOperational, Params: []string{"task"}},
 	CodeIntegrityUnreadable: {Code: CodeIntegrityUnreadable, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
 
 	CodeTaskNotFound: {Code: CodeTaskNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound, Params: []string{"id"}},

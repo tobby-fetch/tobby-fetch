@@ -432,9 +432,14 @@ its published rendering.
 
 - **What happened:** the recipe signature could not be verified.
 - **Probable cause:** no configured trust root validates the signature of
-  *\<recipe\>* (the tried key fingerprints are listed).
+  *\<recipe\>* (the tried key fingerprints are listed). When a declared
+  trust scope matched the recipe, the message **names that scope**
+  (*\<scope\>*) and the keys tried are the ones the scope allows: a key
+  that is a valid trust root elsewhere, but is not listed by the scope's
+  `roots`, does not apply inside it.
 - **Corrective action:** check that the zone's trust roots include the key
-  that signed this recipe (see
+  that signed this recipe — or, when a scope is named, that the scope's
+  `roots` list it, or that the recipe belongs under another scope (see
   [Signatures, trust roots and allowlist](../../security/content-trust/)). An
   unverified recipe is never admitted.
 - **Fixable offline:** yes, when the right public key is available locally (trust roots are destination configuration); a genuinely unsigned or wrongly signed recipe must be re-signed upstream · **Blocks:** the recipe concerned (verification class, exit 4); never overridable
@@ -835,42 +840,49 @@ a partially damaged medium still hands over its intact recipes.
 
 ## Store integrity (TBY-INT)
 
-Reserved at the opening of milestone 6 (FR-057): an on-demand verification reports, it never repairs or deletes.
+Raised by the on-demand store verification (FR-057): `tobby store verify`, the Store integrity screen and `POST /api/v1/store/verify`. A verification reports; it never repairs or deletes. A damaged blob, an incomplete manifest and an unreadable manifest are verification-class defects (exit 4); orphaned content is a note that blocks nothing. A recipe whose signature no longer verifies reuses [TBY-SIG-001](#tby-sig-001), which names the trust scope.
 
 ### TBY-INT-001
 
 - **What happened:** The blob `<path>` does not match its digest.
 - **Probable cause:** Its content hashes to `<actual>` instead of `<expected>`: the file was damaged or altered on disk.
 - **Corrective action:** The verification changes nothing. Re-synchronize the recipes that reach this blob to fetch it again, or restore the store from a sound copy; check the disk for errors.
-- **Fixable offline:** depends: re-fetching needs a source; restoring a copy does not · **Blocks:** nothing — the report states it · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** depends: re-fetching needs a source; restoring a copy does not · **Blocks:** nothing — the report states it
 
 ### TBY-INT-002
 
 - **What happened:** `<reference>` is incomplete in the store.
 - **Probable cause:** It references content the store does not hold: `<missing>`.
 - **Corrective action:** Re-synchronize the recipe that reaches it to fetch the missing content, or restore the store from a sound copy.
-- **Fixable offline:** depends: re-fetching needs a source; restoring a copy does not · **Blocks:** nothing — the report states it · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** depends: re-fetching needs a source; restoring a copy does not · **Blocks:** nothing — the report states it
 
 ### TBY-INT-003
 
 - **What happened:** `<path>` is reachable from no recipe.
 - **Probable cause:** No recorded recipe and no protected root (unit imports, vulnerability database, seeded content) reaches this content.
 - **Corrective action:** Nothing is required. To reclaim the space, prune to the Retriever or remove the recipe that used to hold it; the verification itself never deletes.
-- **Fixable offline:** yes · **Blocks:** nothing · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** nothing
 
 ### TBY-INT-004
 
 - **What happened:** A store verification is already running.
 - **Probable cause:** Verification `<task>` is walking the store; running two at once would halve both and answer nothing new.
 - **Corrective action:** Follow the running verification on the tasks screen, or wait for it to finish and start a new one.
-- **Fixable offline:** yes · **Blocks:** the request · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** the request
 
 ### TBY-INT-005
 
 - **What happened:** `<path>` cannot be read as a manifest.
 - **Probable cause:** `<detail>`
 - **Corrective action:** Re-synchronize the recipe that reaches it, or restore the store from a sound copy; what this manifest references could not be checked.
-- **Fixable offline:** depends: re-fetching needs a source; restoring a copy does not · **Blocks:** nothing — the report states it · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** depends: re-fetching needs a source; restoring a copy does not · **Blocks:** nothing — the report states it
+
+### TBY-INT-006
+
+- **What happened:** The store verification was cancelled.
+- **Probable cause:** Verification `<task>` was stopped before it reached a verdict, so it says nothing about the store.
+- **Corrective action:** Start a new verification when you want an answer. Nothing was changed: a verification only reads.
+- **Fixable offline:** yes · **Blocks:** nothing
 
 ## OCI image layout export and import (TBY-LAY)
 

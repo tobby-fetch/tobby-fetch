@@ -21,8 +21,10 @@ import (
 
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
+	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/preflight"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
@@ -344,6 +346,18 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 		})
 		return true
 	})
+	// FR-037 (R-22): content admitted under a relaxed scope carries the
+	// reduced-assurance marker on every surface — the log records from
+	// here on (a field present only on reduced assurance), and the task
+	// items of this recipe, which the deferred pass below stamps once
+	// they all exist (they are created as the run goes).
+	marker := assurance.ForAdmission(verified, scopeName)
+	logger = withAssurance(logger, marker)
+	if marker != nil {
+		stamp := func() { sink.update(func(t *tasks.Task) bool { return stampAssurance(t, rid, marker) }) }
+		stamp()
+		defer stamp()
+	}
 	logger.LogAttrs(ctx, slog.LevelInfo, "recipe verified",
 		slog.String("digest", fetched.ManifestDigest),
 		slog.Bool("signature_verified", verified),
@@ -531,7 +545,7 @@ func (e *Engine) verifyRecipe(ctx context.Context, f *FetchedRecipe, d Decision)
 		if errors.Is(err, sigverify.ErrNoSignature) && d.AllowUnsigned {
 			return false, d.Scope, nil
 		}
-		return false, d.Scope, err
+		return false, d.Scope, withScope(d.Scope, err)
 	}
 	if d.AllowUnsigned {
 		return false, d.Scope, nil
@@ -539,6 +553,7 @@ func (e *Engine) verifyRecipe(ctx context.Context, f *FetchedRecipe, d Decision)
 	return false, d.Scope, taxonomy.New(taxonomy.CodeSignature, taxonomy.Params{
 		"recipe":       f.NominalRepo + ":" + f.Tag,
 		"fingerprints": "none — no trust root is configured",
+		"scope":        d.Scope,
 	})
 }
 
@@ -999,4 +1014,39 @@ func artifactTypeOf(manifest []byte) string {
 		return man.ArtifactType
 	}
 	return man.Config.MediaType
+}
+
+// withAssurance adds the FR-037 log fields to a logger when the marker is
+// reduced, and returns it untouched otherwise: the fields exist only on
+// records concerning content of reduced assurance.
+func withAssurance(logger *slog.Logger, m *assurance.Marker) *slog.Logger {
+	level, ok := m.Log()
+	if !ok {
+		return logger
+	}
+	return logger.With(
+		slog.String(logging.KeyAssurance, level),
+		slog.String(logging.KeyAssuranceScope, m.Scope))
+}
+
+// stampAssurance sets the reduced-assurance marker on every task item
+// that belongs to the recipe rid ("name@version"): the entry's own row,
+// its ingredients and artifact ("rid/…"), the promotion halves
+// ("push/rid/…") and the media-import verdict ("media/rid"). The marker
+// is set whole and shared, never mutated afterwards (tasks.Item). It
+// reports whether it changed anything, which is the sink's "persist me".
+func stampAssurance(t *tasks.Task, rid string, m *assurance.Marker) bool {
+	changed := false
+	for i := range t.Items {
+		name := t.Items[i].Name
+		if name != rid && name != mediaItemPrefix+rid &&
+			!strings.HasPrefix(name, rid+"/") && !strings.HasPrefix(name, pushItemPrefix+rid+"/") {
+			continue
+		}
+		if t.Items[i].Assurance != m {
+			t.Items[i].Assurance = m
+			changed = true
+		}
+	}
+	return changed
 }

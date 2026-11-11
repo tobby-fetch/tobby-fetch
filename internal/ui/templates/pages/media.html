@@ -310,6 +310,10 @@
           {{if .Unsigned}}<span class="t-badge t-badge--outdated" title="{{$.T "media.unsigned_title"}}">{{$.T "media.unsigned"}}</span>{{end}}
           {{if .KeyFingerprint}}<span class="t-chip"><span class="t-chip-label">{{$.T "media.key"}}</span> <span translate="no" title="{{.KeyFingerprint}}">{{$.Trunc .KeyFingerprint 20}}</span></span>{{end}}
           {{if .TrustScope}}<span class="t-chip"><span class="t-chip-label">{{$.T "media.scope"}}</span> <span translate="no">{{.TrustScope}}</span></span>{{end}}
+          {{/* FR-037: this instance's own marker, and — beside it, as a
+               claim of the source zone — what the manifest declared. */}}
+          {{template "assurance-badge" (withData $ .Assurance)}}
+          {{template "assurance-claim" (withData $ .SourceAssurance)}}
         </td>
       </tr>
       {{if .Err}}

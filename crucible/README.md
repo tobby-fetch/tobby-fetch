@@ -177,3 +177,37 @@ of the trip:
     inside the zone is served under `/files/`, which still accepts no
     write method (R-41, FR-047); a reset without the exact typed
     confirmation is refused (FR-046).
+
+### m6 — controls and enterprise identity (track C scenarios)
+
+The milestone-6 scenarios are one file per track, named by track prefix
+(`a-*`, `b-*`, `c-*`), dispatched by `scenarios/m6/run.sh`; files named
+`*-lib.sh` are sourced helpers. Each is independently invocable and writes
+its own raw report. Track C writes three, and every one of them follows the
+rule m5 paid for: **a scenario that manipulates something verifies its own
+manipulation before it asks the product for a verdict** — a blob that was
+never truncated, a key that was never swapped and a date that matched no
+pattern all read exactly like the guard under test failing.
+
+- `c-integrity.sh` — R-31, on-demand store verification (FR-057). A mirror
+  store (a transportable one) is verified clean from the API and the
+  screen, and by `tobby store verify` on the stopped store, which leaves
+  every byte alone. It is then damaged four ways — a truncated blob, a
+  referenced blob removed, an orphan planted, a trust root dropped
+  (cosign confirms the signature is still valid under the dropped key) —
+  and the command exits 4 naming each defect with its object, byte-identical
+  afterwards. The running instance reports the same defects through the
+  API and the screen; the metric and the audit event record it.
+- `c-trust-scopes.sh` — the trust-root compartments named in the error
+  (plan §2.6). A recipe signed by a key that is a valid root, but not one
+  the matching scope lists, is refused with `TBY-SIG-001` carrying the
+  **scope** that refused it; the scope that lists the key admits it, and an
+  unscoped recipe is unaffected. cosign confirms the key is valid for the
+  zone and does not verify under the scope's own root.
+- `c-assurance.sh` — R-22, the reduced-assurance marker (FR-037) across the
+  whole trip: set where a scope admits an unsigned recipe, carried on the
+  task report, the API, the UI, a log field and a metric, recorded per
+  recipe in the media manifest, re-read on the far side of a real block
+  device as a *claim* beside the destination's own verdict — a manifest
+  that claims nothing hides nothing — and never written into the
+  destination registry (same digests, no marker artifact: RECIPE-SPEC §7.1).

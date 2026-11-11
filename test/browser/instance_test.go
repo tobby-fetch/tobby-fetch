@@ -28,6 +28,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
+	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -126,6 +127,10 @@ type spec struct {
 	// destination-side Media screen over it (R-02, FR-054).
 	medium bool
 	verify mediagate.Verify
+	// integrity wires the Store integrity screen (FR-057, R-31) over the
+	// queue, with the given runner standing in for the walk — a scenario
+	// must decide when the verdict lands, or it races the browser.
+	integrity tasks.Runner
 }
 
 type option func(*spec)
@@ -151,6 +156,12 @@ func withQueue(runner tasks.Runner) option {
 // the verdict lands, or it races the browser.
 func withMedium(verify mediagate.Verify) option {
 	return func(s *spec) { s.medium, s.verify = true, verify }
+}
+
+// withIntegrity wires the Store integrity screen over a task queue whose
+// store-verify runner is the one given (R-31).
+func withIntegrity(runner tasks.Runner) option {
+	return func(s *spec) { s.queue, s.integrity = true, runner }
 }
 
 func newInstance(t *testing.T, opts ...option) *instance {
@@ -187,6 +198,9 @@ func newInstance(t *testing.T, opts ...option) *instance {
 		if sp.runner != nil {
 			q.Register(tasks.TypeUnitImport, sp.runner)
 		}
+		if sp.integrity != nil {
+			q.Register(tasks.TypeStoreVerify, sp.integrity)
+		}
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 		q.Start(ctx)
@@ -216,6 +230,10 @@ func newInstance(t *testing.T, opts ...option) *instance {
 		inst.Gate = gate
 		uiOpts.MediaZone = mediaZone{}
 		uiOpts.MediaGate = gate
+	}
+
+	if sp.integrity != nil {
+		uiOpts.Integrity = check.NewService(st, inst.Queue, nil, nil)
 	}
 
 	mux := http.NewServeMux()

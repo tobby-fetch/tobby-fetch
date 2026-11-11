@@ -148,8 +148,8 @@
 "TBY-POL-004.action": "Publiez le changement sous un nouveau metadata.version et un nouveau tag. Republier une version sur un contenu différent changerait en silence ce que des zones ont déjà résolu."
 
 "TBY-SIG-001.what": "La signature de la recipe n'a pas pu être vérifiée."
-"TBY-SIG-001.cause": "Aucune clé de confiance configurée ne valide la signature de {{.recipe}} (clés essayées : {{.fingerprints}})."
-"TBY-SIG-001.action": "Vérifiez que les clés de confiance de la zone incluent la clé qui a signé cette recipe. Une recipe non vérifiée n'est jamais admise."
+"TBY-SIG-001.cause": "{{if .scope}}Aucune clé de confiance autorisée par le périmètre de confiance {{.scope}} ne valide la signature de {{.recipe}} (clés essayées : {{.fingerprints}}). Une clé valide pour un autre périmètre ne s'applique pas dans celui-ci.{{else}}Aucune clé de confiance configurée ne valide la signature de {{.recipe}} (clés essayées : {{.fingerprints}}).{{end}}"
+"TBY-SIG-001.action": "{{if .scope}}Vérifiez les clés listées par le périmètre {{.scope}} (trust.scopes[].roots) : elles doivent inclure la clé qui a signé cette recipe, ou la recipe relève d'un autre périmètre.{{else}}Vérifiez que les clés de confiance de la zone incluent la clé qui a signé cette recipe.{{end}} Une recipe non vérifiée n'est jamais admise."
 
 "TBY-SIG-002.what": "Un digest épinglé ne correspond pas au contenu récupéré."
 "TBY-SIG-002.cause": "{{.reference}} épingle {{.expected}} mais le registre a servi {{.actual}} — le contenu a changé ou a été altéré."
@@ -350,6 +350,10 @@
 "TBY-INT-005.what": "{{.path}} ne peut pas être lu comme un manifest."
 "TBY-INT-005.cause": "{{.detail}}"
 "TBY-INT-005.action": "Re-synchronisez la recipe qui l'atteint, ou restaurez le store depuis une copie saine ; ce que ce manifest référence n'a pas pu être contrôlé."
+
+"TBY-INT-006.what": "La vérification du store a été annulée."
+"TBY-INT-006.cause": "La vérification {{.task}} a été arrêtée avant d'atteindre un verdict : elle ne dit rien du store."
+"TBY-INT-006.action": "Lancez une nouvelle vérification quand vous voulez une réponse. Rien n'a été modifié : une vérification ne fait que lire."
 
 "TBY-TSK-001.what": "La tâche n'existe pas."
 "TBY-TSK-001.cause": "Aucune tâche d'identifiant {{.id}} sur cette instance — lien erroné, ou store réinitialisé."

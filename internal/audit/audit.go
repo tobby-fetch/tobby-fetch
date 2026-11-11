@@ -204,6 +204,12 @@ const (
 	ActionScanBlock = "scan.block"
 	// ActionIntegrityVerify is an on-demand store verification (FR-057,
 	// R-31): who asked, on which store, with which verdict. Track C.
+	//
+	// Emitted — unlike the rest of this block — when a verification
+	// FINISHES, by the task runner (check.Service) and by `tobby store
+	// verify`: the verdict is the outcome (success for a clean store,
+	// failure for defects), the requester is the actor, and the origin is
+	// the one recorded on the task when the request arrived.
 	ActionIntegrityVerify = "store.verify"
 )
 

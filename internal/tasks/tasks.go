@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
+	"github.com/tobby-fetch/tobby-fetch/internal/integrity"
 	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -48,6 +49,9 @@ const (
 	// TypeMediaImport is the destination-side operation of FR-052: verify
 	// a transported medium, then push what verification cleared.
 	TypeMediaImport = "media-import"
+	// TypeStoreVerify is the on-demand integrity verification of a whole
+	// store (FR-057, R-31 — milestone 6). Read-only, one at a time.
+	TypeStoreVerify = "store-verify"
 )
 
 // The FR-054 guards an administrator may waive on one media import. Both
@@ -135,6 +139,21 @@ type Task struct {
 	// with the FR-026 status and the FR-036 effective endpoint when a
 	// substitution applied.
 	Resolutions []Resolution `json:"resolutions,omitempty"`
+
+	// ── Track C — on-demand store integrity (FR-057, R-31).
+
+	// Verification is the timestamped report of a TypeStoreVerify task:
+	// a snapshot of the walk's progress while it runs, the whole report
+	// once it has finished. Set whole and never mutated in place — the
+	// runner publishes a fresh value each time — which is what makes
+	// sharing the pointer between its working copy and the published task
+	// race-free (as Item.Scan).
+	Verification *integrity.Report `json:"verification,omitempty"`
+	// Origin is where the request for this task came from: a client
+	// address, or "local" for the command line on the host. Recorded for
+	// the audit event a verification writes when it finishes (FR-094),
+	// which cannot know it any other way — the request is long gone.
+	Origin string `json:"origin,omitempty"`
 }
 
 // Layout is the parameter set of an OCI image layout export or import

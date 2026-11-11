@@ -55,6 +55,7 @@ var pageFiles = []string{
 	"help",
 	"help-page",
 	"import",
+	"integrity",
 	"login",
 	"media",
 	"recipe-mapping",

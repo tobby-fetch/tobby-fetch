@@ -10,6 +10,8 @@
 package metrics
 
 import (
+	"sync"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 
@@ -62,6 +64,16 @@ type Registry struct {
 	StoreBytes             prometheus.Gauge
 	StoreThresholdBytes    prometheus.Gauge
 	StoreOccupancyExceeded prometheus.Gauge
+
+	// ── Track C — on-demand integrity and reduced assurance (R-31,
+	// R-22); the families are declared in reserved.go and fed in
+	// integrity.go.
+
+	// IntegrityVerifications counts completed on-demand store
+	// verifications by verdict (clean | defects).
+	IntegrityVerifications *prometheus.CounterVec
+	integrityLast          prometheus.Gauge
+	integrityLastOnce      sync.Once
 }
 
 // New builds the registry with the standard process and Go collectors and
@@ -126,6 +138,11 @@ func New() *Registry {
 		promotionPushes, promotionBytes, promotionRefusals,
 		storeBytes, storeThreshold, storeExceeded)
 
+	// Track C: both verdicts exist from the first scrape, at their true
+	// value — no verification has run yet.
+	integrityVerifications := newIntegrityVerifications()
+	reg.MustRegister(integrityVerifications)
+
 	return &Registry{
 		Registry:          reg,
 		SyncInflight:      syncInflight,
@@ -138,6 +155,8 @@ func New() *Registry {
 		StoreBytes:             storeBytes,
 		StoreThresholdBytes:    storeThreshold,
 		StoreOccupancyExceeded: storeExceeded,
+
+		IntegrityVerifications: integrityVerifications,
 	}
 }
 

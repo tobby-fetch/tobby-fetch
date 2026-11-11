@@ -29,6 +29,8 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
+	"github.com/tobby-fetch/tobby-fetch/internal/integrity"
+	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check"
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
@@ -442,6 +444,23 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// each direction, so no surface can reach a verdict the gate does not
 	// hear, and no screen can open the gate by any other means.
 	eng.SetMediaVerdicts(mediaGate.Observe)
+
+	// FR-037 (R-22): how many recipes this instance holds under reduced
+	// assurance, per declared scope, read from the recipe graph at every
+	// scrape — never counted by events that a removal path could forget.
+	reg.RegisterReducedRecipes(eng.RelaxedScopes(), func() map[string]int {
+		records, rerr := st.RecipeRecords()
+		if rerr != nil {
+			return nil
+		}
+		held := map[string]int{}
+		for i := range records {
+			if m := records[i].Assurance; m.Reduced() {
+				held[m.Scope]++
+			}
+		}
+		return held
+	})
 	mediaGate.SetVerify(func(vctx context.Context, opts mediagate.Options, progress func(media.Progress)) (*media.Report, error) {
 		return eng.VerifyMedia(vctx, logger, engine.MediaOptions{
 			AllowZoneMismatch: opts.AllowZoneMismatch,
@@ -466,6 +485,15 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			slog.String("requirement", "FR-052/R-28"))
 	}
 	queue.Register(tasks.TypeMediaImport, eng.MediaImportRunner())
+
+	// FR-057 (R-31): the on-demand verification of the whole store, as a
+	// tracked task. One service behind the API, the screen and the queue
+	// (FR-061), verifying against THIS instance's trust roots — never keys
+	// carried by the store — and feeding the integrity metrics.
+	integritySvc := check.NewService(st, queue, engine.MediaTrust{Policy: trust}, func(rep *integrity.Report) {
+		reg.ObserveIntegrityVerification(string(rep.Verdict), rep.FinishedAt)
+	})
+	integritySvc.Register()
 	eng.SetDestination(destination)
 	if destination != nil {
 		logger.LogAttrs(ctx, slog.LevelInfo, "promotion destination configured",
@@ -578,6 +606,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	api.RegisterMedia(restAPI, &api.MediaOptions{
 		Engine: eng, Queue: queue, StorageRoot: cfg.Storage.Root, Gate: mediaGate,
 	})
+	api.RegisterIntegrity(restAPI, &api.IntegrityOptions{Verifier: integritySvc})
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{
 		Cert:     serverCert,
 		CertFile: cfg.Server.TLS.CertFile,
@@ -619,6 +648,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Projector:          eng,
 		MediaZone:          eng,
 		MediaGate:          mediaGate,
+		Integrity:          integritySvc,
 	})
 	webUI.Mount(srv.Mux())
 
@@ -655,6 +685,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// Storage checked and configuration valid: the instance can serve
 	// (FR-092 readiness conditions at this milestone).
 	srv.SetReady(true)
+	// `tobby store verify` refuses a store an instance is serving (it
+	// cannot see this instance's content lock); the marker is how it knows.
+	defer markServing(cfg, srv.Addr)()
 
 	runErr := srv.Run(ctx)
 
