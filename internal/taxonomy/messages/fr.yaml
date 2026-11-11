@@ -319,6 +319,10 @@
 "TBY-SCN-007.cause": "L'analyseur s'est arrêté sur une erreur : {{.detail}}"
 "TBY-SCN-007.action": "Relancez la synchronisation. Si l'erreur persiste, le journal de l'instance porte la sortie de l'analyseur sous le même identifiant de corrélation. Sous `scan.mode: block`, l'élément n'est pas poussé tant qu'il n'est pas analysé."
 
+"TBY-SCN-008.what": "La base de vulnérabilités se dit construite le {{.built_at}}, après l'horloge de cette instance ({{.now}})."
+"TBY-SCN-008.cause": "Son âge ne peut pas être établi ; elle est donc traitée comme périmée : soit l'horloge de cet hôte retarde, soit les métadonnées de la base sont fausses."
+"TBY-SCN-008.action": "Vérifiez l'horloge de cet hôte (et de la zone qui a cuisiné la recipe tobby-system), puis synchronisez une base dont la date de construction est passée. Sous `scan.maxDbAgeAction: block`, les éléments analysés avec elle ne sont pas poussés d'ici là."
+
 "TBY-SCN-020.what": "Le seuil d'analyse porté par {{.recipe}} a été ignoré."
 "TBY-SCN-020.cause": "La recipe demande {{.annotation}}, au-dessus des {{.threshold}} en vigueur pour cette zone ; une recipe peut abaisser le seuil, jamais le relever."
 "TBY-SCN-020.action": "Rien à faire sur cette instance : le seuil de la zone s'applique. L'auteur de la recipe peut retirer ou abaisser l'annotation `recipe.tobby.dev/scan-threshold`."

@@ -564,6 +564,13 @@ Réservés à l'ouverture du jalon 6 (FR-031, FR-032) : la politique est consult
 - **Action corrective :** Relancez la synchronisation. Si l'erreur persiste, le journal de l'instance porte la sortie de l'analyseur sous le même identifiant de corrélation. Sous `scan.mode: block`, l'élément n'est pas poussé tant qu'il n'est pas analysé.
 - **Remédiable hors-ligne :** oui · **Bloque :** l'élément en mode bloquer ; rien en mode avertir
 
+### TBY-SCN-008
+
+- **Quoi :** La base de vulnérabilités se dit construite le `<built_at>`, après l'horloge de cette instance (`<now>`).
+- **Cause probable :** Son âge ne peut pas être établi ; elle est donc traitée comme périmée : soit l'horloge de cet hôte retarde, soit les métadonnées de la base sont fausses. Une date de construction en avance d'une heure au plus est tolérée comme décalage d'horloge.
+- **Action corrective :** Vérifiez l'horloge de cet hôte (et de la zone qui a cuisiné la recipe tobby-system), puis synchronisez une base dont la date de construction est passée. Sous `scan.maxDbAgeAction: block`, les éléments analysés avec elle ne sont pas poussés d'ici là.
+- **Remédiable hors-ligne :** oui · **Bloque :** les éléments analysés avec elle sous `scan.maxDbAgeAction: block` ; rien en mode avertir
+
 ### TBY-SCN-020
 
 - **Quoi :** Le seuil d'analyse porté par `<recipe>` a été ignoré.

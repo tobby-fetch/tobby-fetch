@@ -376,6 +376,11 @@ const (
 	// CodeScanFailed is a scan the scanner started and could not finish —
 	// the item is reported not scanned.
 	CodeScanFailed Code = "TBY-SCN-007"
+	// CodeScanDBFuture is a vulnerability database whose recorded build
+	// time lies beyond this instance's clock, past the tolerated skew
+	// (R-13): its age cannot be stated, so it is treated as stale — on
+	// every surface, and a refusal when scan.maxDbAgeAction is block.
+	CodeScanDBFuture Code = "TBY-SCN-008"
 	// CodeScanRecipeThresholdIgnored reports a recipe annotation that would
 	// have RAISED the threshold: a recipe can only harden a zone's policy
 	// (RECIPE-SPEC §10.4). Non-blocking.
@@ -558,6 +563,7 @@ var catalog = map[Code]Entry{
 	CodeScanPolicyBlocked:          {Code: CodeScanPolicyBlocked, Class: ClassPolicy, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "violations", "threshold", "level"}},
 	CodeScanPolicyAdvisory:         {Code: CodeScanPolicyAdvisory, Class: ClassOperational, Params: []string{"reference", "violations", "threshold", "level"}},
 	CodeScanFailed:                 {Code: CodeScanFailed, Class: ClassOperational, Params: []string{"reference", "detail"}},
+	CodeScanDBFuture:               {Code: CodeScanDBFuture, Class: ClassPolicy, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"built_at", "now"}},
 	CodeScanRecipeThresholdIgnored: {Code: CodeScanRecipeThresholdIgnored, Class: ClassOperational, Params: []string{"recipe", "annotation", "threshold"}},
 	CodeScanExceptionExpired:       {Code: CodeScanExceptionExpired, Class: ClassOperational, Params: []string{"id", "expires", "level"}},
 	CodeScanUnscored:               {Code: CodeScanUnscored, Class: ClassOperational, Params: []string{"reference", "ids"}},

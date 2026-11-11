@@ -104,10 +104,22 @@ type Freshness struct {
 	Block bool
 }
 
+// DBClockSkew is how far ahead of this instance's clock a database build
+// timestamp may lie and still be read as "just built": clocks of isolated
+// zones drift. Beyond it the timestamp is not an age at all, and the
+// database is treated as stale (FromFuture).
+const DBClockSkew = time.Hour
+
+// FromFuture reports whether a database claims to be built further in the
+// future than the clock skew allows: its age cannot be stated, so it can
+// never be shown as fresh (R-13).
+func FromFuture(builtAt, now time.Time) bool { return builtAt.After(now.Add(DBClockSkew)) }
+
 // Stale reports whether a database built at builtAt is beyond the bound
-// at now.
+// at now — or claims a build time in the future (FromFuture), which no
+// bound can vouch for.
 func (f Freshness) Stale(builtAt, now time.Time) bool {
-	return f.MaxAge > 0 && now.Sub(builtAt) > f.MaxAge
+	return FromFuture(builtAt, now) || f.MaxAge > 0 && now.Sub(builtAt) > f.MaxAge
 }
 
 // Evaluate judges one scan Result against a combined Policy and returns
@@ -197,10 +209,17 @@ func Evaluate(p *Policy, subj Subject, r *Result, fresh Freshness, now time.Time
 		}
 	}
 	if db.Stale {
-		ev.Reasons = append(ev.Reasons, Reason{Code: taxonomy.CodeScanDBStale, Params: map[string]string{
-			"age": FormatAge(time.Duration(db.AgeSeconds) * time.Second),
-			"max": FormatAge(fresh.MaxAge),
-		}})
+		if FromFuture(db.BuiltAt, now) {
+			ev.Reasons = append(ev.Reasons, Reason{Code: taxonomy.CodeScanDBFuture, Params: map[string]string{
+				"built_at": db.BuiltAt.UTC().Format(time.RFC3339),
+				"now":      now.UTC().Format(time.RFC3339),
+			}})
+		} else {
+			ev.Reasons = append(ev.Reasons, Reason{Code: taxonomy.CodeScanDBStale, Params: map[string]string{
+				"age": FormatAge(time.Duration(db.AgeSeconds) * time.Second),
+				"max": FormatAge(fresh.MaxAge),
+			}})
+		}
 		if fresh.Block {
 			ev.Verdict = VerdictBlock
 		}
@@ -325,8 +344,10 @@ func (r *Report) Refusal() *taxonomy.Error {
 	if e := pick(taxonomy.CodeScanPolicyBlocked); e != nil {
 		return e
 	}
-	if e := pick(taxonomy.CodeScanDBStale); e != nil {
-		return e
+	for _, code := range []taxonomy.Code{taxonomy.CodeScanDBStale, taxonomy.CodeScanDBFuture} {
+		if e := pick(code); e != nil {
+			return e
+		}
 	}
 	return taxonomy.New(taxonomy.CodeScanFailed, taxonomy.Params{"reference": "", "detail": "refused without a recorded reason"})
 }

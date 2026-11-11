@@ -44,7 +44,7 @@ starting with `v0.1.0`.
 - **A degraded mode that is never silent**: banners (degraded, advisory,
   stale), a startup log record, the Retriever screen's scanning indicator,
   and the `tobby_scan_*` metric families.
-- `TOBBY_SCAN_*` environment variables; error codes `TBY-SCN-001..007` and
+- `TOBBY_SCAN_*` environment variables; error codes `TBY-SCN-001..008` and
   `020..022` are emitted; documentation: *Vulnerability scanning*, *The
   vulnerability database across the air gap* (EN/FR), configuration and
   metrics references; ADR-0008 amended (its example configuration follows
@@ -282,6 +282,12 @@ starting with `v0.1.0`.
   unexamined, even under a blocking policy. Only a genuine attestation
   manifest is skipped now; any other child is scanned, and one the
   scanner cannot read is refused under `block`.
+- **A database dated in the future is never fresh** (B-048). Its age was
+  clamped to zero, so a build timestamp ahead of the clock — a wrong host
+  clock, or forged metadata — read as a database built just now, for ever.
+  Beyond one hour of tolerated skew it is now stale, with a code of its
+  own (`TBY-SCN-008`), on the report, the banner, the indicator and the
+  metric, and refused under `scan.maxDbAgeAction: block`.
 
 ## [0.5.2] - 2026-11-09
 

@@ -53,7 +53,13 @@ func (rd *Renderer) scanBanners(v *View) []Banner {
 	if !s.Blocking {
 		out = append(out, Banner{Kind: "warning", Code: string(taxonomy.CodeScanPolicyAdvisory), Text: v.T("banner.scan_advisory")})
 	}
-	if s.Database != nil && s.MaxAge > 0 {
+	if s.Database != nil && scan.FromFuture(s.Database.BuiltAt, time.Now()) {
+		out = append(out, Banner{
+			Kind: "warning",
+			Code: string(taxonomy.CodeScanDBFuture),
+			Text: v.T("banner.scan_db_future", "BuiltAt", s.Database.BuiltAt.UTC().Format(time.RFC3339)),
+		})
+	} else if s.Database != nil && s.MaxAge > 0 {
 		if age := time.Since(s.Database.BuiltAt); age > s.MaxAge {
 			out = append(out, Banner{
 				Kind: "warning",
@@ -96,7 +102,7 @@ func scanIndicatorOf(s *ScanState) *scanIndicatorView {
 		age := time.Since(s.Database.BuiltAt)
 		iv.HasDB, iv.DBVersion, iv.DBBuiltAt = true, s.Database.Version, s.Database.BuiltAt
 		iv.DBAge = scan.FormatAge(age)
-		iv.DBStale = s.MaxAge > 0 && age > s.MaxAge
+		iv.DBStale = s.MaxAge > 0 && age > s.MaxAge || scan.FromFuture(s.Database.BuiltAt, time.Now())
 	}
 	if s.Cause != nil {
 		iv.CauseCode = string(s.Cause.Code())

@@ -521,6 +521,13 @@ Reserved at the opening of milestone 6 (FR-031, FR-032): the policy is advisory 
 - **Corrective action:** Retry the synchronization. If the error persists, the instance log carries the scanner's output under the same correlation identifier. Under `scan.mode: block` the item is not pushed until it scans.
 - **Fixable offline:** yes · **Blocks:** the item under block; nothing under warn
 
+### TBY-SCN-008
+
+- **What happened:** The vulnerability database claims to be built at `<built_at>`, after this instance's clock (`<now>`).
+- **Probable cause:** Its age cannot be stated, so it is treated as stale: either the clock of this host is behind, or the database's metadata is wrong. A build time up to one hour ahead is tolerated as clock skew.
+- **Corrective action:** Check the clock of this host (and of the zone that cooked the tobby-system recipe), then synchronize a database whose build time is in the past. Under `scan.maxDbAgeAction: block`, items scanned with it are not pushed until then.
+- **Fixable offline:** yes · **Blocks:** the items scanned with it under `scan.maxDbAgeAction: block`; nothing under warn
+
 ### TBY-SCN-020
 
 - **What happened:** The scan threshold carried by `<recipe>` was ignored.

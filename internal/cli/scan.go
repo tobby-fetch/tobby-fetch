@@ -29,9 +29,9 @@ type scanning struct {
 	// close.
 	workDir     string
 	tempWorkDir bool
-	eng     *engine.Engine
-	maxAge  time.Duration
-	logger  *slog.Logger
+	eng         *engine.Engine
+	maxAge      time.Duration
+	logger      *slog.Logger
 }
 
 // setupScanning builds the scanner, locates its binary and database, and
@@ -129,7 +129,7 @@ func (s *scanning) refresh(ctx context.Context) {
 		slog.String("database", st.Database.Digest),
 		slog.Time("database_built_at", st.Database.BuiltAt),
 		slog.String("database_age", scan.FormatAge(time.Since(st.Database.BuiltAt))),
-		slog.Bool("database_stale", time.Since(st.Database.BuiltAt) > s.maxAge),
+		slog.Bool("database_stale", time.Since(st.Database.BuiltAt) > s.maxAge || scan.FromFuture(st.Database.BuiltAt, time.Now())),
 		slog.String("requirement", "FR-032/R-13"))
 }
 
@@ -143,7 +143,7 @@ func (s *scanning) metricState() metrics.ScanState {
 	if st.Database != nil {
 		age := time.Since(st.Database.BuiltAt)
 		m.DBAgeSeconds = age.Seconds()
-		m.DBStale = age > s.maxAge
+		m.DBStale = age > s.maxAge || scan.FromFuture(st.Database.BuiltAt, time.Now())
 	}
 	return m
 }

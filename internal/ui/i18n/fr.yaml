@@ -825,6 +825,7 @@
 # Piste A — analyse de vulnérabilités (6.1, 6.2, R-13).
 "banner.scan_advisory": "La politique de vulnérabilités est consultative : les vulnérabilités sont signalées et le contenu est tout de même poussé. Réglez scan.mode: block pour refuser le contenu qui l'enfreint."
 "banner.scan_degraded": "L'analyse de vulnérabilités est dégradée — le contenu est signalé non analysé : {{.Reason}}"
+"banner.scan_db_future": "La base de vulnérabilités se dit construite le {{.BuiltAt}}, après l'horloge de cette instance : son âge ne peut pas être établi, elle est donc traitée comme périmée."
 "banner.scan_db_stale": "La base de vulnérabilités a {{.Age}}, au-delà des {{.Max}} acceptés par cette instance."
 "scan.section_title": "Analyse de vulnérabilités"
 "scan.verdict_pass": "Conforme à la politique"

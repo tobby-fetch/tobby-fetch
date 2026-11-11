@@ -299,6 +299,50 @@ func TestEvaluateFreshness(t *testing.T) {
 	}
 }
 
+// TestFutureDatabaseIsNeverFresh: a database claiming a build time beyond
+// this instance's clock, past the tolerated skew, has no age to state —
+// it used to read as 0 s old, fresh forever (B-048). It is stale, with a
+// reason of its own, and refused under the block action; a timestamp
+// within the skew is still just-built.
+func TestFutureDatabaseIsNeverFresh(t *testing.T) {
+	clean := result(finding("CVE-1", SeverityLow, f64(2)))
+	p := Combine(&Levels{InstanceMode: ModeWarn, InstanceThreshold: 7})
+	for _, c := range []struct {
+		name  string
+		ahead time.Duration
+		stale bool
+	}{
+		{"within the clock skew", DBClockSkew / 2, false},
+		{"a year ahead", 365 * 24 * time.Hour, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := *clean
+			r.Database.BuiltAt = now.Add(c.ahead)
+			for _, block := range []bool{false, true} {
+				rep := Evaluate(&p, subj, &r, Freshness{MaxAge: 168 * time.Hour, Block: block}, now)
+				if rep.Database.Stale != c.stale {
+					t.Errorf("block=%v: stale = %v; want %v", block, rep.Database.Stale, c.stale)
+				}
+				if got := slices.Contains(codes(rep.Policy.Reasons), taxonomy.CodeScanDBFuture); got != c.stale {
+					t.Errorf("block=%v: reasons = %v; want %s present=%v", block, codes(rep.Policy.Reasons), taxonomy.CodeScanDBFuture, c.stale)
+				}
+				wantVerdict := VerdictPass
+				if c.stale && block {
+					wantVerdict = VerdictBlock
+				}
+				if rep.Policy.Verdict != wantVerdict {
+					t.Errorf("block=%v: verdict = %s; want %s", block, rep.Policy.Verdict, wantVerdict)
+				}
+				if wantVerdict == VerdictBlock {
+					if e := rep.Refusal(); e == nil || e.Code() != taxonomy.CodeScanDBFuture {
+						t.Errorf("refusal = %v; want %s", e, taxonomy.CodeScanDBFuture)
+					}
+				}
+			}
+		})
+	}
+}
+
 // TestNotScannedBlocksOnlyUnderBlock: the degraded mode reports the item
 // with its reason, and refuses it when — and only when — the policy in
 // effect is blocking, whichever level made it so.

@@ -823,6 +823,7 @@
 # Track A — vulnerability scanning (6.1, 6.2, R-13).
 "banner.scan_advisory": "The vulnerability policy is advisory: findings are reported and content is pushed anyway. Set scan.mode: block to refuse violating content."
 "banner.scan_degraded": "Vulnerability scanning is degraded — content is reported as not scanned: {{.Reason}}"
+"banner.scan_db_future": "The vulnerability database claims to be built at {{.BuiltAt}}, after this instance's clock: its age cannot be stated, so it is treated as stale."
 "banner.scan_db_stale": "The vulnerability database is {{.Age}} old, beyond the {{.Max}} this instance accepts."
 "scan.section_title": "Vulnerability scan"
 "scan.verdict_pass": "Within the policy"
