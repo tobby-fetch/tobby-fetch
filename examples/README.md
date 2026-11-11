@@ -20,6 +20,7 @@ recipe lint -profile draft examples/
 | [`metallb.yaml`](metallb.yaml) | cooked | A chart that is an OCI artifact only if you look past the install guide, and a dependency on its own release cadence. |
 | [`harbor.yaml`](harbor.yaml) | draft | A chart that is not an OCI artifact, single-architecture images, and mutable data that must not be pinned. |
 | [`retriever.yaml`](retriever.yaml) | — | The desired state of a zone, with version constraints. |
+| [`tobby.yaml`](tobby.yaml) | cooked, placeholder digests | Tobby itself: image, chart and binaries as a FileSet, signed by **your** chain. |
 
 **Draft or cooked.** A *cooked* recipe pins every ingredient by digest and is
 what a cookbook publishes. A *draft* leaves digests out. Harbor is a draft
@@ -31,6 +32,16 @@ then the one your registry returns, not one we can print here.
 Take any of them, replace the `registry.example.com` placeholders with your
 own hosts, adjust `platforms` to the architectures your zone runs, then cook
 and publish.
+
+**Tobby itself is an example too.** From v0.6.0 on, every release publishes
+its image, its chart and its Linux and Windows binaries (as a multi-platform
+`FileSet`) to `ghcr.io/tobby-fetch`, so the tool that carries a zone's
+software crosses the door the same way. `tobby.yaml` is written ahead of the
+release it describes, so its digests are the all-zero placeholder — a value
+no registry returns. Copy the real ones from the release notes, verify the
+project's signatures where you cook, then sign the recipe with your own
+chain: the destination trusts your trust roots, not the project's key.
+Nothing updates itself — an upgrade is this recipe at the next version.
 
 ## The one problem these examples are about
 
