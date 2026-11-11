@@ -148,8 +148,8 @@
 "TBY-POL-004.action": "Publish the change under a new metadata.version and tag. Republishing a version onto different content would silently change what zones already resolved."
 
 "TBY-SIG-001.what": "The recipe signature could not be verified."
-"TBY-SIG-001.cause": "No configured trust root validates the signature of {{.recipe}} (keys tried: {{.fingerprints}})."
-"TBY-SIG-001.action": "Check that the zone's trust roots include the key that signed this recipe. An unverified recipe is never admitted."
+"TBY-SIG-001.cause": "{{if .scope}}No trust root allowed by the trust scope {{.scope}} validates the signature of {{.recipe}} (keys tried: {{.fingerprints}}). A key that is valid for another scope does not apply inside this one.{{else}}No configured trust root validates the signature of {{.recipe}} (keys tried: {{.fingerprints}}).{{end}}"
+"TBY-SIG-001.action": "{{if .scope}}Check the roots listed by the scope {{.scope}} (trust.scopes[].roots): they must include the key that signed this recipe, or the recipe belongs under another scope.{{else}}Check that the zone's trust roots include the key that signed this recipe.{{end}} An unverified recipe is never admitted."
 
 "TBY-SIG-002.what": "A pinned digest does not match the fetched content."
 "TBY-SIG-002.cause": "{{.reference}} pins {{.expected}} but the registry served {{.actual}} — the content changed or was tampered with."

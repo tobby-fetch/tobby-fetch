@@ -427,6 +427,7 @@ func decide(ctx context.Context, src Reader, r *Recipe, v *RecipeVerdict, trust 
 		}
 		v.Reason = &Reason{Code: taxonomy.CodeSignature, Params: map[string]string{
 			"recipe": nominal, "fingerprints": "none — no trust root is configured",
+			"scope": d.Scope,
 		}}
 		return
 	}
@@ -439,6 +440,7 @@ func decide(ctx context.Context, src Reader, r *Recipe, v *RecipeVerdict, trust 
 	default:
 		v.Reason = &Reason{Code: taxonomy.CodeSignature, Params: map[string]string{
 			"recipe": nominal, "fingerprints": fingerprintsOf(err),
+			"scope": d.Scope,
 		}}
 	}
 }

@@ -531,7 +531,7 @@ func (e *Engine) verifyRecipe(ctx context.Context, f *FetchedRecipe, d Decision)
 		if errors.Is(err, sigverify.ErrNoSignature) && d.AllowUnsigned {
 			return false, d.Scope, nil
 		}
-		return false, d.Scope, err
+		return false, d.Scope, withScope(d.Scope, err)
 	}
 	if d.AllowUnsigned {
 		return false, d.Scope, nil
@@ -539,6 +539,7 @@ func (e *Engine) verifyRecipe(ctx context.Context, f *FetchedRecipe, d Decision)
 	return false, d.Scope, taxonomy.New(taxonomy.CodeSignature, taxonomy.Params{
 		"recipe":       f.NominalRepo + ":" + f.Tag,
 		"fingerprints": "none — no trust root is configured",
+		"scope":        d.Scope,
 	})
 }
 

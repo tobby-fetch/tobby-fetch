@@ -473,9 +473,15 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 
 - **Quoi :** la signature de la recipe n'a pas pu être vérifiée.
 - **Cause probable :** aucune clé de confiance configurée ne valide la
-  signature de *\<recipe\>* (les empreintes essayées sont listées).
+  signature de *\<recipe\>* (les empreintes essayées sont listées). Quand un
+  périmètre de confiance déclaré correspond à la recipe, le message **nomme ce
+  périmètre** (*\<périmètre\>*) et les clés essayées sont celles qu'il
+  autorise : une clé valide ailleurs, mais absente des `roots` du périmètre,
+  ne s'applique pas dedans.
 - **Action corrective :** vérifiez que les clés de confiance de la zone
-  incluent la clé qui a signé cette recipe (voir
+  incluent la clé qui a signé cette recipe — ou, quand un périmètre est nommé,
+  que ses `roots` la listent, ou que la recipe relève d'un autre périmètre
+  (voir
   [Signatures, clés de confiance et liste blanche](../../security/content-trust/)).
   Une recipe non vérifiée n'est jamais admise.
 - **Remédiable hors-ligne :** oui, quand la bonne clé publique est disponible localement (les clés de confiance sont la configuration de la destination) ; une recipe réellement non signée ou mal signée doit être re-signée en amont · **Bloque :** la recipe concernée (classe vérification, sortie 4) ; jamais dérogeable

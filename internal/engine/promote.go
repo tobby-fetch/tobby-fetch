@@ -489,7 +489,7 @@ func (e *Engine) verifyStored(ctx context.Context, localRepo, nominalRepo, manif
 		case errors.Is(err, sigverify.ErrNoSignature) && d.AllowUnsigned:
 			return nil
 		default:
-			return err
+			return withScope(d.Scope, err)
 		}
 	}
 	if d.AllowUnsigned {
@@ -498,6 +498,7 @@ func (e *Engine) verifyStored(ctx context.Context, localRepo, nominalRepo, manif
 	return taxonomy.New(taxonomy.CodeSignature, taxonomy.Params{
 		"recipe":       subject,
 		"fingerprints": "none — no trust root is configured",
+		"scope":        d.Scope,
 	})
 }
 
@@ -517,7 +518,7 @@ func (e *Engine) verifySignedStored(ctx context.Context, localRepo, nominalRepo,
 	if err == nil || errors.Is(err, sigverify.ErrNoSignature) {
 		return nil
 	}
-	return fmt.Errorf("re-verifying %s before pushing it: %w", subject, err)
+	return fmt.Errorf("re-verifying %s before pushing it: %w", subject, withScope(d.Scope, err))
 }
 
 // pushFailed records one promotion failure on its task item and returns

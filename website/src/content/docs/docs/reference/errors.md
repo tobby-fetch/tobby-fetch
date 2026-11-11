@@ -432,9 +432,14 @@ its published rendering.
 
 - **What happened:** the recipe signature could not be verified.
 - **Probable cause:** no configured trust root validates the signature of
-  *\<recipe\>* (the tried key fingerprints are listed).
+  *\<recipe\>* (the tried key fingerprints are listed). When a declared
+  trust scope matched the recipe, the message **names that scope**
+  (*\<scope\>*) and the keys tried are the ones the scope allows: a key
+  that is a valid trust root elsewhere, but is not listed by the scope's
+  `roots`, does not apply inside it.
 - **Corrective action:** check that the zone's trust roots include the key
-  that signed this recipe (see
+  that signed this recipe — or, when a scope is named, that the scope's
+  `roots` list it, or that the recipe belongs under another scope (see
   [Signatures, trust roots and allowlist](../../security/content-trust/)). An
   unverified recipe is never admitted.
 - **Fixable offline:** yes, when the right public key is available locally (trust roots are destination configuration); a genuinely unsigned or wrongly signed recipe must be re-signed upstream · **Blocks:** the recipe concerned (verification class, exit 4); never overridable
