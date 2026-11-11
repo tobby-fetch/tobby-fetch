@@ -54,7 +54,7 @@ every file it reaches against its inventory entry AND against the digest
 it is stored under, then its signature against THIS instance's trust
 roots. Trust roots present on the medium are ignored.`,
 	}
-	cmd.AddCommand(newMediaVerifyCmd(), newMediaImportCmd())
+	cmd.AddCommand(newMediaVerifyCmd(), newMediaImportCmd(), newMediaSlipCmd())
 	return cmd
 }
 
