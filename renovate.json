@@ -41,6 +41,15 @@
   "customManagers": [
     {
       "customType": "regex",
+      "description": "Keycloak image of the IdP test fixture (test/keycloak/IMAGE): tag AND digest, bumped together",
+      "managerFilePatterns": ["/^test/keycloak/IMAGE$/"],
+      "matchStrings": [
+        "(?<depName>[^:\\s]+):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
       "description": "Track tool versions pinned as *_VERSION env vars in workflows via `# renovate:` hint comments",
       "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
       "matchStrings": [
