@@ -96,6 +96,9 @@ func TestDBLayerFromFileAndDirectory(t *testing.T) {
 	if got := DBLayer(t, file); !bytes.Equal(got, packed) {
 		t.Error("a layer file is not returned as it is")
 	}
+	if d := FileDigest(t, file); !strings.HasPrefix(d, "sha256:") || len(d) != 71 {
+		t.Errorf("digest = %q", d)
+	}
 }
 
 func TestRequireSkipsWithoutEnvironment(t *testing.T) {

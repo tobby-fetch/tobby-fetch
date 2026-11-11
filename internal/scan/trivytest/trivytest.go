@@ -13,6 +13,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
@@ -188,4 +190,20 @@ func TarGz(t testing.TB, files map[string]string) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+// FileDigest is the sha256 digest of a file, in OCI notation — the pin a
+// test gives the real binary it runs.
+func FileDigest(t testing.TB, path string) string {
+	t.Helper()
+	f, err := os.Open(path) //nolint:gosec // G304: the test's own binary path
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close() //nolint:errcheck // read side
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		t.Fatal(err)
+	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
