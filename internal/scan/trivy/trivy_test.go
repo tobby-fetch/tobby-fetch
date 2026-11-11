@@ -711,17 +711,32 @@ func TestScanFailuresAreReported(t *testing.T) {
 
 // TestIndexTargets: a multi-platform index is scanned child by child, for
 // the children the store holds (a sparse index carries only the selected
-// platforms) and never for an attestation manifest.
+// platforms) and never for a genuine attestation manifest. A child without
+// a platform, or in "unknown" without being an attestation, is copied and
+// pushed like the others: it is scanned too (B-047).
 func TestIndexTargets(t *testing.T) {
 	f := newFixture(t, fakeConf{})
 	amd := putImage(t, f.st, appRepo)
-	att := f.st.manifest(appRepo, "", ociManifestType, imageManifest(f.st, []byte("attestation")))
+	statement := []byte(`{"_type":"https://in-toto.io/Statement/v0.1"}`)
+	att := f.st.manifest(appRepo, "", ociManifestType, map[string]any{
+		"schemaVersion": 2, "mediaType": ociManifestType,
+		"config": map[string]any{"mediaType": "application/vnd.oci.image.config.v1+json", "digest": f.st.blob([]byte("{}")), "size": 2},
+		"layers": []map[string]any{{"mediaType": "application/vnd.in-toto+json", "digest": f.st.blob(statement), "size": len(statement)}},
+	})
+	noPlatform := f.st.manifest(appRepo, "", ociManifestType, imageManifest(f.st, tarOf(t, true, map[string][]byte{"etc/os-release": []byte("ID=debian")})))
+	disguised := f.st.manifest(appRepo, "", ociManifestType, imageManifest(f.st, tarOf(t, true, map[string][]byte{"etc/os-release": []byte("ID=ubuntu")})))
+	unknown := map[string]string{"os": "unknown", "architecture": "unknown"}
+	attestation := map[string]string{"vnd.docker.reference.type": "attestation-manifest", "vnd.docker.reference.digest": amd}
 	idx := f.st.manifest(appRepo, "1.0", ociIndexType, map[string]any{
 		"schemaVersion": 2, "mediaType": ociIndexType,
 		"manifests": []map[string]any{
 			{"mediaType": ociManifestType, "digest": amd, "size": 1, "platform": map[string]string{"os": "linux", "architecture": "amd64"}},
 			{"mediaType": ociManifestType, "digest": "sha256:" + strings.Repeat("a", 64), "size": 1, "platform": map[string]string{"os": "linux", "architecture": "arm64"}},
-			{"mediaType": ociManifestType, "digest": att, "size": 1, "platform": map[string]string{"os": "unknown", "architecture": "unknown"}},
+			{"mediaType": ociManifestType, "digest": att, "size": 1, "platform": unknown, "annotations": attestation},
+			// No platform at all: a runtime may select it for any.
+			{"mediaType": ociManifestType, "digest": noPlatform, "size": 1},
+			// Labelled like an attestation, but an image: scanned.
+			{"mediaType": ociManifestType, "digest": disguised, "size": 1, "platform": unknown, "annotations": attestation},
 		},
 	})
 	s := New(&f.opts)
@@ -730,14 +745,23 @@ func TestIndexTargets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := f.calls.images(t); n != 1 {
-		t.Errorf("image scans = %d; want 1 (amd64 only)", n)
+	if n := f.calls.images(t); n != 3 {
+		t.Errorf("image scans = %d; want 3 (amd64, the child without a platform, the disguised one — not the attestation)", n)
 	}
 	if len(res.Findings) != 9 {
 		t.Errorf("findings = %d", len(res.Findings))
 	}
-	if _, err := s.Scan(context.Background(), scan.Target{Digest: idx, Repository: appRepo, Platform: "linux/arm64"}); codeOf(err) != taxonomy.CodeScanFailed {
-		t.Errorf("a platform the store does not hold scanned: %v", err)
+	if _, err := s.Scan(context.Background(), scan.Target{Digest: idx, Repository: appRepo, Platform: "linux/arm64"}); err != nil {
+		t.Errorf("narrowed to linux/arm64, the child without a platform is still scanned: %v", err)
+	}
+	// An index holding nothing but an attestation has nothing to scan, and
+	// says so — refused under a blocking policy.
+	only := f.st.manifest(appRepo, "att-only", ociIndexType, map[string]any{
+		"schemaVersion": 2, "mediaType": ociIndexType,
+		"manifests": []map[string]any{{"mediaType": ociManifestType, "digest": att, "size": 1, "platform": unknown, "annotations": attestation}},
+	})
+	if _, err := s.Scan(context.Background(), scan.Target{Digest: only, Repository: appRepo}); codeOf(err) != taxonomy.CodeScanFailed {
+		t.Errorf("an index without a scannable child: %v; want %s", err, taxonomy.CodeScanFailed)
 	}
 }
 

@@ -22,9 +22,17 @@ type imageTarget struct {
 
 // targetsOf expands a stored manifest into the image manifests to scan: the
 // manifest itself, or the children of an index that this store actually
-// holds (a sparse index carries only the selected platforms, FR-022) and
-// that are images — attestation manifests ("unknown/unknown") carry no
-// filesystem to scan. platform, when set, narrows to one child.
+// holds (a sparse index carries only the selected platforms, FR-022).
+// platform, when set, narrows to the children of that platform.
+//
+// Every held child is scanned, whatever its platform says — a child
+// without one, or in "unknown", is copied and pushed like the others, and
+// a runtime may still select it — except a genuine attestation manifest:
+// "unknown/unknown", annotated as one, every layer an in-toto statement.
+// That one carries no filesystem to scan. A child that is neither an
+// attestation nor an image the scanner can read fails the scan, so under
+// a blocking policy it is refused as not scannable rather than pushed
+// unexamined.
 func targetsOf(ctx context.Context, st Store, repo, dgst, platform string) ([]imageTarget, error) {
 	m, _, err := readManifest(ctx, st, repo, dgst)
 	if err != nil {
@@ -35,18 +43,23 @@ func targetsOf(ctx context.Context, st Store, repo, dgst, platform string) ([]im
 	}
 	var out []imageTarget
 	for _, d := range m.Manifests {
-		if d.Platform == nil || d.Platform.OS == "unknown" || d.Platform.Architecture == "unknown" {
+		label := ""
+		if d.Platform != nil {
+			label = d.Platform.OS + "/" + d.Platform.Architecture
+			if d.Platform.Variant != "" {
+				label += "/" + d.Platform.Variant
+			}
+		}
+		// A child without a platform may be selected for any platform.
+		if platform != "" && label != "" && label != platform && !strings.HasPrefix(label, platform+"/") {
 			continue
 		}
-		label := d.Platform.OS + "/" + d.Platform.Architecture
-		if d.Platform.Variant != "" {
-			label += "/" + d.Platform.Variant
-		}
-		if platform != "" && label != platform && !strings.HasPrefix(label, platform+"/") {
-			continue
-		}
-		if _, _, _, err := st.RawManifest(ctx, repo, d.Digest); err != nil {
+		child, _, err := readManifest(ctx, st, repo, d.Digest)
+		if err != nil {
 			continue // not selected, not in the store (sparse index)
+		}
+		if isAttestation(&d, child) {
+			continue
 		}
 		out = append(out, imageTarget{Digest: d.Digest, MediaType: d.MediaType, Platform: label})
 	}
@@ -54,6 +67,27 @@ func targetsOf(ctx context.Context, st Store, repo, dgst, platform string) ([]im
 		return nil, fmt.Errorf("%s@%s holds no scannable image manifest", repo, dgst)
 	}
 	return out, nil
+}
+
+// isAttestation recognizes the attestation manifest a build attaches to an
+// index (BuildKit's layout): platform "unknown/unknown", the reference
+// type annotation, and only in-toto layers. All three, or it is scanned.
+func isAttestation(d *ociDescriptor, child *ociManifest) bool {
+	if d.Platform == nil || d.Platform.OS != "unknown" || d.Platform.Architecture != "unknown" {
+		return false
+	}
+	if d.Annotations["vnd.docker.reference.type"] != "attestation-manifest" {
+		return false
+	}
+	if child.isIndex() || len(child.Layers) == 0 {
+		return false
+	}
+	for _, l := range child.Layers {
+		if !strings.HasPrefix(l.MediaType, "application/vnd.in-toto") {
+			return false
+		}
+	}
+	return true
 }
 
 // writeLayout materializes one image from the store as an OCI image layout

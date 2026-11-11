@@ -276,6 +276,12 @@ starting with `v0.1.0`.
   reused unverified. It is now a fresh 0700 directory removed at shutdown,
   and any work directory that is a symbolic link, belongs to another user
   or is writable by others is refused (degraded mode, `TBY-SCN-001`).
+- **Index children without a platform are scanned** (B-047). The scan of
+  a multi-platform image skipped every child without a platform or in
+  `unknown`, while those children were copied and pushed: content crossed
+  unexamined, even under a blocking policy. Only a genuine attestation
+  manifest is skipped now; any other child is scanned, and one the
+  scanner cannot read is refused under `block`.
 
 ## [0.5.2] - 2026-11-09
 
