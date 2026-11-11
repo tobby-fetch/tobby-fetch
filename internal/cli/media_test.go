@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/medialog"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -282,4 +283,21 @@ func manifestBytes(t *testing.T, root string) []byte {
 func isTaxonomy(err error, code taxonomy.Code) bool {
 	var te *taxonomy.Error
 	return errors.As(err, &te) && te.Code() == code
+}
+
+// TestMediaReportNamesReducedAssurance: the text report carries the two
+// FR-037 markers of a delivery — this instance's own, then the source
+// zone's claim — and nothing for a delivery of full assurance.
+func TestMediaReportNamesReducedAssurance(t *testing.T) {
+	if got := assuranceNote(&media.RecipeVerdict{}); got != "" {
+		t.Errorf("a delivery of full assurance is annotated: %q", got)
+	}
+	got := assuranceNote(&media.RecipeVerdict{
+		Assurance: assurance.ForUnsigned("zone-lab"), SourceAssurance: assurance.ForUnsigned("source-lab"),
+	})
+	for _, want := range []string{"reduced assurance: scope zone-lab", "source zone declares reduced assurance: scope source-lab"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("note %q lacks %q", got, want)
+		}
+	}
 }

@@ -229,6 +229,10 @@ func recipesOf(records []store.RecipeRecord) []Recipe {
 			ArtifactRepo: r.ArtifactRepo, ArtifactTag: r.ArtifactTag,
 			Digest: r.Digest, ResolvedAt: r.ResolvedAt,
 			Ingredients: make([]Ingredient, 0, len(r.Ingredients)),
+			// FR-037: what this zone admitted under a relaxed scope is
+			// declared per recipe, for the destination to re-display. A
+			// claim only — the destination decides its own marker.
+			Assurance: assurance.ForAdmission(r.Verified, r.TrustScope),
 		}
 		for _, ing := range r.Ingredients {
 			rec.Ingredients = append(rec.Ingredients, Ingredient{

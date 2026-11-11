@@ -83,6 +83,6 @@ func ReservedFamilies() []string {
 		MetricScanItems, MetricScanFindings, MetricScanPolicyBlocking,
 		MetricScanScannerAvailable, MetricScanDBPresent, MetricScanDBAge, MetricScanDBStale,
 		MetricAuthAttempts, MetricAuthSessionsExpired, MetricAuthIDPReachable, MetricAuthLocalUnderFederation,
-		MetricIntegrityVerifications, MetricIntegrityLastVerification, MetricAssuranceReduced,
+		// Track C's three families are registered (integrity.go).
 	}
 }

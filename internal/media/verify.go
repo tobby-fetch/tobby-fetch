@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -289,6 +290,12 @@ func validateRecipe(r *Recipe) error {
 	if _, err := digestHex(r.Digest); err != nil {
 		return fmt.Errorf("recipe %s: %w", id, err)
 	}
+	// A reduced-assurance claim is displayed, so it is held to the shape
+	// this build writes (FR-037): reduced, naming a scope and a known
+	// reason, bounded. Absent is the ordinary case — full assurance.
+	if r.Assurance != nil && !r.Assurance.Valid() {
+		return fmt.Errorf("recipe %s: its assurance marker is not a well-formed reduced-assurance claim", id)
+	}
 	for i := range r.Ingredients {
 		ing := &r.Ingredients[i]
 		if err := checkRepoName(ing.Repo); err != nil {
@@ -382,6 +389,9 @@ func verifyRecipes(ctx context.Context, src Reader, c *checker, m *Manifest, opt
 			Name: r.Name, Version: r.Version,
 			CookbookRepo: r.CookbookRepo, ArtifactRepo: r.ArtifactRepo,
 			Digest: r.Digest, ResolvedAt: r.ResolvedAt,
+			// The source zone's claim, re-displayed beside this
+			// instance's own verdict and never instead of it (FR-037).
+			SourceAssurance: r.Assurance,
 		}
 		w := &walk{c: c, recipe: id, seen: map[string]bool{}}
 		w.delivery(r)
@@ -423,6 +433,7 @@ func decide(ctx context.Context, src Reader, r *Recipe, v *RecipeVerdict, trust 
 	if d.Keys == nil {
 		if d.AllowUnsigned {
 			v.Pushable, v.Unsigned = true, true
+			v.Assurance = assurance.ForUnsigned(d.Scope)
 			return
 		}
 		v.Reason = &Reason{Code: taxonomy.CodeSignature, Params: map[string]string{
@@ -437,6 +448,7 @@ func decide(ctx context.Context, src Reader, r *Recipe, v *RecipeVerdict, trust 
 		v.Pushable, v.KeyFingerprint = true, fingerprint
 	case errors.Is(err, sigverify.ErrNoSignature) && d.AllowUnsigned:
 		v.Pushable, v.Unsigned = true, true
+		v.Assurance = assurance.ForUnsigned(d.Scope)
 	default:
 		v.Reason = &Reason{Code: taxonomy.CodeSignature, Params: map[string]string{
 			"recipe": nominal, "fingerprints": fingerprintsOf(err),

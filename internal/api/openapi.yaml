@@ -2186,8 +2186,11 @@ components:
         The reduced-assurance marker (FR-037, R-22): present only on
         content admitted under a relaxed trust-root scope; absent means
         full assurance — signature verified against a configured trust
-        root. Reserved at the opening of milestone 6: no surface sets it
-        yet.
+        root. Carried by task items, recorded recipes and, in the media
+        report, both as this instance's own marker and as the source
+        zone's claim (re-displayed beside it, never instead). Never
+        written into a destination registry: transferred content stays
+        bit-exact.
       required: [level, scope, reasons]
       properties:
         level:
@@ -2375,6 +2378,8 @@ components:
             The declared relaxed scope that admitted the recipe when
             verified is false — never empty in that case (FR-033: no
             undeclared bypass exists).
+        assurance:
+          $ref: "#/components/schemas/Assurance"
         ingredients:
           type: array
           items:

@@ -267,6 +267,9 @@ func recordVerdicts(sink *taskSink, rep *media.Report) {
 			item := itemFor(t, mediaItemPrefix+v.Name+"@"+v.Version)
 			item.Digest = v.Digest
 			item.SizeBytes = v.Bytes
+			// This instance's own verdict decides the marker (FR-037); the
+			// source's claim is on the report, not on the item.
+			item.Assurance = v.Assurance
 			if v.Pushable {
 				item.Status = tasks.StatusRunning
 				continue
@@ -385,6 +388,18 @@ func logVerification(ctx context.Context, logger *slog.Logger, rep *media.Report
 	}
 	for i := range rep.Recipes {
 		v := &rep.Recipes[i]
+		// FR-037: a delivery this instance admits under a relaxed scope is
+		// named in the medium's own log, with the source zone's claim
+		// beside it when the manifest made one.
+		if v.Assurance.Reduced() || v.SourceAssurance.Reduced() {
+			rl := withAssurance(logger, v.Assurance)
+			attrs := []slog.Attr{slog.String("recipe", v.Name+"@"+v.Version)}
+			if v.SourceAssurance.Reduced() {
+				attrs = append(attrs, slog.String("source_assurance_scope", v.SourceAssurance.Scope))
+			}
+			rl.LogAttrs(ctx, slog.LevelWarn, "delivery under reduced assurance",
+				append(attrs, slog.String("requirement", "FR-037"))...)
+		}
 		if v.Pushable || v.Reason == nil {
 			continue
 		}
@@ -469,7 +484,15 @@ func (e *Engine) importDelivery(ctx context.Context, sink *taskSink, logger *slo
 	if err != nil {
 		return fail(err)
 	}
+	// FR-037: what THIS instance's own verdict admitted under a relaxed
+	// scope stays marked through the push, on the log records and on the
+	// push items — the destination registry itself receives no marker
+	// (RECIPE-SPEC §7.1: transferred content stays bit-exact).
+	logger = withAssurance(logger, v.Assurance)
 	landed := e.promoteRecipe(ctx, sink, logger, f, rid, mediumContent(&rec))
+	if v.Assurance != nil {
+		sink.update(func(t *tasks.Task) bool { return stampAssurance(t, rid, v.Assurance) })
+	}
 	settleDelivery(sink, rid, landed)
 	if !landed {
 		logger.LogAttrs(ctx, slog.LevelWarn, "delivery cleared by verification did not land",

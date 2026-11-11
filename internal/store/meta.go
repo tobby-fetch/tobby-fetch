@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
 	"github.com/tobby-fetch/tobby-fetch/internal/runid"
 )
 
@@ -200,7 +201,14 @@ type RecipeRecord struct {
 	// TrustScope names the declared relaxed scope that admitted the recipe
 	// when Verified is false (never empty in that case — FR-033: no
 	// undeclared bypass exists).
-	TrustScope  string             `json:"trustScope,omitempty"`
+	TrustScope string `json:"trustScope,omitempty"`
+	// Assurance is the reduced-assurance marker of a recipe admitted under
+	// a relaxed scope (FR-037, R-22): the same fact as Verified=false with
+	// a TrustScope, in the form every surface carries. Derived, never
+	// stored on its own authority — RecipeRecords fills it from the two
+	// fields above, so a record written before milestone 6 carries it too.
+	// Nil is full assurance.
+	Assurance   *assurance.Marker  `json:"assurance,omitempty"`
 	Ingredients []IngredientRecord `json:"ingredients"`
 }
 
@@ -281,7 +289,11 @@ func (s *Store) PutRecipeRecord(r *RecipeRecord) error {
 	if f.Recipes == nil {
 		f.Recipes = map[string]RecipeRecord{}
 	}
-	f.Recipes[recipeKey(r.Name, r.Version)] = *r
+	rec := *r
+	// Derived at read (RecipeRecords): the ledger keeps the admission
+	// facts, not their rendering, so its bytes do not change shape.
+	rec.Assurance = nil
+	f.Recipes[recipeKey(r.Name, r.Version)] = rec
 	return writeJSON(filepath.Join(s.root, "meta", "recipes.json"), f)
 }
 
@@ -295,7 +307,13 @@ func (s *Store) RecipeRecords() ([]RecipeRecord, error) {
 	}
 	out := make([]RecipeRecord, 0, len(f.Recipes))
 	for key := range f.Recipes {
-		out = append(out, f.Recipes[key])
+		rec := f.Recipes[key]
+		// The marker is a consequence of the admission, so it is
+		// recomputed from it (FR-037): a ledger written by an older build,
+		// or edited by hand, can neither lack a marker its admission
+		// implies nor carry one it does not.
+		rec.Assurance = assurance.ForAdmission(rec.Verified, rec.TrustScope)
+		out = append(out, rec)
 	}
 	return out, nil
 }

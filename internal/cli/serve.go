@@ -442,6 +442,23 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// each direction, so no surface can reach a verdict the gate does not
 	// hear, and no screen can open the gate by any other means.
 	eng.SetMediaVerdicts(mediaGate.Observe)
+
+	// FR-037 (R-22): how many recipes this instance holds under reduced
+	// assurance, per declared scope, read from the recipe graph at every
+	// scrape — never counted by events that a removal path could forget.
+	reg.RegisterReducedRecipes(eng.RelaxedScopes(), func() map[string]int {
+		records, rerr := st.RecipeRecords()
+		if rerr != nil {
+			return nil
+		}
+		held := map[string]int{}
+		for i := range records {
+			if m := records[i].Assurance; m.Reduced() {
+				held[m.Scope]++
+			}
+		}
+		return held
+	})
 	mediaGate.SetVerify(func(vctx context.Context, opts mediagate.Options, progress func(media.Progress)) (*media.Report, error) {
 		return eng.VerifyMedia(vctx, logger, engine.MediaOptions{
 			AllowZoneMismatch: opts.AllowZoneMismatch,

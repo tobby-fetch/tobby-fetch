@@ -93,7 +93,7 @@
     <tbody>
       {{range .Data.Items}}
       <tr{{if eq .State "skipped"}} class="t-dim"{{end}}>
-        <td class="t-mono" translate="no">{{.Name}}</td>
+        <td class="t-mono" translate="no">{{.Name}}{{template "assurance-badge" (withData $ .Assurance)}}</td>
         <td>
           {{if .Digest}}
           <span class="t-chip">
