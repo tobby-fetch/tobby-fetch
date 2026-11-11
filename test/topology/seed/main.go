@@ -160,6 +160,15 @@ func run(args []string) error {
 		}
 		return pushImage(ref, img)
 
+	case "push-binaries":
+		// The release binaries as a recipe-ready FileSet (R-25), the shape
+		// tools/release-fileset.sh publishes: one index, one single-file
+		// child per platform. Arguments: os/arch=path ...
+		if len(args) < 3 {
+			return fmt.Errorf("usage: seed push-binaries <ref> <os/arch>=<file> [<os/arch>=<file>]")
+		}
+		return pushBinaries(ref, args[2:])
+
 	case "pull":
 		if len(args) != 3 {
 			return fmt.Errorf("usage: seed pull <ref> <expected-digest>")
@@ -301,6 +310,66 @@ func pushImage(ref name.Reference, img v1.Image) error {
 		return fmt.Errorf("pushing %s: %w", ref, err)
 	}
 	d, err := img.Digest()
+	if err != nil {
+		return err
+	}
+	fmt.Println(d)
+	return nil
+}
+
+// pushBinaries builds and pushes the binaries FileSet index.
+func pushBinaries(ref name.Reference, specs []string) error {
+	idx := v1.ImageIndex(empty.Index)
+	for _, sp := range specs {
+		plat, path, ok := strings.Cut(sp, "=")
+		goos, arch, ok2 := strings.Cut(plat, "/")
+		if !ok || !ok2 {
+			return fmt.Errorf("%q is not os/arch=path", sp)
+		}
+		data, err := os.ReadFile(path) //nolint:gosec // G304: test-tool input path
+		if err != nil {
+			return err
+		}
+		file := "tobby"
+		if goos == "windows" {
+			file = "tobby.exe"
+		}
+		var buf bytes.Buffer
+		gz := gzip.NewWriter(&buf)
+		tw := tar.NewWriter(gz)
+		if err := tw.WriteHeader(&tar.Header{Name: file, Mode: 0o755, Size: int64(len(data))}); err != nil {
+			return err
+		}
+		if _, err := tw.Write(data); err != nil {
+			return err
+		}
+		if err := tw.Close(); err != nil {
+			return err
+		}
+		if err := gz.Close(); err != nil {
+			return err
+		}
+		img, err := mutate.AppendLayers(mutate.MediaType(mutate.ConfigMediaType(empty.Image, types.OCIConfigJSON), types.OCIManifestSchema1),
+			static.NewLayer(buf.Bytes(), types.OCILayer))
+		if err != nil {
+			return err
+		}
+		cfg, err := img.ConfigFile()
+		if err != nil {
+			return err
+		}
+		cfg = cfg.DeepCopy()
+		cfg.OS, cfg.Architecture = goos, arch
+		if img, err = mutate.ConfigFile(img, cfg); err != nil {
+			return err
+		}
+		idx = mutate.AppendManifests(idx, mutate.IndexAddendum{Add: img, Descriptor: v1.Descriptor{Platform: &v1.Platform{OS: goos, Architecture: arch}}})
+	}
+	idx = mutate.IndexMediaType(idx, types.OCIImageIndex)
+	if err := remote.WriteIndex(ref, idx, options()...); err != nil {
+		return fmt.Errorf("pushing %s: %w", ref, err)
+	}
+	d, err := idx.Digest()
 	if err != nil {
 		return err
 	}
