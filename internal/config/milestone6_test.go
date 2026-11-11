@@ -153,8 +153,6 @@ func TestPendingOptInsAreRefused(t *testing.T) {
 		tweak func(*Config)
 		want  string
 	}{
-		{"blocking scan", func(c *Config) { c.Scan.Mode = ScanModeBlock }, "scan.mode: block"},
-		{"blocking stale database", func(c *Config) { c.Scan.MaxDBAgeAction = ScanModeBlock }, "scan.maxDbAgeAction: block"},
 		{"token expiry", func(c *Config) { c.Auth.Tokens.DefaultLifetime = Duration(time.Hour) }, "auth.tokens.defaultLifetime"},
 		{"oidc", func(c *Config) { c.Auth.OIDC.Enabled = true }, "auth.oidc.enabled is not implemented"},
 		{"saml", func(c *Config) { c.Auth.SAML.Enabled = true }, "auth.saml.enabled is not implemented"},

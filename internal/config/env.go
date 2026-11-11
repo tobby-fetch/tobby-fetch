@@ -271,5 +271,5 @@ func applyEnv(cfg *Config, lookup func(string) (string, bool)) error {
 		}
 		cfg.Shutdown.GracePeriod = Duration(d)
 	}
-	return nil
+	return applyScanEnv(cfg, lookup)
 }

@@ -59,6 +59,10 @@ type Scan struct {
 	DBRepository string `yaml:"dbRepository,omitempty"`
 	// Trivy locates and pins the scanner binary (ADR-0008 decision 4).
 	Trivy Trivy `yaml:"trivy"`
+	// Timeout bounds one scan of one item, the scanner process included.
+	// Default 10m. An item whose scan times out is reported not scanned
+	// (and refused under a blocking policy).
+	Timeout Duration `yaml:"timeout,omitempty"`
 }
 
 // ScanException tolerates one vulnerability beyond the threshold, as in
@@ -192,6 +196,7 @@ type SAML struct {
 const (
 	DefaultScanThreshold   = 7.0
 	DefaultScanMaxDBAge    = 168 * time.Hour
+	DefaultScanTimeout     = 10 * time.Minute
 	DefaultSessionIdle     = 30 * time.Minute
 	DefaultSAMLClockSkew   = 90 * time.Second
 	maxSAMLClockSkew       = 5 * time.Minute
@@ -210,6 +215,7 @@ func defaultMilestone6(cfg *Config) {
 		Threshold:      DefaultScanThreshold,
 		MaxDBAge:       Duration(DefaultScanMaxDBAge),
 		MaxDBAgeAction: ScanModeWarn,
+		Timeout:        Duration(DefaultScanTimeout),
 	}
 	cfg.Auth.Session = AuthSession{IdleTimeout: Duration(DefaultSessionIdle)}
 	cfg.Auth.OIDC.GroupsClaim = defaultOIDCGroupsClaim
@@ -230,6 +236,9 @@ func (c *Config) validateScan() []error {
 	}
 	if s.Threshold < 0 || s.Threshold > 10 {
 		errs = append(errs, fmt.Errorf("scan.threshold: %v is not a CVSS score: it must lie between 0 and 10 — a finding scoring at or above it violates the policy", s.Threshold))
+	}
+	if time.Duration(s.Timeout) <= 0 {
+		errs = append(errs, errors.New("scan.timeout must be positive: every scan is bounded in time"))
 	}
 	if time.Duration(s.MaxDBAge) <= 0 {
 		errs = append(errs, errors.New(`scan.maxDbAge must be positive: the database age is always checked (FR-032); use "scan.maxDbAgeAction: warn" to report staleness without blocking`))
@@ -360,9 +369,6 @@ func (c *Config) pendingOptIns() []error {
 			errs = append(errs, fmt.Errorf("%s is not implemented by this build yet (%s, milestone 6): refusing to start rather than ignore it", key, item))
 		}
 	}
-	// Track A — 6.1 / R-13.
-	pending(c.Scan.Mode == ScanModeBlock, `scan.mode: block`, "6.1")
-	pending(c.Scan.MaxDBAgeAction == ScanModeBlock, `scan.maxDbAgeAction: block`, "R-13")
 	// Track B — R-14 / 6.3.
 	pending(c.Auth.Tokens.DefaultLifetime > 0, "auth.tokens.defaultLifetime", "R-14")
 	pending(c.Auth.OIDC.Enabled, "auth.oidc.enabled", "6.3")
