@@ -78,6 +78,7 @@ check "built tobby for the four release platforms"
 release_leftovers
 for spec in "tbc-m6u-source tbc-connected-node" "tbc-m6u-connected tbc-connected-node" \
             "tbc-m6u-dest tbc-airgap-node" "tbc-m6u-isolated tbc-airgap-node"; do
+    # shellcheck disable=SC2086 # split on purpose: one "<instance> <profile>" pair per word list
     set -- $spec
     inc launch "$IMAGE" "$1" --profile "$2" \
         -c security.syscalls.intercept.mount=true \
@@ -89,6 +90,7 @@ for inst in $INSTANCES; do
     inc file push "$WORK/tobby" "$inst/usr/bin/tobby" >/dev/null
     inc exec "$inst" -- chmod +x /usr/bin/tobby
 done
+# shellcheck disable=SC2016 # expanded by the node's shell, not by this one
 inc exec tbc-m6u-connected -- sh -c '
     n=0
     until apk add --no-cache e2fsprogs >/dev/null 2>&1; do
@@ -114,8 +116,8 @@ wait_ready tbc-m6u-source http://127.0.0.1:8080/healthz
 S="$SOURCE_IP:8080"
 seed() { ( cd "$ROOT" && go run ./test/topology/seed "$@" ); }
 ( cd "$WORK" && mkdir site project &&
-  ( cd site && COSIGN_PASSWORD= "$COSIGN" generate-key-pair >/dev/null 2>&1 ) &&
-  ( cd project && COSIGN_PASSWORD= "$COSIGN" generate-key-pair >/dev/null 2>&1 ) ) || fail "generating the two keys"
+  ( cd site && COSIGN_PASSWORD='' "$COSIGN" generate-key-pair >/dev/null 2>&1 ) &&
+  ( cd project && COSIGN_PASSWORD='' "$COSIGN" generate-key-pair >/dev/null 2>&1 ) ) || fail "generating the two keys"
 for v in 0.6.0 0.6.1; do
     IMG=$(seed push "$S/ghcr.io/tobby-fetch/tobby-fetch:v$v") || fail "publishing the image $v"
     BIN=$(seed push-binaries "$S/ghcr.io/tobby-fetch/binaries/tobby:v$v" \
@@ -156,14 +158,14 @@ spec:
 EOF
     key=site; [ "$v" = 0.6.1 ] && key=project
     dgst=$(seed push-recipe "$S/ghcr.io/cookbook/tobby:$v" "$WORK/recipe-$v.yaml") || fail "publishing recipe $v"
-    COSIGN_PASSWORD= "$COSIGN" sign --key "$WORK/$key/cosign.key" --yes --allow-insecure-registry \
+    COSIGN_PASSWORD='' "$COSIGN" sign --key "$WORK/$key/cosign.key" --yes --allow-insecure-registry \
         --use-signing-config=false --new-bundle-format=false --tlog-upload=false \
         "$S/ghcr.io/cookbook/tobby@$dgst" >/dev/null 2>&1 || fail "signing recipe $v"
     # Staging: the signature verifies with the key it claims, and not with the other.
     other=project; [ "$key" = project ] && other=site
-    COSIGN_PASSWORD= "$COSIGN" verify --key "$WORK/$key/cosign.pub" --allow-insecure-registry --insecure-ignore-tlog \
+    COSIGN_PASSWORD='' "$COSIGN" verify --key "$WORK/$key/cosign.pub" --allow-insecure-registry --insecure-ignore-tlog \
         "$S/ghcr.io/cookbook/tobby@$dgst" >/dev/null 2>&1 || fail "staging: recipe $v does not verify with the $key key"
-    if COSIGN_PASSWORD= "$COSIGN" verify --key "$WORK/$other/cosign.pub" --allow-insecure-registry --insecure-ignore-tlog \
+    if COSIGN_PASSWORD='' "$COSIGN" verify --key "$WORK/$other/cosign.pub" --allow-insecure-registry --insecure-ignore-tlog \
         "$S/ghcr.io/cookbook/tobby@$dgst" >/dev/null 2>&1; then
         fail "staging: recipe $v also verifies with the $other key"
     fi
@@ -267,6 +269,7 @@ CHILD=$(curl -fsS -H "$ACCEPT" "$R/manifests/v0.6.0" |
     jq -r --arg a "$ARCH" '.manifests[] | select(.platform.os=="linux" and .platform.architecture==$a) | .digest')
 [ -n "$CHILD" ] || fail "no linux/$ARCH child in the zone's binaries FileSet"
 LAYER=$(curl -fsS -H "$ACCEPT" "$R/manifests/$CHILD" | jq -r '.layers[0].digest')
+# shellcheck disable=SC2015 # any step of the chain failing is the failure: fail is meant to run
 curl -fsS "$R/blobs/$LAYER" | tar -xzf - -C "$WORK" tobby 2>/dev/null && mv "$WORK/tobby" "$WORK/tobby-arrived" ||
     fail "extracting the binary that crossed"
 [ "$(sha256sum <"$WORK/tobby-arrived")" = "$(sha256sum <"$WORK/tobby-linux-$ARCH")" ] ||

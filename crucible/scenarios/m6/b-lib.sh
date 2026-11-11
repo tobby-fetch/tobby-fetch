@@ -35,6 +35,7 @@ b_pki() {
     openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=tobby-crucible-m6b-ca" \
         -keyout "$_w/ca.key" -out "$_w/ca.crt" >/dev/null 2>&1 || fail "generating the CA"
     for _h in "$@"; do
+        # shellcheck disable=SC2015 # any step of the chain failing is the failure: fail is meant to run
         openssl req -newkey rsa:2048 -nodes -subj "/CN=$_h" -keyout "$_w/$_h.key" -out "$_w/$_h.csr" >/dev/null 2>&1 &&
         printf 'subjectAltName=DNS:%s\n' "$_h" >"$_w/$_h.ext" &&
         openssl x509 -req -in "$_w/$_h.csr" -CA "$_w/ca.crt" -CAkey "$_w/ca.key" -CAcreateserial \
@@ -67,6 +68,7 @@ b_keycloak() {
         -c environment.TOBBY_SAML_ACS_URL="$_tobby/auth/saml/acs" \
         -c oci.entrypoint="/opt/keycloak/bin/kc.sh start-dev --import-realm" >/dev/null ||
         fail "creating the Keycloak container from $_image@$_digest"
+    # shellcheck disable=SC2015 # any step of the chain failing is the failure: fail is meant to run
     inc file push "$WORK/$_idp.incus.crt" "$_idp/opt/keycloak/conf/tls.crt" >/dev/null &&
     inc file push "$WORK/$_idp.incus.key" "$_idp/opt/keycloak/conf/tls.key" >/dev/null &&
     inc file push --create-dirs "$ROOT/test/keycloak/realm/tobby-realm.json" \

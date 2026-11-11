@@ -86,6 +86,7 @@ done
 truncate -s 1G "$MEDIUM_IMG"
 MEDIUM_DEV=$(losetup -f --show "$MEDIUM_IMG")
 inc config device add "$CONNECTED" medium unix-block source="$MEDIUM_DEV" path=/dev/sdb
+# shellcheck disable=SC2016 # expanded by the node's shell, not by this one
 inc exec "$CONNECTED" -- sh -c '
     n=0
     until apk add --no-cache e2fsprogs util-linux >/dev/null 2>&1; do
@@ -102,7 +103,7 @@ check "the medium ($MEDIUM_DEV) is a real block device, formatted and mounted on
 SOURCE_IP=$(instance_ip "$SOURCE")
 DEST_IP=$(instance_ip "$DEST")
 CONNECTED_IP=$(instance_ip "$CONNECTED")
-ISOLATED_IP=$(instance_ip "$ISOLATED")
+instance_ip "$ISOLATED" >/dev/null # waits until the node has its address
 if inc exec "$ISOLATED" -- wget -q -T 5 -O /dev/null "http://$SOURCE_IP:8080/healthz" >/dev/null 2>&1; then
     fail "the isolated node reached the connected zone: there is no air gap to rehearse"
 fi
@@ -268,6 +269,7 @@ jq -e '.recipes[] | select(.name == "lab-app") | .pushable == true and .assuranc
 check "FR-037: with a scope of its own the destination admits lab-app under ITS marker (dest-lab), the source's claim (lab) beside it"
 
 # -- 7. A manifest that claims nothing hides nothing --------------------------------------------
+# shellcheck disable=SC2016 # expanded by the node's shell, not by this one
 inc exec "$ISOLATED" -- sh -c '
     f=/media/tobby/store/meta/media.json
     jq "del(.recipes[].assurance)" "$f" >"$f.new" && mv "$f.new" "$f"

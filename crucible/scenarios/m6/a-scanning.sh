@@ -130,6 +130,7 @@ check "tooling: jq, oras, cosign; Trivy $TRIVY_VERSION checked twice; database f
 release_leftovers
 for spec in "tbc-m6a-source tbc-connected-node" "tbc-m6a-connected tbc-connected-node" \
             "tbc-m6a-dest tbc-airgap-node" "tbc-m6a-isolated tbc-airgap-node" "tbc-m6a-zone tbc-airgap-node"; do
+    # shellcheck disable=SC2086 # split on purpose: one "<instance> <profile>" pair per word list
     set -- $spec
     inc launch "$IMAGE" "$1" --profile "$2" \
         -c security.syscalls.intercept.mount=true \
@@ -141,6 +142,7 @@ for inst in $INSTANCES; do
     inc file push "$WORK/tobby" "$inst/usr/bin/tobby" >/dev/null
     inc exec "$inst" -- chmod +x /usr/bin/tobby
 done
+# shellcheck disable=SC2016 # expanded by the node's shell, not by this one
 inc exec tbc-m6a-connected -- sh -c '
     n=0
     until apk add --no-cache e2fsprogs >/dev/null 2>&1; do
@@ -174,12 +176,12 @@ DB_DIG=$(seed push-trivy-db "$S/ghcr.io/aquasecurity/trivy-db:2" "$WORK/db.tar.g
 TRIVY_DIG=$(seed push-fileset "$S/ghcr.io/aquasecurity/trivy:$TRIVY_VERSION" "$WORK/trivy-fileset") || fail "publishing the scanner FileSet"
 VULN_DIG=$(seed push-vulnerable "$S/docker.io/example/vulnerable:1.0") || fail "publishing the vulnerable image"
 CLEAN_DIG=$(seed push "$S/docker.io/example/clean:1.0") || fail "publishing the clean image"
-( cd "$WORK" && COSIGN_PASSWORD= "$COSIGN" generate-key-pair >/dev/null 2>&1 ) || fail "generating the signing key pair"
+( cd "$WORK" && COSIGN_PASSWORD='' "$COSIGN" generate-key-pair >/dev/null 2>&1 ) || fail "generating the signing key pair"
 
 publish() { # <name> <yaml>
     printf '%s\n' "$2" >"$WORK/recipe-$1.yaml"
     dgst=$(seed push-recipe "$S/cookbook/$1:1.0.0" "$WORK/recipe-$1.yaml") || fail "publishing recipe $1"
-    COSIGN_PASSWORD= "$COSIGN" sign --key "$WORK/cosign.key" --yes --allow-insecure-registry \
+    COSIGN_PASSWORD='' "$COSIGN" sign --key "$WORK/cosign.key" --yes --allow-insecure-registry \
         --use-signing-config=false --new-bundle-format=false --tlog-upload=false \
         "$S/cookbook/$1@$dgst" >/dev/null 2>&1 || fail "signing recipe $1"
 }
@@ -202,6 +204,7 @@ spec:
       digest: $DB_DIG
       artifactType: application/vnd.aquasec.trivy.config.v1+json"
 for pair in "vulnerable $VULN_DIG" "clean $CLEAN_DIG"; do
+    # shellcheck disable=SC2086 # split on purpose: one "<name> <digest>" pair
     set -- $pair
     publish "$1" "apiVersion: recipe.tobby.dev/v1alpha1
 kind: Recipe

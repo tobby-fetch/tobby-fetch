@@ -49,7 +49,7 @@ c_launch() {
 # -- signing ------------------------------------------------------------------
 # c_keypair <name>: $WORK/<name>.key and $WORK/<name>.pub.
 c_keypair() {
-    ( cd "$WORK" && mkdir -p "k-$1" && cd "k-$1" && COSIGN_PASSWORD= "$COSIGN" generate-key-pair >/dev/null 2>&1 ) ||
+    ( cd "$WORK" && mkdir -p "k-$1" && cd "k-$1" && COSIGN_PASSWORD='' "$COSIGN" generate-key-pair >/dev/null 2>&1 ) ||
         fail "generating key pair $1"
     cp "$WORK/k-$1/cosign.key" "$WORK/$1.key"
     cp "$WORK/k-$1/cosign.pub" "$WORK/$1.pub"
@@ -58,7 +58,7 @@ c_keypair() {
 # c_sign <keyname> <ref@digest>: a cosign attached signature (RECIPE-SPEC
 # §12.2), the layout Tobby reads and re-verifies.
 c_sign() {
-    COSIGN_PASSWORD= "$COSIGN" sign --key "$WORK/$1.key" --yes --allow-insecure-registry \
+    COSIGN_PASSWORD='' "$COSIGN" sign --key "$WORK/$1.key" --yes --allow-insecure-registry \
         --use-signing-config=false --new-bundle-format=false --tlog-upload=false "$2" >/dev/null 2>&1
 }
 

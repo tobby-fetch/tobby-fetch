@@ -68,6 +68,7 @@ b_keycloak "$IDP" "$TOBBY"
 inc stop --force "$IDP" >/dev/null 2>&1 || true
 inc delete --force "$NODE" 2>/dev/null || true
 inc launch "${CRUCIBLE_IMAGE:-images:alpine/3.24}" "$NODE" --profile tbc-connected-node >/dev/null
+# shellcheck disable=SC2016 # expanded by the node's shell, not by this one
 inc exec "$NODE" -- sh -c '
     n=0
     until apk add --no-cache curl >/dev/null 2>&1; do
@@ -237,6 +238,7 @@ SHORT=$(inc exec "$NODE" -- curl -fsS --cacert /etc/tobby/ca.crt -u "$ADMIN:$ADM
 sleep 25
 code=$(inc exec "$NODE" -- curl -s --cacert /etc/tobby/ca.crt -o /tmp/expired.json -w '%{http_code}' \
     -H "Authorization: Bearer $SHORT" "$TOBBY/api/v1/tasks")
+# shellcheck disable=SC2015 # any step of the chain failing is the failure: fail is meant to run
 [ "$code" = 401 ] && inc exec "$NODE" -- grep -q TBY-AUTH-013 /tmp/expired.json ||
     fail "the expired token answered $code without TBY-AUTH-013"
 inc exec "$NODE" -- grep -q '"action":"token.expire"' "$LOG" || fail "no token.expire record"
