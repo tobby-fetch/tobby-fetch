@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -452,9 +453,9 @@ func TestOIDCProviderDown(t *testing.T) {
 func TestPendingTableBounded(t *testing.T) {
 	var tab pendingTable
 	now := time.Now()
-	first := tab.put(&pending{}, now)
+	first := tab.put(&pending{}, "", now)
 	for i := range pendingCap + 10 {
-		tab.put(&pending{}, now.Add(time.Duration(i+1)*time.Millisecond))
+		tab.put(&pending{}, fmt.Sprint(i), now.Add(time.Duration(i+1)*time.Millisecond))
 	}
 	if n := len(tab.m); n > pendingCap {
 		t.Errorf("table holds %d entries, cap %d", n, pendingCap)
@@ -462,7 +463,7 @@ func TestPendingTableBounded(t *testing.T) {
 	if _, ok := tab.peek(first, now); ok {
 		t.Error("the oldest entry survived the cap")
 	}
-	k := tab.put(&pending{}, now)
+	k := tab.put(&pending{}, "", now)
 	if _, ok := tab.take(k, now.Add(pendingTTL+time.Second)); ok {
 		t.Error("an expired entry was returned")
 	}
@@ -530,4 +531,74 @@ func TestOIDCKeyIsTheSubject(t *testing.T) {
 		return "RS256", c
 	})
 	wantCode(t, err, taxonomy.CodeFederatedNoRole, "role-mapping")
+}
+
+// TestSignInFloodSparesOtherSignIns: unauthenticated requests start
+// sign-ins, and each holds an entry until it completes. A flood from one
+// network origin — more starts than the table holds — must neither evict
+// a sign-in another person has in flight nor go on unbounded: past its
+// budget, the origin is refused with TBY-AUTH-018 (B-049).
+func TestSignInFloodSparesOtherSignIns(t *testing.T) {
+	op := newFakeOP(t)
+	svc := oidcService(t, op.srv.URL, nil)
+	person := WithOrigin(context.Background(), "192.0.2.10")
+	a, b, err := svc.BeginOIDC(person, "/tasks")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	flood := WithOrigin(context.Background(), "198.51.100.66")
+	var throttled int
+	for range pendingCap + 100 {
+		_, _, err := svc.BeginOIDC(flood, "/")
+		var f *Failure
+		switch {
+		case err == nil:
+		case errors.As(err, &f) && f.Code == taxonomy.CodeFederatedThrottled:
+			throttled++
+		default:
+			t.Fatalf("flood start: %v", err)
+		}
+	}
+	if throttled == 0 {
+		t.Error("an origin started sign-ins without bound")
+	}
+	if res, err := svc.CompleteOIDC(person, op.authorize(t, a), b); err != nil {
+		t.Fatalf("the person's sign-in did not survive the flood: %v", err)
+	} else if res.Role == "" {
+		t.Fatalf("result = %+v", res)
+	}
+}
+
+// TestPendingTableBoundsEachOrigin: whatever its rate, one origin holds at
+// most pendingPerOrigin entries, and a full table evicts from the origin
+// that holds the most — never the lone sign-in of another.
+func TestPendingTableBoundsEachOrigin(t *testing.T) {
+	var tab pendingTable
+	now := time.Now()
+	lone := tab.put(&pending{}, "192.0.2.10", now)
+	for i := range pendingCap + 100 {
+		tab.put(&pending{}, "198.51.100.66", now.Add(time.Duration(i+1)*time.Millisecond))
+	}
+	if _, ok := tab.peek(lone, now); !ok {
+		t.Fatal("one origin's flood evicted another origin's sign-in")
+	}
+	held := 0
+	for _, e := range tab.m {
+		if e.origin == "198.51.100.66" {
+			held++
+		}
+	}
+	if held > pendingPerOrigin {
+		t.Errorf("one origin holds %d entries; bound %d", held, pendingPerOrigin)
+	}
+	// As many origins as the table holds, one entry each: the cap still
+	// holds (the per-origin bound protects against one origin, or a few,
+	// not against thousands).
+	for i := range pendingCap + 100 {
+		tab.put(&pending{}, fmt.Sprintf("203.0.113.%d/%d", i%200, i), now.Add(time.Second+time.Duration(i)*time.Millisecond))
+	}
+	if n := len(tab.m); n > pendingCap {
+		t.Errorf("table holds %d entries, cap %d", n, pendingCap)
+	}
 }

@@ -71,6 +71,10 @@
 "TBY-AUTH-017.cause": "None of the groups the identity provider sent for your account is mapped to a role on this instance. Tobby never grants a role by default."
 "TBY-AUTH-017.action": "Ask an administrator to add one of your groups to the role mapping of the instance configuration (`roles.viewer`, `roles.operator` or `roles.admin` under the provider's section), or to add you to a group already mapped."
 
+"TBY-AUTH-018.what": "Too many sign-ins through {{.provider}} were started from your network address; starting another is temporarily refused."
+"TBY-AUTH-018.cause": "Every sign-in started holds a little memory on this instance until it completes, and may contact the identity provider, before anyone is authenticated. The instance bounds how often one network address may start one, so that a flood from one address can never push out the sign-ins other people have in flight."
+"TBY-AUTH-018.action": "Wait a few seconds and sign in again — once. If this is a shared egress address, another client behind it may be looping on the sign-in page."
+
 "TBY-CFG-001.what": "The configuration is invalid."
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Fix the reported setting (precedence: flags, then TOBBY_* environment variables, then the YAML file), check the result with `tobby config dump`, then restart."

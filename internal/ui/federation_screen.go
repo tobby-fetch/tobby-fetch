@@ -19,6 +19,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
+	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
@@ -98,7 +100,7 @@ func bindingCookie(r *http.Request) string {
 // oidcLogin serves GET /auth/oidc/login: send the browser to the provider.
 func (u *UI) oidcLogin(w http.ResponseWriter, r *http.Request) {
 	next := sanitizeNext(r.URL.Query().Get("next"))
-	target, secret, err := u.federation.BeginOIDC(r.Context(), next)
+	target, secret, err := u.federation.BeginOIDC(federation.WithOrigin(r.Context(), auth.ClientOrigin(r)), next)
 	if err != nil {
 		u.federatedRefusal(w, r, auth.MethodOIDC, next, err)
 		return
@@ -148,6 +150,15 @@ func (u *UI) federatedRefusal(w http.ResponseWriter, r *http.Request, method aut
 	if !errors.As(err, &f) {
 		f = &federation.Failure{Code: taxonomy.CodeInternal, Provider: string(method), Check: "internal", Cause: err}
 	}
+	if f.Code == taxonomy.CodeFederatedThrottled {
+		// Nothing was attempted: no audit record, no log line per refused
+		// request (the federation package logs the passage into
+		// throttling once) — a flood must not become a log flood.
+		w.Header().Set("Retry-After", strconv.Itoa(int(u.federation.RetryAfter()/time.Second)))
+		ev := errView(requestLang(r), f.Taxonomy())
+		u.renderLogin(w, r, ev.Status, next, ev)
+		return
+	}
 	outcome := audit.OutcomeDenied
 	if f.Code == taxonomy.CodeIDPUnreachable {
 		outcome = audit.OutcomeFailure
@@ -186,7 +197,7 @@ func (u *UI) renderLogin(w http.ResponseWriter, r *http.Request, status int, nex
 // an AuthnRequest this instance will remember (SP-initiated only).
 func (u *UI) samlLogin(w http.ResponseWriter, r *http.Request) {
 	next := sanitizeNext(r.URL.Query().Get("next"))
-	target, secret, err := u.federation.BeginSAML(r.Context(), next)
+	target, secret, err := u.federation.BeginSAML(federation.WithOrigin(r.Context(), auth.ClientOrigin(r)), next)
 	if err != nil {
 		u.federatedRefusal(w, r, auth.MethodSAML, next, err)
 		return

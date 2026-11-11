@@ -233,6 +233,13 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 - **Action corrective :** Demandez à un administrateur d'ajouter l'un de vos groupes à la correspondance des rôles de la configuration (`roles.viewer`, `roles.operator` ou `roles.admin` dans la section du fournisseur), ou de vous ajouter à un groupe déjà associé.
 - **Remédiable hors-ligne :** oui · **Bloque :** la tentative de connexion
 
+### TBY-AUTH-018
+
+- **Quoi :** Trop de connexions par `<provider>` ont été entamées depuis votre adresse réseau ; en entamer une autre est temporairement refusé.
+- **Cause probable :** Chaque connexion entamée retient un peu de mémoire sur cette instance jusqu'à son terme, et peut contacter le fournisseur d'identité, avant que quiconque soit authentifié. L'instance borne la fréquence à laquelle une même adresse réseau peut en entamer, pour qu'un afflux depuis une adresse ne chasse jamais les connexions que d'autres personnes ont en cours.
+- **Action corrective :** Patientez quelques secondes puis reconnectez-vous — une fois. S'il s'agit d'une adresse de sortie partagée, un autre client derrière elle boucle peut-être sur la page de connexion.
+- **Remédiable hors-ligne :** oui · **Bloque :** l'ouverture d'une connexion fédérée depuis cette adresse, quelques secondes ; les comptes locaux et les tokens ne sont pas touchés
+
 ## Configuration (TBY-CFG)
 
 ### TBY-CFG-001

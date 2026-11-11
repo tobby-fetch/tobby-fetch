@@ -28,6 +28,14 @@ sign-in is refused, whatever it contains. After sign-in, the browser
 lands on the page it asked for, through the same anti-open-redirect check
 as the local form.
 
+Starting a sign-in is unauthenticated and holds server memory until the
+round trip ends, so it is bounded **per network address**: a burst of 30
+starts, then one every 2 seconds, refused beyond with **TBY-AUTH-018**
+(HTTP 429, `Retry-After`); and one address holds at most 32 sign-ins in
+flight, losing its own oldest beyond. A flood from one address therefore
+never pushes out the sign-ins other people have in progress. Local
+accounts and tokens are untouched.
+
 **Identity key and display name.** A federated identity is keyed on what
 the provider guarantees stable — the OIDC `sub`, the SAML persistent
 `NameID` — as `oidc:<sub>` or `saml:<NameID>`: never confused with a local
@@ -210,5 +218,6 @@ startup if they resolve inside the transportable store
 | TBY-AUTH-015 | The SAML response was refused | same log line: `in-response-to`, `signature`, `audience`, `destination`, `issuer`, `clock`, `replay` |
 | TBY-AUTH-016 | The provider cannot be reached | proxy and private CA settings, the provider's availability; local sign-in works meanwhile |
 | TBY-AUTH-017 | Signed in, but no role | the person's groups against `roles`; group names are case-sensitive |
+| TBY-AUTH-018 | Too many sign-ins started from one address | a client looping on the sign-in page, or a flood; the "federated sign-in starts throttled" log line names the origin once |
 
 See the [error reference](../../reference/errors/) for every code.

@@ -288,6 +288,14 @@ starting with `v0.1.0`.
   Beyond one hour of tolerated skew it is now stale, with a code of its
   own (`TBY-SCN-008`), on the report, the banner, the indicator and the
   metric, and refused under `scan.maxDbAgeAction: block`.
+- **A flood of sign-in starts no longer evicts other people's sign-ins**
+  (B-049). Each unauthenticated `GET /auth/oidc/login` or
+  `/auth/saml/login` adds an entry to a table bounded at 4096 that evicted
+  its oldest entry: 4096 requests pushed out every federated sign-in in
+  flight. Starts are now rate-limited per network origin (burst 30, then
+  one every 2 s, refused with the new `TBY-AUTH-018`, HTTP 429), one
+  origin holds at most 32 entries, and a full table evicts from the origin
+  holding the most.
 
 ## [0.5.2] - 2026-11-09
 

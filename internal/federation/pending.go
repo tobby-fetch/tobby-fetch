@@ -31,10 +31,22 @@ const (
 	// captured state is worthless soon after.
 	pendingTTL = 10 * time.Minute
 	// pendingCap bounds the table, which unauthenticated requests fill
-	// (every GET /auth/oidc/login adds an entry): beyond it the oldest
-	// entry goes, so an attacker filling the table costs legitimate users
-	// at most a restart of their sign-in, never memory.
+	// (every GET /auth/oidc/login adds an entry), so it is never a memory
+	// sink.
 	pendingCap = 4096
+	// pendingPerOrigin bounds what one network origin holds in the table:
+	// beyond it, that origin's own oldest sign-in goes. With the start
+	// rate bounded per origin too (startBurst, startRefill), one origin
+	// filling the table evicts only its own entries — never the sign-ins
+	// other people have in flight (B-049). When the table is full anyway,
+	// the entry evicted is the oldest of the origin holding the most.
+	pendingPerOrigin = 32
+	// startBurst and startRefill bound how fast one origin may start
+	// federated sign-ins: a person clicks the button a few times, a flood
+	// is refused with TBY-AUTH-018 before it costs memory or a request to
+	// the identity provider.
+	startBurst  = 30
+	startRefill = 2 * time.Second
 )
 
 // pending is one sign-in in flight.
@@ -56,6 +68,9 @@ type pending struct {
 	asserted *Result
 	expires  time.Time
 	created  time.Time
+	// origin is the client network origin that started the sign-in
+	// (auth.ClientOrigin), the key of the per-origin bound.
+	origin string
 }
 
 // pendingTable is the bounded, expiring table of sign-ins in flight. Safe
@@ -65,28 +80,52 @@ type pendingTable struct {
 	m  map[string]*pending
 }
 
-// put stores p under a fresh random key and returns the key.
-func (t *pendingTable) put(p *pending, now time.Time) string {
+// put stores p, started from origin, under a fresh random key and returns
+// the key. An origin at its bound loses its own oldest entry; a full
+// table loses the oldest entry of the origin that holds the most.
+func (t *pendingTable) put(p *pending, origin string, now time.Time) string {
 	key := randomString()
 	p.created = now
 	p.expires = now.Add(pendingTTL)
+	p.origin = origin
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.m == nil {
 		t.m = make(map[string]*pending)
 	}
 	t.sweepLocked(now)
-	if len(t.m) >= pendingCap {
-		oldest, at := "", now
-		for k, e := range t.m {
-			if e.created.Before(at) || oldest == "" {
-				oldest, at = k, e.created
+	count := map[string]int{}
+	for _, e := range t.m {
+		count[e.origin]++
+	}
+	switch {
+	case count[origin] >= pendingPerOrigin:
+		t.evictOldestLocked(origin)
+	case len(t.m) >= pendingCap:
+		heaviest, n := "", 0
+		for o, c := range count {
+			if c > n || c == n && o < heaviest {
+				heaviest, n = o, c
 			}
 		}
-		delete(t.m, oldest)
+		t.evictOldestLocked(heaviest)
 	}
 	t.m[key] = p
 	return key
+}
+
+// evictOldestLocked removes origin's oldest entry. Callers hold t.mu.
+func (t *pendingTable) evictOldestLocked(origin string) {
+	oldest := ""
+	var at time.Time
+	for k, e := range t.m {
+		if e.origin == origin && (oldest == "" || e.created.Before(at)) {
+			oldest, at = k, e.created
+		}
+	}
+	if oldest != "" {
+		delete(t.m, oldest)
+	}
 }
 
 // take removes and returns the live entry under key, if any — a key is

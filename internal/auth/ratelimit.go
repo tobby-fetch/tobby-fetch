@@ -53,6 +53,18 @@ var RetryAfter = strconv.Itoa(int(failureRefill / time.Second))
 type failureLimiter struct {
 	mu      sync.Mutex
 	buckets map[string]*failureBucket
+	// burst and refill override failureBurst and failureRefill when set
+	// (OriginLimiter); zero keeps the failed-authentication budget.
+	burst  float64
+	refill time.Duration
+}
+
+// budget is the limiter's burst and refill period.
+func (l *failureLimiter) budget() (float64, time.Duration) {
+	if l.burst > 0 && l.refill > 0 {
+		return l.burst, l.refill
+	}
+	return failureBurst, failureRefill
 }
 
 // failureBucket tracks one origin: how much failure budget remains, and
@@ -64,11 +76,11 @@ type failureBucket struct {
 }
 
 // refreshLocked applies the elapsed refill. Callers hold l.mu.
-func (b *failureBucket) refreshLocked(now time.Time) {
+func (b *failureBucket) refreshLocked(now time.Time, burst float64, refill time.Duration) {
 	if elapsed := now.Sub(b.updated); elapsed > 0 {
-		b.remaining += float64(elapsed) / float64(failureRefill)
-		if b.remaining > failureBurst {
-			b.remaining = failureBurst
+		b.remaining += float64(elapsed) / float64(refill)
+		if b.remaining > burst {
+			b.remaining = burst
 		}
 	}
 	b.updated = now
@@ -85,7 +97,8 @@ func (l *failureLimiter) allowed(origin string, now time.Time) bool {
 	if !ok {
 		return true
 	}
-	b.refreshLocked(now)
+	burst, refill := l.budget()
+	b.refreshLocked(now, burst, refill)
 	return b.remaining >= 1
 }
 
@@ -99,13 +112,14 @@ func (l *failureLimiter) record(origin string, now time.Time) bool {
 	if l.buckets == nil {
 		l.buckets = make(map[string]*failureBucket)
 	}
+	burst, refill := l.budget()
 	b, ok := l.buckets[origin]
 	if !ok {
 		l.sweepLocked(now)
-		b = &failureBucket{remaining: failureBurst, updated: now}
+		b = &failureBucket{remaining: burst, updated: now}
 		l.buckets[origin] = b
 	}
-	b.refreshLocked(now)
+	b.refreshLocked(now, burst, refill)
 	before := b.remaining
 	b.remaining--
 	if b.remaining < 0 {
@@ -124,13 +138,41 @@ func (l *failureLimiter) sweepLocked(now time.Time) {
 	if len(l.buckets) < failureOrigins {
 		return
 	}
+	burst, refill := l.budget()
 	for origin, b := range l.buckets {
-		b.refreshLocked(now)
-		if b.remaining >= failureBurst {
+		b.refreshLocked(now, burst, refill)
+		if b.remaining >= burst {
 			delete(l.buckets, origin)
 		}
 	}
 	if len(l.buckets) >= failureOrigins {
 		l.buckets = make(map[string]*failureBucket)
 	}
+}
+
+// OriginLimiter is the same per-origin token bucket, for another cost an
+// unauthenticated request can make the instance pay — starting a
+// federated sign-in, which fills server memory and may contact the
+// identity provider (federation package). Safe for concurrent use.
+type OriginLimiter struct{ l failureLimiter }
+
+// NewOriginLimiter allows burst requests per origin, then one per refill.
+func NewOriginLimiter(burst int, refill time.Duration) *OriginLimiter {
+	return &OriginLimiter{l: failureLimiter{burst: float64(burst), refill: refill}}
+}
+
+// Take spends one unit of origin's budget if any is left, and reports
+// whether it did. exhausted is true on the request that spent the last
+// unit — log that transition once, not every refused request.
+func (o *OriginLimiter) Take(origin string, now time.Time) (ok, exhausted bool) {
+	if !o.l.allowed(origin, now) {
+		return false, false
+	}
+	return true, o.l.record(origin, now)
+}
+
+// Refill is the refill period: the Retry-After a refused request gets.
+func (o *OriginLimiter) Refill() time.Duration {
+	_, refill := o.l.budget()
+	return refill
 }

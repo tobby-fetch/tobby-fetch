@@ -168,6 +168,10 @@ func (s *Service) BeginOIDC(ctx context.Context, next string) (redirect, binding
 	if p == nil {
 		return "", "", errors.New("federation: OIDC is not enabled")
 	}
+	origin, err := s.admitStart(ctx, auth.MethodOIDC, p.name)
+	if err != nil {
+		return "", "", err
+	}
 	if !s.isReachable(auth.MethodOIDC) {
 		// Known down: look again before sending the person to a provider
 		// that will not answer — the button is also the retry, so a
@@ -199,7 +203,7 @@ func (s *Service) BeginOIDC(ctx context.Context, next string) (redirect, binding
 		nonce:    randomString(),
 		verifier: oauth2.GenerateVerifier(),
 	}
-	state := s.pending.put(e, s.now())
+	state := s.pending.put(e, origin, s.now())
 	u := p.oauth2Config(prov).AuthCodeURL(state,
 		oauth2.S256ChallengeOption(e.verifier),
 		oidc.Nonce(e.nonce))

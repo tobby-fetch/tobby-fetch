@@ -30,6 +30,15 @@ refusée, quel que soit son contenu. Après connexion, le navigateur arrive
 sur la page demandée, via le même contrôle anti-redirection-ouverte que
 le formulaire local.
 
+Entamer une connexion se fait sans authentification et retient de la
+mémoire côté serveur jusqu'à la fin de l'aller-retour ; c'est donc borné
+**par adresse réseau** : une rafale de 30 ouvertures, puis une toutes les
+2 secondes, refusées au-delà avec **TBY-AUTH-018** (HTTP 429,
+`Retry-After`) ; et une adresse garde au plus 32 connexions en cours, en
+perdant sa plus ancienne au-delà. Un afflux depuis une adresse ne chasse
+donc jamais les connexions que d'autres personnes ont en cours. Les
+comptes locaux et les jetons ne sont pas touchés.
+
 **Clé d'identité et nom affiché.** Une identité fédérée a pour clé ce que
 le fournisseur garantit stable — le `sub` OIDC, le `NameID` SAML
 persistant — sous la forme `oidc:<sub>` ou `saml:<NameID>` : jamais
@@ -224,5 +233,6 @@ transportable ([secrets](../secrets/)).
 | TBY-AUTH-015 | La réponse SAML a été refusée | même ligne : `in-response-to`, `signature`, `audience`, `destination`, `issuer`, `clock`, `replay` |
 | TBY-AUTH-016 | Le fournisseur est injoignable | réglages proxy et AC privée, disponibilité du fournisseur ; la connexion locale fonctionne pendant ce temps |
 | TBY-AUTH-017 | Connecté, mais sans rôle | les groupes de la personne face à `roles` ; les noms de groupes sont sensibles à la casse |
+| TBY-AUTH-018 | Trop de connexions entamées depuis une adresse | un client qui boucle sur la page de connexion, ou un afflux ; la ligne de journal « federated sign-in starts throttled » nomme l'origine une fois |
 
 Voir la [référence des erreurs](../../reference/errors/) pour tous les codes.

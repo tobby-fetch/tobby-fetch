@@ -157,6 +157,8 @@ type Service struct {
 	now      func() time.Time
 	client   *http.Client
 	pending  pendingTable
+	// starts bounds how fast one origin starts sign-ins (B-049).
+	starts *auth.OriginLimiter
 
 	oidc *oidcProvider
 	saml *samlProvider
@@ -177,6 +179,7 @@ func New(opts *Options) (*Service, error) {
 		observer:  opts.Observer,
 		now:       opts.Now,
 		reachable: map[auth.Method]bool{},
+		starts:    auth.NewOriginLimiter(startBurst, startRefill),
 	}
 	if opts.Client != nil {
 		// Same transport, but no redirect is followed: every request goes
@@ -340,6 +343,46 @@ type statusError struct {
 }
 
 func (e *statusError) Error() string { return fmt.Sprintf("%s answered HTTP %d", e.url, e.code) }
+
+// originKey carries the client network origin of a request into the
+// sign-in it starts.
+type originKey struct{}
+
+// WithOrigin returns ctx carrying the client network origin of the
+// request (auth.ClientOrigin) — what BeginOIDC and BeginSAML bound the
+// rate and the in-flight sign-ins of. A context without one shares the
+// bucket of every other such context.
+func WithOrigin(ctx context.Context, origin string) context.Context {
+	return context.WithValue(ctx, originKey{}, origin)
+}
+
+func originOf(ctx context.Context) string {
+	o, _ := ctx.Value(originKey{}).(string)
+	return o
+}
+
+// admitStart spends one unit of the origin's start budget, or refuses the
+// sign-in with TBY-AUTH-018 — before anything is stored or any provider
+// contacted. The origin's passage into throttling is logged once.
+func (s *Service) admitStart(ctx context.Context, m auth.Method, provider string) (string, error) {
+	origin := originOf(ctx)
+	ok, exhausted := s.starts.Take(origin, s.now())
+	if exhausted {
+		s.logger.LogAttrs(ctx, slog.LevelWarn, "federated sign-in starts throttled",
+			slog.String("origin", origin), slog.String("method", string(m)),
+			slog.String("retry_after", s.starts.Refill().String()),
+			slog.String("code", string(taxonomy.CodeFederatedThrottled)))
+	}
+	if !ok {
+		return origin, &Failure{Code: taxonomy.CodeFederatedThrottled, Provider: provider, Check: "start-rate",
+			Cause: errors.New("too many sign-ins started from origin " + origin)}
+	}
+	return origin, nil
+}
+
+// RetryAfter is how long a throttled origin should wait before starting a
+// sign-in again, for the Retry-After header.
+func (s *Service) RetryAfter() time.Duration { return s.starts.Refill() }
 
 // unreachableFailure builds the TBY-AUTH-016 refusal and records the
 // provider down.

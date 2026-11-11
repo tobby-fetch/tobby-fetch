@@ -198,6 +198,13 @@ its published rendering.
 - **Corrective action:** Ask an administrator to add one of your groups to the role mapping of the instance configuration (`roles.viewer`, `roles.operator` or `roles.admin` under the provider's section), or to add you to a group already mapped.
 - **Fixable offline:** yes · **Blocks:** the sign-in attempt
 
+### TBY-AUTH-018
+
+- **What happened:** Too many sign-ins through `<provider>` were started from your network address; starting another is temporarily refused.
+- **Probable cause:** Every sign-in started holds a little memory on this instance until it completes, and may contact the identity provider, before anyone is authenticated. The instance bounds how often one network address may start one, so that a flood from one address can never push out the sign-ins other people have in flight.
+- **Corrective action:** Wait a few seconds and sign in again — once. If this is a shared egress address, another client behind it may be looping on the sign-in page.
+- **Fixable offline:** yes · **Blocks:** starting a federated sign-in from that address, for a few seconds; local accounts and tokens are not affected
+
 ## Configuration (TBY-CFG)
 
 ### TBY-CFG-001

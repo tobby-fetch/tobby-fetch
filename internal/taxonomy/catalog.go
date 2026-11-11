@@ -89,6 +89,13 @@ const (
 	// matches no group of the role mapping (FR-074): refused, never
 	// defaulted to viewer.
 	CodeFederatedNoRole Code = "TBY-AUTH-017"
+	// CodeFederatedThrottled refuses a federated sign-in started too often
+	// from one network origin (B-049): every start holds server memory for
+	// the round trip and may contact the identity provider, and it is
+	// unauthenticated, so its rate is bounded per origin like failed
+	// authentications (TBY-AUTH-012). Operational, parameter-free but for
+	// the provider name.
+	CodeFederatedThrottled Code = "TBY-AUTH-018"
 
 	// CodeConfigInvalid is a rejected configuration (FR-003 validation).
 	CodeConfigInvalid Code = "TBY-CFG-001"
@@ -446,11 +453,12 @@ var catalog = map[Code]Entry{
 	CodeLastAdmin:       {Code: CodeLastAdmin, Class: ClassPolicy, HTTPStatus: http.StatusConflict, Params: []string{"name"}},
 	CodeAuthRateLimited: {Code: CodeAuthRateLimited, Class: ClassOperational, HTTPStatus: http.StatusTooManyRequests},
 
-	CodeTokenExpired:    {Code: CodeTokenExpired, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized},
-	CodeOIDCFailed:      {Code: CodeOIDCFailed, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized, Params: []string{"provider"}},
-	CodeSAMLFailed:      {Code: CodeSAMLFailed, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized, Params: []string{"provider"}},
-	CodeIDPUnreachable:  {Code: CodeIDPUnreachable, Class: ClassOperational, HTTPStatus: http.StatusBadGateway, Params: []string{"provider"}},
-	CodeFederatedNoRole: {Code: CodeFederatedNoRole, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"provider"}},
+	CodeTokenExpired:       {Code: CodeTokenExpired, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized},
+	CodeOIDCFailed:         {Code: CodeOIDCFailed, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized, Params: []string{"provider"}},
+	CodeSAMLFailed:         {Code: CodeSAMLFailed, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized, Params: []string{"provider"}},
+	CodeIDPUnreachable:     {Code: CodeIDPUnreachable, Class: ClassOperational, HTTPStatus: http.StatusBadGateway, Params: []string{"provider"}},
+	CodeFederatedNoRole:    {Code: CodeFederatedNoRole, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"provider"}},
+	CodeFederatedThrottled: {Code: CodeFederatedThrottled, Class: ClassOperational, HTTPStatus: http.StatusTooManyRequests, Params: []string{"provider"}},
 
 	CodeConfigInvalid: {Code: CodeConfigInvalid, Class: ClassOperational, Params: []string{"detail"}},
 	// Never served over HTTP: the instance refuses to start, so there is

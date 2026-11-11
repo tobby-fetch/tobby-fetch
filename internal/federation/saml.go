@@ -353,6 +353,10 @@ func (s *Service) BeginSAML(ctx context.Context, next string) (redirect, binding
 	if p == nil {
 		return "", "", errors.New("federation: SAML is not enabled")
 	}
+	origin, err := s.admitStart(ctx, auth.MethodSAML, p.name)
+	if err != nil {
+		return "", "", err
+	}
 	sp, err := s.samlReady(ctx)
 	if err != nil {
 		return "", "", err
@@ -365,7 +369,7 @@ func (s *Service) BeginSAML(ctx context.Context, next string) (redirect, binding
 	binding = randomString()
 	relay := s.pending.put(&pending{
 		method: auth.MethodSAML, binding: bindingOf(binding), next: next, requestID: req.ID,
-	}, s.now())
+	}, origin, s.now())
 	u, err := req.Redirect(relay, sp)
 	if err != nil {
 		return "", "", p.fail("authn-request", err)
