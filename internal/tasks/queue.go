@@ -204,6 +204,13 @@ func WithLayout(l *Layout) TaskOption {
 	}
 }
 
+// WithOrigin records where the request for the task came from (a client
+// address, or "local"), for the audit event a finished task writes
+// (FR-094): the request is long gone by then.
+func WithOrigin(origin string) TaskOption {
+	return func(t *Task) { t.Origin = origin }
+}
+
 // WithPrune states what this synchronization does about content the
 // resolved Retriever no longer references (FR-045). Explicit at every
 // call site on purpose: a removal that happens because nobody passed an
@@ -306,6 +313,28 @@ func (q *Queue) HasPending(taskType string) bool {
 		}
 	}
 	return false
+}
+
+// ActiveOfType returns the identifier of a pending or running task of the
+// given type, and whether there is one. It is how a type that runs one at
+// a time (the FR-057 verification) tells a second request to wait for the
+// first, instead of queueing a duplicate behind it.
+func (q *Queue) ActiveOfType(taskType string) (string, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	var newest *Task
+	for _, t := range q.tasks {
+		if t.Type != taskType || !t.Active() {
+			continue
+		}
+		if newest == nil || t.Created.After(newest.Created) {
+			newest = t
+		}
+	}
+	if newest == nil {
+		return "", false
+	}
+	return newest.ID, true
 }
 
 // Start runs the worker until ctx is canceled. A task interrupted by
@@ -475,6 +504,8 @@ func (t *Task) clone() *Task {
 	cp.Items = cloneItems(t.Items)
 	cp.ChartDependencies = append([]ChartDependency(nil), t.ChartDependencies...)
 	cp.Resolutions = append([]Resolution(nil), t.Resolutions...)
+	// Verification is set whole by its runner and never mutated in place,
+	// so the working copy and the published task may share it.
 	return &cp
 }
 
@@ -495,6 +526,7 @@ func (q *Queue) publish(dst, src *Task) {
 	dst.Items = cloneItems(src.Items)
 	dst.ChartDependencies = append([]ChartDependency(nil), src.ChartDependencies...)
 	dst.Resolutions = append([]Resolution(nil), src.Resolutions...)
+	dst.Verification = src.Verification
 	q.persist(dst)
 }
 

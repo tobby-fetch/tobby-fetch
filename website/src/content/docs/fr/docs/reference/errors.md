@@ -904,42 +904,42 @@ remet quand même ses recipes intactes.
 
 ## Intégrité du store (TBY-INT)
 
-Réservés à l'ouverture du jalon 6 (FR-057) : une vérification à la demande constate, elle ne répare ni ne supprime jamais rien.
+Levés par la vérification d'intégrité à la demande (FR-057) : `tobby store verify`, l'écran Intégrité du store et `POST /api/v1/store/verify`. Une vérification constate ; elle ne répare ni ne supprime jamais rien. Un blob endommagé, un manifest incomplet et un manifest illisible sont des défauts de la classe vérification (sortie 4) ; le contenu orphelin est une note qui ne bloque rien. Une recipe dont la signature ne se vérifie plus réutilise [TBY-SIG-001](#tby-sig-001), qui nomme le périmètre de confiance.
 
 ### TBY-INT-001
 
 - **Quoi :** Le blob `<path>` ne correspond pas à son digest.
 - **Cause probable :** Son contenu donne `<actual>` au lieu de `<expected>` : le fichier a été endommagé ou modifié sur le disque.
 - **Action corrective :** La vérification ne modifie rien. Re-synchronisez les recipes qui atteignent ce blob pour le récupérer à nouveau, ou restaurez le store depuis une copie saine ; vérifiez le disque.
-- **Remédiable hors-ligne :** selon : re-télécharger demande une source ; restaurer une copie non · **Bloque :** rien — le rapport le constate · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** selon : re-télécharger demande une source ; restaurer une copie non · **Bloque :** rien — le rapport le constate
 
 ### TBY-INT-002
 
 - **Quoi :** `<reference>` est incomplet dans le store.
 - **Cause probable :** Il référence un contenu absent du store : `<missing>`.
 - **Action corrective :** Re-synchronisez la recipe qui l'atteint pour récupérer le contenu manquant, ou restaurez le store depuis une copie saine.
-- **Remédiable hors-ligne :** selon : re-télécharger demande une source ; restaurer une copie non · **Bloque :** rien — le rapport le constate · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** selon : re-télécharger demande une source ; restaurer une copie non · **Bloque :** rien — le rapport le constate
 
 ### TBY-INT-003
 
 - **Quoi :** `<path>` n'est atteint par aucune recipe.
 - **Cause probable :** Aucune recipe enregistrée ni aucune racine protégée (imports unitaires, base de vulnérabilités, contenu amorcé) n'atteint ce contenu.
 - **Action corrective :** Rien n'est requis. Pour récupérer l'espace, élaguez selon le Retriever ou retirez la recipe qui le portait ; la vérification elle-même ne supprime jamais rien.
-- **Remédiable hors-ligne :** oui · **Bloque :** rien · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui · **Bloque :** rien
 
 ### TBY-INT-004
 
 - **Quoi :** Une vérification du store est déjà en cours.
 - **Cause probable :** La vérification `<task>` parcourt le store ; en lancer deux à la fois diviserait leur débit par deux sans rien apprendre de plus.
 - **Action corrective :** Suivez la vérification en cours sur l'écran des tâches, ou attendez sa fin pour en lancer une nouvelle.
-- **Remédiable hors-ligne :** oui · **Bloque :** la requête · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui · **Bloque :** la requête
 
 ### TBY-INT-005
 
 - **Quoi :** `<path>` ne peut pas être lu comme un manifest.
 - **Cause probable :** `<detail>`
 - **Action corrective :** Re-synchronisez la recipe qui l'atteint, ou restaurez le store depuis une copie saine ; ce que ce manifest référence n'a pas pu être contrôlé.
-- **Remédiable hors-ligne :** selon : re-télécharger demande une source ; restaurer une copie non · **Bloque :** rien — le rapport le constate · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** selon : re-télécharger demande une source ; restaurer une copie non · **Bloque :** rien — le rapport le constate
 
 ## Export et import OCI image layout (TBY-LAY)
 
