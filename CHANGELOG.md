@@ -191,6 +191,15 @@ starting with `v0.1.0`.
   FileSet, except for a third-party zone registry that refuses sparse
   indexes.
 
+- **A tab left open on a task page could expire without saying so**
+  (B-038). Its two pollers race: the first to find the session dead
+  clears the cookie, the second then presents none and redirected to a
+  plain sign-in page, which the browser followed last — TBY-AUTH-005 was
+  lost. A background poll without a cookie now carries the expiry marker
+  too. The Store integrity screen's poll gains the background marker, so
+  it no longer renews the session, and the template check covers every
+  page.
+
 ### Security
 
 - **Go 1.27.4** (from 1.27.3), which fixes GO-2026-6859 in `net/http`:

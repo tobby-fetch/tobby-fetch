@@ -6,6 +6,7 @@ package ui
 import (
 	"bytes"
 	"encoding/json"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -226,12 +227,57 @@ func TestPollingDoesNotKeepTheSessionAlive(t *testing.T) {
 	}
 }
 
+// TestEveryPollOfAnExpiredTabExplainsTheExpiry: a page polls through
+// several elements at once (the task body and its log tail). The first
+// poll to find the session dead clears the cookie, so the next one — still
+// sent by the page the browser is leaving — presents none; its
+// HX-Redirect must carry the expiry marker too, or the navigation that
+// wins drops TBY-AUTH-005. A request of the person's own without a cookie
+// is not an expiry.
+func TestEveryPollOfAnExpiredTabExplainsTheExpiry(t *testing.T) {
+	_, mux, now, _ := clockedUI(t, 5*time.Minute)
+	c := login(t, mux, "alexis", "pw-admin")
+	*now = now.Add(6 * time.Minute)
+	want := "/login?next=" + url.QueryEscape("/tasks/tsk_1") + "&expired=1"
+	poll := func(path string, cookie *http.Cookie, bg bool) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, path, http.NoBody)
+		r.Header.Set("HX-Request", "true")
+		r.Header.Set("HX-Current-URL", "http://tobby.test/tasks/tsk_1")
+		if bg {
+			r.Header.Set(BackgroundHeader, "1")
+		}
+		if cookie != nil {
+			r.AddCookie(cookie)
+		}
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		return w
+	}
+	for _, x := range []struct {
+		path   string
+		cookie *http.Cookie
+	}{{"/tasks/tsk_1", c}, {"/tasks/tsk_1?logs=1&after=0", nil}} {
+		if w := poll(x.path, x.cookie, true); w.Code != http.StatusUnauthorized || w.Header().Get("HX-Redirect") != want {
+			t.Errorf("poll %s (cookie %v): %d %q, want 401 to %q", x.path, x.cookie != nil, w.Code, w.Header().Get("HX-Redirect"), want)
+		}
+	}
+	if w := poll("/tasks/tsk_1", nil, false); strings.Contains(w.Header().Get("HX-Redirect"), "expired=1") {
+		t.Errorf("a request of the person's own without a cookie was told its session expired: %q", w.Header().Get("HX-Redirect"))
+	}
+}
+
 // TestPollingElementsAreMarked: every polling element of the templates
 // carries the background marker — a poll that forgot it would keep its
 // tab alive forever.
 func TestPollingElementsAreMarked(t *testing.T) {
-	for _, page := range []string{"tasks.html", "media.html", "task-detail.html"} {
-		raw, err := templatesFS.ReadFile("templates/pages/" + page)
+	// Every page, not a list: a screen added later (the Store integrity
+	// screen was one) polls like the others.
+	pages, err := fs.Glob(templatesFS, "templates/pages/*.html")
+	if err != nil || len(pages) == 0 {
+		t.Fatalf("listing the page templates: %v", err)
+	}
+	for _, page := range pages {
+		raw, err := templatesFS.ReadFile(page)
 		if err != nil {
 			t.Fatal(err)
 		}

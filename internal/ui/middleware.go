@@ -191,10 +191,20 @@ func returnPath(r *http.Request) string {
 // its idle timeout or its lifetime, or lost with an instance restart —
 // lands on the login page with TBY-AUTH-005 (R-14), so the person learns
 // why they are asked to sign in again.
+//
+// A background request that presents no cookie at all is a dead session
+// too: only a signed-in page polls, and a page polls through several
+// elements at once — the task body and its log tail. The first poll to
+// find the session dead clears the cookie; the next, which the old page
+// may still send while the browser leaves it, then presents none, and its
+// HX-Redirect must explain the expiry like the first one, or the
+// navigation that wins drops TBY-AUTH-005.
 func (u *UI) toLogin(w http.ResponseWriter, r *http.Request, state auth.SessionState) {
 	target := "/login?next=" + url.QueryEscape(returnPath(r))
 	if state != sessionNone {
 		u.clearSessionCookie(w, r)
+	}
+	if state != sessionNone || background(r) {
 		target += "&" + loginExpiredParam + "=1"
 	}
 	if r.Header.Get("HX-Request") == "true" {

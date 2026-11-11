@@ -218,7 +218,10 @@ func newInstance(t *testing.T, opts ...option) *instance {
 			q.Register(tasks.TypeStoreVerify, sp.integrity)
 		}
 		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
+		// Stop the workers AND wait for them: a runner cancelled here still
+		// records its task's end, and a write landing after the temporary
+		// directory is removed fails the cleanup of an otherwise green test.
+		t.Cleanup(func() { cancel(); q.Wait() })
 		q.Start(ctx)
 		inst.Queue = q
 	}
