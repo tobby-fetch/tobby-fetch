@@ -2370,6 +2370,14 @@ components:
             mode:
               type: string
               enum: [warn, block]
+            mode_level:
+              type: string
+              enum: [instance, retriever, recipe]
+              description: >-
+                The level that made the policy blocking: the instance
+                (scan.mode block), or the Retriever or recipe whose
+                threshold made it so — a threshold posed for a perimeter is
+                blocking for it. Absent from reports written before it.
             threshold: { type: number }
             threshold_level:
               type: string

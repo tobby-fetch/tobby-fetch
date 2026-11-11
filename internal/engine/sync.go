@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -112,6 +113,12 @@ type Engine struct {
 	// imports is the per-zone freshness register (R-28), held in the
 	// INSTANCE state directory and never on the medium.
 	imports *media.Imports
+	// scan is vulnerability scanning at retrieval (FR-031, FR-032); its
+	// zero value scans nothing (no Scanner installed).
+	scan ScanSettings
+	// zoneThresholdSet remembers whether the last served Retriever posed
+	// a scan threshold, which makes the policy blocking for its zone.
+	zoneThresholdSet atomic.Bool
 	// verdicts receives every verification report this engine produces,
 	// whichever surface asked for one — the serving gate of FR-054 is
 	// built on it (internal/mediagate). Nil on an instance that serves
@@ -207,6 +214,10 @@ func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) e
 		return e.mapError(err, e.source)
 	}
 	zone := retr.Metadata.Name
+	// The zone's scan policy (RECIPE-SPEC §10.4): its threshold and
+	// exceptions refine the instance's for every recipe of this run.
+	zonePol := zonePolicyOf(retr.Spec.ScanPolicy)
+	e.zoneThresholdSet.Store(zonePol.threshold != nil)
 	// The instant this run resolved its Retriever. It dates the DELIVERY,
 	// which is what the destination's freshness guard compares against
 	// (R-28) — not the moment the bookkeeping was written, which would
@@ -238,7 +249,7 @@ func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) e
 		if cookbookRef == "" {
 			cookbookRef = retr.Spec.Cookbook
 		}
-		e.syncRecipe(ctx, sink, logger, cookbookRef, entry, zone, resolved)
+		e.syncRecipe(ctx, sink, logger, cookbookRef, entry, zone, zonePol, resolved)
 	}
 
 	// Prune last, and only here (FR-045). It is the only scope that knows
@@ -277,7 +288,7 @@ func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) e
 
 // syncRecipe resolves, verifies and fetches one Retriever entry. Failures
 // land on the entry's items; other entries continue.
-func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, cookbookRef string, entry *spec.RecipeSelector, zone string, resolved *resolvedRecipes) {
+func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, cookbookRef string, entry *spec.RecipeSelector, zone string, zonePol zonePolicy, resolved *resolvedRecipes) {
 	logger = logger.With(slog.String("recipe", entry.Name))
 	cb := NewCookbook(e.remotes, cookbookRef)
 
@@ -455,6 +466,17 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	}
 	wg.Wait()
 
+	// FR-031: every container image is scanned at retrieval, in
+	// passthrough as in mirror mode, and before anything of the recipe is
+	// published anywhere. A refusal withholds the recipe whole (R-19
+	// granularity): not stored as a cookbook entry, not recorded on the
+	// medium, not pushed.
+	if refusals := e.scanRecipe(ctx, sink, logger, fetched, rid, zonePol); len(refusals) > 0 {
+		resolved.failed()
+		e.withholdRecipe(ctx, sink, logger, fetched, rid, refusals)
+		return
+	}
+
 	// The recipe artifact itself: stored with its signature so the local
 	// store is a cookbook for the zone below (cascade; FR-034 groundwork).
 	recipeItemName := rid + "/recipe"
@@ -531,6 +553,7 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	// selected by a version expression and recorded under the concrete
 	// version it resolved to, and prune joins on the recorded one.
 	resolved.keep(recipe.Metadata.Name, recipe.Metadata.Version)
+	e.refreshAfter(ctx, recipe)
 }
 
 // verifyRecipe applies FR-033: verify against the decision's key set;

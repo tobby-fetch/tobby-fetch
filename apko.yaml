@@ -3,6 +3,11 @@
 # nothing else: no shell, no package manager, non-root. apko generates the
 # image SBOM natively at build time.
 #
+# The tobby apk carries the pinned Trivy executable at
+# /usr/libexec/tobby/trivy (ADR-0008 decision 4, melange.yaml), so the
+# image scans out of the box; Tobby verifies its digest before every
+# execution.
+#
 # The release workflow appends the local melange output at build time:
 #   apko publish apko.yaml <ref> --repository-append packages \
 #     --keyring-append melange.rsa.pub

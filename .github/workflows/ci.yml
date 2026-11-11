@@ -131,6 +131,43 @@ jobs:
           tar -xzf "$tmp/oras.tgz" -C "$tmp" oras
           sudo install -m 0755 "$tmp/oras" /usr/local/bin/oras
           rm -rf "$tmp"
+      # The real-Trivy tests (milestone 6, FR-031/FR-032): the scanner
+      # release Tobby pins (internal/scan/trivy/pins.go, melange.yaml —
+      # the three move together), checked against its published checksum
+      # and against the executable digest Tobby pins, and a current
+      # vulnerability database pulled as the OCI artifact upstream
+      # publishes. TOBBY_TEST_REQUIRE_TRIVY below turns a runner that lost
+      # either into a failure rather than a skip.
+      - name: Install the pinned Trivy and its database (real-scanner tests)
+        if: runner.os == 'Linux'
+        env:
+          TRIVY_VERSION: "0.76.2"
+        run: |
+          set -eu
+          case "$(uname -m)" in
+            x86_64)  arch=64bit
+                     archive_sha=bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf
+                     bin_sha=6a972c69606c7b3ea4c6bdcc6fc9332ea9ad38381624310c1e85cc77345909f3 ;;
+            aarch64) arch=ARM64
+                     archive_sha=ab9d51f86e6a5fb936f605faff6b593ac51bc378fff4d3e8b9d58358b9c367c3
+                     bin_sha=7844c3851b28470b6d7f0975fa0b3262c5b2272c9a54a91f522801bb8926f51f ;;
+            *) echo "::error::unsupported runner architecture $(uname -m)"; exit 1 ;;
+          esac
+          dir="${RUNNER_TEMP}/trivy"
+          mkdir -p "$dir/db"
+          curl -fsSL -o "$dir/trivy.tgz" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${arch}.tar.gz"
+          echo "${archive_sha}  ${dir}/trivy.tgz" | sha256sum -c -
+          tar -xzf "$dir/trivy.tgz" -C "$dir" trivy
+          echo "${bin_sha}  ${dir}/trivy" | sha256sum -c -
+          ( cd "$dir/db" && { oras pull mirror.gcr.io/aquasec/trivy-db:2 || oras pull ghcr.io/aquasecurity/trivy-db:2; } )
+          test -s "$dir/db/db.tar.gz"
+          "$dir/trivy" version
+          {
+            echo "TOBBY_TEST_TRIVY=$dir/trivy"
+            echo "TOBBY_TEST_TRIVY_DB=$dir/db/db.tar.gz"
+            echo "TOBBY_TEST_REQUIRE_TRIVY=1"
+          } >> "$GITHUB_ENV"
       # A run where the clients silently went missing again would look
       # exactly like a green one, so the versions taken from the
       # environment are printed before anything uses them.

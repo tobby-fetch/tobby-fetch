@@ -27,7 +27,11 @@ gates milestone acceptance.**
   (`deploy/charts/tobby`), so a rendering tool is part of the harness, not
   a convenience. `cosign` is the one exception: m3 and m4 install it on
   demand with `go install` when it is absent, because the signatures they
-  produce are the point of those scenarios.
+  produce are the point of those scenarios. Milestone 6 adds an Incus
+  with OCI image support (6.x) and access to `quay.io` for the pinned
+  Keycloak image (`b-auth.sh`); `a-scanning.sh` also needs `oras`, and
+  takes the pinned Trivy release from `CRUCIBLE_TRIVY_ARCHIVE` or fetches
+  it once, checked against the release checksum and the digest Tobby pins.
 
 ## Layout
 
@@ -42,7 +46,13 @@ crucible/
     ├── m2/run.sh     # milestone-2 secure journey
     ├── m3/run.sh     # milestone-3 recipe engine
     ├── m4/run.sh     # milestone-4 passthrough / promotion
-    └── m5/run.sh     # milestone-5 mirror & air-gap
+    ├── m5/run.sh     # milestone-5 mirror & air-gap
+    └── m6/           # milestone-6 controls & enterprise identity
+        ├── run.sh    # dispatcher: runs every a-*, b-*, c-* scenario
+        ├── a-*.sh    # track A: scanning, database, self-update
+        ├── b-*.sh    # track B: enterprise identity, auth hardening
+        ├── c-*.sh    # track C: integrity, trust scopes, assurance
+        └── *-lib.sh  # per-track sourced helpers (b-lib.sh, c-lib.sh)
 ```
 
 Everything lives in the dedicated Incus project `tobby-crucible`; the host's
@@ -178,13 +188,49 @@ of the trip:
     write method (R-41, FR-047); a reset without the exact typed
     confirmation is refused (FR-046).
 
-### m6 — controls and enterprise identity (track C scenarios)
+### m6 — controls and enterprise identity
 
 The milestone-6 scenarios are one file per track, named by track prefix
-(`a-*`, `b-*`, `c-*`), dispatched by `scenarios/m6/run.sh`; files named
-`*-lib.sh` are sourced helpers. Each is independently invocable and writes
-its own raw report. Track C writes three, and every one of them follows the
-rule m5 paid for: **a scenario that manipulates something verifies its own
+(`a-*`, `b-*`, `c-*`), dispatched by `scenarios/m6/run.sh`, which discovers
+and runs every one of them in name order and fails if any fails; files
+named `*-lib.sh` are sourced helpers, never run. Each is independently
+invocable (`sh crucible/scenarios/m6/<name>.sh`) and writes its own raw
+report (`crucible-report-m6-<name>.txt`).
+
+**Track A** — vulnerability scanning (6.1, 6.2, R-13) and self-update
+(R-25):
+
+- `a-scanning.sh` — the pinned Trivy and its database carried by the
+  `tobby-system` channel across a real air gap. The degraded mode is
+  visible before anything crossed (metric, banner, log); under a blocking
+  policy a known-vulnerable recipe is withheld whole (R-19 grain), named
+  with `TBY-SCN-005` and its CVE, absent from the media manifest and
+  audited, while the clean one is written; a scanner binary tampered with
+  on disk is never executed (`TBY-SCN-002`); a database past
+  `scan.maxDbAge` under the block action refuses (`TBY-SCN-004`). Inside
+  the zone, a passthrough instance arms its scanner from the channel and
+  refuses or reports the vulnerable image depending on the Retriever's
+  threshold.
+- `a-self-update.sh` — Tobby's own recipe (image, chart, binaries as a
+  recipe-ready FileSet) crosses by the standard mirror flow: a release
+  signed by the site key is pushed, one signed by the project key alone is
+  refused at the destination; the binary that crossed is byte-identical
+  and runs; nothing updates by itself (NFR-019).
+
+**Track B** — enterprise identity (6.3), continuity (R-20) and bounded
+credentials (R-14), against a real Keycloak over HTTPS from a private CA:
+
+- `b-auth.sh` — the instance starts while the IdP is stopped and serves
+  the local form with `TBY-AUTH-016` (the local sign-in audited as
+  `auth.local_under_federation`); once the IdP is up, OIDC and SAML
+  sign-ins work for each role and an unmapped account is refused
+  (`TBY-AUTH-017`); a forged state, a replayed SAML response and a
+  response collected by another browser are refused; an IdP stopped
+  mid-session ends no session; an expiring token and an idle session are
+  refused with `TBY-AUTH-013` and `TBY-AUTH-005` and their audit records.
+
+**Track C** — integrity, trust compartments and assurance. Track C
+writes three, and every one of them follows the rule m5 paid for: **a scenario that manipulates something verifies its own
 manipulation before it asks the product for a verdict** — a blob that was
 never truncated, a key that was never swapped and a date that matched no
 pattern all read exactly like the guard under test failing.

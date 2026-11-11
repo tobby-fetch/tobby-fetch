@@ -163,28 +163,30 @@ func TestValidateAuthMilestone6(t *testing.T) {
 	}
 }
 
-// TestPendingOptInsAreRefused is the guard of this branch: an opt-in the
-// build does not implement yet is a refusal at instance scope — never an
-// instance that starts and silently does none of it. Each case is deleted
-// by the track that implements the behaviour.
-func TestPendingOptInsAreRefused(t *testing.T) {
+// TestMilestone6OptInsAreAccepted: every milestone-6 opt-in is
+// implemented, so none may be refused at instance scope as "not
+// implemented by this build" any more — the guard the tracks used while
+// landing (FR-075: refuse rather than silently ignore) must not survive
+// into the v0.6.0 tag.
+func TestMilestone6OptInsAreAccepted(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		tweak func(*Config)
-		want  string
 	}{
-		{"blocking scan", func(c *Config) { c.Scan.Mode = ScanModeBlock }, "scan.mode: block"},
-		{"blocking stale database", func(c *Config) { c.Scan.MaxDBAgeAction = ScanModeBlock }, "scan.maxDbAgeAction: block"},
+		{"blocking scan", func(c *Config) { c.Scan.Mode = ScanModeBlock }},
+		{"blocking stale database", func(c *Config) { c.Scan.MaxDBAgeAction = ScanModeBlock }},
+		{"token expiry", func(c *Config) { c.Auth.Tokens.DefaultLifetime = Duration(time.Hour) }},
+		{"oidc", func(c *Config) { c.Auth.OIDC.Enabled = true }},
+		{"saml", func(c *Config) { c.Auth.SAML.Enabled = true }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			checkErr(t, validating(tc.tweak), []string{tc.want})
-			// A state-directory command is not an instance: it must not be
-			// refused for a setting it never reads (R-34).
 			cfg := Default()
 			tc.tweak(&cfg)
-			for _, err := range splitJoined(cfg.validate(ScopeState)) {
-				if strings.Contains(err, "not implemented") {
-					t.Errorf("ScopeState refused a pending opt-in: %s", err)
+			for _, scope := range []Scope{ScopeInstance, ScopeState} {
+				for _, err := range splitJoined(cfg.validate(scope)) {
+					if strings.Contains(err, "not implemented") {
+						t.Errorf("scope %v refused an implemented opt-in: %s", scope, err)
+					}
 				}
 			}
 		})

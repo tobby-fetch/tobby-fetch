@@ -79,6 +79,12 @@ type Levels struct {
 // Policy is the policy in effect for one recipe, after combination.
 type Policy struct {
 	Mode Mode `json:"mode"`
+	// ModeLevel is the level that made the policy blocking: the instance
+	// when scan.mode is block, otherwise the Retriever or the recipe whose
+	// threshold made it so (a threshold posed for a perimeter is blocking
+	// for that perimeter — milestone-6 opening, correction of 2026-11-11).
+	// Added after the contract; omitted from documents written before it.
+	ModeLevel Level `json:"mode_level,omitempty"`
 	// Threshold is the effective CVSS threshold, inclusive.
 	Threshold float64 `json:"threshold"`
 	// ThresholdLevel is the level that set it.
@@ -122,7 +128,11 @@ type Evaluation struct {
 	Verdict Verdict `json:"verdict"`
 	// Policy is the combined policy the item was evaluated against.
 	Policy Policy `json:"policy"`
-	// Reasons explain a warn, block or not-scanned verdict; empty on pass.
+	// Reasons explain a warn, block or not-scanned verdict, and carry the
+	// non-blocking notes every verdict may have — a stale database under
+	// the warn action (TBY-SCN-004), an ignored recipe annotation, an
+	// expired exception, unscored findings (TBY-SCN-020..022). A pass
+	// verdict has no reason other than those notes.
 	Reasons []Reason `json:"reasons,omitempty"`
 	// Violations lists the identifiers of the findings at or above the
 	// threshold that no exception covered.

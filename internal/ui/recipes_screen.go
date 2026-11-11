@@ -247,6 +247,9 @@ type retrieverData struct {
 	// configured threshold (R-33). Zero-valued Threshold means none is
 	// configured, which the screen states as such.
 	Occupancy store.Occupancy
+	// Scan is the vulnerability-scanning indicator (R-13); nil on an
+	// instance assembled without scanning.
+	Scan *scanIndicatorView
 }
 
 // intervalData renders the reconciliation cadence. Configured and
@@ -284,6 +287,10 @@ func (u *UI) retrieverScreenData() *retrieverData {
 	}
 	if u.occupancy != nil {
 		data.Occupancy = u.occupancy.Current()
+	}
+	if u.render.Scan != nil {
+		s := u.render.Scan()
+		data.Scan = scanIndicatorOf(&s)
 	}
 	if u.interval != nil {
 		data.Interval = &intervalData{

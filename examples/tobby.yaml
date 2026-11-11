@@ -1,0 +1,78 @@
+# Tobby itself — carried into a zone like any other software (R-25).
+#
+# PROFILE: cooked in shape, with PLACEHOLDER digests. Every `digest` below
+# is the all-zero sha256 and stands for a value only a release produces:
+# copy the real ones from the release notes of the version you carry (each
+# release states the image, chart and binaries digests), or resolve them
+# yourself with `crane digest <ref>:<version>`. A recipe still holding a
+# zero digest pins nothing real and fails at the first fetch — on purpose.
+#
+# Every release from v0.6.0 on publishes three recipe-ready artifacts to
+# ghcr.io, all signed keyless by the release workflow and covered by SLSA
+# provenance:
+#
+#   ghcr.io/tobby-fetch/tobby-fetch:vX.Y.Z      container image (amd64, arm64)
+#   ghcr.io/tobby-fetch/charts/tobby:X.Y.Z      reference Helm chart
+#   ghcr.io/tobby-fetch/binaries/tobby:vX.Y.Z   static binaries, as a FileSet
+#
+# Two things this recipe does NOT do, and must not be made to do:
+#
+# - It does not make the project's signatures authoritative in your zone.
+#   Verify them where you cook — `cosign verify` and `slsa-verifier`, as
+#   docs/release-verification.md shows — then sign the cooked recipe with
+#   YOUR qualification chain. A destination trusts its own trust roots, not
+#   the project's key: a Tobby release is content your site admits, like
+#   any other.
+# - It does not update anything. Nothing in Tobby looks for a newer
+#   version (NFR-019). An upgrade is this recipe, cooked at the new
+#   version, carried by the ordinary mirror flow, then deployed by a person.
+apiVersion: recipe.tobby.dev/v1alpha1
+kind: Recipe
+
+metadata:
+  name: tobby
+  version: 0.6.0
+  description: >-
+    Tobby itself — image, reference chart and static binaries — so that the
+    tool carrying a zone's software crosses the same door, under the same
+    signature, as the software it carries.
+  annotations:
+    org.opencontainers.image.source: https://github.com/tobby-fetch/tobby-fetch
+
+spec:
+  ingredients:
+    # The image the chart deploys by default (tag "v" + appVersion). It is
+    # the existing release image, not a copy made for recipes: the digest
+    # is the one the release notes and `cosign verify` name.
+    - name: tobby-image
+      kind: ContainerImage
+      ref: ghcr.io/tobby-fetch/tobby-fetch
+      version: v0.6.0
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000 # PLACEHOLDER
+      platforms: [linux/amd64, linux/arm64]
+
+    # The chart version equals the Tobby version (B-035): chart 0.6.0
+    # deploys image v0.6.0, and no other.
+    - name: tobby-chart
+      kind: HelmChart
+      ref: ghcr.io/tobby-fetch/charts/tobby
+      version: 0.6.0
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000 # PLACEHOLDER
+      vendorDependencies: false
+
+    # The binaries, for the hosts that run Tobby outside Kubernetes — the
+    # Windows mirror workstation first among them (NFR-018). One image
+    # index, four children, each holding a single file at its root: `tobby`
+    # for linux, `tobby.exe` for windows. It is a FileSet rather than an
+    # OCIArtifact because it is files, per platform: `platforms` keeps only
+    # the children your zone runs (drop the ones it does not), and the
+    # extraction is the one RECIPE-SPEC §7.4 defines, with no type of ours
+    # to learn. The file inside is byte-for-byte the release asset of the
+    # same name, so `SHA256SUMS` and tobby.intoto.jsonl vouch for it too.
+    # darwin is not here: macOS is a workstation tier, not a zone target.
+    - name: tobby-binaries
+      kind: FileSet
+      ref: ghcr.io/tobby-fetch/binaries/tobby
+      version: v0.6.0
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000 # PLACEHOLDER
+      platforms: [linux/amd64, linux/arm64, windows/amd64, windows/arm64]

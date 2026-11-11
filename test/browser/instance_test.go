@@ -136,6 +136,8 @@ type spec struct {
 	fed *federation.Service
 	// idle sets auth.session.idleTimeout (R-14); zero leaves none.
 	idle time.Duration
+	// scan is the vulnerability-scanning state the shell reads (FR-031).
+	scan func() ui.ScanState
 }
 
 type option func(*spec)
@@ -174,6 +176,9 @@ func withMedium(verify mediagate.Verify) option {
 func withIntegrity(runner tasks.Runner) option {
 	return func(s *spec) { s.queue, s.integrity = true, runner }
 }
+
+// withScan wires the vulnerability-scanning state the banners read.
+func withScan(state func() ui.ScanState) option { return func(s *spec) { s.scan = state } }
 
 func newInstance(t *testing.T, opts ...option) *instance {
 	t.Helper()
@@ -236,7 +241,7 @@ func newInstance(t *testing.T, opts ...option) *instance {
 	}
 
 	uiOpts := &ui.Options{
-		Version: "0.3.0-e2e", Mode: "mirror", Store: st, Queue: inst.Queue,
+		Version: "0.3.0-e2e", Mode: "mirror", Store: st, Queue: inst.Queue, Scan: sp.scan,
 		Federation: sp.fed,
 	}
 	if sp.medium {

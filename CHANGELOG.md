@@ -10,43 +10,72 @@ starting with `v0.1.0`.
 
 ### Added
 
-- **On-demand store verification** (R-31, FR-057). `tobby store verify`
-  verifies a whole store, in either mode — an instance's store and a
-  transportable one are verified the same way: every blob is re-hashed
-  against the digest it is stored under; every manifest reachable from a
-  recorded recipe is complete (a platform-filtered index stays complete);
-  every recorded recipe signature verifies against the trust roots
-  configured now, scopes applied; content that no recipe and no protected
-  root reaches is listed as orphaned. The same verification runs from the
-  new Store integrity screen (`/integrity`) and `POST /api/v1/store/verify`,
-  as a tracked task, one at a time (`TBY-INT-004`); `GET
-  /api/v1/store/verification` serves the last report. The report is
-  timestamped, carries the run identifier, and names every defect as a
-  taxonomy code (`TBY-INT-001`, `-002`, `-005`, `TBY-SIG-001`) with the file
-  or object concerned; orphans (`TBY-INT-003`) are notes that never make
-  the verdict "defects". It only reads: it repairs and deletes nothing and
-  leaves the store byte-identical. `--output json` carries the report, with
-  its schema published beside the others; exit 0 for an intact store, 4 for
-  a defect. Metrics `tobby_integrity_verifications_total` and
-  `tobby_integrity_last_verification_timestamp_seconds`, and a `store.verify`
-  audit event. The
-  verification runs on a lane of its own, so a synchronization never waits
-  behind it, holds the content lock in read, and is cancellable
-  (`POST /api/v1/store/verify/cancel`, `TBY-INT-006`). `tobby store verify
-  --instance <url> [--wait]` drives a running instance; without it, the
-  command refuses a store an instance is serving. No recurring schedule: v1
-  verifies on demand.
-- **A reduced-assurance marker on content admitted under a relaxed trust
-  scope** (R-22, FR-037). A recipe admitted unsigned by a declared scope,
-  and every item it reaches, carries the marker (`level: reduced`, the scope,
-  the reason) in the task report and the API, the recipes, task and media
-  screens, an `assurance` log field (with `assurance_scope`) present only on
-  such records, the `tobby_assurance_reduced_recipes` metric by scope, and
-  its entry in the media manifest. The destination re-reads the manifest's
-  marker and shows it as a claim of the source zone, beside the marker its
-  own trust verdict gives — a manifest claiming nothing never hides it.
-  Nothing is written into the destination registry: transferred content
-  stays bit-exact.
+- **Every container image is scanned at retrieval**, in passthrough as in
+  mirror mode, with Trivy run as a **pinned external binary** (0.76.2),
+  offline (`--offline-scan`, `--skip-db-update`, `--skip-java-db-update`
+  and the other skip flags), out of process on a private copy of the
+  image, with a minimal environment, a deadline (`scan.timeout`, 10m) and
+  bounded outputs; its digest is verified before every execution
+  (FR-031, ADR-0008).
+- **A policy in three levels**: the instance (`scan.mode`, advisory by
+  default, `scan.threshold` 7.0, `scan.exceptions`), the Retriever
+  (`spec.scanPolicy`) and the recipe annotation
+  `recipe.tobby.dev/scan-threshold`, which can only lower the threshold.
+  A threshold posed by a Retriever or a recipe is blocking for its
+  perimeter. A finding without CVSS sits at the lower bound of its
+  severity band; `UNKNOWN` is reported, never compared; expired
+  exceptions no longer apply and are reported.
+- **A refusal withholds the recipe whole** (R-19 grain): not stored as a
+  cookbook entry, not recorded on the medium, not pushed; the other
+  recipes cross. Audited as `scan.block`. Under a blocking policy an item
+  that could not be scanned is refused too.
+- **Per-item reports** in the task document (`items[].scan`, the API and
+  the task screen): findings, verdict, the policy and the levels that set
+  it, exceptions, reasons, and the **database age in every report**.
+- **The database and the scanner travel by the `tobby-system` channel**
+  (FR-032, 6.2): the database as an OCIArtifact, the binary as a FileSet
+  for Linux and Windows hosts, both found in the recipe graph even on a
+  medium written by another instance; the container image bundles the
+  pinned binary at `/usr/libexec/tobby/trivy`; macOS takes it from the
+  `PATH`. A Retriever listing `tobby-system` first arms the scanner in the
+  same run.
+- **R-13 freshness**: `scan.maxDbAge` (168h) and `scan.maxDbAgeAction`
+  (`warn`, or `block` — refused with `TBY-SCN-004`).
+- **A degraded mode that is never silent**: banners (degraded, advisory,
+  stale), a startup log record, the Retriever screen's scanning indicator,
+  and the `tobby_scan_*` metric families.
+- `TOBBY_SCAN_*` environment variables; error codes `TBY-SCN-001..007` and
+  `020..022` are emitted; documentation: *Vulnerability scanning*, *The
+  vulnerability database across the air gap* (EN/FR), configuration and
+  metrics references; ADR-0008 amended (its example configuration follows
+  the FR-031 amendment).
+- **Tobby updates through its own channel** (R-25, channel half): an
+  end-to-end test and the crucible scenario `m6/a-self-update` carry the
+  recipe of Tobby itself — image, chart, binaries FileSet — across the air
+  gap by the standard mirror flow, under a site key; a release signed by
+  the project key alone is refused at the destination. Documentation:
+  *Updating Tobby in an isolated zone* (EN/FR). No self-update (NFR-019).
+- **Releases are recipe-ready** (R-25, publication half). Every release
+  now also publishes the Linux and Windows binaries (amd64 and arm64) to
+  `ghcr.io/tobby-fetch/binaries/tobby:vX.Y.Z` as a `FileSet`: one
+  multi-platform image index whose children each hold the release binary,
+  byte-for-byte, so a recipe pins it by digest and keeps only the
+  platforms its zone runs. The index is signed keyless and carries SLSA
+  provenance from the trusted container builder; each binary's CycloneDX
+  SBOM is attached to its child as a signed cosign attestation. The
+  existing image and chart are referenced as they are, not republished.
+  `examples/tobby.yaml` carries Tobby into a zone — image, chart and
+  binaries — with placeholder digests to replace from the release notes;
+  that recipe is signed by the site's own chain, never by the project's
+  key, and nothing updates by itself. `docs/release-verification.md`
+  shows how to verify the new artifacts.
+- **The release workflow can be rehearsed.** A `workflow_dispatch` run of
+  `release.yml` is always a dry run: it runs every job, publishes only
+  under `ghcr.io/tobby-fetch/dry-run/`, and creates no GitHub release,
+  pushes nothing to the Homebrew tap and attaches no winget or Scoop
+  manifest — those results are kept as workflow artifacts instead.
+  `tools/check-publish-target.sh` re-checks the target name in every
+  publishing job.
 - **Enterprise sign-in: OpenID Connect and SAML 2.0** (6.3, FR-070,
   FR-071). `auth.oidc.*` signs in through an OpenID provider
   (authorization code flow, PKCE S256, state and nonce, discovery from
@@ -76,9 +105,46 @@ starting with `v0.1.0`.
   expired token is refused with TBY-AUTH-013. New audit events
   `session.expire` and `token.expire`; a revoked token's refusal is now
   recorded under its name.
-- **Metrics** `tobby_auth_attempts_total`,
+- **Authentication metrics** `tobby_auth_attempts_total`,
   `tobby_auth_sessions_expired_total`, `tobby_auth_idp_reachable` and
   `tobby_auth_local_logins_under_federation_total`.
+- **A reduced-assurance marker on content admitted under a relaxed trust
+  scope** (R-22, FR-037). A recipe admitted unsigned by a declared scope,
+  and every item it reaches, carries the marker (`level: reduced`, the scope,
+  the reason) in the task report and the API, the recipes, task and media
+  screens, an `assurance` log field (with `assurance_scope`) present only on
+  such records, the `tobby_assurance_reduced_recipes` metric by scope, and
+  its entry in the media manifest. The destination re-reads the manifest's
+  marker and shows it as a claim of the source zone, beside the marker its
+  own trust verdict gives — a manifest claiming nothing never hides it.
+  Nothing is written into the destination registry: transferred content
+  stays bit-exact.
+- **On-demand store verification** (R-31, FR-057). `tobby store verify`
+  verifies a whole store, in either mode — an instance's store and a
+  transportable one are verified the same way: every blob is re-hashed
+  against the digest it is stored under; every manifest reachable from a
+  recorded recipe is complete (a platform-filtered index stays complete);
+  every recorded recipe signature verifies against the trust roots
+  configured now, scopes applied; content that no recipe and no protected
+  root reaches is listed as orphaned. The same verification runs from the
+  new Store integrity screen (`/integrity`) and `POST /api/v1/store/verify`,
+  as a tracked task, one at a time (`TBY-INT-004`); `GET
+  /api/v1/store/verification` serves the last report. The report is
+  timestamped, carries the run identifier, and names every defect as a
+  taxonomy code (`TBY-INT-001`, `-002`, `-005`, `TBY-SIG-001`) with the file
+  or object concerned; orphans (`TBY-INT-003`) are notes that never make
+  the verdict "defects". It only reads: it repairs and deletes nothing and
+  leaves the store byte-identical. `--output json` carries the report, with
+  its schema published beside the others; exit 0 for an intact store, 4 for
+  a defect. Metrics `tobby_integrity_verifications_total` and
+  `tobby_integrity_last_verification_timestamp_seconds`, and a `store.verify`
+  audit event. The
+  verification runs on a lane of its own, so a synchronization never waits
+  behind it, holds the content lock in read, and is cancellable
+  (`POST /api/v1/store/verify/cancel`, `TBY-INT-006`). `tobby store verify
+  --instance <url> [--wait]` drives a running instance; without it, the
+  command refuses a store an instance is serving. No recurring schedule: v1
+  verifies on demand.
 
 ### Changed
 
@@ -106,6 +172,7 @@ starting with `v0.1.0`.
 - **A local password change no longer closes federated sessions** that
   happen to carry the same name; the account screen of a federated
   identity offers no password form (TBY-AUTH-010 on the API mirror).
+
 
 ## [0.5.2] - 2026-11-09
 

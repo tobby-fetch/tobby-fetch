@@ -795,9 +795,6 @@ func (c *Config) validate(scope Scope) error {
 	errs = append(errs, c.validateFiles()...)
 	errs = append(errs, c.validateScan()...)
 	errs = append(errs, c.validateAuthMilestone6()...)
-	if scope == ScopeInstance {
-		errs = append(errs, c.pendingOptIns()...)
-	}
 	return errors.Join(errs...)
 }
 

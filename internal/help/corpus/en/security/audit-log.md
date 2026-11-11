@@ -69,16 +69,13 @@ only, with the same compatibility discipline as the REST API
 | `session.expire` | a UI session ended by expiry; the target is the reason, `idle` (`auth.session.idleTimeout`) or `lifetime` (`auth.sessionTTL`) (R-14) | v0.6.x |
 | `token.expire` | each refusal of a token past its expiry, under the token's name (R-14); a revoked token's refusal is an `auth.authenticate` failure under its name | v0.6.x |
 | `auth.local_under_federation` | a local-account sign-in while OIDC or SAML is enabled — break-glass use, kept filterable on its own; target `ui` or the machine surface (FR-078, R-20) | v0.6.x |
+| `scan.block` | an item refused by the vulnerability policy — violation, not scanned under a blocking policy, or stale database under the block action (FR-031); the target is the item's `reference@digest`, the outcome `denied` | v0.6.x |
 
 The media events joined the catalogue with v0.5.0: the two audited waivers
 of a media import — a medium addressed to another zone and a medium older
 than the last one imported here — and the confirmed store reset (FR-046).
 Both the attempt and the applied waiver are recorded, with the actor and
 the network origin they came from.
-
-:::note[Upcoming — milestone 6]
-Scanning policy events (FR-031) join the catalogue with milestone 6.
-:::
 
 ## Durability — and the trail that crosses the air gap
 

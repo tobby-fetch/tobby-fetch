@@ -16,13 +16,12 @@ import (
 // The milestone-6 configuration surface: the vulnerability-scan policy
 // (FR-031, FR-032), session and token expiry (FR-072 amendment, R-14), and
 // the two federated identity methods (FR-070, FR-071, FR-078). This file
-// declares the keys, their safe defaults and their validation; it gives
-// them no behaviour. The features that consume them land on their own
-// tracks, and until one does, an opt-in that would otherwise be silently
-// ignored is REFUSED at load (pendingOptIns) — a configuration that asks
-// for blocking, federation or token expiry must not start an instance that
-// does none of them (FR-075: nothing relaxes security implicitly, and an
-// ignored hardening request is exactly that).
+// declares the keys, their safe defaults and their validation; the
+// features that consume them live in their own packages. While the tracks
+// were landing, an opt-in a build could not honour yet was refused at load
+// rather than silently ignored (FR-075); every one is now implemented, so
+// that guard is gone — TestMilestone6OptInsAreAccepted keeps it from
+// coming back unnoticed.
 
 // Scan configures vulnerability scanning and its policy at the instance
 // level (FR-031 amendment 2026-11-11, ADR-0008). The Retriever
@@ -59,6 +58,10 @@ type Scan struct {
 	DBRepository string `yaml:"dbRepository,omitempty"`
 	// Trivy locates and pins the scanner binary (ADR-0008 decision 4).
 	Trivy Trivy `yaml:"trivy"`
+	// Timeout bounds one scan of one item, the scanner process included.
+	// Default 10m. An item whose scan times out is reported not scanned
+	// (and refused under a blocking policy).
+	Timeout Duration `yaml:"timeout,omitempty"`
 }
 
 // ScanException tolerates one vulnerability beyond the threshold, as in
@@ -215,6 +218,7 @@ type SAML struct {
 const (
 	DefaultScanThreshold   = 7.0
 	DefaultScanMaxDBAge    = 168 * time.Hour
+	DefaultScanTimeout     = 10 * time.Minute
 	DefaultSessionIdle     = 30 * time.Minute
 	DefaultSAMLClockSkew   = 90 * time.Second
 	maxSAMLClockSkew       = 5 * time.Minute
@@ -238,6 +242,7 @@ func defaultMilestone6(cfg *Config) {
 		Threshold:      DefaultScanThreshold,
 		MaxDBAge:       Duration(DefaultScanMaxDBAge),
 		MaxDBAgeAction: ScanModeWarn,
+		Timeout:        Duration(DefaultScanTimeout),
 	}
 	cfg.Auth.Session = AuthSession{IdleTimeout: Duration(DefaultSessionIdle)}
 	cfg.Auth.OIDC.GroupsClaim = defaultOIDCGroupsClaim
@@ -258,6 +263,9 @@ func (c *Config) validateScan() []error {
 	}
 	if s.Threshold < 0 || s.Threshold > 10 {
 		errs = append(errs, fmt.Errorf("scan.threshold: %v is not a CVSS score: it must lie between 0 and 10 — a finding scoring at or above it violates the policy", s.Threshold))
+	}
+	if time.Duration(s.Timeout) <= 0 {
+		errs = append(errs, errors.New("scan.timeout must be positive: every scan is bounded in time"))
 	}
 	if time.Duration(s.MaxDBAge) <= 0 {
 		errs = append(errs, errors.New(`scan.maxDbAge must be positive: the database age is always checked (FR-032); use "scan.maxDbAgeAction: warn" to report staleness without blocking`))
@@ -380,23 +388,5 @@ func (s *SAML) validate() []error {
 	if s.Roles.empty() {
 		errs = append(errs, errors.New("auth.saml.roles maps no group to any role: nobody could sign in"))
 	}
-	return errs
-}
-
-// pendingOptIns refuses the milestone-6 opt-ins whose behaviour has not
-// landed on this branch yet. Each line is deleted by the track that
-// implements it, together with its test case; none may survive into the
-// v0.6.0 tag (milestone 6 — single tag at the end of the milestone).
-func (c *Config) pendingOptIns() []error {
-	var errs []error
-	pending := func(set bool, key, item string) {
-		if set {
-			errs = append(errs, fmt.Errorf("%s is not implemented by this build yet (%s, milestone 6): refusing to start rather than ignore it", key, item))
-		}
-	}
-	// Track A — 6.1 / R-13.
-	pending(c.Scan.Mode == ScanModeBlock, `scan.mode: block`, "6.1")
-	pending(c.Scan.MaxDBAgeAction == ScanModeBlock, `scan.maxDbAgeAction: block`, "R-13")
-	// Track B — R-14 and 6.3 are implemented: no pending opt-in left.
 	return errs
 }

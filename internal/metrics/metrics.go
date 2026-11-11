@@ -65,6 +65,10 @@ type Registry struct {
 	StoreThresholdBytes    prometheus.Gauge
 	StoreOccupancyExceeded prometheus.Gauge
 
+	// Scan holds the vulnerability-scanning families (FR-031, FR-032,
+	// R-13).
+	Scan *ScanMetrics
+
 	// ── Track C — on-demand integrity and reduced assurance (R-31,
 	// R-22); the families are declared in reserved.go and fed in
 	// integrity.go.
@@ -157,6 +161,7 @@ func New() *Registry {
 		StoreOccupancyExceeded: storeExceeded,
 
 		IntegrityVerifications: integrityVerifications,
+		Scan:                   newScanMetrics(reg),
 	}
 }
 

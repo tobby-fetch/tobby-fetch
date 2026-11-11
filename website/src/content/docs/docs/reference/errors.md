@@ -477,70 +477,70 @@ Reserved at the opening of milestone 6 (FR-031, FR-032): the policy is advisory 
 - **What happened:** The vulnerability scanner is unavailable: content is not being scanned.
 - **Probable cause:** `<detail>`
 - **Corrective action:** Make the scanner available for this platform: in the container image it is bundled; on a Linux or Windows host, synchronize the tobby-system recipe that carries it; on macOS, install trivy on the PATH. Under `scan.mode: block`, nothing that could not be scanned is pushed until then.
-- **Fixable offline:** yes, once the tobby-system recipe has crossed · **Blocks:** scanning; under block mode, every push · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes, once the tobby-system recipe has crossed · **Blocks:** scanning; under block mode, every push
 
 ### TBY-SCN-002
 
 - **What happened:** The scanner binary at `<path>` does not match its pinned digest and was not executed.
 - **Probable cause:** Expected `<expected>`, found `<actual>`: the file was replaced or damaged after it was pinned.
 - **Corrective action:** Restore the binary from the tobby-system recipe (or from the pinned release), or update `scan.trivy.digest` if the change is deliberate. Content is reported not scanned until then.
-- **Fixable offline:** yes · **Blocks:** scanning · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** scanning
 
 ### TBY-SCN-003
 
 - **What happened:** No vulnerability database is available: content is not being scanned.
 - **Probable cause:** The store holds no database under `<repository>`.
 - **Corrective action:** Synchronize the tobby-system recipe that carries the database first — through the mirror medium in an isolated zone. Media verification does not need the database.
-- **Fixable offline:** yes, once the tobby-system recipe has crossed · **Blocks:** scanning; under block mode, every push · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes, once the tobby-system recipe has crossed · **Blocks:** scanning; under block mode, every push
 
 ### TBY-SCN-004
 
 - **What happened:** The vulnerability database is `<age>` old, beyond the `<max>` this instance accepts.
 - **Probable cause:** The database has not been refreshed recently enough: findings published since it was built are unknown to the scanner.
 - **Corrective action:** Synchronize the tobby-system recipe to bring a fresh database — through the next medium in an isolated zone. Under `scan.maxDbAgeAction: block`, items scanned with a stale database are not pushed until then.
-- **Fixable offline:** yes, once a fresh database has crossed · **Blocks:** nothing under warn; the item's push under block · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes, once a fresh database has crossed · **Blocks:** nothing under warn; the item's push under block
 
 ### TBY-SCN-005
 
 - **What happened:** `<reference>` violates the vulnerability policy and was not pushed.
 - **Probable cause:** Findings at or above the threshold of `<threshold>` (set at the `<level>` level) are not covered by any exception: `<violations>`.
 - **Corrective action:** Publish a fixed version upstream and update the recipe, or — if the risk is accepted in this zone — list the CVE as an exception in the Retriever's `spec.scanPolicy` or in `scan.exceptions`, with its justification.
-- **Fixable offline:** no: the fix comes from upstream, or from an exception decided by the zone · **Blocks:** the item and its recipe · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** no: the fix comes from upstream, or from an exception decided by the zone · **Blocks:** the item and its recipe
 
 ### TBY-SCN-006
 
 - **What happened:** `<reference>` violates the vulnerability policy; it was pushed because the policy is advisory.
 - **Probable cause:** Findings at or above the threshold of `<threshold>` (set at the `<level>` level) are not covered by any exception: `<violations>`.
 - **Corrective action:** Review the findings. To refuse such content instead of reporting it, set `scan.mode: block`; to accept a specific CVE in this zone, list it as an exception with its justification.
-- **Fixable offline:** yes · **Blocks:** nothing · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** nothing
 
 ### TBY-SCN-007
 
 - **What happened:** `<reference>` could not be scanned.
 - **Probable cause:** The scanner stopped with an error: `<detail>`
 - **Corrective action:** Retry the synchronization. If the error persists, the instance log carries the scanner's output under the same correlation identifier. Under `scan.mode: block` the item is not pushed until it scans.
-- **Fixable offline:** yes · **Blocks:** the item under block; nothing under warn · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** the item under block; nothing under warn
 
 ### TBY-SCN-020
 
 - **What happened:** The scan threshold carried by `<recipe>` was ignored.
 - **Probable cause:** The recipe asks for `<annotation>`, above the `<threshold>` in effect for this zone; a recipe can lower the threshold, never raise it.
 - **Corrective action:** Nothing to do on this instance: the zone's threshold applies. The recipe author may remove or lower the `recipe.tobby.dev/scan-threshold` annotation.
-- **Fixable offline:** yes · **Blocks:** nothing · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** nothing
 
 ### TBY-SCN-021
 
 - **What happened:** The exception for `<id>` expired on `<expires>` and no longer applies.
 - **Probable cause:** The exception declared at the `<level>` level carries an expiry date that has passed.
 - **Corrective action:** Renew the exception with a new `expires` and its justification if the risk is still accepted, or remove it and deal with the finding.
-- **Fixable offline:** yes · **Blocks:** nothing by itself · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** nothing by itself
 
 ### TBY-SCN-022
 
 - **What happened:** `<reference>` carries findings with no severity score: `<ids>`.
 - **Probable cause:** The advisory sources give these vulnerabilities neither a CVSS score nor a severity, so the policy cannot compare them with its threshold.
 - **Corrective action:** Review them by hand. They are not counted against the threshold; if one must be refused, have the content fixed upstream.
-- **Fixable offline:** yes · **Blocks:** nothing · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** nothing
 
 ## Destination limits (TBY-DST)
 
