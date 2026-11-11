@@ -304,7 +304,7 @@ func servedAt(ctx context.Context, cfg *config.Config) string {
 	if cfg.State.Root == "" {
 		return ""
 	}
-	raw, err := os.ReadFile(filepath.Join(cfg.State.Root, servingFile)) //nolint:gosec // G304: the instance's own state directory
+	raw, err := os.ReadFile(filepath.Join(cfg.State.Root, servingFile))
 	if err != nil {
 		return ""
 	}

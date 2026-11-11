@@ -306,11 +306,11 @@ func TestInstanceVerifiesItsStoreThroughTheAPIAndTheScreen(t *testing.T) {
 	// A store an instance is serving is refused by the in-process form,
 	// with the way out in the message — not merely discouraged in a page.
 	servedCfg := storeVerifyConfig(t, f.Root, "", f.KP)
-	body, rerr := os.ReadFile(servedCfg)
+	body, rerr := os.ReadFile(servedCfg) //nolint:gosec // G304: a temp file this test wrote
 	if rerr != nil {
 		t.Fatal(rerr)
 	}
-	if err := os.WriteFile(servedCfg, append(body, []byte("state:\n  root: "+strconv.Quote(cfg.State.Root)+"\nserver:\n  addr: "+strconv.Quote(strings.TrimPrefix(base, "http://"))+"\n")...), 0o600); err != nil {
+	if err := os.WriteFile(servedCfg, append(body, []byte("state:\n  root: "+strconv.Quote(cfg.State.Root)+"\nserver:\n  addr: "+strconv.Quote(strings.TrimPrefix(base, "http://"))+"\n")...), 0o600); err != nil { //nolint:gosec // G703: a temp file this test wrote
 		t.Fatal(err)
 	}
 	_, _, serr := runSplit(t, "store", "verify", "--config", servedCfg)
@@ -319,7 +319,7 @@ func TestInstanceVerifiesItsStoreThroughTheAPIAndTheScreen(t *testing.T) {
 	}
 
 	// Let the verification the trigger above left behind finish.
-	for i := 0; i < 600; i++ {
+	for range 600 {
 		_, raw = apiCall(t, http.MethodGet, base+"/api/v1/store/verification")
 		if strings.Contains(string(raw), `"status":"failed"`) || strings.Contains(string(raw), `"status":"done"`) {
 			break
