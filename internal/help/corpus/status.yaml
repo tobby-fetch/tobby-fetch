@@ -305,8 +305,10 @@ features:
   - id: "R-25"
     en: Tobby updates through its own channel, across the air gap
     fr: Mise à jour de Tobby par son propre canal, à travers l'air-gap
-    status: upcoming
-    milestone: 6
+    status: available
+    note:
+      en: Implemented on the milestone-6 branch; ships with v0.6.0 — the first release published recipe-ready.
+      fr: Implémenté sur la branche du jalon 6 ; livré avec la v0.6.0 — la première release publiée prête pour une recipe.
     security: true
   - id: "R-22"
     en: Reduced-trust content stays visibly marked everywhere

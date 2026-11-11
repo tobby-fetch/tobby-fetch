@@ -49,6 +49,12 @@ starting with `v0.1.0`.
   vulnerability database across the air gap* (EN/FR), configuration and
   metrics references; ADR-0008 amended (its example configuration follows
   the FR-031 amendment).
+- **Tobby updates through its own channel** (R-25, channel half): an
+  end-to-end test and the crucible scenario `m6/a-self-update` carry the
+  recipe of Tobby itself — image, chart, binaries FileSet — across the air
+  gap by the standard mirror flow, under a site key; a release signed by
+  the project key alone is refused at the destination. Documentation:
+  *Updating Tobby in an isolated zone* (EN/FR). No self-update (NFR-019).
 
 ### Added
 
