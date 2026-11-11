@@ -30,10 +30,16 @@ refusée, quel que soit son contenu. Après connexion, le navigateur arrive
 sur la page demandée, via le même contrôle anti-redirection-ouverte que
 le formulaire local.
 
-Les identités fédérées apparaissent dans le journal d'audit et sur l'écran
-du compte sous la forme `oidc:<identifiant>` ou `saml:<NameID>` : jamais
-confondues avec un compte local du même nom. Elles n'ont pas de mot de
-passe local à changer.
+**Clé d'identité et nom affiché.** Une identité fédérée a pour clé ce que
+le fournisseur garantit stable — le `sub` OIDC, le `NameID` SAML
+persistant — sous la forme `oidc:<sub>` ou `saml:<NameID>` : jamais
+confondue avec un compte local, jamais réattribuée quand quelqu'un est
+renommé. Le nom lisible (`auth.oidc.nameClaim`, par défaut
+`preferred_username` ; `auth.saml.nameAttribute`) est affiché à l'écran et
+consigné en `actor_name` à côté d'`actor` dans les journaux et l'audit. Il
+ne sert qu'à l'affichage : aucun rôle, aucune session, aucune décision ne
+repose dessus — filtrez l'audit sur `actor`. Les identités fédérées n'ont
+pas de mot de passe local à changer.
 
 ## OpenID Connect
 
@@ -53,6 +59,7 @@ auth:
     redirectURL: https://tobby.example.com/auth/oidc/callback
     scopes: [profile]                       # « openid » est toujours demandé
     groupsClaim: groups
+    nameClaim: preferred_username           # affichage seulement ; la clé est « sub »
     # signingAlgorithms: [RS256, ES256]     # défaut : tous les algorithmes asymétriques
     roles:
       viewer:   [tobby-viewers]
@@ -102,6 +109,7 @@ auth:
     certFile: /etc/tobby/saml-sp.crt
     keyFile: /etc/tobby/saml-sp.key                 # secret : hors du store
     groupsAttribute: groups
+    nameAttribute: displayName                      # affichage seulement ; la clé est le NameID
     clockSkew: 90s                                  # au plus 5m
     roles:
       viewer:   [tobby-viewers]

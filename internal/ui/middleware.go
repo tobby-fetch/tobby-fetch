@@ -90,7 +90,7 @@ func (u *UI) RequireSession(next http.Handler) http.Handler {
 			return
 		}
 		ctx := withSession(r.Context(), &sess)
-		ctx = auth.WithIdentity(ctx, auth.Identity{Name: sess.Account, Role: sess.Role, Method: sess.Method})
+		ctx = auth.WithIdentity(ctx, auth.Identity{Name: sess.Account, DisplayName: sess.Display, Role: sess.Role, Method: sess.Method})
 		r = r.WithContext(ctx)
 
 		switch r.Method {

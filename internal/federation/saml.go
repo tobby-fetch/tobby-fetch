@@ -445,13 +445,21 @@ func (p *samlProvider) verify(sp *saml.ServiceProvider, raw []byte, requestID st
 	if assertion.Subject == nil || assertion.Subject.NameID == nil || assertion.Subject.NameID.Value == "" {
 		return nil, p.fail("subject", errors.New("the assertion names nobody"))
 	}
-	name := "saml:" + assertion.Subject.NameID.Value
-	groups := samlGroups(assertion, p.cfg.GroupsAttribute)
+	// The key is the NameID — persistent and opaque at a conforming IdP;
+	// the name attribute is display only.
+	key := "saml:" + assertion.Subject.NameID.Value
+	display := ""
+	if p.cfg.NameAttribute != "" {
+		if v := samlValues(assertion, p.cfg.NameAttribute, 1); len(v) > 0 {
+			display = displayName(v[0])
+		}
+	}
+	groups := samlValues(assertion, groupsAttr(p.cfg.GroupsAttribute), maxGroups)
 	role := mapRoles(&p.cfg.Roles, groups)
 	if role == "" {
-		return nil, noRole(p.name, name, groups)
+		return nil, noRole(p.name, key, display, groups)
 	}
-	return &Result{Name: name, Role: role, Method: auth.MethodSAML, Groups: groups}, nil
+	return &Result{Name: key, Display: display, Role: role, Method: auth.MethodSAML, Groups: groups}, nil
 }
 
 // samlCheck names the refused check from the library's classification.
@@ -530,12 +538,16 @@ func (p *samlProvider) checkWindow(a *saml.Assertion, now time.Time) error {
 	return errors.New("no subject confirmation is valid now")
 }
 
-// samlGroups reads the groups attribute (by Name, else FriendlyName),
-// bounded.
-func samlGroups(a *saml.Assertion, attr string) []string {
+func groupsAttr(attr string) string {
 	if attr == "" {
-		attr = "groups"
+		return "groups"
 	}
+	return attr
+}
+
+// samlValues reads the values of an attribute (by Name, else
+// FriendlyName), at most limit of them.
+func samlValues(a *saml.Assertion, attr string, limit int) []string {
 	var out []string
 	for _, st := range a.AttributeStatements {
 		for _, at := range st.Attributes {
@@ -544,7 +556,7 @@ func samlGroups(a *saml.Assertion, attr string) []string {
 			}
 			for _, v := range at.Values {
 				out = append(out, v.Value)
-				if len(out) == maxGroups {
+				if len(out) == limit {
 					return out
 				}
 			}

@@ -236,5 +236,29 @@ short-lived pod mounting the state claim — the exact recipe is in
 If you must run open, `auth.disabled: true` is an explicit opt-in that
 puts a permanent warning banner in the UI (FR-075). Never leave it on.
 
+## Signing in through the corporate directory
+
+OIDC and SAML are off by default, and the local `admin` stays — it is the
+break-glass account when the directory is down. To enable either, three
+things to get right at install time (details on
+[Enterprise identity](../../security/enterprise-identity/)):
+
+- **Callback URLs live under `/auth/`.** Register exactly
+  `https://<host>/auth/oidc/callback` (OIDC) or the assertion consumer
+  service `https://<host>/auth/saml/acs` (SAML; the SP descriptor is
+  `https://<host>/auth/saml/metadata`). Configuration naming any other
+  path is refused at startup. A reverse proxy in front must pass `/auth/`
+  through.
+- **Pin the SAML identity provider.** Prefer `auth.saml.idpMetadataFile`;
+  `auth.saml.idpMetadataURL` requires the signing certificate pinned in
+  `auth.saml.idpCertificateFile`.
+- **Mount the secrets outside the store**: `auth.oidc.clientSecretFile`
+  and `auth.saml.keyFile`, like every secret path.
+
+`displayName` labels the sign-in button; `auth.oidc.nameClaim` and
+`auth.saml.nameAttribute` choose the name shown for a person. All three
+are display only. Upgrading from v0.5.x needs none of this: every new key
+is off or defaulted.
+
 Next: point the instance at the outside world through
 [the enterprise network](../../passthrough/network/).

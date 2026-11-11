@@ -96,6 +96,10 @@ type Identity struct {
 	Token bool
 	// Anonymous is true under the FR-075 authentication override.
 	Anonymous bool
+	// DisplayName is the readable name of a federated identity whose Name
+	// is an opaque key (OIDC sub, SAML NameID). Display only: every
+	// decision is made on Name and Role.
+	DisplayName string
 	// Method is how the caller authenticated: basic or token on the
 	// machine surfaces, the session's method in the UI. FR-078 needs it to
 	// tell a local sign-in under federation — a break-glass use, audited
@@ -103,6 +107,15 @@ type Identity struct {
 	// that a federated identity has no local password to change. Empty
 	// only under the FR-075 override.
 	Method Method
+}
+
+// Label is the name to show: DisplayName when there is one, Name
+// otherwise.
+func (id Identity) Label() string {
+	if id.DisplayName != "" {
+		return id.DisplayName
+	}
+	return id.Name
 }
 
 // Method is an authentication method (ADR-0009: four methods side by

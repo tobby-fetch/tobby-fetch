@@ -285,7 +285,7 @@ func TestSAMLHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Name != "saml:alice" || res.Role != auth.RoleAdmin || res.Next != "/recipes" || res.Method != auth.MethodSAML {
+	if res.Name != "saml:alice" || res.Display != "" || res.Role != auth.RoleAdmin || res.Next != "/recipes" || res.Method != auth.MethodSAML {
 		t.Errorf("result = %+v", res)
 	}
 	md, err := svc.SAMLMetadata()
@@ -504,4 +504,23 @@ func TestSAMLAdvisoryGO20266909(t *testing.T) {
 			t.Fatalf("an assertion whose only NameID is foreign was accepted (%+v %v)", res, ferr)
 		}
 	})
+}
+
+// TestSAMLNameAttributeIsDisplayOnly: auth.saml.nameAttribute names what is
+// shown; the key stays the NameID, and the attribute grants nothing.
+func TestSAMLNameAttributeIsDisplayOnly(t *testing.T) {
+	idp := newTestIDP(t)
+	svc := samlService(t, idp, 90*time.Second)
+	svc.saml.cfg.NameAttribute = "groups" // any attribute will do: its first value is shown
+	id, relay, binding := begin(t, svc)
+	if err := post(svc, idp.response(t, &resp{inResponseTo: id, nameID: "G-7f3a", groups: []string{"staff", "root"}}), relay); err != nil {
+		t.Fatal(err)
+	}
+	res, err := svc.FinishSAML(relay, binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Name != "saml:G-7f3a" || res.Display != "staff" {
+		t.Errorf("result = %q / %q, want the NameID as key and the attribute as display", res.Name, res.Display)
+	}
 }

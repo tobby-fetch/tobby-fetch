@@ -69,7 +69,7 @@
     </form>
     {{if not .Identity.Anonymous}}
     <details class="t-usermenu">
-      <summary>{{.Identity.Name}} <i>({{.Identity.Role}})</i></summary>
+      <summary>{{.Identity.Label}} <i>({{.Identity.Role}})</i></summary>
       <form method="post" action="/logout">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
         {{/* Stacked pop-under entries: the account link above the sign-out

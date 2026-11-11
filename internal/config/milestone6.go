@@ -153,6 +153,12 @@ type OIDC struct {
 	Scopes []string `yaml:"scopes,omitempty"`
 	// GroupsClaim names the claim carrying the user's groups.
 	GroupsClaim string `yaml:"groupsClaim,omitempty"`
+	// NameClaim names the claim shown as the person's name — on screen
+	// and as the readable actor_name of the logs and the audit trail.
+	// Display only: the identity key is always the token's "sub", and
+	// nothing is ever authorized on this claim. Default
+	// preferred_username.
+	NameClaim string `yaml:"nameClaim,omitempty"`
 	// SigningAlgorithms is the allow-list of ID token signature
 	// algorithms. "none" and the HS* family are refused outright.
 	SigningAlgorithms []string `yaml:"signingAlgorithms,omitempty"`
@@ -192,6 +198,12 @@ type SAML struct {
 	KeyFile  string `yaml:"keyFile,omitempty"`
 	// GroupsAttribute names the assertion attribute carrying the groups.
 	GroupsAttribute string `yaml:"groupsAttribute,omitempty"`
+	// NameAttribute names an assertion attribute shown as the person's
+	// name — on screen and as the readable actor_name of the logs and the
+	// audit trail. Display only: the identity key is always the NameID
+	// (persistent, opaque), and nothing is ever authorized on this
+	// attribute. Optional; without it the NameID is shown.
+	NameAttribute string `yaml:"nameAttribute,omitempty"`
 	// ClockSkew bounds the tolerated clock difference with the provider.
 	// Default 90s, at most 5m.
 	ClockSkew Duration `yaml:"clockSkew,omitempty"`

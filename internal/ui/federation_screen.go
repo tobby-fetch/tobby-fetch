@@ -125,15 +125,16 @@ func (u *UI) oidcCallback(w http.ResponseWriter, r *http.Request) {
 // anti-open-redirect check is cheap and must hold on every redirect that
 // leaves a sign-in (B-033).
 func (u *UI) openFederatedSession(w http.ResponseWriter, r *http.Request, res *federation.Result) {
-	sess := u.authn.Sessions.CreateWith(res.Name, res.Role, res.Method, u.now())
+	sess := u.authn.Sessions.CreateNamed(res.Name, res.Display, res.Role, res.Method, u.now())
 	u.setSessionCookie(w, r, sess.ID, sess.Expires)
 	u.authn.Observe(res.Method, auth.OutcomeSuccess)
 	audit.Log(r.Context(), u.logger, &audit.Event{
-		Actor: res.Name, Action: audit.ActionLogin, Target: string(res.Method),
+		Actor: res.Name, ActorName: res.Display, Action: audit.ActionLogin, Target: string(res.Method),
 		Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r),
 	})
 	u.logger.LogAttrs(r.Context(), slog.LevelInfo, "federated sign-in",
 		slog.String("method", string(res.Method)), slog.String("identity", res.Name),
+		slog.String("name", res.Display),
 		slog.String("role", string(res.Role)), slog.Int("groups", len(res.Groups)))
 	http.Redirect(w, r, sanitizeNext(res.Next), http.StatusSeeOther) //nolint:gosec // G710: the target went through sanitizeNext, which only keeps a same-host path (B-033)
 }
@@ -158,7 +159,7 @@ func (u *UI) federatedRefusal(w http.ResponseWriter, r *http.Request, method aut
 		actor = f.Identity
 	}
 	audit.Log(r.Context(), u.logger, &audit.Event{
-		Actor: actor, Action: audit.ActionLogin, Target: string(method),
+		Actor: actor, ActorName: f.Display, Action: audit.ActionLogin, Target: string(method),
 		Outcome: outcome, Origin: auth.ClientOrigin(r),
 	})
 	u.logger.LogAttrs(r.Context(), slog.LevelWarn, "federated sign-in refused",

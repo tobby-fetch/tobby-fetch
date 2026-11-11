@@ -581,5 +581,5 @@ func (a *Authenticator) sessionIdentity(r *http.Request) (Identity, SessionState
 	if st != SessionLive {
 		return Identity{}, st
 	}
-	return Identity{Name: sess.Account, Role: sess.Role, Method: sess.Method}, SessionLive
+	return Identity{Name: sess.Account, DisplayName: sess.Display, Role: sess.Role, Method: sess.Method}, SessionLive
 }

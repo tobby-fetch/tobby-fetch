@@ -90,6 +90,7 @@ Value syntax in the environment:
 | `auth.oidc.redirectURL` | URL | *(none)* | *(file only)* | The callback registered at the provider; its path must be `/auth/oidc/callback`. |
 | `auth.oidc.scopes` | list | *(none)* | *(file only)* | Scopes requested beyond `openid`. |
 | `auth.oidc.groupsClaim` | string | `groups` | *(file only)* | The ID token claim carrying the groups. |
+| `auth.oidc.nameClaim` | string | `preferred_username` | *(file only)* | The claim shown as the person's name, on screen and as `actor_name` in logs and audit. Display only: the identity key is always `sub`. |
 | `auth.oidc.signingAlgorithms` | list | every asymmetric algorithm | *(file only)* | Allow-list of ID token signatures. `none` and `HS*` are refused. |
 | `auth.oidc.displayName` | string | `OpenID Connect` | *(file only)* | Label of the sign-in button. |
 | `auth.oidc.roles` | map | *(none)* | *(file only)* | `viewer`, `operator`, `admin`: the groups granting each role. Highest wins; no match is a refusal. Required non-empty when enabled. |
@@ -101,6 +102,7 @@ Value syntax in the environment:
 | `auth.saml.idpCertificateFile` | path | *(none)* | *(file only)* | The provider's signing certificate (PEM), pinned. Required with `idpMetadataURL`; with a metadata file, replaces the certificates it carries. |
 | `auth.saml.certFile`, `auth.saml.keyFile` | paths | *(none)* | *(file only)* | The service provider's key pair, which signs its requests. The key is a secret path (NFR-020). |
 | `auth.saml.groupsAttribute` | string | `groups` | *(file only)* | The assertion attribute (Name or FriendlyName) carrying the groups. |
+| `auth.saml.nameAttribute` | string | *(none)* | *(file only)* | An attribute shown as the person's name, on screen and as `actor_name` in logs and audit. Display only: the identity key is always the persistent NameID. Without it the NameID is shown. |
 | `auth.saml.clockSkew` | duration | `90s` | *(file only)* | Tolerated clock difference with the provider, both directions; at most `5m`. |
 | `auth.saml.displayName` | string | `SAML` | *(file only)* | Label of the sign-in button. |
 | `auth.saml.roles` | map | *(none)* | *(file only)* | As `auth.oidc.roles`. |

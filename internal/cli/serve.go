@@ -144,11 +144,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	sessions.OnExpire(func(sess *auth.Session, reason auth.ExpiryReason, origin string) {
 		authMetrics.SessionExpired(string(reason))
 		audit.Log(context.Background(), logger, &audit.Event{
-			Actor:   sess.Account,
-			Action:  audit.ActionSessionExpire,
-			Target:  string(reason),
-			Outcome: audit.OutcomeSuccess,
-			Origin:  origin,
+			Actor:     sess.Account,
+			ActorName: sess.Display,
+			Action:    audit.ActionSessionExpire,
+			Target:    string(reason),
+			Outcome:   audit.OutcomeSuccess,
+			Origin:    origin,
 		})
 	})
 	go sweepSessions(ctx, sessions)

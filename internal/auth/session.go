@@ -23,6 +23,9 @@ type Session struct {
 	// Method is how the session was opened: basic for the local sign-in
 	// form, oidc or saml for a federated one (FR-078 tells them apart).
 	Method Method
+	// Display is the readable name of a federated identity (display
+	// only; Account is the key).
+	Display string
 	// CSRF is the per-session anti-forgery token, embedded in every form
 	// (NFR-012).
 	CSRF string
@@ -119,9 +122,16 @@ func (s *Sessions) Create(account string, role Role, now time.Time) Session {
 
 // CreateWith opens a session opened by method for the account.
 func (s *Sessions) CreateWith(account string, role Role, method Method, now time.Time) Session {
+	return s.CreateNamed(account, "", role, method, now)
+}
+
+// CreateNamed opens a session for a federated identity: account is its
+// key, display its readable name (display only).
+func (s *Sessions) CreateNamed(account, display string, role Role, method Method, now time.Time) Session {
 	sess := Session{
 		ID:       randomToken(),
 		Account:  account,
+		Display:  display,
 		Role:     role,
 		Method:   method,
 		CSRF:     randomToken(),

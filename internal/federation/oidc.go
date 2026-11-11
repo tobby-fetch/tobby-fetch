@@ -44,6 +44,7 @@ type oidcProvider struct {
 	algs     []string
 	roles    config.RoleMapping
 	groupsAt string
+	nameAt   string
 
 	// mu guards the discovered provider: discovery is lazy and retried
 	// (FR-078), and once it succeeded the provider and its key set are
@@ -80,7 +81,11 @@ func newOIDCProvider(c *config.OIDC, svc *Service) (*oidcProvider, error) {
 	if groupsAt == "" {
 		groupsAt = "groups"
 	}
-	return &oidcProvider{svc: svc, cfg: *c, name: name, secret: secret, algs: algs, roles: c.Roles, groupsAt: groupsAt}, nil
+	nameAt := c.NameClaim
+	if nameAt == "" {
+		nameAt = "preferred_username"
+	}
+	return &oidcProvider{svc: svc, cfg: *c, name: name, secret: secret, algs: algs, roles: c.Roles, groupsAt: groupsAt, nameAt: nameAt}, nil
 }
 
 // clientCtx carries the instance's outbound client to go-oidc and oauth2
@@ -270,19 +275,20 @@ func (s *Service) CompleteOIDC(ctx context.Context, query url.Values, binding st
 			return nil, p.fail("audience", fmt.Errorf("multiple audiences and azp %q is not the client", azp))
 		}
 	}
-	name, _ := claims["preferred_username"].(string)
-	if name == "" {
-		name = idt.Subject
-	}
-	if name == "" {
+	// The key is the subject — stable and unique per issuer (OpenID
+	// Connect Core §2) — never a name the person or an admin can change.
+	if idt.Subject == "" {
 		return nil, p.fail("subject", errors.New("the ID token names nobody"))
 	}
+	key := "oidc:" + idt.Subject
+	display, _ := claims[p.nameAt].(string)
+	display = displayName(display)
 	groups := stringList(claims[p.groupsAt])
 	role := mapRoles(&p.roles, groups)
 	if role == "" {
-		return nil, noRole(p.name, "oidc:"+name, groups)
+		return nil, noRole(p.name, key, display, groups)
 	}
-	return &Result{Name: "oidc:" + name, Role: role, Method: auth.MethodOIDC, Next: e.next, Groups: groups}, nil
+	return &Result{Name: key, Display: display, Role: role, Method: auth.MethodOIDC, Next: e.next, Groups: groups}, nil
 }
 
 // stringList reads a claim that is a list of strings, or a single string

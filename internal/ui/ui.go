@@ -558,7 +558,7 @@ func (u *UI) logout(w http.ResponseWriter, r *http.Request) {
 	if sess, ok := sessionFrom(r.Context()); ok {
 		u.authn.Sessions.Delete(sess.ID)
 		audit.Log(r.Context(), u.logger, &audit.Event{
-			Actor: sess.Account, Action: audit.ActionLogout, Target: "ui",
+			Actor: sess.Account, ActorName: sess.Display, Action: audit.ActionLogout, Target: "ui",
 			Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r),
 		})
 	}

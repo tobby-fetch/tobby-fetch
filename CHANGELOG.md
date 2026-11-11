@@ -45,6 +45,17 @@ starting with `v0.1.0`.
 
 ### Changed
 
+- **Upgrading from v0.5.x: nothing to change** unless you enable a
+  federated method — every new key is off or defaulted. When you do, the
+  callback URLs registered at the provider must be the `/auth/` paths
+  (`auth.oidc.redirectURL` ending in `/auth/oidc/callback`,
+  `auth.saml.acsURL` in `/auth/saml/acs`; the SP descriptor is at
+  `/auth/saml/metadata`); `auth.saml.idpMetadataURL` requires
+  `auth.saml.idpCertificateFile`; `displayName`, `nameClaim` and
+  `nameAttribute` label the button and the person, display only. A
+  federated identity is keyed on the OIDC `sub` or the SAML `NameID`, and
+  audit records carry its readable name as the additive `actor_name`
+  field. See [Enterprise identity](website/src/content/docs/docs/security/enterprise-identity.md).
 - **`/files/` authenticates through the same audited check** as `/v2/`
   and `/api/v1`: failed and expired credentials there are now audit
   records too.

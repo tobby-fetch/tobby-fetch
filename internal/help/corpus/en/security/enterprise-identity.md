@@ -28,9 +28,15 @@ sign-in is refused, whatever it contains. After sign-in, the browser
 lands on the page it asked for, through the same anti-open-redirect check
 as the local form.
 
-Federated identities appear in the audit log and on the account screen as
-`oidc:<username>` or `saml:<NameID>`: never confused with a local account
-of the same name. They have no local password to change.
+**Identity key and display name.** A federated identity is keyed on what
+the provider guarantees stable — the OIDC `sub`, the SAML persistent
+`NameID` — as `oidc:<sub>` or `saml:<NameID>`: never confused with a local
+account, never reassigned when someone is renamed. The readable name
+(`auth.oidc.nameClaim`, default `preferred_username`; `auth.saml.nameAttribute`)
+is shown on screen and recorded as `actor_name` beside `actor` in the logs
+and the audit trail. It is display only: no role, no session and no
+decision ever rests on it — filter the audit trail on `actor`. Federated
+identities have no local password to change.
 
 ## OpenID Connect
 
@@ -50,6 +56,7 @@ auth:
     redirectURL: https://tobby.example.com/auth/oidc/callback
     scopes: [profile]                     # "openid" is always requested
     groupsClaim: groups
+    nameClaim: preferred_username         # display only; the key is "sub"
     # signingAlgorithms: [RS256, ES256]   # default: every asymmetric algorithm
     roles:
       viewer:   [tobby-viewers]
@@ -96,6 +103,7 @@ auth:
     certFile: /etc/tobby/saml-sp.crt
     keyFile: /etc/tobby/saml-sp.key                 # secret: outside the store
     groupsAttribute: groups
+    nameAttribute: displayName                      # display only; the key is the NameID
     clockSkew: 90s                                  # at most 5m
     roles:
       viewer:   [tobby-viewers]

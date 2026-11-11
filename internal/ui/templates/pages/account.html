@@ -15,7 +15,9 @@
     <h2 class="t-kick">{{.T "account.profile_title"}}</h2>
     <dl>
       <dt>{{.T "account.profile_name"}}</dt>
-      <dd class="t-mono" translate="no">{{.Identity.Name}}</dd>
+      <dd class="t-mono" translate="no">{{.Identity.Label}}</dd>
+      {{if .Identity.DisplayName}}<dt>{{.T "account.profile_key"}}</dt>
+      <dd class="t-mono t-muted" translate="no" data-identity-key>{{.Identity.Name}}</dd>{{end}}
       <dt>{{.T "account.profile_role"}}</dt>
       <dd><span class="t-badge" translate="no" lang="en">{{.Identity.Role}}</span></dd>
     </dl>

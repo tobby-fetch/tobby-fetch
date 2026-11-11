@@ -842,6 +842,7 @@
 "tokens.expires": "Expire"
 "tokens.expires_never": "Jamais"
 "tokens.expired_badge": "expiré"
+"account.profile_key": "Clé d'identité chez le fournisseur"
 "tokens.lifetime_label": "Expire après (jours)"
 "tokens.lifetime_hint_default": "Vide : le défaut de l'instance, {{.Days}} j."
 "tokens.lifetime_hint_never": "Vide : le jeton n'expire jamais."

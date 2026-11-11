@@ -261,7 +261,7 @@ func TestOIDCHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Name != "oidc:alice" || res.Role != auth.RoleOperator || res.Next != "/tasks" || res.Method != auth.MethodOIDC {
+	if res.Name != "oidc:u-1" || res.Display != "alice" || res.Role != auth.RoleOperator || res.Next != "/tasks" || res.Method != auth.MethodOIDC {
 		t.Errorf("result = %+v", res)
 	}
 }
@@ -393,8 +393,8 @@ func TestOIDCAttacks(t *testing.T) {
 		_, err := svc.CompleteOIDC(ctx, op.authorize(t, a), b)
 		wantCode(t, err, taxonomy.CodeFederatedNoRole, "role-mapping")
 		var f *Failure
-		if errors.As(err, &f) && f.Identity != "oidc:alice" {
-			t.Errorf("no-role refusal identity = %q, want oidc:alice for the audit actor", f.Identity)
+		if errors.As(err, &f) && (f.Identity != "oidc:u-1" || f.Display != "alice") {
+			t.Errorf("no-role refusal identity = %q (%q), want the key oidc:u-1 and the name alice", f.Identity, f.Display)
 		}
 	})
 	t.Run("no groups at all", func(t *testing.T) {
@@ -487,4 +487,47 @@ func TestRoleMappingRefusesByDefault(t *testing.T) {
 			t.Errorf("mapRoles(%v) = %q, want %q", tc.groups, got, tc.want)
 		}
 	}
+}
+
+// TestOIDCKeyIsTheSubject: the identity key is "sub"; the display name is
+// the configured claim, cleaned, and never decides anything — a person
+// whose display name reads "admin" and whose groups map nowhere is
+// refused, and two subjects sharing a display name stay two identities.
+func TestOIDCKeyIsTheSubject(t *testing.T) {
+	op := newFakeOP(t)
+	svc := oidcService(t, op.srv.URL, nil)
+	svc.oidc.nameAt = "name"
+	ctx := context.Background()
+	signIn := func(mint func(map[string]any) (string, map[string]any)) (*Result, error) {
+		op.mu.Lock()
+		op.mint = mint
+		op.mu.Unlock()
+		a, b, err := svc.BeginOIDC(ctx, "/")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return svc.CompleteOIDC(ctx, op.authorize(t, a), b)
+	}
+	res, err := signIn(func(c map[string]any) (string, map[string]any) {
+		c["name"] = "Alice\nForged: line\t" + strings.Repeat("x", 300)
+		return "RS256", c
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Name != "oidc:u-1" || strings.ContainsAny(res.Display, "\n\t") || len([]rune(res.Display)) != maxDisplay {
+		t.Errorf("result = %q / %q, want the sub as key and a cleaned, bounded display", res.Name, res.Display)
+	}
+	other, err := signIn(func(c map[string]any) (string, map[string]any) {
+		c["sub"], c["name"] = "u-2", res.Display
+		return "RS256", c
+	})
+	if err != nil || other.Name == res.Name {
+		t.Errorf("two subjects with one display name collapsed into %q (%v)", other.Name, err)
+	}
+	_, err = signIn(func(c map[string]any) (string, map[string]any) {
+		c["name"], c["preferred_username"], c["groups"] = "admin", "admin", []string{"nobody"}
+		return "RS256", c
+	})
+	wantCode(t, err, taxonomy.CodeFederatedNoRole, "role-mapping")
 }

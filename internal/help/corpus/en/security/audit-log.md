@@ -53,7 +53,7 @@ only, with the same compatibility discipline as the REST API
 | `instance.start`, `instance.stop` | process lifecycle | v0.1.x |
 | `auth.override_active` | startup while `auth.disabled` is set (FR-075) | v0.4.x |
 | `account.create`, `account.password_change`, `account.delete`, `account.role_change` | account lifecycle — host CLI, self-service, admin surfaces | v0.2.x–v0.4.x |
-| `session.login`, `session.logout` | interactive UI sessions — local and, since v0.6.x, federated (`target` `oidc` or `saml`) | v0.4.x |
+| `session.login`, `session.logout` | interactive UI sessions — local and, since v0.6.x, federated (`target` `oidc` or `saml`; `actor` is the identity key `oidc:<sub>` / `saml:<NameID>`, with the readable `actor_name` beside it) | v0.4.x |
 | `auth.authenticate` | one credential verification on a machine surface (`/v2/`, `/api/v1`, `/files/` since v0.6.x) | v0.4.x |
 | `ui.access`, `api.access`, `registry.access` | authorization refusals, per surface — refusals only, by design: permitted traffic lives in the operational log | v0.4.x |
 | `token.create`, `token.revoke` | static token lifecycle (FR-072) | v0.4.x |

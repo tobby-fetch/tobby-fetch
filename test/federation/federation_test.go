@@ -105,8 +105,14 @@ func oidcPerRole(t *testing.T, e *env) {
 			t.Error("a user in no mapped group holds a session")
 		}
 	})
-	if recs := e.audit.records("session.login"); !hasRecord(recs, "oidc:admin", "oidc", "success") {
-		t.Error("no session.login success record for oidc:admin")
+	recs := e.audit.records("session.login")
+	var named bool
+	for _, r := range recs {
+		actor, _ := r["actor"].(string)
+		named = named || (r["actor_name"] == "admin" && strings.HasPrefix(actor, "oidc:") && actor != "oidc:admin" && r["outcome"] == "success")
+	}
+	if !named {
+		t.Error("no session.login success record keyed on the OIDC subject with actor_name admin")
 	}
 }
 

@@ -221,13 +221,19 @@ type Event struct {
 	Outcome string
 	// Origin is the client network address, or OriginLocal.
 	Origin string
+	// ActorName is an optional readable name for Actor, when Actor is an
+	// opaque key — a federated identity's OIDC subject or SAML NameID
+	// (milestone 6, track B). Display only, never an identity: filter on
+	// Actor. Emitted as "actor_name" only when set (additive to the
+	// schema).
+	ActorName string
 }
 
 // Log emits e on logger at INFO level. The timestamp is supplied by the
 // logging layer ("ts"); all six schema fields plus the marker and schema
 // version are present on every record.
 func Log(ctx context.Context, logger *slog.Logger, e *Event) {
-	logger.LogAttrs(ctx, slog.LevelInfo, e.Action,
+	attrs := []slog.Attr{
 		slog.String(KeyLogType, LogType),
 		slog.Int("audit_schema", SchemaVersion),
 		slog.String("actor", e.Actor),
@@ -235,5 +241,9 @@ func Log(ctx context.Context, logger *slog.Logger, e *Event) {
 		slog.String("target", e.Target),
 		slog.String("outcome", e.Outcome),
 		slog.String("origin", e.Origin),
-	)
+	}
+	if e.ActorName != "" {
+		attrs = append(attrs, slog.String("actor_name", e.ActorName))
+	}
+	logger.LogAttrs(ctx, slog.LevelInfo, e.Action, attrs...)
 }

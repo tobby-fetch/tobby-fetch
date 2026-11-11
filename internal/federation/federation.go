@@ -35,8 +35,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
@@ -64,13 +66,20 @@ const BindingMaxAge = int(pendingTTL / time.Second)
 
 // Result is a verified federated identity with its role.
 type Result struct {
-	// Name is the identity as Tobby records it: the method, a colon, and
-	// the provider's name for the person (OIDC preferred_username, else
-	// sub; SAML NameID). The prefix keeps a federated "admin" from ever
-	// being taken for the local account of that name.
-	Name   string
-	Role   auth.Role
-	Method auth.Method
+	// Name is the identity KEY as Tobby records it: the method, a colon,
+	// and the provider's stable identifier for the person — the OIDC
+	// "sub", the SAML persistent NameID. Opaque and stable: a display name
+	// can be renamed or reused at the provider, a subject cannot. The
+	// prefix keeps a federated identity from ever being taken for a local
+	// account.
+	Name string
+	// Display is the readable name (OIDC auth.oidc.nameClaim, SAML
+	// auth.saml.nameAttribute), bounded and cleaned. Display only — the
+	// screen and the actor_name of logs and audit — never a key and never
+	// an authorization input. Empty when the provider sent none.
+	Display string
+	Role    auth.Role
+	Method  auth.Method
 	// Next is the sanitized destination the sign-in started from.
 	Next string
 	// Groups are the provider groups the role was derived from, for the
@@ -88,9 +97,11 @@ type Failure struct {
 	// "audience"…): a stable, greppable word.
 	Check string
 	Cause error
-	// Identity is the verified identity of a refusal that came after
+	// Identity is the verified identity key of a refusal that came after
 	// authentication (TBY-AUTH-017), for the audit actor; empty otherwise.
 	Identity string
+	// Display is that identity's readable name, when known.
+	Display string
 }
 
 func (f *Failure) Error() string {
@@ -363,8 +374,8 @@ func mapRoles(m *config.RoleMapping, groups []string) auth.Role {
 }
 
 // noRole builds the TBY-AUTH-017 refusal.
-func noRole(provider, identity string, groups []string) *Failure {
-	return &Failure{Code: taxonomy.CodeFederatedNoRole, Provider: provider, Check: "role-mapping", Identity: identity,
+func noRole(provider, identity, display string, groups []string) *Failure {
+	return &Failure{Code: taxonomy.CodeFederatedNoRole, Provider: provider, Check: "role-mapping", Identity: identity, Display: display,
 		Cause: fmt.Errorf("none of the %d groups sent is mapped to a role", len(groups))}
 }
 
@@ -372,3 +383,26 @@ func noRole(provider, identity string, groups []string) *Failure {
 // mapping: the claim is provider-controlled, and a directory member of
 // thousands of groups must cost a bounded scan.
 const maxGroups = 1024
+
+// maxDisplay bounds a display name, in runes.
+const maxDisplay = 128
+
+// displayName cleans a provider-supplied display name: control characters
+// dropped, whitespace trimmed, length bounded. It is shown and logged,
+// never trusted — but it must not be able to forge a log line or flood a
+// header.
+func displayName(v string) string {
+	var b strings.Builder
+	n := 0
+	for _, r := range strings.TrimSpace(v) {
+		if unicode.IsControl(r) {
+			continue
+		}
+		if n == maxDisplay {
+			break
+		}
+		b.WriteRune(r)
+		n++
+	}
+	return b.String()
+}

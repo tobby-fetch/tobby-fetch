@@ -840,6 +840,7 @@
 "tokens.expires": "Expires"
 "tokens.expires_never": "Never"
 "tokens.expired_badge": "expired"
+"account.profile_key": "Identity key at the provider"
 "tokens.lifetime_label": "Expires after (days)"
 "tokens.lifetime_hint_default": "Empty: the instance default, {{.Days}} d."
 "tokens.lifetime_hint_never": "Empty: the token never expires."
