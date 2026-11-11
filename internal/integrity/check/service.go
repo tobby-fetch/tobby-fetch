@@ -65,6 +65,11 @@ func (s *Service) Start(actor, origin string) (*tasks.Task, error) {
 	if err != nil {
 		return nil, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err)
 	}
+	// Create hands back the queue's own task, which the worker is free to
+	// mutate from the moment it is queued: callers get a snapshot.
+	if snap, ok := s.queue.Get(t.ID); ok {
+		return snap, nil
+	}
 	return t, nil
 }
 
