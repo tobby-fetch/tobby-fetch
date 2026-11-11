@@ -31,8 +31,9 @@ starting with `v0.1.0`.
   `auth.local_under_federation`.
 - **Idle session expiry and optional token expiry** (R-14, FR-072
   amendment). UI sessions end after `auth.session.idleTimeout` (default
-  30m) without a request, on top of `auth.sessionTTL`, and the sign-in
-  page explains it with TBY-AUTH-005. Tokens take an optional expiry at
+  30m) without user activity, on top of `auth.sessionTTL`: the page's own
+  background polls do not count, so a tab left open still expires, and
+  the sign-in page explains it with TBY-AUTH-005 and returns to the page. Tokens take an optional expiry at
   creation (lifetime in days on the screen, `expires` in the API), and
   `auth.tokens.defaultLifetime` gives one to tokens created without; an
   expired token is refused with TBY-AUTH-013. New audit events

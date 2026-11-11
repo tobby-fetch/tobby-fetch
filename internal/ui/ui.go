@@ -453,7 +453,7 @@ func (u *UI) tasksBadge(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`<span id="task-badge"></span>`))
 		return
 	}
-	_, _ = fmt.Fprintf(w, `<span id="task-badge" class="t-nav-count" hx-get="/tasks/badge" hx-trigger="every 30s" hx-swap="outerHTML">%d</span>`, n)
+	_, _ = fmt.Fprintf(w, `<span id="task-badge" class="t-nav-count" hx-get="/tasks/badge" hx-trigger="every 30s" hx-headers='{"X-Tobby-Background":"1"}' hx-swap="outerHTML">%d</span>`, n)
 }
 
 func (u *UI) notFound(w http.ResponseWriter, r *http.Request) {

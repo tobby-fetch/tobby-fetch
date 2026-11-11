@@ -178,3 +178,67 @@ func TestTokenLifetimeForm(t *testing.T) {
 		t.Error("an expired token is not marked expired in the listing")
 	}
 }
+
+// TestPollingDoesNotKeepTheSessionAlive: a tab that only polls expires on
+// time, and the poll that finds it dead sends the PAGE — not the fragment
+// URL — through the sign-in page with TBY-AUTH-005.
+func TestPollingDoesNotKeepTheSessionAlive(t *testing.T) {
+	_, mux, now, buf := clockedUI(t, 30*time.Minute)
+	c := login(t, mux, "alexis", "pw-admin")
+	poll := func() *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, "/tasks/badge", http.NoBody)
+		r.Header.Set("HX-Request", "true")
+		r.Header.Set("HX-Current-URL", "http://tobby.test/tasks?status=running")
+		r.Header.Set(BackgroundHeader, "1")
+		r.AddCookie(c)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		return w
+	}
+	for range 29 {
+		*now = now.Add(time.Minute)
+		if w := poll(); w.Code != http.StatusOK {
+			t.Fatalf("poll at %s: %d", now.Sub(t0), w.Code)
+		}
+	}
+	*now = now.Add(2 * time.Minute)
+	w := poll()
+	want := "/login?next=" + url.QueryEscape("/tasks?status=running") + "&expired=1"
+	if w.Code != http.StatusUnauthorized || w.Header().Get("HX-Redirect") != want {
+		t.Errorf("poll after 31 minutes without activity: %d %q, want 401 to %q", w.Code, w.Header().Get("HX-Redirect"), want)
+	}
+	if recs := auditLines(buf.Bytes(), "session.expire"); len(recs) != 1 || recs[0]["target"] != "idle" {
+		t.Errorf("session.expire records = %v", recs)
+	}
+
+	// A user's own htmx request (no background marker) still renews.
+	c = login(t, mux, "alexis", "pw-admin")
+	for range 3 {
+		*now = now.Add(20 * time.Minute)
+		r := httptest.NewRequest(http.MethodGet, "/tasks", http.NoBody)
+		r.Header.Set("HX-Request", "true")
+		r.AddCookie(c)
+		rw := httptest.NewRecorder()
+		mux.ServeHTTP(rw, r)
+		if rw.Code != http.StatusOK {
+			t.Fatalf("user htmx request at +%s: %d", now.Sub(t0), rw.Code)
+		}
+	}
+}
+
+// TestPollingElementsAreMarked: every polling element of the templates
+// carries the background marker — a poll that forgot it would keep its
+// tab alive forever.
+func TestPollingElementsAreMarked(t *testing.T) {
+	for _, page := range []string{"tasks.html", "media.html", "task-detail.html"} {
+		raw, err := templatesFS.ReadFile("templates/pages/" + page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(string(raw), "\n") {
+			if strings.Contains(line, `hx-trigger="every`) && !strings.Contains(line, BackgroundHeader) {
+				t.Errorf("%s: a polling element without the background marker: %s", page, strings.TrimSpace(line))
+			}
+		}
+	}
+}

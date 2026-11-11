@@ -7,6 +7,7 @@ package browser
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/federation"
+	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 )
 
 // downFederation is an OIDC sign-in whose provider does not answer, as
@@ -90,4 +92,42 @@ func TestExpiredSessionReturnsToThePage(t *testing.T) {
 		chromedp.SendKeys(chromedp.ID(`#password`), adminPhrase))
 	s.click(t, "submitting the sign-in form", `form.t-form button[type="submit"]`)
 	s.wait(t, "back on the page that was asked for", `location.pathname === "/content"`)
+}
+
+// TestPollingTabExpires is the FR-072 amendment in a browser: a task page
+// left open polls every two seconds, and still its session ends after the
+// idle timeout — the polls are the page's, not the person's. The poll that
+// finds the session dead takes the whole tab to the sign-in page with
+// TBY-AUTH-005, set to return to the task page itself.
+func TestPollingTabExpires(t *testing.T) {
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	runner := func(ctx context.Context, task *tasks.Task, _ *slog.Logger, save func()) error {
+		task.Items[0].Status = tasks.StatusRunning
+		save()
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return ctx.Err()
+	}
+	inst := newInstance(t, withQueue(runner), withIdleTimeout(5*time.Second))
+	task, err := inst.Queue.Create(tasks.TypeUnitImport, "docker.io/library/redis:7.2", adminUser,
+		[]tasks.Item{{Name: "linux/amd64", Digest: "sha256:1111"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst.waitStatus(t, task.ID, tasks.StatusRunning)
+
+	s := newSession(t)
+	inst.signIn(t, s, "/tasks/"+task.ID)
+	s.wait(t, "the page polls on its own", taskBodyArmed)
+	// Left strictly alone from here: only the page's own polls run.
+	if !s.pollFor(`location.pathname === "/login" && document.body.textContent.includes("TBY-AUTH-005")`, 20*time.Second) {
+		t.Fatal("a tab that only polls never expired: the polls renewed the session")
+	}
+	next := s.evalString(t, "reading the return target", `document.querySelector('input[name="next"]').value`)
+	if next != "/tasks/"+task.ID {
+		t.Errorf("the sign-in page returns to %q, want the task page %q (not a fragment URL)", next, "/tasks/"+task.ID)
+	}
 }

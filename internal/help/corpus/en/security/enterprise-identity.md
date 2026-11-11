@@ -148,7 +148,7 @@ These apply to every method (R-14):
 
 | Key | Default | Effect |
 | --- | --- | --- |
-| `auth.session.idleTimeout` | `30m` | A session with no request for this long ends; any request renews it. The next page shows **TBY-AUTH-005** and returns to it after sign-in. |
+| `auth.session.idleTimeout` | `30m` | A session without user activity for this long ends. Navigations and actions renew it; the requests a page sends on its own (task polling, log tails) do not, so a tab left open still expires. The next page — or the poll that finds the session dead — shows **TBY-AUTH-005** and returns to the page after sign-in. |
 | `auth.sessionTTL` | `12h` | Absolute session lifetime: activity never extends it. |
 | `auth.tokens.defaultLifetime` | none | Expiry given to API tokens created without one. A token can also get its own (lifetime in days on `/admin/accounts`, `expires` in `POST /api/v1/tokens`). |
 

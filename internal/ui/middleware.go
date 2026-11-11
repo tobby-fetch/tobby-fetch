@@ -136,15 +136,53 @@ func (u *UI) sessionOf(r *http.Request) (auth.Session, bool) {
 // at all — told apart from SessionUnknown, a cookie that matches nothing.
 const sessionNone auth.SessionState = -1
 
+// BackgroundHeader marks a request the page sends on its own — a poll, a
+// log tail, a self-terminating refresh — rather than on the person's
+// behalf. The templates set it with hx-headers on every polling element.
+// Such a request is served, but it does not renew the session: the idle
+// timeout measures the person's activity (FR-072 amendment, R-14), and a
+// tab left open on a polling page must expire like any other.
+const BackgroundHeader = "X-Tobby-Background"
+
+// background reports whether r is a background request. The header can
+// only make a request LESS privileged (no renewal), so trusting it from
+// the client gives nothing away.
+func background(r *http.Request) bool { return r.Header.Get(BackgroundHeader) == "1" }
+
 // lookupSession resolves the request's session cookie, renewing a live
-// session (R-14: any authenticated request restarts the idle timer) and
-// reporting why a dead one is dead.
+// session when the request is the person's own (a navigation, an action),
+// and reporting why a dead one is dead.
 func (u *UI) lookupSession(r *http.Request) (auth.Session, auth.SessionState) {
 	c, err := r.Cookie(auth.SessionCookie)
 	if err != nil || c.Value == "" {
 		return auth.Session{}, sessionNone
 	}
+	if background(r) {
+		return u.authn.Sessions.Peek(c.Value, auth.ClientOrigin(r), u.now())
+	}
 	return u.authn.Sessions.Lookup(c.Value, auth.ClientOrigin(r), u.now())
+}
+
+// returnPath is where a sign-in should land after the session of r
+// ended: the request's own page — or, for an htmx request (a poll, a
+// fragment), the page the browser shows, from HX-Current-URL, reduced to
+// its path and query. A fragment URL is never a page to return to.
+func returnPath(r *http.Request) string {
+	if r.Header.Get("HX-Request") == "true" {
+		if cur, err := url.Parse(r.Header.Get("HX-Current-URL")); err == nil && cur.Path != "" {
+			next := cur.Path
+			if cur.RawQuery != "" {
+				next += "?" + cur.RawQuery
+			}
+			return sanitizeNext(next)
+		}
+		return "/"
+	}
+	next := r.URL.Path
+	if r.URL.RawQuery != "" {
+		next += "?" + r.URL.RawQuery
+	}
+	return next
 }
 
 // toLogin sends an unauthenticated request to the login page, preserving
@@ -154,11 +192,7 @@ func (u *UI) lookupSession(r *http.Request) (auth.Session, auth.SessionState) {
 // lands on the login page with TBY-AUTH-005 (R-14), so the person learns
 // why they are asked to sign in again.
 func (u *UI) toLogin(w http.ResponseWriter, r *http.Request, state auth.SessionState) {
-	next := r.URL.Path
-	if r.URL.RawQuery != "" {
-		next += "?" + r.URL.RawQuery
-	}
-	target := "/login?next=" + url.QueryEscape(next)
+	target := "/login?next=" + url.QueryEscape(returnPath(r))
 	if state != sessionNone {
 		u.clearSessionCookie(w, r)
 		target += "&" + loginExpiredParam + "=1"

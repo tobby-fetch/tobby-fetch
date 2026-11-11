@@ -1027,9 +1027,14 @@ gain bounded lifetimes, and every step of their life leaves a trace:
 
 - **Idle expiry of UI sessions.** On top of the absolute lifetime
   (`auth.sessionTTL`), a session expires after `auth.session.idleTimeout`
-  without an authenticated request (default 30m); any authenticated request
-  renews it. An expired session is answered with TBY-AUTH-005, and the expiry
-  is audit-logged (FR-094) with its reason, idle or lifetime.
+  without user activity (default 30m). User activity is a navigation or an
+  action of the person; the requests a page sends on its own — polling, log
+  tails, self-terminating refreshes — are served but do NOT renew the
+  session, so a tab left open on a polling page still expires *(amended
+  2026-11-11)*. An expired session is answered with TBY-AUTH-005 — a
+  background request that finds it expired takes the page to the sign-in
+  form, set to return to that page — and the expiry is audit-logged (FR-094)
+  with its reason, idle or lifetime.
 - **Optional token expiry.** A token MAY be given an expiry when it is
   created; `auth.tokens.defaultLifetime` applies one to tokens created
   without (default: none — long-lived tokens remain the FR-072 default). The
@@ -1040,7 +1045,8 @@ gain bounded lifetimes, and every step of their life leaves a trace:
 
 *Acceptance:* a session left idle past the timeout is refused with
 TBY-AUTH-005 and the audit log records an idle expiry, while a session kept
-active survives the same delay; a token created with an expiry authorizes calls
+active by the person survives the same delay, and a session whose page only
+polls expires on time; a token created with an expiry authorizes calls
 until it and is refused afterwards with the dedicated code and an audit record;
 a token created without expiry behaves exactly as before.
 

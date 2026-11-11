@@ -143,10 +143,15 @@ func (s *Sessions) CreateWith(account string, role Role, method Method, now time
 const OriginLocalSweep = "local"
 
 // Lookup resolves a presented session identifier. A live session is
-// renewed — its idle timer restarts from now — and returned; an expired
+// renewed — its idle timer restarts from now: this request is the
+// person's activity — and returned; an expired
 // one is removed, reported to the expiry hook with origin, and its state
 // returned so the caller can answer TBY-AUTH-005.
 func (s *Sessions) Lookup(id, origin string, now time.Time) (Session, SessionState) {
+	return s.lookup(id, origin, now, true)
+}
+
+func (s *Sessions) lookup(id, origin string, now time.Time, renew bool) (Session, SessionState) {
 	s.mu.Lock()
 	sess, ok := s.m[id]
 	if !ok {
@@ -163,10 +168,21 @@ func (s *Sessions) Lookup(id, origin string, now time.Time) (Session, SessionSta
 		}
 		return Session{}, SessionLifetime
 	}
-	sess.LastSeen = now
-	s.m[id] = sess
+	if renew {
+		sess.LastSeen = now
+		s.m[id] = sess
+	}
 	s.mu.Unlock()
 	return sess, SessionLive
+}
+
+// Peek resolves a presented session identifier like Lookup — an expired
+// session is removed and reported the same way — but does NOT renew a live
+// one. It serves the background requests a page makes on its own (polling,
+// log tails): the idle timeout measures the person's activity (FR-072
+// amendment), and an open tab that only polls must still expire.
+func (s *Sessions) Peek(id, origin string, now time.Time) (Session, SessionState) {
+	return s.lookup(id, origin, now, false)
 }
 
 // Get returns the live session for id, if any, renewing it like Lookup.

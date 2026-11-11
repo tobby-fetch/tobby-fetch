@@ -427,3 +427,25 @@ func TestFilesSurfaceRefusesExpiredToken(t *testing.T) {
 		t.Errorf("token.expire records = %d, want 1", n)
 	}
 }
+
+// TestSessionPeekDoesNotRenew: a background request sees the session and
+// its expiry, but never restarts the idle timer (FR-072 amendment: the
+// timeout measures the person's activity).
+func TestSessionPeekDoesNotRenew(t *testing.T) {
+	ss := NewSessions(12 * time.Hour)
+	ss.SetIdleTimeout(30 * time.Minute)
+	var log expiryLog
+	ss.OnExpire(log.hook)
+	s := ss.Create("poller", RoleViewer, t0)
+	for m := 1; m <= 29; m++ {
+		if _, st := ss.Peek(s.ID, "o", t0.Add(time.Duration(m)*time.Minute)); st != SessionLive {
+			t.Fatalf("peek at +%dm: %v, want live", m, st)
+		}
+	}
+	if _, st := ss.Peek(s.ID, "o", t0.Add(31*time.Minute)); st != SessionIdle {
+		t.Errorf("after 31 minutes of polling only: %v, want idle", st)
+	}
+	if got := log.all(); len(got) != 1 || got[0].reason != ExpiryIdle {
+		t.Errorf("expiry records = %+v, want one idle expiry", got)
+	}
+}

@@ -158,7 +158,7 @@ Ces réglages valent pour toutes les méthodes (R-14) :
 
 | Clé | Défaut | Effet |
 | --- | --- | --- |
-| `auth.session.idleTimeout` | `30m` | Une session sans requête pendant cette durée prend fin ; toute requête la renouvelle. La page suivante affiche **TBY-AUTH-005** et y revient après connexion. |
+| `auth.session.idleTimeout` | `30m` | Une session sans activité de l'utilisateur pendant cette durée prend fin. Navigations et actions la renouvellent ; les requêtes qu'une page envoie d'elle-même (suivi des tâches, défilement des journaux) non : un onglet laissé ouvert expire quand même. La page suivante — ou le rafraîchissement qui trouve la session expirée — affiche **TBY-AUTH-005** et y revient après connexion. |
 | `auth.sessionTTL` | `12h` | Durée de vie absolue de la session : l'activité ne la prolonge jamais. |
 | `auth.tokens.defaultLifetime` | aucune | Expiration donnée aux jetons d'API créés sans. Un jeton peut aussi recevoir la sienne (durée en jours sur `/admin/accounts`, `expires` dans `POST /api/v1/tokens`). |
 
