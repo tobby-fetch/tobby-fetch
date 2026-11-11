@@ -44,8 +44,8 @@ func applyScanEnv(cfg *Config, lookup func(string) (string, bool)) error {
 	}
 	if v, ok := lookup(EnvScanThreshold); ok {
 		n, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			return fmt.Errorf("%s: invalid CVSS score %q (expected e.g. \"7.0\")", EnvScanThreshold, v)
+		if err != nil || !ValidCVSSScore(n) {
+			return fmt.Errorf("%s: invalid CVSS score %q (expected a number between 0 and 10, e.g. \"7.0\")", EnvScanThreshold, v)
 		}
 		s.Threshold = n
 	}

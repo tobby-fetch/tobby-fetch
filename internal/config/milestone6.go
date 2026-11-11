@@ -95,6 +95,10 @@ type Trivy struct {
 	Ref string `yaml:"ref,omitempty"`
 }
 
+// ValidCVSSScore reports whether v is a CVSS base score: a finite number
+// between 0 and 10. NaN and the infinities are not.
+func ValidCVSSScore(v float64) bool { return v >= 0 && v <= 10 }
+
 // The scan modes and stale-database actions.
 const (
 	ScanModeWarn  = "warn"
@@ -261,7 +265,10 @@ func (c *Config) validateScan() []error {
 			errs = append(errs, fmt.Errorf(`%s: unknown value %q: valid values are "warn" and "block"`, f.key, f.value))
 		}
 	}
-	if s.Threshold < 0 || s.Threshold > 10 {
+	// Written as the range it must lie in, not as the two ways out of it:
+	// NaN compares false with everything, so "< 0 || > 10" let it through
+	// — and a NaN threshold makes every comparison of the policy false.
+	if !ValidCVSSScore(s.Threshold) {
 		errs = append(errs, fmt.Errorf("scan.threshold: %v is not a CVSS score: it must lie between 0 and 10 — a finding scoring at or above it violates the policy", s.Threshold))
 	}
 	if time.Duration(s.Timeout) <= 0 {

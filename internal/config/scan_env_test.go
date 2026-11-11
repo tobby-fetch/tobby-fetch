@@ -63,3 +63,34 @@ func TestBlockingScanIsHonoured(t *testing.T) {
 	}
 	checkErr(t, validating(func(c *Config) { c.Scan.Timeout = 0 }), []string{"scan.timeout must be positive"})
 }
+
+// TestThresholdIsAFiniteScore: NaN compares false with everything, so a
+// range check written as "< 0 || > 10" let it through — and a NaN
+// threshold turns every comparison of the policy into "false". NaN, the
+// infinities and anything outside [0, 10] are refused, from the file as
+// from the environment.
+func TestThresholdIsAFiniteScore(t *testing.T) {
+	for _, v := range []string{".nan", ".NaN", ".inf", "-.inf", "10.5", "-1"} {
+		t.Run("file "+v, func(t *testing.T) {
+			path := writeFile(t, "mode: mirror\nscan:\n  threshold: "+v+"\n")
+			if _, err := Load(path, true); err == nil || !strings.Contains(err.Error(), "scan.threshold") {
+				t.Errorf("threshold %s: error = %v; want scan.threshold refused", v, err)
+			}
+		})
+	}
+	path := writeFile(t, "mode: mirror\n")
+	for _, v := range []string{"NaN", "nan", "Inf", "+Inf", "-Inf", "infinity", "10.5", "-0.1"} {
+		t.Run("env "+v, func(t *testing.T) {
+			t.Setenv(EnvScanThreshold, v)
+			if _, err := Load(path, true); err == nil || !strings.Contains(err.Error(), EnvScanThreshold) {
+				t.Errorf("%s=%s: error = %v; want it refused, naming the variable", EnvScanThreshold, v, err)
+			}
+		})
+	}
+	for _, v := range []string{"0", "7", "10"} {
+		t.Setenv(EnvScanThreshold, v)
+		if _, err := Load(path, true); err != nil {
+			t.Errorf("%s=%s refused: %v", EnvScanThreshold, v, err)
+		}
+	}
+}

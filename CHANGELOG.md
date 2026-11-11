@@ -302,6 +302,12 @@ starting with `v0.1.0`.
   the audit trail then showed two principals under one name. `:` is now
   refused in local account and token names, from the CLI, the interface
   and the API, with the new `TBY-AUTH-019`.
+- **A `NaN` scan threshold is refused** (B-051). The range check of
+  `scan.threshold` was written as `< 0 || > 10`, which `NaN` passes, and
+  `TOBBY_SCAN_THRESHOLD=NaN` parsed: a threshold no comparison can be
+  true against. `NaN`, the infinities and anything outside `[0, 10]` are
+  now refused in the file and the environment, and a recipe annotation
+  of that kind applies as `0` and is reported, like any unparsable one.
 
 ## [0.5.2] - 2026-11-09
 

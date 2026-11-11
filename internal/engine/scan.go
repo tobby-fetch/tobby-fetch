@@ -123,7 +123,7 @@ func recipeThreshold(r *spec.Recipe) (*float64, bool) {
 		return nil, true
 	}
 	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
-	if err != nil || v < 0 || v > 10 {
+	if err != nil || !config.ValidCVSSScore(v) {
 		zero := 0.0
 		return &zero, false
 	}

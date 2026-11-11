@@ -483,9 +483,12 @@ func TestRecipeThresholdParsing(t *testing.T) {
 	if v, ok := recipeThreshold(r); v == nil || *v != 6.5 || !ok {
 		t.Errorf("6.5 parsed as %v %v", v, ok)
 	}
-	r.Metadata.Annotations[spec.AnnotationScanThreshold] = "eleven"
-	if v, ok := recipeThreshold(r); v == nil || *v != 0 || ok {
-		t.Errorf("an unparsable annotation must apply as 0 and be reported: %v %v", v, ok)
+	// NaN and the infinities parse as floats but are no score (B-051).
+	for _, bad := range []string{"eleven", "NaN", "Inf", "-Inf", "10.5"} {
+		r.Metadata.Annotations[spec.AnnotationScanThreshold] = bad
+		if v, ok := recipeThreshold(r); v == nil || *v != 0 || ok {
+			t.Errorf("annotation %q must apply as 0 and be reported: %v %v", bad, v, ok)
+		}
 	}
 	if z := zonePolicyOf(&spec.ScanPolicy{Exceptions: []spec.ScanException{{ID: "CVE-1", Expires: "garbage"}}}); !z.exceptions[0].ExpiredAt(scanNow) {
 		t.Error("an unparsable expiry does not read as expired")
