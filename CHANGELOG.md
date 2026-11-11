@@ -207,6 +207,14 @@ starting with `v0.1.0`.
   promotion, a synchronization — until the walk ended. The verification
   now holds a lock of its own that only removals wait on.
 
+- **`tobby store verify` and the media commands no longer delete upload
+  sessions** (B-042). Every store opening started the registry library's
+  upload purger, which removes upload sessions older than a week after a
+  random delay of up to an hour: a verification promised to be
+  byte-identical could delete files from the store or the medium. Those
+  commands now open the store for inspection, without the purger; `tobby
+  serve` keeps it.
+
 ### Security
 
 - **Go 1.27.4** (from 1.27.3), which fixes GO-2026-6859 in `net/http`:

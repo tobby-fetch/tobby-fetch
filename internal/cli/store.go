@@ -150,7 +150,9 @@ func runStoreVerify(cmd *cobra.Command, cfg *config.Config, report *reportFlag) 
 	runID := runid.New()
 	logger := logging.WithRunID(logging.New(cmd.ErrOrStderr(), level), runID)
 
-	st, err := store.Open(cmd.Context(), root, logger)
+	// Opened for inspection: the registry library's upload purger, which
+	// deletes week-old upload sessions, does not start (B-042).
+	st, err := store.OpenWith(cmd.Context(), root, logger, store.Options{Inspect: true})
 	if err != nil {
 		return err
 	}

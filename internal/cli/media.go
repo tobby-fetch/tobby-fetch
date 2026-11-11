@@ -362,7 +362,10 @@ func openMedia(ctx context.Context, cfg *config.Config, stderr io.Writer, intent
 	}
 	op.logger = logging.WithRunID(logger, op.runID)
 
-	st, err := store.Open(ctx, cfg.Storage.Root, op.logger)
+	// Opened for inspection, whatever the intent: the registry library's
+	// upload purger would delete week-old upload sessions on the medium,
+	// a write outside the operation log FR-054 allows (B-042).
+	st, err := store.OpenWith(ctx, cfg.Storage.Root, op.logger, store.Options{Inspect: true})
 	if err != nil {
 		op.close()
 		return nil, err

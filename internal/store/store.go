@@ -79,12 +79,27 @@ func (s *Store) exclusive() (release func()) {
 	}
 }
 
+// Options tunes how a store is opened.
+type Options struct {
+	// Inspect opens the store for a command that promises to leave it
+	// byte-identical — `store verify`, the media commands (FR-054, R-31).
+	// The registry library's upload purger, which otherwise starts with
+	// every opening and deletes upload sessions older than a week, is not
+	// started: a verification writes nothing, removes nothing.
+	Inspect bool
+}
+
 // Open initializes the embedded registry on the given storage root.
 //
 // The registry is read/write: standard clients push into it and pull from
 // it (FR-041). Deletion is enabled so recipe-scoped removal and garbage
 // collection (FR-044) can build on it.
 func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error) {
+	return OpenWith(ctx, root, logger, Options{})
+}
+
+// OpenWith is Open with options.
+func OpenWith(ctx context.Context, root string, logger *slog.Logger, opts Options) (*Store, error) {
 	if root == "" {
 		return nil, fmt.Errorf("store: root directory is required")
 	}
@@ -112,6 +127,11 @@ func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error)
 	cfg.Storage = configuration.Storage{
 		driverName: configuration.Parameters{"rootdirectory": root},
 		"delete":   configuration.Parameters{"enabled": true},
+	}
+	if opts.Inspect {
+		cfg.Storage["maintenance"] = configuration.Parameters{
+			"uploadpurging": map[any]any{"enabled": false},
+		}
 	}
 	// The HTTP secret signs upload-session state. Ephemeral is fine for a
 	// single instance; generating it ourselves keeps the library from
