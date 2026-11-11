@@ -524,3 +524,67 @@ func TestSAMLNameAttributeIsDisplayOnly(t *testing.T) {
 		t.Errorf("result = %q / %q, want the NameID as key and the attribute as display", res.Name, res.Display)
 	}
 }
+
+// TestSAMLWrappingIsRefused locks signature wrapping out (adversarial
+// review of milestone 6): an unsigned assertion granting the root group
+// to "admin" is put next to the IdP-signed one — before it, after it — or
+// the signed one is hidden in Extensions with the forged one in its
+// place. Every variant is refused at the assertion consumer service with
+// TBY-AUTH-015, and no identity is ever released. The untouched response
+// passes through the same harness, so the test can tell an acceptance.
+func TestSAMLWrappingIsRefused(t *testing.T) {
+	idp := newTestIDP(t)
+	svc := samlService(t, idp, 90*time.Second)
+
+	wrap := func(mode string, good, evil []byte) []byte {
+		gd, ed := etree.NewDocument(), etree.NewDocument()
+		if err := gd.ReadFromBytes(good); err != nil {
+			t.Fatal(err)
+		}
+		if err := ed.ReadFromBytes(evil); err != nil {
+			t.Fatal(err)
+		}
+		signed := gd.Root().SelectElement("Assertion")
+		forged := ed.Root().SelectElement("Assertion").Copy()
+		switch mode {
+		case "control":
+		case "forged-first":
+			gd.Root().InsertChildAt(signed.Index(), forged)
+		case "forged-last":
+			gd.Root().AddChild(forged)
+		case "signed-in-extensions":
+			gd.Root().RemoveChild(signed)
+			gd.Root().CreateElement("samlp:Extensions").AddChild(signed)
+			gd.Root().AddChild(forged)
+		}
+		out, err := gd.WriteToBytes()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	for _, mode := range []string{"control", "forged-first", "forged-last", "signed-in-extensions"} {
+		t.Run(mode, func(t *testing.T) {
+			id, relay, binding := begin(t, svc)
+			good := idp.response(t, &resp{inResponseTo: id, groups: []string{"staff"}})
+			evil := idp.response(t, &resp{inResponseTo: id, groups: []string{"root"}, nameID: "admin", unsigned: true})
+			err := post(svc, wrap(mode, good, evil), relay)
+			if mode == "control" {
+				if err != nil {
+					t.Fatalf("the untouched signed response was refused: %v", err)
+				}
+				if _, err := svc.FinishSAML(relay, binding); err != nil {
+					t.Fatalf("the untouched signed response did not finish: %v", err)
+				}
+				return
+			}
+			var f *Failure
+			if !errors.As(err, &f) || f.Code != taxonomy.CodeSAMLFailed {
+				t.Fatalf("wrapped response: err = %v; want %s", err, taxonomy.CodeSAMLFailed)
+			}
+			if res, err := svc.FinishSAML(relay, binding); err == nil {
+				t.Fatalf("WRAPPING ACCEPTED: an identity was released: %+v", res)
+			}
+		})
+	}
+}
