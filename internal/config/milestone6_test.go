@@ -134,6 +134,13 @@ func TestValidateAuthMilestone6(t *testing.T) {
 			c.Auth.SAML.IDPMetadataFile = ""
 			c.Auth.SAML.IDPMetadataURL = "https://idp.example.com/metadata"
 		}, []string{"auth.saml.idpCertificateFile is required"}},
+		{"saml metadata url with a pinned certificate", func(c *Config) {
+			saml(c)
+			c.Auth.SAML.IDPMetadataFile = ""
+			c.Auth.SAML.IDPMetadataURL = "https://idp.example.com/metadata"
+			c.Auth.SAML.IDPCertificateFile = "/etc/tobby/idp.crt"
+		}, nil},
+		{"oidc and saml together", func(c *Config) { oidc(c); saml(c) }, nil},
 		{"idle longer than the lifetime is tolerated", func(c *Config) { c.Auth.SessionTTL = Duration(10 * time.Minute) }, nil},
 		{"negative token lifetime", func(c *Config) { c.Auth.Tokens.DefaultLifetime = -1 }, []string{"auth.tokens.defaultLifetime"}},
 		{"oidc over http", func(c *Config) { oidc(c); c.Auth.OIDC.Issuer = "http://idp.example.com" }, []string{"auth.oidc.issuer", "https://"}},
@@ -168,7 +175,6 @@ func TestPendingOptInsAreRefused(t *testing.T) {
 	}{
 		{"blocking scan", func(c *Config) { c.Scan.Mode = ScanModeBlock }, "scan.mode: block"},
 		{"blocking stale database", func(c *Config) { c.Scan.MaxDBAgeAction = ScanModeBlock }, "scan.maxDbAgeAction: block"},
-		{"saml", func(c *Config) { c.Auth.SAML.Enabled = true }, "auth.saml.enabled is not implemented"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			checkErr(t, validating(tc.tweak), []string{tc.want})

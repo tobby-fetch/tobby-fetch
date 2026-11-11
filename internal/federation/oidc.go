@@ -163,6 +163,18 @@ func (s *Service) BeginOIDC(ctx context.Context, next string) (redirect, binding
 	if p == nil {
 		return "", "", errors.New("federation: OIDC is not enabled")
 	}
+	if !s.isReachable(auth.MethodOIDC) {
+		// Known down: look again before sending the person to a provider
+		// that will not answer — the button is also the retry, so a
+		// provider that came back works at once, without waiting for the
+		// next probe.
+		pctx, cancel := context.WithTimeout(ctx, probeTimeout)
+		err := p.probe(pctx)
+		cancel()
+		if err != nil {
+			return "", "", s.unreachableFailure(auth.MethodOIDC, p.name, err)
+		}
+	}
 	prov, _, err := p.discover(ctx)
 	if err != nil {
 		var mismatch *oidc.IssuerMismatchError
