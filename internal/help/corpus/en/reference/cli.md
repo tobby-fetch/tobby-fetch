@@ -181,6 +181,7 @@ for writing, and a second writer is exactly what the store format forbids.
 | `--instance <url>` | `TOBBY_INSTANCE_URL`, then the configured listen address on localhost | Base URL of the instance to drive, e.g. `https://tobby.example:8443`. |
 | `--token-file <path>` | `TOBBY_API_TOKEN` when absent | File holding the static API token (operator role). The token is deliberately **not** a flag: flag values are visible in the process table. |
 | `--request-timeout <d>` | `30s` | Per-request budget against the instance. It bounds a request, never the wait. |
+| `--allow-plaintext-token` | `false` | Send the API token to an `http://` instance that is **not on this host**. Refused by default: the token would cross the network in clear; use `https://`, or `http://` on loopback (`localhost`, `127.0.0.1`, `[::1]`). With the flag, a warning says so on every run (FR-075). |
 | `--wait` | `false` | Block until the task reaches a terminal state, and exit on the task's own outcome. |
 | `--wait-timeout <d>` | *(none)* | Give up waiting after this long. Giving up says so and names the task — the synchronization keeps running on the instance. |
 | `--prune` | *(the instance's own setting)* | `--prune` removes content no recipe reaches any more; `--prune=false` forbids it for this run. Absent means "do what this instance does by default". |
@@ -405,7 +406,7 @@ checks, each independent of the others' verdict:
 | Check | What it establishes |
 |---|---|
 | blobs | every blob is re-hashed against the digest it is stored under |
-| manifests | every manifest reachable from a recorded recipe is complete: its config, its layers, its signature artifacts, the children of an index (a platform-filtered index stays complete) |
+| manifests | every manifest reachable from a recorded recipe is complete: its config, its layers, its signature artifacts, the children of an index the recipe retained (a platform it did not select is no defect; one it retained and the store lost is) |
 | signatures | every recorded recipe signature verifies against the trust roots configured **now**, scopes applied; the [reduced-assurance marker](../../security/reduced-assurance/) of a recipe admitted unsigned by a scope is re-reported |
 | orphans | content that no recorded recipe and no protected root (unit imports, seeded content, the vulnerability database) reaches is listed |
 
@@ -429,7 +430,7 @@ own that never holds up a synchronization. See
 |---|---|
 | `--storage-root` | The store to verify. Required — from the flag, `TOBBY_STORAGE_ROOT`, or `storage.root:` in the configuration file. |
 | `--output text\|json` | `json` emits the report itself on stdout, the same document `GET /api/v1/store/verification` serves under `verification`. With `--instance` and no `--wait`, the task the instance created. |
-| `--instance` | Base URL of the running instance to drive (default `TOBBY_INSTANCE_URL`, then the configured listen address); token from `TOBBY_API_TOKEN` or `--token-file`. |
+| `--instance` | Base URL of the running instance to drive (default `TOBBY_INSTANCE_URL`, then the configured listen address); token from `TOBBY_API_TOKEN` or `--token-file`, sent over `http://` only to this host unless `--allow-plaintext-token`. |
 | `--wait`, `--wait-timeout` | With `--instance`: follow the task to its end, print the report, and exit on its outcome. |
 
 There is no schedule and no repair flag: v1 verifies on demand and reports.

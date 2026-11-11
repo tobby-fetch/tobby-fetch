@@ -115,7 +115,7 @@ Examples:
 					pruneGiven: cmd.Flags().Changed("prune"),
 				})
 			}
-			for _, flag := range []string{"wait", "wait-timeout", "instance", "token-file", "request-timeout", "prune"} {
+			for _, flag := range []string{"wait", "wait-timeout", "instance", "token-file", "request-timeout", "allow-plaintext-token", "prune"} {
 				if cmd.Flags().Changed(flag) {
 					// A plan contacts no instance and starts no task, so
 					// these flags cannot mean anything here. Saying so is

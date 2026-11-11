@@ -308,6 +308,12 @@ starting with `v0.1.0`.
   true against. `NaN`, the infinities and anything outside `[0, 10]` are
   now refused in the file and the environment, and a recipe annotation
   of that kind applies as `0` and is reported, like any unparsable one.
+- **The CLI no longer sends its API token in clear across the network**
+  (B-052). `tobby sync` and `tobby store verify` with `--instance
+  http://…` sent `Authorization: Bearer` to any host. A token now goes
+  over `http://` only to this host (loopback); another host needs
+  `https://`, or the explicit `--allow-plaintext-token`, which warns on
+  every run (FR-075). Any other scheme is refused.
 
 ## [0.5.2] - 2026-11-09
 
