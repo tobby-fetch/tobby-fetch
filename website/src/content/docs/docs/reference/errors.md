@@ -175,28 +175,28 @@ its published rendering.
 - **What happened:** Sign-in through `<provider>` failed.
 - **Probable cause:** The identity provider's answer did not pass Tobby's checks (state, nonce, signature, issuer or audience) — often a sign-in started in another tab, a clock difference, or a client registered with another callback URL.
 - **Corrective action:** Start the sign-in again from this page. If it fails again, an administrator finds the failed check in the instance log under the same correlation identifier; local sign-in stays available meanwhile.
-- **Fixable offline:** yes · **Blocks:** the sign-in attempt · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** the sign-in attempt
 
 ### TBY-AUTH-015
 
 - **What happened:** Sign-in through `<provider>` failed.
 - **Probable cause:** The SAML response was refused: it was not signed, was already used, was not answering a sign-in this instance started, was outside its validity window, or named another audience or destination.
 - **Corrective action:** Start the sign-in again from this page — Tobby only accepts sign-ins it initiated. If it fails again, an administrator finds the refused check in the instance log under the same correlation identifier; local sign-in stays available meanwhile.
-- **Fixable offline:** yes · **Blocks:** the sign-in attempt · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** the sign-in attempt
 
 ### TBY-AUTH-016
 
 - **What happened:** Sign-in through `<provider>` is unavailable: the identity provider cannot be reached.
 - **Probable cause:** The provider did not answer in time, or the network path to it is cut. Existing sessions and API tokens are not affected.
 - **Corrective action:** Use local sign-in meanwhile — it stays available while federation is down, and its use is recorded in the audit log. Check the network path to the provider (proxy, private CA) and its availability; federated sign-in comes back without a restart.
-- **Fixable offline:** depends: local sign-in works offline; federated sign-in needs the provider · **Blocks:** federated sign-in only · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** depends: local sign-in works offline; federated sign-in needs the provider · **Blocks:** federated sign-in only
 
 ### TBY-AUTH-017
 
 - **What happened:** You are signed in at `<provider>`, but no Tobby role is granted to you.
 - **Probable cause:** None of the groups the identity provider sent for your account is mapped to a role on this instance. Tobby never grants a role by default.
 - **Corrective action:** Ask an administrator to add one of your groups to the role mapping of the instance configuration (`roles.viewer`, `roles.operator` or `roles.admin` under the provider's section), or to add you to a group already mapped.
-- **Fixable offline:** yes · **Blocks:** the sign-in attempt · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** the sign-in attempt
 
 ## Configuration (TBY-CFG)
 
