@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -106,6 +107,12 @@ type destRegistry struct {
 	// "nothing was pushed before verification" is a statement about
 	// order, and a request log read at the end cannot make it.
 	watch func(method, path string)
+
+	// completeIndexes, when set, makes the registry refuse an index whose
+	// members it does not all hold, the way a registry that validates
+	// index members does (the library's default, which Tobby's own
+	// registry turns off: B-036). The FR-022 widening exists for them.
+	completeIndexes bool
 }
 
 // newDestRegistry serves a fresh destination.
@@ -124,6 +131,9 @@ func newDestRegistry(t *testing.T, opts ...func(*destRegistry)) *destRegistry {
 		if watch != nil {
 			watch(r.Method, r.URL.Path)
 		}
+		if d.completeIndexes && r.Method == http.MethodPut && d.refuseIncompleteIndex(w, r) {
+			return
+		}
 		if d.maxDepth > 0 && repoDepth(r.URL.Path) > d.maxDepth {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
@@ -141,6 +151,44 @@ func newDestRegistry(t *testing.T, opts ...func(*destRegistry)) *destRegistry {
 // refusingNestedNames caps the accepted repository depth.
 func refusingNestedNames(depth int) func(*destRegistry) {
 	return func(d *destRegistry) { d.maxDepth = depth }
+}
+
+// refusingSparseIndexes makes the destination validate index members.
+func refusingSparseIndexes() func(*destRegistry) {
+	return func(d *destRegistry) { d.completeIndexes = true }
+}
+
+// refuseIncompleteIndex answers a manifest PUT naming an index whose
+// members are not all present with the code a validating registry sends,
+// and reports whether it did. Anything else is left to the registry, with
+// its body restored.
+func (d *destRegistry) refuseIncompleteIndex(w http.ResponseWriter, r *http.Request) bool {
+	repo, _, ok := strings.Cut(strings.TrimPrefix(r.URL.Path, "/v2/"), "/manifests/")
+	if !ok {
+		return false
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return false
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	var idx struct {
+		Manifests []struct {
+			Digest string `json:"digest"`
+		} `json:"manifests"`
+	}
+	if !types.MediaType(r.Header.Get("Content-Type")).IsIndex() || json.Unmarshal(body, &idx) != nil {
+		return false
+	}
+	for _, m := range idx.Manifests {
+		if !d.st.HasManifest(r.Context(), repo, m.Digest) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"errors":[{"code":"MANIFEST_BLOB_UNKNOWN","message":"blob unknown to registry","detail":"` + m.Digest + `"}]}`))
+			return true
+		}
+	}
+	return false
 }
 
 // watching runs f on every inbound request, before the registry answers.

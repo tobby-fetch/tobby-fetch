@@ -53,10 +53,13 @@ is the recipe that carries them, with placeholder digests.
    FileSet and replace the one on the host. Read the release's changelog
    first; a minor version may ask for a configuration change.
 
-## Keep the whole index
+## Keeping only some platforms
 
-List the four platforms of the binaries FileSet, as the example does. A
-subset makes the copied index *sparse* (FR-022), and a zone registry that
-validates the members of an index refuses a sparse one — a connected
-instance widens it by fetching the rest, an isolated one cannot. The
-extra children cost a few tens of megabytes.
+`platforms` may keep only the binaries your zone runs. The index then
+crosses *sparse* (FR-022): it is the original index, at its pinned digest,
+listing children the medium does not carry. Tobby's own registry accepts
+it and serves the platforms that crossed (FR-042). A third-party zone
+registry that validates the members of an index refuses a sparse one,
+and an isolated zone cannot widen it by fetching the rest: if yours does,
+keep the four platforms, as the example does. The extra children cost a
+few tens of megabytes.

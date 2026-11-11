@@ -174,6 +174,23 @@ starting with `v0.1.0`.
   identity offers no password form (TBY-AUTH-010 on the API mirror).
 
 
+### Fixed
+
+- **A Tobby serving as a zone registry refused a sparse index** (B-036).
+  A recipe that keeps only some platforms of a multi-platform ingredient
+  transfers the original index at its pinned digest, listing children it
+  does not carry (FR-022). Tobby's own store has always held such an
+  index, but its `/v2/` endpoint kept the registry library's default and
+  refused a pushed index whose members were not all present: the
+  promotion of a connected instance survived it only by fetching the
+  missing platforms, and a media import into an isolated zone — which
+  cannot — failed, images and FileSets alike. The embedded registry now
+  accepts partial platform sets, as FR-042 requires; every other manifest
+  check is unchanged. `examples/tobby.yaml` and *Updating Tobby in an
+  isolated zone* no longer ask for every platform of the binaries
+  FileSet, except for a third-party zone registry that refuses sparse
+  indexes.
+
 ### Security
 
 - **Go 1.27.4** (from 1.27.3), which fixes GO-2026-6859 in `net/http`:

@@ -108,6 +108,59 @@ func TestMultiArchPushPullRelocatedName(t *testing.T) {
 	}
 }
 
+// TestSparseIndexPushIsAccepted is FR-042 over the wire (B-036): a
+// standard client pushes a partial platform set — one child of three,
+// then the ORIGINAL index listing all three — and the embedded registry
+// accepts it at its pinned digest, serves the child it holds and answers
+// 404 for the others. A Tobby serving as a zone registry receives exactly
+// this from a promotion or a media import (FR-022), and an isolated zone
+// cannot complete it.
+func TestSparseIndexPushIsAccepted(t *testing.T) {
+	addr := startRegistry(t)
+	repo, err := name.NewRepository(addr + "/ghcr.io/tobby-fetch/binaries/tobby")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx, err := random.Index(512, 1, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	man, err := idx.IndexManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := man.Manifests[0].Digest
+	img, err := idx.Image(kept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.Write(repo.Digest(kept.String()), img); err != nil {
+		t.Fatalf("pushing the selected child: %v", err)
+	}
+	if err := remote.Put(repo.Tag("v0.6.0"), idx); err != nil {
+		t.Fatalf("pushing the sparse index: %v — the embedded registry must accept a partial platform set (FR-042)", err)
+	}
+	want, err := idx.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc, err := remote.Head(repo.Tag("v0.6.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if desc.Digest != want {
+		t.Errorf("index digest = %s, want the pinned %s", desc.Digest, want)
+	}
+	if _, err := remote.Head(repo.Digest(kept.String())); err != nil {
+		t.Errorf("the selected child is not served: %v", err)
+	}
+	for _, m := range man.Manifests[1:] {
+		if _, err := remote.Head(repo.Digest(m.Digest.String())); err == nil {
+			t.Errorf("child %s was never pushed, yet it is served", m.Digest)
+		}
+	}
+}
+
 // TestStandardListingAPIs covers FR-043: catalog and tag listing work
 // against the embedded registry, so downstream tooling can enumerate
 // content.

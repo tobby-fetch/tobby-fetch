@@ -77,9 +77,8 @@ func TestSelfUpdateCrossesTheAirGap(t *testing.T) {
 			{Name: "tobby-chart", Kind: spec.IngredientHelmChart, Ref: "ghcr.io/tobby-fetch/charts/tobby",
 				Version: r.version, Digest: r.chart},
 			// The four platforms, as examples/tobby.yaml ships them. A subset
-			// would make the index sparse, and a zone registry that validates
-			// index members refuses a sparse index — which an isolated zone
-			// cannot widen by fetching the rest (FR-022): see the R-25 page.
+			// crosses as a sparse index (FR-022), which Tobby's own registry
+			// accepts: TestPlatformSubsetCrossesTheAirGap (B-036).
 			{Name: "tobby-binaries", Kind: spec.IngredientFileSet, Ref: "ghcr.io/tobby-fetch/binaries/tobby",
 				Version: "v" + r.version, Digest: r.binaries,
 				Platforms: []string{"linux/amd64", "linux/arm64", "windows/amd64", "windows/arm64"}},

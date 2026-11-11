@@ -100,6 +100,16 @@ func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error)
 	// logging a startup warning.
 	cfg.HTTP.Secret = randomSecret()
 	cfg.Catalog.MaxEntries = 1000
+	// B-036, FR-042: the registry stores and serves partial platform sets
+	// (sparse indexes, FR-022) — the original index at its pinned digest,
+	// listing platforms the store does not hold. Tobby's own writes have
+	// always kept them that way (PutManifest), but the library's default
+	// refuses a pushed index whose members are not all present, so a
+	// Tobby serving as a zone registry refused the sparse index another
+	// Tobby promoted into it — and an isolated zone has no way to fetch
+	// the platforms a recipe left out. Index completeness is therefore not
+	// validated; every other manifest check stays on.
+	cfg.Validation.Manifests.Indexes.Platforms = "none"
 
 	// The distribution library logs through logrus. Tobby's own logs are
 	// slog JSON (FR-090); the library's internal noise is kept to warnings
@@ -113,7 +123,15 @@ func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error)
 		logrus.FieldKeyMsg:   "msg",
 	}})
 
+	// With index completeness off, the library warns at every start that
+	// "other container tooling might expect all image indexes to be
+	// complete". That trade-off is FR-022's, made on purpose and
+	// documented there; the warning would only repeat it on every store
+	// opening, CLI commands included. The library is held to errors for
+	// the duration of the call only; its errors still reach the log.
+	logrus.SetLevel(logrus.ErrorLevel)
 	app := handlers.NewApp(ctx, cfg)
+	logrus.SetLevel(logrus.WarnLevel)
 
 	// Second access to the same backend for the browsing accessors
 	// (browse.go): the storage library over the same root directory as the

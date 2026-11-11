@@ -54,11 +54,14 @@ est la recipe qui les emporte, avec des digests à remplacer.
    changelog de la release : une version mineure peut demander un
    changement de configuration.
 
-## Garder l'index entier
+## Ne garder que certaines plateformes
 
-Listez les quatre plateformes du FileSet des binaires, comme le fait
-l'exemple. Un sous-ensemble rend l'index copié *partiel* (FR-022), et une
-registry de zone qui valide les membres d'un index en refuse un partiel —
-une instance connectée le complète en allant chercher le reste, une
-instance isolée ne le peut pas. Les enfants en plus coûtent quelques
+`platforms` peut ne garder que les binaires que votre zone exécute.
+L'index traverse alors *partiel* (FR-022) : c'est l'index d'origine, à son
+digest épinglé, qui liste des enfants que le support ne porte pas. La
+registry de Tobby l'accepte et sert les plateformes qui ont traversé
+(FR-042). Une registry de zone tierce qui valide les membres d'un index en
+refuse un partiel, et une zone isolée ne peut pas le compléter en allant
+chercher le reste : si c'est le cas de la vôtre, gardez les quatre
+plateformes, comme le fait l'exemple. Les enfants en plus coûtent quelques
 dizaines de mégaoctets.

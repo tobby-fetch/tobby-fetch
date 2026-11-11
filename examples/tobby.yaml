@@ -64,10 +64,12 @@ spec:
     # Windows mirror workstation first among them (NFR-018). One image
     # index, four children, each holding a single file at its root: `tobby`
     # for linux, `tobby.exe` for windows. It is a FileSet rather than an
-    # OCIArtifact because it is files, per platform: `platforms` keeps only
-    # the children your zone runs (drop the ones it does not), and the
-    # extraction is the one RECIPE-SPEC §7.4 defines, with no type of ours
-    # to learn. The file inside is byte-for-byte the release asset of the
+    # OCIArtifact because it is files, per platform, and the extraction is
+    # the one RECIPE-SPEC §7.4 defines, with no type of ours to learn.
+    # `platforms` may keep only the children your zone runs: the index then
+    # crosses sparse, at its pinned digest (FR-022), which Tobby's own
+    # registry accepts. A zone registry that refuses sparse indexes cannot
+    # be completed from an isolated zone — keep all four for one of those. The file inside is byte-for-byte the release asset of the
     # same name, so `SHA256SUMS` and tobby.intoto.jsonl vouch for it too.
     # darwin is not here: macOS is a workstation tier, not a zone target.
     - name: tobby-binaries
