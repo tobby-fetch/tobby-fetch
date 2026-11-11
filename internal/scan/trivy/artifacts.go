@@ -52,34 +52,50 @@ type located struct {
 	At time.Time
 }
 
+// SystemRecipe is the name of the recipe that carries the scanner's own
+// deliveries: the database and, on Linux and Windows hosts, the binary
+// (FR-032, ADR-0008 decision 3).
+const SystemRecipe = "tobby-system"
+
 // locate finds the current copy of a tobby-system ingredient. With an
-// explicit repository it looks for that one; otherwise for any repository
-// that is a relocation of nominalRef — under this instance's base prefix
-// or under the prefix of the instance that wrote the medium, which a
-// reader cannot recompute (RECIPE-SPEC §11.5). The most recently resolved
-// delivery wins.
+// explicit repository it looks for that one; otherwise for the relocation
+// of nominalRef under the base prefix of the instance that wrote the
+// record — this one, or the one that wrote the medium, which a reader
+// cannot recompute (RECIPE-SPEC §11.5) but which the record states
+// through its artifact repository. The most recently resolved delivery
+// wins.
+//
+// Only the tobby-system recipe, admitted with its signature verified,
+// delivers: what the scanner executes and the database it judges with
+// decide whether everything else crosses, so a recipe admitted under a
+// relaxed trust scope (FR-033, R-22), or another recipe naming a
+// look-alike repository, never supplies them (FR-054). The repository is
+// compared whole, never by suffix.
 func locate(st Store, explicitRepo, nominalRef string) (*located, error) {
 	records, err := st.RecipeRecords()
 	if err != nil {
 		return nil, err
 	}
-	suffix := ""
+	nominal := ""
 	if explicitRepo == "" {
 		p, err := relocate.Path(nominalRef)
 		if err != nil {
 			return nil, err
 		}
-		suffix = p
+		nominal = p
 	}
 	var best *located
 	for i := range records {
 		rec := &records[i]
+		if rec.Name != SystemRecipe || !rec.Verified || rec.TrustScope != "" {
+			continue
+		}
+		want := explicitRepo
+		if want == "" {
+			want = recordBase(rec) + nominal
+		}
 		for _, ing := range rec.Ingredients {
-			match := ing.Repo == explicitRepo
-			if explicitRepo == "" {
-				match = ing.Repo == suffix || strings.HasSuffix(ing.Repo, "/"+suffix)
-			}
-			if !match || ing.Digest == "" {
+			if ing.Repo != want || ing.Digest == "" {
 				continue
 			}
 			if best == nil || rec.ResolvedAt.After(best.At) {
@@ -88,6 +104,28 @@ func locate(st Store, explicitRepo, nominalRef string) (*located, error) {
 		}
 	}
 	return best, nil
+}
+
+// recordBase is the base prefix, with its trailing slash, of the instance
+// that wrote a recipe record: what its artifact repository holds before
+// the relocated cookbook path. Empty when there is none — or when the
+// record does not say, in which case only the unprefixed relocation
+// matches.
+func recordBase(rec *store.RecipeRecord) string {
+	if rec.ArtifactRepo == "" || rec.CookbookRepo == "" {
+		return ""
+	}
+	p, err := relocate.Path(rec.CookbookRepo)
+	if err != nil {
+		return ""
+	}
+	if rec.ArtifactRepo == p {
+		return ""
+	}
+	if base, ok := strings.CutSuffix(rec.ArtifactRepo, "/"+p); ok && base != "" {
+		return base + "/"
+	}
+	return ""
 }
 
 // ociManifest is the subset of an OCI manifest or index the adapter reads.

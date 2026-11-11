@@ -428,7 +428,7 @@ func (s *Scanner) locateBinary(ctx context.Context) (*binary, *taxonomy.Error) {
 			return unavailable("reading the recipe graph: " + err.Error())
 		}
 		if loc == nil {
-			return unavailable(fmt.Sprintf("no tobby-system delivery of %s is in the store yet — synchronize the tobby-system recipe that carries the scanner first", ref))
+			return unavailable(fmt.Sprintf("no tobby-system delivery of %s is in the store yet — synchronize the tobby-system recipe that carries the scanner first, signed and verified (a recipe admitted under a relaxed trust scope never delivers it)", ref))
 		}
 		// The previous unpack is reused when the delivery did not change;
 		// its digest was computed from the verified layer at that time.

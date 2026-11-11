@@ -223,6 +223,15 @@ starting with `v0.1.0`.
   `dry_run == 'false'` **and** the tag-push event, and
   `tools/check-publish-target.sh` refuses a real name outside a tag push.
   `tools/release-meta-test.sh` locks it in CI.
+- **Only the signed tobby-system recipe arms the scanner** (B-040). The
+  scanner binary and the vulnerability database were taken from any
+  recipe record whose ingredient repository *ended* like the upstream
+  one: a third-party recipe admitted under a relaxed trust scope could
+  name `evil.example/ghcr.io/aquasecurity/trivy` and have its binary
+  executed as the pinned one, or ship an empty database that passes
+  everything. Only the recipe named `tobby-system`, admitted with its
+  signature verified, now delivers, and the repository is compared whole
+  under the base prefix its own record states.
 
 ## [0.5.2] - 2026-11-09
 

@@ -130,7 +130,24 @@ func (m *memStore) manifest(repo, tag, mediaType string, v any) string {
 func (m *memStore) record(ings ...store.IngredientRecord) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.records = append(m.records, store.RecipeRecord{Name: "tobby-system", Version: "1.0.0", ResolvedAt: time.Now(), Ingredients: ings})
+	m.records = append(m.records, systemRecord(ings...))
+}
+
+// systemRecord is a verified tobby-system record, written by the instance
+// whose base prefix its ingredients carry (everything before the
+// relocated ghcr.io path), as the engine writes one.
+func systemRecord(ings ...store.IngredientRecord) store.RecipeRecord {
+	const cookbook = "registry.example.com/cookbook/tobby-system"
+	artifact := cookbook
+	if len(ings) > 0 {
+		if base, _, ok := strings.Cut(ings[0].Repo, "/ghcr.io/"); ok && base != "" && !strings.HasPrefix(ings[0].Repo, "ghcr.io/") {
+			artifact = base + "/" + cookbook
+		}
+	}
+	return store.RecipeRecord{
+		Name: SystemRecipe, Version: "1.0.0", CookbookRepo: cookbook, ArtifactRepo: artifact,
+		ResolvedAt: time.Now(), Verified: true, Ingredients: ings,
+	}
 }
 
 func tarOf(t *testing.T, gz bool, files map[string][]byte) []byte {
@@ -734,5 +751,79 @@ func TestBoundedBufferAndLastLine(t *testing.T) {
 	}
 	if got := lastLine(""); got != "no diagnostic on stderr" {
 		t.Errorf("lastLine(empty) = %q", got)
+	}
+}
+
+// TestOnlyTheVerifiedSystemRecipeDelivers locks the tobby-system channel
+// (FR-054, R-25): the scanner binary and its database come from the
+// tobby-system recipe admitted with its signature verified, at exactly the
+// relocated repository — never from a recipe admitted under a relaxed
+// trust scope, never from another recipe, never from a repository that
+// merely ends like the right one. A later, untrusted delivery never
+// displaces the trusted one.
+func TestOnlyTheVerifiedSystemRecipeDelivers(t *testing.T) {
+	t0 := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	const (
+		binRepo = "site/ghcr.io/aquasecurity/trivy"
+		dbRepo  = "site/ghcr.io/aquasecurity/trivy-db"
+	)
+	// The record is written by the "site" instance; only the ingredient's
+	// repository varies.
+	rec := func(repo, dgst string, at time.Time, mut func(*store.RecipeRecord)) store.RecipeRecord {
+		r := systemRecord(store.IngredientRecord{Repo: binRepo, Digest: dgst})
+		r.Ingredients[0].Repo = repo
+		r.ResolvedAt = at
+		if mut != nil {
+			mut(&r)
+		}
+		return r
+	}
+	relaxed := func(r *store.RecipeRecord) { r.Verified, r.TrustScope = false, "relaxed-vendor" }
+	other := func(r *store.RecipeRecord) { r.Name = "third-party-app" }
+	for _, c := range []struct {
+		name string
+		repo string // where the untrusted delivery sits; "" = the right repository
+		mut  func(*store.RecipeRecord)
+	}{
+		{"another recipe, relaxed scope, look-alike repository", "site/evil.example/ghcr.io/aquasecurity/trivy",
+			func(r *store.RecipeRecord) { other(r); relaxed(r) }},
+		{"another recipe, verified", "", other},
+		{"tobby-system under a relaxed scope", "", relaxed},
+		{"tobby-system, look-alike repository", "site/evil.example/ghcr.io/aquasecurity/trivy", nil},
+		{"tobby-system, prefix its record does not state", "elsewhere/ghcr.io/aquasecurity/trivy", nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			repo := c.repo
+			if repo == "" {
+				repo = binRepo
+			}
+			st := newMemStore()
+			st.records = []store.RecipeRecord{
+				rec(binRepo, "sha256:good", t0, nil),
+				rec(repo, "sha256:evil", t0.Add(time.Hour), c.mut),
+			}
+			loc, err := locate(st, "", DefaultBinaryRef)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if loc == nil || loc.Digest != "sha256:good" {
+				t.Fatalf("binary located at %+v; want the verified tobby-system delivery sha256:good", loc)
+			}
+			if c.repo != "" {
+				return
+			}
+			// The explicit repository (scan.dbRepository) obeys the same
+			// admission rules.
+			st.records = []store.RecipeRecord{
+				rec(dbRepo, "sha256:good", t0, nil),
+				rec(dbRepo, "sha256:evil", t0.Add(time.Hour), c.mut),
+			}
+			if loc, err = locate(st, dbRepo, DefaultDBRef); err != nil {
+				t.Fatal(err)
+			}
+			if loc == nil || loc.Digest != "sha256:good" {
+				t.Fatalf("database located at %+v; want sha256:good", loc)
+			}
+		})
 	}
 }
