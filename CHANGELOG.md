@@ -174,6 +174,13 @@ starting with `v0.1.0`.
   identity offers no password form (TBY-AUTH-010 on the API mirror).
 
 
+### Security
+
+- **Go 1.27.4** (from 1.27.3), which fixes GO-2026-6859 in `net/http`:
+  the `go` directive, the pinned development toolchain and therefore the
+  release binaries and the apk, built from Wolfi's `go-1.27` line with the
+  exact patch release forced from `go.mod`.
+
 ## [0.5.2] - 2026-11-09
 
 The reference Helm chart is now published with every release, as a signed

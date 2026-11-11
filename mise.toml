@@ -1,7 +1,7 @@
 # Tool versions for Tobby (portable across machines / CI via mise).
 # Matches the versions the project is developed and built with.
 [tools]
-go = "1.27.3"
+go = "1.27.4"
 "aqua:golangci/golangci-lint" = "2.15.0"
 node = "26.13.0"
 pnpm = "12.18.0"
