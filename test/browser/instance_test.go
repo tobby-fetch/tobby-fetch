@@ -126,6 +126,8 @@ type spec struct {
 	// destination-side Media screen over it (R-02, FR-054).
 	medium bool
 	verify mediagate.Verify
+	// scan is the vulnerability-scanning state the shell reads (FR-031).
+	scan func() ui.ScanState
 }
 
 type option func(*spec)
@@ -152,6 +154,9 @@ func withQueue(runner tasks.Runner) option {
 func withMedium(verify mediagate.Verify) option {
 	return func(s *spec) { s.medium, s.verify = true, verify }
 }
+
+// withScan wires the vulnerability-scanning state the banners read.
+func withScan(state func() ui.ScanState) option { return func(s *spec) { s.scan = state } }
 
 func newInstance(t *testing.T, opts ...option) *instance {
 	t.Helper()
@@ -207,7 +212,7 @@ func newInstance(t *testing.T, opts ...option) *instance {
 	}
 
 	uiOpts := &ui.Options{
-		Version: "0.3.0-e2e", Mode: "mirror", Store: st, Queue: inst.Queue,
+		Version: "0.3.0-e2e", Mode: "mirror", Store: st, Queue: inst.Queue, Scan: sp.scan,
 	}
 	if sp.medium {
 		seedMedium(t, st)
