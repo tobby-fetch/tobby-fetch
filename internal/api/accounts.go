@@ -241,10 +241,13 @@ type tokenJSON struct {
 	Role    auth.Role `json:"role"`
 	Created time.Time `json:"created"`
 	Revoked bool      `json:"revoked"`
+	// Expires is the optional expiry of FR-072's R-14 amendment; absent
+	// for a long-lived token.
+	Expires time.Time `json:"expires,omitzero"`
 }
 
 func newTokenJSON(t *auth.Token) tokenJSON {
-	return tokenJSON{Name: t.Name, Role: t.Role, Created: t.Created, Revoked: t.Revoked}
+	return tokenJSON{Name: t.Name, Role: t.Role, Created: t.Created, Revoked: t.Revoked, Expires: t.Expires}
 }
 
 // listTokens serves GET /api/v1/tokens, revoked included (the mirror shows

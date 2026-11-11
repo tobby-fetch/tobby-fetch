@@ -66,6 +66,7 @@ type Config struct {
 	Preflight   Preflight   `yaml:"preflight"`
 	Tasks       Tasks       `yaml:"tasks"`
 	Trust       Trust       `yaml:"trust"`
+	Scan        Scan        `yaml:"scan"`
 	Files       Files       `yaml:"files"`
 	Logging     Logging     `yaml:"logging"`
 	Shutdown    Shutdown    `yaml:"shutdown"`
@@ -436,6 +437,15 @@ type Auth struct {
 	// SessionTTL bounds a UI session's lifetime. Sessions live in memory:
 	// an instance restart signs everyone out. Default 12h.
 	SessionTTL Duration `yaml:"sessionTTL"`
+	// Session bounds UI sessions for idleness (FR-072 amendment, R-14).
+	Session AuthSession `yaml:"session"`
+	// Tokens configures static-token expiry (FR-072 amendment, R-14).
+	Tokens AuthTokens `yaml:"tokens"`
+	// OIDC and SAML are the federated methods (FR-070, FR-071), both
+	// disabled by default; the local methods stay usable beside them
+	// (FR-078).
+	OIDC OIDC `yaml:"oidc"`
+	SAML SAML `yaml:"saml"`
 }
 
 // Server configures the HTTP listener (UI, API, registry, probes, metrics).
@@ -604,7 +614,7 @@ type Shutdown struct {
 
 // Default returns the built-in defaults, the lowest configuration layer.
 func Default() Config {
-	return Config{
+	cfg := Config{
 		Server:      Server{Addr: ":8080"},
 		Auth:        Auth{SessionTTL: Duration(12 * time.Hour)},
 		Import:      Import{InspectTimeout: Duration(20 * time.Second)},
@@ -616,6 +626,8 @@ func Default() Config {
 		Logging:     Logging{Level: "info"},
 		Shutdown:    Shutdown{GracePeriod: Duration(30 * time.Second)},
 	}
+	defaultMilestone6(&cfg)
+	return cfg
 }
 
 // Scope names the configuration slice a command actually uses: validation
@@ -781,6 +793,11 @@ func (c *Config) validate(scope Scope) error {
 	errs = append(errs, c.validateServerTLS()...)
 	errs = append(errs, c.validateTrust()...)
 	errs = append(errs, c.validateFiles()...)
+	errs = append(errs, c.validateScan()...)
+	errs = append(errs, c.validateAuthMilestone6()...)
+	if scope == ScopeInstance {
+		errs = append(errs, c.pendingOptIns()...)
+	}
 	return errors.Join(errs...)
 }
 

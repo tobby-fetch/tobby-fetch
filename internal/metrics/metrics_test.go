@@ -4,6 +4,7 @@
 package metrics
 
 import (
+	"regexp"
 	"testing"
 )
 
@@ -92,4 +93,34 @@ func gaugeValue(t *testing.T, reg *Registry, name string) float64 {
 	}
 	t.Fatalf("family %q not found", name)
 	return 0
+}
+
+// TestReservedFamiliesAreNotRegisteredYet keeps the milestone-6
+// reservation honest: every reserved name is a valid, unique Prometheus
+// name in Tobby's namespace, and none is exposed before its track feeds it
+// (a reserved gauge scraped at 0 would state a fact nobody measured). A
+// track that registers a family removes it from ReservedFamilies.
+func TestReservedFamiliesAreNotRegisteredYet(t *testing.T) {
+	families, err := New().Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	registered := map[string]bool{}
+	for _, f := range families {
+		registered[f.GetName()] = true
+	}
+	seen := map[string]bool{}
+	valid := regexp.MustCompile(`^tobby_[a-z][a-z0-9_]*[a-z0-9]$`)
+	for _, name := range ReservedFamilies() {
+		if !valid.MatchString(name) {
+			t.Errorf("reserved family %q is not a valid tobby_* metric name", name)
+		}
+		if seen[name] {
+			t.Errorf("reserved family %q is listed twice", name)
+		}
+		seen[name] = true
+		if registered[name] {
+			t.Errorf("reserved family %q is already registered: remove it from ReservedFamilies", name)
+		}
+	}
 }

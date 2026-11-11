@@ -2176,6 +2176,148 @@ components:
           $ref: "#/components/schemas/TaskStatus"
         error:
           $ref: "#/components/schemas/ItemError"
+        scan:
+          $ref: "#/components/schemas/ScanReport"
+        assurance:
+          $ref: "#/components/schemas/Assurance"
+    Assurance:
+      type: object
+      description: >-
+        The reduced-assurance marker (FR-037, R-22): present only on
+        content admitted under a relaxed trust-root scope; absent means
+        full assurance — signature verified against a configured trust
+        root. Reserved at the opening of milestone 6: no surface sets it
+        yet.
+      required: [level, scope, reasons]
+      properties:
+        level:
+          type: string
+          enum: [reduced]
+        scope:
+          type: string
+          description: The declared trust scope that admitted the content.
+        reasons:
+          type: array
+          items:
+            type: string
+            enum: [unsigned]
+    ScanReport:
+      type: object
+      description: >-
+        The vulnerability-scan section of one item (FR-031, FR-032):
+        findings, the database they were matched against, and the
+        evaluated policy. Codes and parameters, never sentences. An item
+        the scanner could not scan carries a report whose verdict is
+        not-scanned, with the reason. Reserved at the opening of
+        milestone 6: no scan populates it yet.
+      properties:
+        scanner:
+          type: object
+          properties:
+            name: { type: string }
+            version: { type: string }
+            digest: { type: string }
+        scanned_at:
+          type: string
+          format: date-time
+        database:
+          type: object
+          description: The database the scan ran against (R-13 — its age is in every report).
+          properties:
+            version: { type: string }
+            digest: { type: string }
+            built_at: { type: string, format: date-time }
+            age_seconds: { type: integer, format: int64 }
+            stale: { type: boolean }
+        counts:
+          type: object
+          properties:
+            critical: { type: integer }
+            high: { type: integer }
+            medium: { type: integer }
+            low: { type: integer }
+            unknown: { type: integer }
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanFinding"
+        evaluation:
+          $ref: "#/components/schemas/ScanEvaluation"
+    ScanFinding:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Vulnerability identifier, CVE when one exists.
+        severity:
+          type: string
+          enum: [UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL]
+        cvss:
+          type: number
+          description: >-
+            CVSS base score compared with the threshold — the highest when
+            several sources score the finding. Absent when none does.
+        package: { type: string }
+        installed_version: { type: string }
+        fixed_version: { type: string }
+        source: { type: string }
+    ScanException:
+      type: object
+      properties:
+        id: { type: string }
+        justification: { type: string }
+        expires: { type: string, format: date-time }
+        level:
+          type: string
+          enum: [instance, retriever]
+    ScanEvaluation:
+      type: object
+      description: The evaluated policy of one item — verdict, reasons, exceptions applied.
+      properties:
+        verdict:
+          type: string
+          enum: [pass, warn, block, not-scanned]
+        policy:
+          type: object
+          properties:
+            mode:
+              type: string
+              enum: [warn, block]
+            threshold: { type: number }
+            threshold_level:
+              type: string
+              enum: [instance, retriever, recipe]
+            ignored_recipe_threshold:
+              type: number
+              description: >-
+                A recipe annotation that would have raised the threshold,
+                ignored — a recipe can only lower it.
+            exceptions:
+              type: array
+              items:
+                $ref: "#/components/schemas/ScanException"
+        reasons:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              params: { type: object, additionalProperties: { type: string } }
+        violations:
+          type: array
+          items: { type: string }
+        exceptions_applied:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanException"
+        exceptions_expired:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanException"
+        unscored:
+          type: array
+          description: UNKNOWN findings without a score — never compared with the threshold, never dropped.
+          items: { type: string }
     ItemError:
       type: object
       description: >-
@@ -2421,6 +2563,12 @@ components:
           format: date-time
         revoked:
           type: boolean
+        expires:
+          type: string
+          format: date-time
+          description: >-
+            Optional expiry (FR-072 amendment, R-14); absent for a
+            long-lived token.
     MediaSummary:
       type: object
       description: >-
@@ -2640,6 +2788,15 @@ components:
                   The declared scope that decided the verdict, when one
                   matched — a relaxation is always visible (FR-033).
               unsigned: { type: boolean }
+              assurance:
+                $ref: "#/components/schemas/Assurance"
+              sourceAssurance:
+                allOf:
+                  - $ref: "#/components/schemas/Assurance"
+                description: >-
+                  The marker the media manifest claims for this recipe —
+                  the source zone's decision, re-displayed beside this
+                  instance's own (FR-037), never instead of it.
               files: { type: integer }
               bytes: { type: integer, format: int64 }
         findings:

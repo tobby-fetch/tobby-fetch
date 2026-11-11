@@ -184,6 +184,29 @@ const (
 	ActionServerCertReplace = "config.server_certificate"
 )
 
+// Actions reserved at the opening of milestone 6. No surface emits them
+// yet; each track wires its own and documents it on the audit-log page
+// (website security/audit-log) when it does.
+const (
+	// ActionTokenExpire is a static token refused because it expired
+	// (FR-072 amendment, R-14) — the end of its lifecycle, recorded like
+	// its creation and revocation. Track B.
+	ActionTokenExpire = "token.expire"
+	// ActionSessionExpire is a UI session ended by its idle timeout or its
+	// absolute lifetime; the reason is the target (R-14). Track B.
+	ActionSessionExpire = "session.expire"
+	// ActionLocalUnderFederation is a sign-in with a LOCAL account while a
+	// federated method is enabled (FR-078, R-20): break-glass use, kept
+	// filterable on its own. Track B.
+	ActionLocalUnderFederation = "auth.local_under_federation"
+	// ActionScanBlock is an item refused by the vulnerability policy
+	// (FR-031) — the scan events R-12 schedules for milestone 6. Track A.
+	ActionScanBlock = "scan.block"
+	// ActionIntegrityVerify is an on-demand store verification (FR-057,
+	// R-31): who asked, on which store, with which verdict. Track C.
+	ActionIntegrityVerify = "store.verify"
+)
+
 // Event is one security audit event (FR-094 schema).
 type Event struct {
 	// Actor is the authenticated identity, ActorLocal for local invocation,

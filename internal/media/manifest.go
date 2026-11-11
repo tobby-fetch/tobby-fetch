@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
 	"github.com/tobby-fetch/tobby-fetch/internal/buildinfo"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 )
@@ -104,6 +105,17 @@ type Recipe struct {
 	Digest      string       `json:"digest"`
 	ResolvedAt  time.Time    `json:"resolvedAt"`
 	Ingredients []Ingredient `json:"ingredients"`
+	// Assurance is the reduced-assurance marker of a recipe the source
+	// side admitted under a relaxed trust scope (FR-037, R-22); absent
+	// for a recipe verified against a trust root. Re-read and
+	// re-displayed by the destination as a claim (RecipeVerdict
+	// .SourceAssurance), never trusted: the destination's own verdict
+	// decides its own marker.
+	//
+	// Omitted when nil, so a medium that carries no reduced-assurance
+	// content stays readable by a build that predates the field — the
+	// strict reader refuses unknown fields.
+	Assurance *assurance.Marker `json:"assurance,omitempty"`
 }
 
 // Ingredient is one pinned ingredient of a delivered recipe.

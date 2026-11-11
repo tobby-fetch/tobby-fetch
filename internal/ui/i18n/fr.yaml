@@ -815,3 +815,36 @@
 "media.findings_more":
   one: "1 observation supplémentaire n'est pas listée."
   other: "{{.Count}} observations supplémentaires ne sont pas listées."
+
+# ── Jalon 6 (réservé à l'ouverture du jalon) ─────────────────────────────
+# Un bloc par piste : chaque piste ajoute ses libellés DANS son propre bloc,
+# pour que trois branches ne modifient jamais les mêmes lignes. Les libellés
+# qu'aucun gabarit n'affiche encore sont réservés ; le test de complétude les
+# tient quand même en EN/FR.
+
+# Piste A — analyse de vulnérabilités (6.1, 6.2, R-13).
+"banner.scan_advisory": "La politique de vulnérabilités est consultative : les vulnérabilités sont signalées et le contenu est tout de même poussé. Réglez scan.mode: block pour refuser le contenu qui l'enfreint."
+"banner.scan_degraded": "L'analyse de vulnérabilités est dégradée — le contenu est signalé non analysé : {{.Reason}}"
+"banner.scan_db_stale": "La base de vulnérabilités a {{.Age}}, au-delà des {{.Max}} acceptés par cette instance."
+"scan.section_title": "Analyse de vulnérabilités"
+"scan.verdict_pass": "Conforme à la politique"
+"scan.verdict_warn": "Enfreint la politique (consultative)"
+"scan.verdict_block": "Bloqué par la politique"
+"scan.verdict_not_scanned": "Non analysé"
+"scan.db_age": "Âge de la base : {{.Age}}"
+"scan.threshold": "Seuil {{.Threshold}}, posé au niveau {{.Level}}"
+"scan.exceptions_applied": "Exceptions appliquées"
+
+# Piste B — durcissement de l'authentification et fédération (R-14, 6.3, R-20).
+"login.federated": "Se connecter avec {{.Provider}}"
+"login.idp_unavailable": "{{.Provider}} est injoignable : la connexion fédérée est indisponible. La connexion locale fonctionne toujours."
+"login.local_under_federation": "Connexion par compte local — consignée à part dans le journal d'audit."
+"tokens.expires": "Expire"
+"tokens.expires_never": "Jamais"
+
+# Piste C — intégrité à la demande et assurance réduite (R-31, R-22).
+"assurance.reduced": "Assurance réduite"
+"assurance.reduced_hint": "Admis sans signature par le périmètre de confiance {{.Scope}}."
+"assurance.source_claim": "Déclaré par la zone source : assurance réduite ({{.Scope}})"
+"integrity.section_title": "Intégrité du store"
+"integrity.verify_action": "Vérifier le store"

@@ -814,3 +814,35 @@
 "media.findings_more":
   one: "1 further observation is not listed."
   other: "{{.Count}} further observations are not listed."
+
+# ── Milestone 6 (reserved at the opening of the milestone) ───────────────
+# One block per track: each track adds its labels INSIDE its own block, so
+# three branches never edit the same lines. Labels not yet rendered by any
+# template are reserved; the completeness test still holds them to EN/FR.
+
+# Track A — vulnerability scanning (6.1, 6.2, R-13).
+"banner.scan_advisory": "The vulnerability policy is advisory: findings are reported and content is pushed anyway. Set scan.mode: block to refuse violating content."
+"banner.scan_degraded": "Vulnerability scanning is degraded — content is reported as not scanned: {{.Reason}}"
+"banner.scan_db_stale": "The vulnerability database is {{.Age}} old, beyond the {{.Max}} this instance accepts."
+"scan.section_title": "Vulnerability scan"
+"scan.verdict_pass": "Within the policy"
+"scan.verdict_warn": "Violates the policy (advisory)"
+"scan.verdict_block": "Blocked by the policy"
+"scan.verdict_not_scanned": "Not scanned"
+"scan.db_age": "Database age: {{.Age}}"
+"scan.threshold": "Threshold {{.Threshold}}, set at the {{.Level}} level"
+"scan.exceptions_applied": "Exceptions applied"
+
+# Track B — authentication hardening and federation (R-14, 6.3, R-20).
+"login.federated": "Sign in with {{.Provider}}"
+"login.idp_unavailable": "{{.Provider}} cannot be reached: federated sign-in is unavailable. Local sign-in still works."
+"login.local_under_federation": "Local account sign-in — recorded separately in the audit log."
+"tokens.expires": "Expires"
+"tokens.expires_never": "Never"
+
+# Track C — on-demand integrity and reduced assurance (R-31, R-22).
+"assurance.reduced": "Reduced assurance"
+"assurance.reduced_hint": "Admitted unsigned by the trust scope {{.Scope}}."
+"assurance.source_claim": "Declared by the source zone: reduced assurance ({{.Scope}})"
+"integrity.section_title": "Store integrity"
+"integrity.verify_action": "Verify the store"

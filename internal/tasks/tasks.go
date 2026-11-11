@@ -17,6 +17,8 @@ import (
 	"encoding/hex"
 	"time"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
+	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
@@ -242,6 +244,21 @@ type Item struct {
 	// task stays a few lines rather than one entry per layer per
 	// platform.
 	Blobs []BlobProgress `json:"blobs,omitempty"`
+
+	// Scan is the item's vulnerability-scan report and evaluated policy
+	// (FR-031, FR-032 — milestone 6). Nil when the item is of a kind that
+	// is not scanned, or was produced before scanning existed; an item the
+	// scanner could NOT scan carries a report whose verdict says so, never
+	// a nil (degraded mode is never silent).
+	//
+	// Like Error, it is set whole and never mutated in place: cloneItems
+	// shares the pointer between the runner's working copy and the
+	// published task, which is only race-free under that rule.
+	Scan *scan.Report `json:"scan,omitempty"`
+	// Assurance is the reduced-assurance marker of an item reached by a
+	// recipe admitted under a relaxed trust scope (FR-037, R-22). Nil is
+	// full assurance. Set whole, never mutated in place, as Scan.
+	Assurance *assurance.Marker `json:"assurance,omitempty"`
 }
 
 // cloneItems deep-copies a task's items, per-blob progress rows

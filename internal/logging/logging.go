@@ -30,6 +30,10 @@ const (
 	KeyRecipe     = "recipe"
 	KeyIngredient = "ingredient"
 	KeyDigest     = "digest"
+	// KeyAssurance carries the reduced-assurance marker of the record's
+	// recipe or item (FR-037, R-22): present only on reduced assurance.
+	// Reserved at the opening of milestone 6, set by the assurance work.
+	KeyAssurance = "assurance"
 )
 
 // New returns a JSON logger writing to w at the given level.

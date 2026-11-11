@@ -609,3 +609,15 @@ func TestAccountsFileIsOwnerOnly(t *testing.T) {
 		t.Errorf("state directory mode = %04o, want 0700", got)
 	}
 }
+
+// TestMethodLocal pins which methods FR-078 guarantees while the identity
+// provider is down: the two that need none.
+func TestMethodLocal(t *testing.T) {
+	for m, local := range map[Method]bool{
+		MethodBasic: true, MethodToken: true, MethodOIDC: false, MethodSAML: false, "": false,
+	} {
+		if m.Local() != local {
+			t.Errorf("Method(%q).Local() = %v, want %v", m, !local, local)
+		}
+	}
+}

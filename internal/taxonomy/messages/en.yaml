@@ -51,6 +51,26 @@
 "TBY-AUTH-012.cause": "Repeated wrong credentials were presented from the same origin. Each failed check is deliberately expensive to verify, so the instance throttles origins that keep failing rather than burn CPU and memory for them."
 "TBY-AUTH-012.action": "Wait a moment, check the credential (account password or token secret), then try again. If this is a shared egress address, another client behind it may be misconfigured — the audit trail lists the failed attempts and the account names they claimed."
 
+"TBY-AUTH-013.what": "The API token has expired."
+"TBY-AUTH-013.cause": "The token was created with an expiry date, and that date has passed. An expired token is refused like a revoked one, and the refusal is audit-logged."
+"TBY-AUTH-013.action": "Ask an administrator for a new token (the accounts screen or `POST /api/v1/tokens`), then replace the expired one in the client that presented it."
+
+"TBY-AUTH-014.what": "Sign-in through {{.provider}} failed."
+"TBY-AUTH-014.cause": "The identity provider's answer did not pass Tobby's checks (state, nonce, signature, issuer or audience) — often a sign-in started in another tab, a clock difference, or a client registered with another callback URL."
+"TBY-AUTH-014.action": "Start the sign-in again from this page. If it fails again, an administrator finds the failed check in the instance log under the same correlation identifier; local sign-in stays available meanwhile."
+
+"TBY-AUTH-015.what": "Sign-in through {{.provider}} failed."
+"TBY-AUTH-015.cause": "The SAML response was refused: it was not signed, was already used, was not answering a sign-in this instance started, was outside its validity window, or named another audience or destination."
+"TBY-AUTH-015.action": "Start the sign-in again from this page — Tobby only accepts sign-ins it initiated. If it fails again, an administrator finds the refused check in the instance log under the same correlation identifier; local sign-in stays available meanwhile."
+
+"TBY-AUTH-016.what": "Sign-in through {{.provider}} is unavailable: the identity provider cannot be reached."
+"TBY-AUTH-016.cause": "The provider did not answer in time, or the network path to it is cut. Existing sessions and API tokens are not affected."
+"TBY-AUTH-016.action": "Use local sign-in meanwhile — it stays available while federation is down, and its use is recorded in the audit log. Check the network path to the provider (proxy, private CA) and its availability; federated sign-in comes back without a restart."
+
+"TBY-AUTH-017.what": "You are signed in at {{.provider}}, but no Tobby role is granted to you."
+"TBY-AUTH-017.cause": "None of the groups the identity provider sent for your account is mapped to a role on this instance. Tobby never grants a role by default."
+"TBY-AUTH-017.action": "Ask an administrator to add one of your groups to the role mapping of the instance configuration (`roles.viewer`, `roles.operator` or `roles.admin` under the provider's section), or to add you to a group already mapped."
+
 "TBY-CFG-001.what": "The configuration is invalid."
 "TBY-CFG-001.cause": "{{.detail}}"
 "TBY-CFG-001.action": "Fix the reported setting (precedence: flags, then TOBBY_* environment variables, then the YAML file), check the result with `tobby config dump`, then restart."
@@ -270,6 +290,66 @@
 "TBY-LAY-003.what": "The export destination already exists."
 "TBY-LAY-003.cause": "{{.path}} is already there, and this export was not allowed to replace it."
 "TBY-LAY-003.action": "Choose another destination, or re-run the export with the replace option (`--overwrite` on the command line) once you are sure what is there can be lost."
+
+"TBY-SCN-001.what": "The vulnerability scanner is unavailable: content is not being scanned."
+"TBY-SCN-001.cause": "{{.detail}}"
+"TBY-SCN-001.action": "Make the scanner available for this platform: in the container image it is bundled; on a Linux or Windows host, synchronize the tobby-system recipe that carries it; on macOS, install trivy on the PATH. Under `scan.mode: block`, nothing that could not be scanned is pushed until then."
+
+"TBY-SCN-002.what": "The scanner binary at {{.path}} does not match its pinned digest and was not executed."
+"TBY-SCN-002.cause": "Expected {{.expected}}, found {{.actual}}: the file was replaced or damaged after it was pinned."
+"TBY-SCN-002.action": "Restore the binary from the tobby-system recipe (or from the pinned release), or update `scan.trivy.digest` if the change is deliberate. Content is reported not scanned until then."
+
+"TBY-SCN-003.what": "No vulnerability database is available: content is not being scanned."
+"TBY-SCN-003.cause": "The store holds no database under {{.repository}}."
+"TBY-SCN-003.action": "Synchronize the tobby-system recipe that carries the database first — through the mirror medium in an isolated zone. Media verification does not need the database."
+
+"TBY-SCN-004.what": "The vulnerability database is {{.age}} old, beyond the {{.max}} this instance accepts."
+"TBY-SCN-004.cause": "The database has not been refreshed recently enough: findings published since it was built are unknown to the scanner."
+"TBY-SCN-004.action": "Synchronize the tobby-system recipe to bring a fresh database — through the next medium in an isolated zone. Under `scan.maxDbAgeAction: block`, items scanned with a stale database are not pushed until then."
+
+"TBY-SCN-005.what": "{{.reference}} violates the vulnerability policy and was not pushed."
+"TBY-SCN-005.cause": "Findings at or above the threshold of {{.threshold}} (set at the {{.level}} level) are not covered by any exception: {{.violations}}."
+"TBY-SCN-005.action": "Publish a fixed version upstream and update the recipe, or — if the risk is accepted in this zone — list the CVE as an exception in the Retriever's `spec.scanPolicy` or in `scan.exceptions`, with its justification."
+
+"TBY-SCN-006.what": "{{.reference}} violates the vulnerability policy; it was pushed because the policy is advisory."
+"TBY-SCN-006.cause": "Findings at or above the threshold of {{.threshold}} (set at the {{.level}} level) are not covered by any exception: {{.violations}}."
+"TBY-SCN-006.action": "Review the findings. To refuse such content instead of reporting it, set `scan.mode: block`; to accept a specific CVE in this zone, list it as an exception with its justification."
+
+"TBY-SCN-007.what": "{{.reference}} could not be scanned."
+"TBY-SCN-007.cause": "The scanner stopped with an error: {{.detail}}"
+"TBY-SCN-007.action": "Retry the synchronization. If the error persists, the instance log carries the scanner's output under the same correlation identifier. Under `scan.mode: block` the item is not pushed until it scans."
+
+"TBY-SCN-020.what": "The scan threshold carried by {{.recipe}} was ignored."
+"TBY-SCN-020.cause": "The recipe asks for {{.annotation}}, above the {{.threshold}} in effect for this zone; a recipe can lower the threshold, never raise it."
+"TBY-SCN-020.action": "Nothing to do on this instance: the zone's threshold applies. The recipe author may remove or lower the `recipe.tobby.dev/scan-threshold` annotation."
+
+"TBY-SCN-021.what": "The exception for {{.id}} expired on {{.expires}} and no longer applies."
+"TBY-SCN-021.cause": "The exception declared at the {{.level}} level carries an expiry date that has passed."
+"TBY-SCN-021.action": "Renew the exception with a new `expires` and its justification if the risk is still accepted, or remove it and deal with the finding."
+
+"TBY-SCN-022.what": "{{.reference}} carries findings with no severity score: {{.ids}}."
+"TBY-SCN-022.cause": "The advisory sources give these vulnerabilities neither a CVSS score nor a severity, so the policy cannot compare them with its threshold."
+"TBY-SCN-022.action": "Review them by hand. They are not counted against the threshold; if one must be refused, have the content fixed upstream."
+
+"TBY-INT-001.what": "The blob {{.path}} does not match its digest."
+"TBY-INT-001.cause": "Its content hashes to {{.actual}} instead of {{.expected}}: the file was damaged or altered on disk."
+"TBY-INT-001.action": "The verification changes nothing. Re-synchronize the recipes that reach this blob to fetch it again, or restore the store from a sound copy; check the disk for errors."
+
+"TBY-INT-002.what": "{{.reference}} is incomplete in the store."
+"TBY-INT-002.cause": "It references content the store does not hold: {{.missing}}."
+"TBY-INT-002.action": "Re-synchronize the recipe that reaches it to fetch the missing content, or restore the store from a sound copy."
+
+"TBY-INT-003.what": "{{.path}} is reachable from no recipe."
+"TBY-INT-003.cause": "No recorded recipe and no protected root (unit imports, vulnerability database, seeded content) reaches this content."
+"TBY-INT-003.action": "Nothing is required. To reclaim the space, prune to the Retriever or remove the recipe that used to hold it; the verification itself never deletes."
+
+"TBY-INT-004.what": "A store verification is already running."
+"TBY-INT-004.cause": "Verification {{.task}} is walking the store; running two at once would halve both and answer nothing new."
+"TBY-INT-004.action": "Follow the running verification on the tasks screen, or wait for it to finish and start a new one."
+
+"TBY-INT-005.what": "{{.path}} cannot be read as a manifest."
+"TBY-INT-005.cause": "{{.detail}}"
+"TBY-INT-005.action": "Re-synchronize the recipe that reaches it, or restore the store from a sound copy; what this manifest references could not be checked."
 
 "TBY-TSK-001.what": "The task does not exist."
 "TBY-TSK-001.cause": "No task with identifier {{.id}} on this instance — wrong link, or the store was reset."
