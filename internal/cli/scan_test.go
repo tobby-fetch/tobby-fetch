@@ -9,7 +9,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -115,5 +117,42 @@ func TestServeExposesTheScanState(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatalf("runServe returned %v", err)
+	}
+}
+
+// TestScannerWorkDirIsUnpredictable: without a state directory, the
+// scanner's private directory is created fresh, 0700, under a name
+// nobody can guess — never the fixed os.TempDir()/tobby-scanner another
+// local user could prepare first (B-046) — and removed at close.
+func TestScannerWorkDirIsUnpredictable(t *testing.T) {
+	tmp := t.TempDir()
+	for _, v := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(v, tmp)
+	}
+	cfg := config.Default()
+	cfg.Storage.Root = filepath.Join(t.TempDir(), "store")
+	cfg.State.Root = ""
+	cfg.Scan.Trivy.Path = filepath.Join(t.TempDir(), "removed", "trivy")
+	st, err := store.Open(context.Background(), cfg.Storage.Root, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	eng := engine.New(st, nil, nil, "", "", cfg.Sync)
+	s := setupScanning(context.Background(), &cfg, st, eng, metrics.New(), slog.New(slog.DiscardHandler))
+
+	if _, err := os.Lstat(filepath.Join(tmp, "tobby-scanner")); err == nil {
+		t.Fatal("the scanner used the predictable os.TempDir()/tobby-scanner")
+	}
+	dirs, _ := filepath.Glob(filepath.Join(tmp, "tobby-scanner-*"))
+	if len(dirs) != 1 {
+		t.Fatalf("scanner directories under the temporary directory: %v; want one fresh one", dirs)
+	}
+	if fi, err := os.Stat(dirs[0]); err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o700) {
+		t.Fatalf("scanner directory %s: %v %v", dirs[0], fi.Mode(), err)
+	}
+	s.close()
+	if _, err := os.Stat(dirs[0]); err == nil {
+		t.Error("the fresh scanner directory survived close")
 	}
 }

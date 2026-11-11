@@ -24,6 +24,11 @@ import (
 // metrics and the interface.
 type scanning struct {
 	scanner *trivy.Scanner
+	// workDir is the scanner's private directory; tempWorkDir says this
+	// process created it under the temporary directory, to remove at
+	// close.
+	workDir     string
+	tempWorkDir bool
 	eng     *engine.Engine
 	maxAge  time.Duration
 	logger  *slog.Logger
@@ -36,11 +41,23 @@ func setupScanning(ctx context.Context, cfg *config.Config, st *store.Store, eng
 	// The scanner's private directory — the unpacked database, a
 	// channel-delivered binary, one scratch copy per scan — lives in the
 	// state directory, never in the transportable store (R-16).
-	workDir := filepath.Join(os.TempDir(), "tobby-scanner")
+	//
+	// Without one (auth.disabled), the directory is created fresh, 0700,
+	// under a name nobody can predict — never a fixed path under the
+	// shared temporary directory, where another local user could prepare
+	// it first with a database of their own (B-046). The adapter refuses
+	// a work directory it does not own anyway.
+	workDir, temp := "", false
 	if cfg.State.Root != "" {
 		workDir = filepath.Join(cfg.State.Root, "scanner")
+	} else if d, err := os.MkdirTemp("", "tobby-scanner-"); err == nil {
+		workDir, temp = d, true
+	} else {
+		logger.LogAttrs(ctx, slog.LevelError, "the scanner work directory cannot be created",
+			slog.String("error", err.Error()), slog.String("requirement", "FR-031"))
 	}
 	s := &scanning{
+		workDir: workDir, tempWorkDir: temp,
 		scanner: trivy.New(&trivy.Options{
 			Store: st, WorkDir: workDir,
 			Path: cfg.Scan.Trivy.Path, Digest: cfg.Scan.Trivy.Digest, Ref: cfg.Scan.Trivy.Ref,
@@ -85,6 +102,13 @@ func setupScanning(ctx context.Context, cfg *config.Config, st *store.Store, eng
 			slog.String("max_db_age", cfg.Scan.MaxDBAge.String()), slog.String("requirement", "R-13"))
 	}
 	return s
+}
+
+// close removes the work directory this process created for itself.
+func (s *scanning) close() {
+	if s.tempWorkDir {
+		os.RemoveAll(s.workDir) //nolint:errcheck,gosec // best-effort cleanup of a private directory
+	}
 }
 
 // refresh re-reads the scanner's deliveries and logs a degraded mode.

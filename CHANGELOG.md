@@ -270,6 +270,12 @@ starting with `v0.1.0`.
   again, so a file swapped in the work directory executed once. It is now
   re-hashed before reuse — and unpacked again when it differs — and every
   origin's binary is verified right before the version probe.
+- **The scanner's work directory is private** (B-046). Without a state
+  directory it was the fixed `os.TempDir()/tobby-scanner`, which another
+  local user could create first and fill with a database the scanner then
+  reused unverified. It is now a fresh 0700 directory removed at shutdown,
+  and any work directory that is a symbolic link, belongs to another user
+  or is writable by others is refused (degraded mode, `TBY-SCN-001`).
 
 ## [0.5.2] - 2026-11-09
 

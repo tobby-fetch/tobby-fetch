@@ -160,8 +160,24 @@ func (s *Scanner) Refresh(ctx context.Context) scan.Status {
 	s.scanMu.Lock()
 	defer s.scanMu.Unlock()
 
-	bin, binErr := s.locateBinary(ctx)
-	db, dbErr := s.prepareDB(ctx)
+	var (
+		bin           *binary
+		db            *database
+		binErr, dbErr *taxonomy.Error
+	)
+	if err := privateWorkDir(s.opts.WorkDir); err != nil {
+		// What the scanner runs and the database it judges with are read
+		// from this directory: one another user can write into is never
+		// trusted, and the degraded mode says why.
+		binErr = taxonomy.New(taxonomy.CodeScannerUnavailable, taxonomy.Params{"detail": err.Error()})
+		dbErr = taxonomy.New(taxonomy.CodeScanDBMissing, taxonomy.Params{"repository": s.opts.DBRepository}).WithCause(err)
+		s.opts.Logger.LogAttrs(ctx, slog.LevelError, "scanner work directory refused",
+			slog.String("path", s.opts.WorkDir), slog.String("error", err.Error()),
+			slog.String("requirement", "FR-031"))
+	} else {
+		bin, binErr = s.locateBinary(ctx)
+		db, dbErr = s.prepareDB(ctx)
+	}
 
 	s.stateMu.Lock()
 	s.bin, s.binErr = bin, binErr
@@ -566,6 +582,35 @@ func readUnpacked(dir string) (DBMetadata, bool) {
 		return meta, false
 	}
 	return meta, true
+}
+
+// privateWorkDir creates the work directory if needed and checks it is
+// this instance's own: a real directory, not a symbolic link, owned by
+// the user the process runs as, and writable by nobody else. The
+// unpacked database is reused from it and the channel binary run from
+// it, so a directory another local user prepared — a predictable path
+// under the shared temporary directory, above all — would hand them both.
+func privateWorkDir(dir string) error {
+	if dir == "" {
+		return errors.New("the scanner has no work directory")
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("the scanner work directory %s cannot be created: %w", dir, err)
+	}
+	fi, err := os.Lstat(dir)
+	if err != nil {
+		return fmt.Errorf("the scanner work directory %s cannot be read: %w", dir, err)
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("the scanner work directory %s is not a directory (a symbolic link is refused)", dir)
+	}
+	if err := ownedByUs(fi); err != nil {
+		return fmt.Errorf("the scanner work directory %s is refused: %w", dir, err)
+	}
+	if err := privateMode(fi); err != nil {
+		return fmt.Errorf("the scanner work directory %s is refused: %w", dir, err)
+	}
+	return nil
 }
 
 // prune removes every entry of dir but keep: only the current database

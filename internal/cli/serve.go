@@ -416,6 +416,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// pinned scanner, its database from the tobby-system delivery, the
 	// policy, the metrics — and the posture stated at startup.
 	scanning := setupScanning(ctx, cfg, st, eng, reg, logger)
+	defer scanning.close()
 
 	// The promotion target (milestone 4, FR-013): built from the same
 	// allowlist and the same outbound transport as every other path, and
