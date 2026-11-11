@@ -103,7 +103,12 @@ func gate(allowRaw []byte, stream io.Reader, now time.Time) ([]string, error) {
 		}
 	}
 
-	reached := map[string]finding{}
+	// Keyed by advisory AND module: one advisory may affect several
+	// modules, the allow-list covers one, and a map keyed by the advisory
+	// alone kept whichever finding came last — an allow-listed module
+	// could hide a reachable one (B-053).
+	type key struct{ id, module string }
+	reached := map[key]finding{}
 	dec := json.NewDecoder(stream)
 	for {
 		var msg struct {
@@ -118,15 +123,20 @@ func gate(allowRaw []byte, stream io.Reader, now time.Time) ([]string, error) {
 		if f == nil || len(f.Trace) == 0 || f.Trace[0].Function == "" {
 			continue // module- or package-level: imported, not called
 		}
-		reached[f.OSV] = *f
+		reached[key{f.OSV, f.Trace[0].Module}] = *f
 	}
-	ids := make([]string, 0, len(reached))
-	for id := range reached {
-		ids = append(ids, id)
+	keys := make([]key, 0, len(reached))
+	for k := range reached {
+		keys = append(keys, k)
 	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		f := reached[id]
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].id != keys[j].id {
+			return keys[i].id < keys[j].id
+		}
+		return keys[i].module < keys[j].module
+	})
+	for _, k := range keys {
+		f, id := reached[k], k.id
 		mod, ver := f.Trace[0].Module, f.Trace[0].Version
 		where := fmt.Sprintf("%s@%s (%s.%s)", mod, ver, f.Trace[0].Package, f.Trace[0].Function)
 		e, ok := lookup(allow.Entries, id, mod)

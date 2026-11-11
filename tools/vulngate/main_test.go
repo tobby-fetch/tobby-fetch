@@ -72,3 +72,26 @@ func TestCompareVersions(t *testing.T) {
 		}
 	}
 }
+
+// TestGateKeysOnAdvisoryAndModule: one advisory reached in two modules,
+// only one of them allow-listed. Keyed by the advisory alone, the gate kept
+// whichever finding came last and the allow-listed module hid the other
+// (B-053); both orders must report the uncovered one.
+func TestGateKeysOnAdvisoryAndModule(t *testing.T) {
+	saml := `{"finding":{"osv":"GO-2026-6909","trace":[{"module":"github.com/crewjam/saml","version":"v0.6.3","package":"github.com/crewjam/saml","function":"ParseXMLResponse"}]}}`
+	fork := `{"finding":{"osv":"GO-2026-6909","trace":[{"module":"example.com/saml-fork","version":"v0.1.0","package":"example.com/saml-fork","function":"ParseXMLResponse"}]}}`
+	for name, stream := range map[string]string{
+		"fork first":  fork + "\n" + saml + "\n",
+		"fork second": saml + "\n" + fork + "\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			problems, err := gate(allow("2027-02-01", "v0.5.2"), strings.NewReader(stream), now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(problems) != 1 || !strings.Contains(problems[0], "REACHABLE GO-2026-6909 in example.com/saml-fork") {
+				t.Errorf("problems = %v; want the fork reported reachable", problems)
+			}
+		})
+	}
+}

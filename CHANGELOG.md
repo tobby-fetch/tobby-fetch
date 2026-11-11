@@ -314,6 +314,11 @@ starting with `v0.1.0`.
   over `http://` only to this host (loopback); another host needs
   `https://`, or the explicit `--allow-plaintext-token`, which warns on
   every run (FR-075). Any other scheme is refused.
+- **The govulncheck gate no longer lets an allow-listed module hide
+  another** (B-053). Findings were indexed by advisory alone, so an
+  advisory reached in two modules kept only the last finding read: when
+  that was the allow-listed module, the other one passed. They are now
+  indexed by advisory and module.
 
 ## [0.5.2] - 2026-11-09
 
