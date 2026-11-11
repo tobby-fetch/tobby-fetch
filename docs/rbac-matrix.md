@@ -43,6 +43,8 @@ possible at all.
 | `POST /login` | public | Credential submission. Failures answer TBY-AUTH-002 without revealing whether the account exists. |
 | `POST /lang` | public | The login page offers the language switcher (FR-063). |
 | `POST /theme` | public | Presentation preference, offered pre-login like the language. |
+| `GET /auth/oidc/login`, `GET /auth/oidc/callback` | public | The OIDC round trip (FR-070), mounted under the reserved `/auth/` prefix only when OIDC is enabled. The callback refuses anything that does not answer a sign-in this browser started (TBY-AUTH-014). |
+| `GET /auth/saml/login`, `POST /auth/saml/acs`, `GET /auth/saml/finish`, `GET /auth/saml/metadata` | public | The SAML round trip (FR-071), SP-initiated only, and the SP descriptor for IdP onboarding; mounted only when SAML is enabled. No session opens before the finish step has bound the verified assertion to the browser that started the sign-in. |
 | `POST /logout` | viewer | |
 | `GET /` | viewer | Dashboard (FR-062). |
 | `GET /tasks`, `GET /tasks/{id}`, `GET /tasks/badge` | viewer | |

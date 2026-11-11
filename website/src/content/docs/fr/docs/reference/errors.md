@@ -109,9 +109,12 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 ### TBY-AUTH-005
 
 - **Quoi :** votre session a expiré.
-- **Cause probable :** aucune activité pendant une durée supérieure à la
-  vie de la session (`auth.sessionTTL`, 12 h par défaut), ou l'instance a
-  redémarré — les sessions vivent en mémoire.
+- **Cause probable :** aucune activité pendant plus que le délai
+  d'inactivité (`auth.session.idleTimeout`, 30 min par défaut), la session
+  a atteint sa durée de vie absolue (`auth.sessionTTL`, 12 h par défaut),
+  ou l'instance a redémarré — les sessions vivent en mémoire. Chaque
+  expiration est consignée par un événement d'audit `session.expire` avec
+  sa raison, `idle` ou `lifetime`.
 - **Action corrective :** reconnectez-vous ; vous reviendrez à la page où
   vous étiez.
 - **Remédiable hors-ligne :** oui · **Bloque :** la session seulement
@@ -200,35 +203,35 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 - **Quoi :** Le jeton d'API a expiré.
 - **Cause probable :** Le jeton a été créé avec une date d'expiration, et cette date est passée. Un jeton expiré est refusé comme un jeton révoqué, et le refus est journalisé dans l'audit.
 - **Action corrective :** Demandez un nouveau jeton à un administrateur (écran des comptes ou `POST /api/v1/tokens`), puis remplacez le jeton expiré dans le client qui l'a présenté.
-- **Remédiable hors-ligne :** oui · **Bloque :** la requête ; le jeton reste refusé · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui · **Bloque :** la requête ; le jeton reste refusé
 
 ### TBY-AUTH-014
 
 - **Quoi :** La connexion via `<provider>` a échoué.
 - **Cause probable :** La réponse du fournisseur d'identité n'a pas passé les contrôles de Tobby (state, nonce, signature, émetteur ou audience) — souvent une connexion commencée dans un autre onglet, un écart d'horloge, ou un client enregistré avec une autre URL de retour.
 - **Action corrective :** Recommencez la connexion depuis cette page. Si elle échoue encore, un administrateur trouve le contrôle en échec dans le journal de l'instance sous le même identifiant de corrélation ; la connexion locale reste disponible entre-temps.
-- **Remédiable hors-ligne :** oui · **Bloque :** la tentative de connexion · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui · **Bloque :** la tentative de connexion
 
 ### TBY-AUTH-015
 
 - **Quoi :** La connexion via `<provider>` a échoué.
 - **Cause probable :** La réponse SAML a été refusée : non signée, déjà utilisée, ne répondant pas à une connexion lancée par cette instance, hors de sa fenêtre de validité, ou destinée à une autre audience ou destination.
 - **Action corrective :** Recommencez la connexion depuis cette page — Tobby n'accepte que les connexions qu'il a lui-même lancées. Si elle échoue encore, un administrateur trouve le contrôle refusé dans le journal de l'instance sous le même identifiant de corrélation ; la connexion locale reste disponible entre-temps.
-- **Remédiable hors-ligne :** oui · **Bloque :** la tentative de connexion · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui · **Bloque :** la tentative de connexion
 
 ### TBY-AUTH-016
 
 - **Quoi :** La connexion via `<provider>` est indisponible : le fournisseur d'identité est injoignable.
 - **Cause probable :** Le fournisseur n'a pas répondu à temps, ou le chemin réseau vers lui est coupé. Les sessions en cours et les jetons d'API ne sont pas affectés.
 - **Action corrective :** Utilisez la connexion locale entre-temps — elle reste disponible quand la fédération est en panne, et son usage est consigné dans le journal d'audit. Vérifiez le chemin réseau vers le fournisseur (proxy, AC privée) et sa disponibilité ; la connexion fédérée revient sans redémarrage.
-- **Remédiable hors-ligne :** selon : la connexion locale fonctionne hors-ligne ; la connexion fédérée a besoin du fournisseur · **Bloque :** la connexion fédérée seulement · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** selon : la connexion locale fonctionne hors-ligne ; la connexion fédérée a besoin du fournisseur · **Bloque :** la connexion fédérée seulement
 
 ### TBY-AUTH-017
 
 - **Quoi :** Vous êtes authentifié chez `<provider>`, mais aucun rôle Tobby ne vous est attribué.
 - **Cause probable :** Aucun des groupes transmis par le fournisseur d'identité pour votre compte n'est associé à un rôle sur cette instance. Tobby n'attribue jamais de rôle par défaut.
 - **Action corrective :** Demandez à un administrateur d'ajouter l'un de vos groupes à la correspondance des rôles de la configuration (`roles.viewer`, `roles.operator` ou `roles.admin` dans la section du fournisseur), ou de vous ajouter à un groupe déjà associé.
-- **Remédiable hors-ligne :** oui · **Bloque :** la tentative de connexion · **Statut :** réservé — émis à partir du jalon 6
+- **Remédiable hors-ligne :** oui · **Bloque :** la tentative de connexion
 
 ## Configuration (TBY-CFG)
 

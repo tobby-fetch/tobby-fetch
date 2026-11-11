@@ -84,13 +84,13 @@ func (u *UI) RequireSession(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
-		sess, ok := u.sessionOf(r)
-		if !ok {
-			u.toLogin(w, r)
+		sess, state := u.lookupSession(r)
+		if state != auth.SessionLive {
+			u.toLogin(w, r, state)
 			return
 		}
 		ctx := withSession(r.Context(), &sess)
-		ctx = auth.WithIdentity(ctx, auth.Identity{Name: sess.Account, Role: sess.Role})
+		ctx = auth.WithIdentity(ctx, auth.Identity{Name: sess.Account, DisplayName: sess.Display, Role: sess.Role, Method: sess.Method})
 		r = r.WithContext(ctx)
 
 		switch r.Method {
@@ -128,21 +128,75 @@ func (u *UI) RequireRole(floor auth.Role, next http.Handler) http.Handler {
 
 // sessionOf resolves the request's session cookie.
 func (u *UI) sessionOf(r *http.Request) (auth.Session, bool) {
-	c, err := r.Cookie(auth.SessionCookie)
-	if err != nil || c.Value == "" {
-		return auth.Session{}, false
-	}
-	return u.authn.Sessions.Get(c.Value, u.now())
+	sess, state := u.lookupSession(r)
+	return sess, state == auth.SessionLive
 }
 
-// toLogin sends an unauthenticated request to the login page, preserving
-// the destination. htmx gets 401 + HX-Redirect (ADR-0015 §6).
-func (u *UI) toLogin(w http.ResponseWriter, r *http.Request) {
+// sessionNone is the state of a request that presented no session cookie
+// at all — told apart from SessionUnknown, a cookie that matches nothing.
+const sessionNone auth.SessionState = -1
+
+// BackgroundHeader marks a request the page sends on its own — a poll, a
+// log tail, a self-terminating refresh — rather than on the person's
+// behalf. The templates set it with hx-headers on every polling element.
+// Such a request is served, but it does not renew the session: the idle
+// timeout measures the person's activity (FR-072 amendment, R-14), and a
+// tab left open on a polling page must expire like any other.
+const BackgroundHeader = "X-Tobby-Background"
+
+// background reports whether r is a background request. The header can
+// only make a request LESS privileged (no renewal), so trusting it from
+// the client gives nothing away.
+func background(r *http.Request) bool { return r.Header.Get(BackgroundHeader) == "1" }
+
+// lookupSession resolves the request's session cookie, renewing a live
+// session when the request is the person's own (a navigation, an action),
+// and reporting why a dead one is dead.
+func (u *UI) lookupSession(r *http.Request) (auth.Session, auth.SessionState) {
+	c, err := r.Cookie(auth.SessionCookie)
+	if err != nil || c.Value == "" {
+		return auth.Session{}, sessionNone
+	}
+	if background(r) {
+		return u.authn.Sessions.Peek(c.Value, auth.ClientOrigin(r), u.now())
+	}
+	return u.authn.Sessions.Lookup(c.Value, auth.ClientOrigin(r), u.now())
+}
+
+// returnPath is where a sign-in should land after the session of r
+// ended: the request's own page — or, for an htmx request (a poll, a
+// fragment), the page the browser shows, from HX-Current-URL, reduced to
+// its path and query. A fragment URL is never a page to return to.
+func returnPath(r *http.Request) string {
+	if r.Header.Get("HX-Request") == "true" {
+		if cur, err := url.Parse(r.Header.Get("HX-Current-URL")); err == nil && cur.Path != "" {
+			next := cur.Path
+			if cur.RawQuery != "" {
+				next += "?" + cur.RawQuery
+			}
+			return sanitizeNext(next)
+		}
+		return "/"
+	}
 	next := r.URL.Path
 	if r.URL.RawQuery != "" {
 		next += "?" + r.URL.RawQuery
 	}
-	target := "/login?next=" + url.QueryEscape(next)
+	return next
+}
+
+// toLogin sends an unauthenticated request to the login page, preserving
+// the destination. htmx gets 401 + HX-Redirect (ADR-0015 §6). A request
+// that presented a session cookie which is no longer alive — expired by
+// its idle timeout or its lifetime, or lost with an instance restart —
+// lands on the login page with TBY-AUTH-005 (R-14), so the person learns
+// why they are asked to sign in again.
+func (u *UI) toLogin(w http.ResponseWriter, r *http.Request, state auth.SessionState) {
+	target := "/login?next=" + url.QueryEscape(returnPath(r))
+	if state != sessionNone {
+		u.clearSessionCookie(w, r)
+		target += "&" + loginExpiredParam + "=1"
+	}
 	if r.Header.Get("HX-Request") == "true" {
 		w.Header().Set("HX-Redirect", target)
 		w.WriteHeader(http.StatusUnauthorized)

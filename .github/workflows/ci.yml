@@ -215,9 +215,19 @@ jobs:
       # on macOS because the platform verifier ignores SSL_CERT_FILE — and
       # a suite that reports "ok" for a check it never performed is worse
       # than one that has no check at all.
+      # The OIDC/SAML tests (milestone 6) run against a real Keycloak in a
+      # container. The image is pinned by digest in test/keycloak/IMAGE —
+      # the single place that names it — and pulled here, on its own, so a
+      # registry hiccup reads as a failed pull rather than as a test that
+      # timed out waiting for a server that never started. This is the only
+      # network use of the fixture (NFR-019).
+      - name: Pull the pinned Keycloak image (IdP fixture)
+        if: runner.os == 'Linux'
+        run: docker pull "$(cat test/keycloak/IMAGE)"
       - name: Unit and integration tests
         env:
           TOBBY_OCILOGIN_REQUIRE_DOCKER: ${{ runner.os == 'Linux' && '1' || '' }}
+          TOBBY_KEYCLOAK_REQUIRE_DOCKER: ${{ runner.os == 'Linux' && '1' || '' }}
         # -timeout: the default is ten minutes PER PACKAGE, and internal/ui
         # is now large enough that the slower runner architecture used to
         # hit it under -race -count=2. The fixture cost was cut where it
@@ -379,8 +389,13 @@ jobs:
         run: |
           go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      # tools/govulncheck.sh: every reachable finding fails, except the
+      # reviewed entries of tools/govulncheck-allow.yaml (wrong database
+      # entries only, each with evidence and a review date that expires).
       - name: Reachable known vulnerabilities (stdlib included)
-        run: govulncheck ./...
+        env:
+          GOVULNCHECK: govulncheck
+        run: sh tools/govulncheck.sh
 
   secrets:
     name: Secret scan (gitleaks, full history)

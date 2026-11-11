@@ -47,9 +47,52 @@ starting with `v0.1.0`.
   own trust verdict gives — a manifest claiming nothing never hides it.
   Nothing is written into the destination registry: transferred content
   stays bit-exact.
+- **Enterprise sign-in: OpenID Connect and SAML 2.0** (6.3, FR-070,
+  FR-071). `auth.oidc.*` signs in through an OpenID provider
+  (authorization code flow, PKCE S256, state and nonce, discovery from
+  the configured issuer only, asymmetric signatures only); `auth.saml.*`
+  through a SAML identity provider, SP-initiated only, against pinned
+  metadata and a pinned signing certificate, with an anti-replay cache
+  and a configurable clock tolerance (`auth.saml.clockSkew`, at most 5m).
+  Groups map onto the three roles in configuration; a person in no mapped
+  group is refused (TBY-AUTH-017), never given a default role. The
+  round trips live under `/auth/`; the SP descriptor is served at
+  `/auth/saml/metadata`. Both methods are off by default and coexist with
+  local accounts and tokens on the same sign-in page.
+- **Continuity when the identity provider is down** (R-20, FR-078). An
+  unreachable provider never stops the instance from starting nor ends a
+  session: the sign-in page states it with TBY-AUTH-016 naming the
+  provider and keeps the local form, tokens keep working, and federated
+  sign-in comes back without a restart. Every local sign-in while a
+  federated method is enabled is audited as
+  `auth.local_under_federation`.
+- **Idle session expiry and optional token expiry** (R-14, FR-072
+  amendment). UI sessions end after `auth.session.idleTimeout` (default
+  30m) without user activity, on top of `auth.sessionTTL`: the page's own
+  background polls do not count, so a tab left open still expires, and
+  the sign-in page explains it with TBY-AUTH-005 and returns to the page. Tokens take an optional expiry at
+  creation (lifetime in days on the screen, `expires` in the API), and
+  `auth.tokens.defaultLifetime` gives one to tokens created without; an
+  expired token is refused with TBY-AUTH-013. New audit events
+  `session.expire` and `token.expire`; a revoked token's refusal is now
+  recorded under its name.
+- **Metrics** `tobby_auth_attempts_total`,
+  `tobby_auth_sessions_expired_total`, `tobby_auth_idp_reachable` and
+  `tobby_auth_local_logins_under_federation_total`.
 
 ### Changed
 
+- **Upgrading from v0.5.x: nothing to change** unless you enable a
+  federated method — every new key is off or defaulted. When you do, the
+  callback URLs registered at the provider must be the `/auth/` paths
+  (`auth.oidc.redirectURL` ending in `/auth/oidc/callback`,
+  `auth.saml.acsURL` in `/auth/saml/acs`; the SP descriptor is at
+  `/auth/saml/metadata`); `auth.saml.idpMetadataURL` requires
+  `auth.saml.idpCertificateFile`; `displayName`, `nameClaim` and
+  `nameAttribute` label the button and the person, display only. A
+  federated identity is keyed on the OIDC `sub` or the SAML `NameID`, and
+  audit records carry its readable name as the additive `actor_name`
+  field. See [Enterprise identity](website/src/content/docs/docs/security/enterprise-identity.md).
 - **A signature refusal names the trust scope that refused it.**
   `TBY-SIG-001` gains an additive `scope` parameter (empty under the strict
   default): a recipe signed by a key that is a valid trust root, but not
@@ -57,6 +100,12 @@ starting with `v0.1.0`.
   named in the message and the corrective action, in both languages — on
   synchronization, on the pre-push re-verification, in a plan and in
   destination-side media verification.
+- **`/files/` authenticates through the same audited check** as `/v2/`
+  and `/api/v1`: failed and expired credentials there are now audit
+  records too.
+- **A local password change no longer closes federated sessions** that
+  happen to carry the same name; the account screen of a federated
+  identity offers no password form (TBY-AUTH-010 on the API mirror).
 
 ## [0.5.2] - 2026-11-09
 

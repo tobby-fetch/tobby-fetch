@@ -284,12 +284,11 @@ features:
   - id: "R-14"
     en: Authentication hardening (rate limiting, session and token expiry)
     fr: Durcissement de l'authentification (limitation de tentatives, expirations)
-    status: partial
-    milestone: 6
+    status: available
     security: true
     note:
-      en: Failed-authentication rate limiting shipped in v0.4.2; session and token expiry land with milestone 6.
-      fr: Limitation des échecs d'authentification livrée en v0.4.2 ; expirations de session et de token au jalon 6.
+      en: Rate limiting since v0.4.2; idle session expiry, optional token expiry and their audit events with v0.6.0.
+      fr: Limitation des tentatives depuis v0.4.2 ; expiration des sessions inactives, expiration optionnelle des tokens et leurs événements d'audit en v0.6.0.
   - id: "6.2"
     en: Offline vulnerability database, carried by Tobby itself
     fr: Base de vulnérabilités hors-ligne, transportée par Tobby lui-même
@@ -310,14 +309,12 @@ features:
   - id: "R-20"
     en: Continuity when the enterprise directory is down
     fr: Continuité quand l'annuaire d'entreprise est en panne
-    status: upcoming
-    milestone: 6
+    status: available
     security: true
   - id: "6.3"
     en: "Enterprise identity: OIDC, then SAML 2.0"
     fr: "Identité d'entreprise : OIDC puis SAML 2.0"
-    status: upcoming
-    milestone: 6
+    status: available
     security: true
   - id: "R-07"
     en: Printable transfer report (bilingual, marked as unsigned aid)

@@ -20,7 +20,7 @@
 "TBY-AUTH-004.action": "The form has been reloaded with a fresh token: submit it again."
 
 "TBY-AUTH-005.what": "Your session has expired."
-"TBY-AUTH-005.cause": "No activity for longer than the session lifetime, or the instance restarted."
+"TBY-AUTH-005.cause": "No activity for longer than the idle timeout, the session reached its maximum lifetime, or the instance restarted."
 "TBY-AUTH-005.action": "Sign in again; you will be returned to the page you were on."
 
 "TBY-AUTH-006.what": "The current password is wrong."

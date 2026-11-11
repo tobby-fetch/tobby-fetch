@@ -150,7 +150,7 @@ func TestTokenLifecycle(t *testing.T) {
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"revoked":true`) {
 		t.Fatalf("revoke = %d: %s", w.Code, w.Body.String())
 	}
-	if _, ok := store.VerifyToken(created.Secret); ok {
+	if _, st := store.VerifyToken(created.Secret, time.Now()); st == auth.TokenValid {
 		t.Error("secret still verifies after revocation (FR-072)")
 	}
 

@@ -147,18 +147,18 @@ func TestTokenLifecycle(t *testing.T) {
 		t.Errorf("duplicate live token: err = %v, want ErrExists", err)
 	}
 
-	got, ok := s.VerifyToken(secret)
-	if !ok || got.Name != "ci-pull" || got.Role != RoleViewer {
-		t.Fatalf("valid token refused: %+v ok=%v", got, ok)
+	got, st := s.VerifyToken(secret, t0)
+	if st != TokenValid || got.Name != "ci-pull" || got.Role != RoleViewer {
+		t.Fatalf("valid token refused: %+v state=%v", got, st)
 	}
-	if _, ok := s.VerifyToken("tby_forged"); ok {
+	if _, st := s.VerifyToken("tby_forged", t0); st != TokenUnknown {
 		t.Error("forged token accepted")
 	}
 
 	if err := s.RevokeToken("ci-pull"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := s.VerifyToken(secret); ok {
+	if _, st := s.VerifyToken(secret, t0); st != TokenRevoked {
 		t.Error("revoked token still accepted (FR-072: revocation is immediate)")
 	}
 	// The name is reusable after revocation; history keeps the revoked row.

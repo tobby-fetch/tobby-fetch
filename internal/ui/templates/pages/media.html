@@ -19,7 +19,7 @@
 {{end}}
 
 {{define "media-body"}}
-<div id="media-body"{{if .Data.Running}} hx-get="/media" hx-trigger="every 2s" hx-swap="morph:outerHTML" hx-target="this"{{end}}>
+<div id="media-body"{{if .Data.Running}} hx-get="/media" hx-trigger="every 2s" hx-headers='{"X-Tobby-Background":"1"}' hx-swap="morph:outerHTML" hx-target="this"{{end}}>
   <div class="t-titlerow">
     <h1 class="t-page-title">{{.T "media.title"}}</h1>
     {{if .Data.Destination}}

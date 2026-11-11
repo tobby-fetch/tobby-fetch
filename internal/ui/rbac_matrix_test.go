@@ -34,6 +34,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -41,6 +43,8 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/api"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -84,6 +88,15 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "POST /login", Floor: rolePublic, Why: "credential submission", Method: "POST", Path: "/login", Form: "username=ghost&password=ghost"},
 	{Pattern: "POST /lang", Floor: rolePublic, Why: "the login page offers the language switcher (FR-063)", Method: "POST", Path: "/lang", Form: "lang=fr&back=%2F"},
 	{Pattern: "POST /theme", Floor: rolePublic, Why: "presentation preference, offered pre-login like the language", Method: "POST", Path: "/theme", Form: "theme=light&back=%2F"},
+	// Federated sign-in (FR-070, FR-071), mounted under the reserved
+	// "/auth/" prefix by MountFederation when a method is enabled: public,
+	// because they are how one signs in.
+	{Pattern: "GET /auth/oidc/login", Floor: rolePublic, Why: "starts an OIDC sign-in", Method: "GET", Path: "/auth/oidc/login"},
+	{Pattern: "GET /auth/oidc/callback", Floor: rolePublic, Why: "the OIDC redirect URI", Method: "GET", Path: "/auth/oidc/callback?state=x&code=y"},
+	{Pattern: "GET /auth/saml/login", Floor: rolePublic, Why: "starts a SAML sign-in", Method: "GET", Path: "/auth/saml/login"},
+	{Pattern: "POST /auth/saml/acs", Floor: rolePublic, Why: "the SAML assertion consumer service (cross-site POST from the IdP)", Method: "POST", Path: "/auth/saml/acs", Form: "SAMLResponse=x&RelayState=y"},
+	{Pattern: "GET /auth/saml/finish", Floor: rolePublic, Why: "binds a verified assertion to the browser that started the sign-in", Method: "GET", Path: "/auth/saml/finish?relay=y"},
+	{Pattern: "GET /auth/saml/metadata", Floor: rolePublic, Why: "the SP descriptor, public material for IdP onboarding", Method: "GET", Path: "/auth/saml/metadata"},
 
 	{Pattern: "POST /logout", Floor: auth.RoleViewer, Method: "POST", Path: "/logout"},
 	{Pattern: "GET /{$}", Floor: auth.RoleViewer, Method: "GET", Path: "/"},
@@ -264,9 +277,11 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 		Version: "0.4.0-test", Mode: "mirror", Store: st, Queue: queue, Interop: svc,
 	})
 	u.Now = func() time.Time { return t0 }
+	u.federation = rbacFederation(t)
 
 	rec := &recordingRouter{mux: http.NewServeMux()}
 	u.Mount(rec)
+	u.MountFederation(rec)
 
 	restAPI := api.New(authn, slog.New(slog.DiscardHandler))
 	api.RegisterContent(restAPI, st, nil)
@@ -550,3 +565,22 @@ func (c rbacCatalog) Tags(ctx context.Context, repo string) ([]string, error) {
 }
 
 func (c rbacCatalog) Provenance(string) string { return fileserve.FromSeed }
+
+// rbacFederation enables OIDC against an issuer that does not exist: the
+// matrix probes the gate of the federated routes, which is "none".
+func rbacFederation(t *testing.T) *federation.Service {
+	t.Helper()
+	secret := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(secret, []byte("s"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fed, err := federation.New(&federation.Options{
+		OIDC: config.OIDC{Enabled: true, Issuer: "https://idp.invalid", ClientID: "tobby", ClientSecretFile: secret,
+			RedirectURL: "https://tobby.test/auth/oidc/callback", Roles: config.RoleMapping{Viewer: []string{"v"}}},
+		Client: &http.Client{Timeout: time.Second},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fed
+}

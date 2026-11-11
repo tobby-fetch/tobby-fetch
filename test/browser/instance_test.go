@@ -28,6 +28,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
+	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
@@ -131,9 +132,19 @@ type spec struct {
 	// queue, with the given runner standing in for the walk — a scenario
 	// must decide when the verdict lands, or it races the browser.
 	integrity tasks.Runner
+	// fed enables federated sign-in beside the local form (6.3, R-20).
+	fed *federation.Service
+	// idle sets auth.session.idleTimeout (R-14); zero leaves none.
+	idle time.Duration
 }
 
 type option func(*spec)
+
+// withFederation offers federated sign-in on the sign-in page.
+func withFederation(fed *federation.Service) option { return func(s *spec) { s.fed = fed } }
+
+// withIdleTimeout ends sessions after d without a request (R-14).
+func withIdleTimeout(d time.Duration) option { return func(s *spec) { s.idle = d } }
 
 // withContent seeds repositories of several kinds, so the Content screen
 // has something to filter.
@@ -219,9 +230,14 @@ func newInstance(t *testing.T, opts ...option) *instance {
 		Sessions: auth.NewSessions(12 * time.Hour),
 		Logger:   logger,
 	}
+	authn.Sessions.SetIdleTimeout(sp.idle)
+	if sp.fed != nil {
+		authn.Federated = sp.fed.Enabled
+	}
 
 	uiOpts := &ui.Options{
 		Version: "0.3.0-e2e", Mode: "mirror", Store: st, Queue: inst.Queue,
+		Federation: sp.fed,
 	}
 	if sp.medium {
 		seedMedium(t, st)
@@ -237,7 +253,9 @@ func newInstance(t *testing.T, opts ...option) *instance {
 	}
 
 	mux := http.NewServeMux()
-	ui.New(authn, logger, uiOpts).Mount(mux)
+	webUI := ui.New(authn, logger, uiOpts)
+	webUI.Mount(mux)
+	webUI.MountFederation(mux)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	inst.URL = srv.URL

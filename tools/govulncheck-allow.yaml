@@ -1,0 +1,24 @@
+# Reviewed exceptions to the govulncheck gate (tools/govulncheck.sh).
+#
+# An entry exists only for an advisory whose DATABASE ENTRY is wrong — a
+# fixed version missing, a range too wide — never to accept a real,
+# reachable vulnerability. Each one names the module, the first version
+# known fixed (the entry applies only at or above it), the justification
+# and its evidence, and a review date: past it, the gate fails until a
+# person re-reads the advisory and renews or removes the entry.
+entries:
+  - id: GO-2026-6909
+    module: github.com/crewjam/saml
+    fixedIn: v0.5.2
+    justification: >-
+      The Go vulnerability database lists no fixed version, but its own
+      text scopes the advisory "through v0.5.1", and the upstream advisory
+      GHSA-mvp6-372g-vf8r gives it fixed in v0.5.2. In v0.6.3
+      Assertion.Issuer is a value (no nil dereference) and Subject.NameID
+      is namespace-qualified. Tobby additionally contains any panic of the
+      library into a refused sign-in.
+    evidence:
+      - https://github.com/advisories/GHSA-mvp6-372g-vf8r
+      - internal/federation/saml_test.go TestSAMLAdvisoryGO20266909 (signed assertion without Issuer refused, no panic; foreign-namespace NameID refused)
+      - internal/federation/saml.go samlProvider.verify (recover)
+    reviewBy: "2027-02-11"

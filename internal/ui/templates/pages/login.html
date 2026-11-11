@@ -27,17 +27,32 @@
     </div>
     {{end}}
 
+    {{if .Data.Providers}}
+    <section class="t-login-federated" aria-labelledby="login-federated-heading">
+      <h2 id="login-federated-heading" class="t-kick">{{.T "login.federated_heading"}}</h2>
+      {{range .Data.Providers}}
+      {{with .Unavailable}}
+      <div class="t-error-block" role="status" data-idp-unavailable>
+        <div class="t-error-block-head"><span class="t-chip t-chip--code" translate="no">{{.Code}}</span> <span class="t-error-block-title">{{.What}}</span></div>
+        <p>{{.Action}}</p>
+      </div>
+      {{end}}
+      <a class="t-btn{{if not .Unavailable}} t-btn--primary{{end}} t-login-provider" href="{{.Href}}" data-federated-login>{{$.T "login.federated" "Provider" .Name}}</a>
+      {{end}}
+    </section>
+    <p class="t-login-or t-muted"><span>{{.T "login.or"}}</span></p>
+    <h2 class="t-kick">{{.T "login.local_heading"}}</h2>
+    {{end}}
+
     <form method="post" action="/login" class="t-form">
       <input type="hidden" name="next" value="{{.Data.Next}}">
       <label for="username">{{.T "login.username"}}</label>
       <input id="username" name="username" type="text" autocomplete="username" required autofocus>
       <label for="password">{{.T "login.password"}}</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required>
-      <button type="submit" class="t-btn t-btn--primary">{{.T "login.submit"}}</button>
+      <button type="submit" class="t-btn{{if not .Data.Providers}} t-btn--primary{{end}}">{{.T "login.submit"}}</button>
+      {{if .Data.Providers}}<p class="t-muted t-note" data-local-under-federation>{{.T "login.local_under_federation"}}</p>{{end}}
     </form>
-
-    {{/* Reserved zone: OIDC/SAML buttons join here at milestone 6 without a
-         page redesign (ADR-0009). */}}
 
   </div>
   <form method="post" action="/lang" class="t-inline-form">

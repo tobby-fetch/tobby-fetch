@@ -69,27 +69,25 @@ const (
 	// CodeTokenExpired is a static token presented after its expiry (FR-072
 	// amendment, R-14). Distinct from CodeAuthFailed — the corrective action
 	// is a new token, not a corrected one — and parameter-free like it: the
-	// message names no token (NFR-015). Reserved: emitter lands with R-14.
+	// message names no token (NFR-015).
 	CodeTokenExpired Code = "TBY-AUTH-013" //nolint:gosec // G101: a stable error code, not a credential
 	// CodeOIDCFailed is a federated OIDC sign-in whose callback did not
 	// validate — state, nonce, PKCE verifier, signature, issuer or audience
-	// (FR-070). The precise check goes to the logs only. Reserved: emitter
-	// lands with 6.3.
+	// (FR-070). The precise check goes to the logs only.
 	CodeOIDCFailed Code = "TBY-AUTH-014"
 	// CodeSAMLFailed is a SAML response refused by the service provider —
 	// unsigned, replayed, IdP-initiated, outside its validity window, or
 	// naming another audience, destination or issuer (FR-071). The precise
-	// check goes to the logs only. Reserved: emitter lands with 6.3.
+	// check goes to the logs only.
 	CodeSAMLFailed Code = "TBY-AUTH-015"
 	// CodeIDPUnreachable is a federated sign-in that could not reach its
 	// identity provider (FR-078, R-20): discovery, key set, token endpoint
 	// or metadata URL. Never a total blockage — the local methods stay
-	// available and the sign-in page says so. Reserved: emitter lands with
-	// R-20.
+	// available and the sign-in page says so.
 	CodeIDPUnreachable Code = "TBY-AUTH-016"
 	// CodeFederatedNoRole is a federated identity that authenticated but
 	// matches no group of the role mapping (FR-074): refused, never
-	// defaulted to viewer. Reserved: emitter lands with 6.3.
+	// defaulted to viewer.
 	CodeFederatedNoRole Code = "TBY-AUTH-017"
 
 	// CodeConfigInvalid is a rejected configuration (FR-003 validation).

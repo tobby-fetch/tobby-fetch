@@ -27,6 +27,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/buildinfo"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
+	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity"
@@ -124,14 +125,36 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			return taxonomy.New(taxonomy.CodeNoAccount, nil)
 		}
 	}
+	reg := metrics.New()
+	authMetrics := metrics.RegisterAuth(reg)
+	sessions := auth.NewSessions(time.Duration(cfg.Auth.SessionTTL))
 	authn := &auth.Authenticator{
 		Store:    accounts,
-		Sessions: auth.NewSessions(time.Duration(cfg.Auth.SessionTTL)),
+		Sessions: sessions,
 		Disabled: cfg.Auth.Disabled,
 		Logger:   logger,
+		Observer: authObserver{authMetrics},
 	}
-
-	reg := metrics.New()
+	if accounts != nil {
+		accounts.SetDefaultTokenLifetime(time.Duration(cfg.Auth.Tokens.DefaultLifetime))
+	}
+	// Session expiry (R-14, FR-072 amendment): the idle bound on top of the
+	// absolute lifetime, and one audit record plus one metric increment
+	// per expiry, whoever finds it — the request that presented the dead
+	// cookie, or the periodic sweep for a session nobody came back to.
+	sessions.SetIdleTimeout(time.Duration(cfg.Auth.Session.IdleTimeout))
+	sessions.OnExpire(func(sess *auth.Session, reason auth.ExpiryReason, origin string) {
+		authMetrics.SessionExpired(string(reason))
+		audit.Log(context.Background(), logger, &audit.Event{
+			Actor:     sess.Account,
+			ActorName: sess.Display,
+			Action:    audit.ActionSessionExpire,
+			Target:    string(reason),
+			Outcome:   audit.OutcomeSuccess,
+			Origin:    origin,
+		})
+	})
+	go sweepSessions(ctx, sessions)
 	srv := server.New(cfg.Server.Addr, time.Duration(cfg.Shutdown.GracePeriod), reg, logger)
 	if serveHook != nil {
 		serveHook(srv)
@@ -304,6 +327,23 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	logger.LogAttrs(ctx, slog.LevelInfo, "outbound network configured",
 		slog.String("egress", egress.Describe()),
 		slog.String("requirement", "FR-080/FR-081"))
+
+	// Federated sign-in (FR-070, FR-071) on the same egress — the
+	// identity provider sits behind the same proxy and private CA as
+	// everything else. Building it reads the operator's files and
+	// contacts nobody: an identity provider that is down never stops the
+	// instance from starting (FR-078); the probe runs in the background.
+	fed, err := federation.New(&federation.Options{
+		OIDC: cfg.Auth.OIDC, SAML: cfg.Auth.SAML,
+		Client:   egress.Client(federationTimeout),
+		Logger:   logger,
+		Observer: authMetrics,
+	})
+	if err != nil {
+		return err
+	}
+	authn.Federated = fed.Enabled
+	go fed.Run(ctx)
 
 	// In-blob resumption of large downloads (FR-029, R-29). One resumer
 	// for the instance, on the same shared transport as everything else,
@@ -649,8 +689,10 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		MediaZone:          eng,
 		MediaGate:          mediaGate,
 		Integrity:          integritySvc,
+		Federation:         fed,
 	})
 	webUI.Mount(srv.Mux())
+	webUI.MountFederation(srv.Mux())
 
 	if cfg.Auth.Disabled {
 		// The FR-075 override is loud on every channel: audit record at
@@ -889,18 +931,18 @@ func filesAuth(a *auth.Authenticator, anonymous map[string]bool, next http.Handl
 			next.ServeHTTP(w, r)
 			return
 		}
-		presented := r.Header.Get("Authorization") != ""
-		origin := auth.ClientOrigin(r)
-		if presented && !a.FailureAllowed(origin) {
+		id, v := a.Check(r, auth.SurfaceFiles)
+		switch v {
+		case auth.VerdictOK:
+		case auth.VerdictThrottled:
 			w.Header().Set("Retry-After", auth.RetryAfter)
 			http.Error(w, "too many failed authentication attempts", http.StatusTooManyRequests)
 			return
-		}
-		id, ok := a.Authenticate(r)
-		if !ok {
-			if presented {
-				a.RecordFailure(origin)
-			}
+		case auth.VerdictExpired:
+			w.Header().Set("WWW-Authenticate", `Basic realm="tobby"`)
+			http.Error(w, "the token has expired (TBY-AUTH-013)", http.StatusUnauthorized)
+			return
+		default:
 			w.Header().Set("WWW-Authenticate", `Basic realm="tobby"`)
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return
@@ -911,6 +953,41 @@ func filesAuth(a *auth.Authenticator, anonymous map[string]bool, next http.Handl
 		}
 		next.ServeHTTP(w, r.WithContext(auth.WithIdentity(r.Context(), id)))
 	})
+}
+
+// authObserver adapts the metric families to auth.Observer: the auth
+// package states what happened, the metrics package counts it, and
+// neither imports the other.
+type authObserver struct{ m *metrics.Auth }
+
+func (o authObserver) Attempt(method auth.Method, outcome string) {
+	o.m.Attempt(string(method), outcome)
+}
+func (o authObserver) SessionExpired(reason auth.ExpiryReason) { o.m.SessionExpired(string(reason)) }
+func (o authObserver) LocalUnderFederation()                   { o.m.LocalUnderFederation() }
+
+// federationTimeout bounds one request to an identity provider: a
+// black-holed provider costs a refused federated sign-in after this long,
+// never a hung page (FR-078).
+const federationTimeout = 15 * time.Second
+
+// sessionSweepInterval paces the periodic session sweep: a minute keeps
+// the session.expire record of an abandoned session within a minute of
+// the expiry itself, for a map walk per minute.
+const sessionSweepInterval = time.Minute
+
+// sweepSessions expires abandoned sessions until ctx ends (R-14).
+func sweepSessions(ctx context.Context, sessions *auth.Sessions) {
+	t := time.NewTicker(sessionSweepInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-t.C:
+			sessions.Sweep(now)
+		}
+	}
 }
 
 // syncFileSets resolves the declared FileSets and hands what resolved to

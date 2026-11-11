@@ -45,6 +45,8 @@ const (
 	MetricScanDBStale = "tobby_scan_db_stale"
 
 	// Track B — authentication hardening and federation (R-14, 6.3, R-20).
+	// Registered by RegisterAuth (auth.go) and no longer listed by
+	// ReservedFamilies.
 
 	// MetricAuthAttempts counts sign-in and credential checks:
 	// counter, labels method = basic | token | oidc | saml and
@@ -82,7 +84,7 @@ func ReservedFamilies() []string {
 	return []string{
 		MetricScanItems, MetricScanFindings, MetricScanPolicyBlocking,
 		MetricScanScannerAvailable, MetricScanDBPresent, MetricScanDBAge, MetricScanDBStale,
-		MetricAuthAttempts, MetricAuthSessionsExpired, MetricAuthIDPReachable, MetricAuthLocalUnderFederation,
-		// Track C's three families are registered (integrity.go).
+		// Track B's four and track C's three families are registered
+		// (auth.go, integrity.go).
 	}
 }

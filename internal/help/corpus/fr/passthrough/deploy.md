@@ -247,5 +247,30 @@ S'il vous faut absolument tourner ouvert, `auth.disabled: true` est un
 opt-in explicite qui pose un bandeau d'avertissement permanent dans
 l'interface (FR-075). Ne le laissez jamais actif.
 
+## Se connecter par l'annuaire de l'entreprise
+
+OIDC et SAML sont désactivés par défaut, et le compte local `admin` reste
+— c'est le compte de secours quand l'annuaire est en panne. Pour activer
+l'un ou l'autre, trois points à soigner dès l'installation (détails dans
+[Identité d'entreprise](../../security/enterprise-identity/)) :
+
+- **Les URL de retour vivent sous `/auth/`.** Déclarez exactement
+  `https://<hôte>/auth/oidc/callback` (OIDC) ou le service consommateur
+  d'assertions `https://<hôte>/auth/saml/acs` (SAML ; le descripteur du
+  SP est `https://<hôte>/auth/saml/metadata`). Une configuration qui nomme
+  un autre chemin est refusée au démarrage. Un reverse proxy placé devant
+  doit laisser passer `/auth/`.
+- **Épinglez le fournisseur SAML.** Préférez
+  `auth.saml.idpMetadataFile` ; `auth.saml.idpMetadataURL` exige le
+  certificat de signature épinglé dans `auth.saml.idpCertificateFile`.
+- **Montez les secrets hors du store** : `auth.oidc.clientSecretFile` et
+  `auth.saml.keyFile`, comme tout chemin secret.
+
+`displayName` libelle le bouton de connexion ; `auth.oidc.nameClaim` et
+`auth.saml.nameAttribute` choisissent le nom affiché pour une personne.
+Tous trois ne servent qu'à l'affichage. Une mise à jour depuis v0.5.x
+n'exige rien de tout cela : chaque nouvelle clé est désactivée ou a une
+valeur par défaut.
+
 Suite : pointez l'instance vers le monde extérieur à travers
 [le réseau d'entreprise](../../passthrough/network/).

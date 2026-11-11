@@ -78,9 +78,11 @@ its published rendering.
 ### TBY-AUTH-005
 
 - **What happened:** your session has expired.
-- **Probable cause:** no activity for longer than the session lifetime
-  (`auth.sessionTTL`, default 12h), or the instance restarted — sessions
-  live in memory.
+- **Probable cause:** no activity for longer than the idle timeout
+  (`auth.session.idleTimeout`, default 30m), the session reached its
+  absolute lifetime (`auth.sessionTTL`, default 12h), or the instance
+  restarted — sessions live in memory. Each expiry is recorded as a
+  `session.expire` audit event with its reason, `idle` or `lifetime`.
 - **Corrective action:** sign in again; you will be returned to the page
   you were on.
 - **Fixable offline:** yes · **Blocks:** the session only
@@ -166,35 +168,35 @@ its published rendering.
 - **What happened:** The API token has expired.
 - **Probable cause:** The token was created with an expiry date, and that date has passed. An expired token is refused like a revoked one, and the refusal is audit-logged.
 - **Corrective action:** Ask an administrator for a new token (the accounts screen or `POST /api/v1/tokens`), then replace the expired one in the client that presented it.
-- **Fixable offline:** yes · **Blocks:** the request; the token stays refused · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** the request; the token stays refused
 
 ### TBY-AUTH-014
 
 - **What happened:** Sign-in through `<provider>` failed.
 - **Probable cause:** The identity provider's answer did not pass Tobby's checks (state, nonce, signature, issuer or audience) — often a sign-in started in another tab, a clock difference, or a client registered with another callback URL.
 - **Corrective action:** Start the sign-in again from this page. If it fails again, an administrator finds the failed check in the instance log under the same correlation identifier; local sign-in stays available meanwhile.
-- **Fixable offline:** yes · **Blocks:** the sign-in attempt · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** the sign-in attempt
 
 ### TBY-AUTH-015
 
 - **What happened:** Sign-in through `<provider>` failed.
 - **Probable cause:** The SAML response was refused: it was not signed, was already used, was not answering a sign-in this instance started, was outside its validity window, or named another audience or destination.
 - **Corrective action:** Start the sign-in again from this page — Tobby only accepts sign-ins it initiated. If it fails again, an administrator finds the refused check in the instance log under the same correlation identifier; local sign-in stays available meanwhile.
-- **Fixable offline:** yes · **Blocks:** the sign-in attempt · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** the sign-in attempt
 
 ### TBY-AUTH-016
 
 - **What happened:** Sign-in through `<provider>` is unavailable: the identity provider cannot be reached.
 - **Probable cause:** The provider did not answer in time, or the network path to it is cut. Existing sessions and API tokens are not affected.
 - **Corrective action:** Use local sign-in meanwhile — it stays available while federation is down, and its use is recorded in the audit log. Check the network path to the provider (proxy, private CA) and its availability; federated sign-in comes back without a restart.
-- **Fixable offline:** depends: local sign-in works offline; federated sign-in needs the provider · **Blocks:** federated sign-in only · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** depends: local sign-in works offline; federated sign-in needs the provider · **Blocks:** federated sign-in only
 
 ### TBY-AUTH-017
 
 - **What happened:** You are signed in at `<provider>`, but no Tobby role is granted to you.
 - **Probable cause:** None of the groups the identity provider sent for your account is mapped to a role on this instance. Tobby never grants a role by default.
 - **Corrective action:** Ask an administrator to add one of your groups to the role mapping of the instance configuration (`roles.viewer`, `roles.operator` or `roles.admin` under the provider's section), or to add you to a group already mapped.
-- **Fixable offline:** yes · **Blocks:** the sign-in attempt · **Status:** reserved — emitted from milestone 6
+- **Fixable offline:** yes · **Blocks:** the sign-in attempt
 
 ## Configuration (TBY-CFG)
 

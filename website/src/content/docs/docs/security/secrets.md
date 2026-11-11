@@ -19,6 +19,8 @@ output channel.
 | Registry credentials | the `registries.credentialsFile` path (`dockerconfigjson` format, FR-004), chosen by the operator | as provided; keep it outside the store |
 | Proxy password | configuration file or `TOBBY_NETWORK_PROXY_PASSWORD` (FR-080) | never accepted as a flag — flags are readable in the process table |
 | TLS private key | the `server.tls.keyFile` path (FR-082) | PEM file; never returned by any surface, in any form |
+| OIDC client secret | the `auth.oidc.clientSecretFile` path (FR-070) | as provided; never in the configuration file itself |
+| SAML service-provider key | the `auth.saml.keyFile` path (FR-071) | PEM file; only its certificate is published, in the SP descriptor |
 | UI session material | memory only | a restart signs everyone out; cookies carry `Secure`, `HttpOnly`, `SameSite` (NFR-015) |
 
 Two things are deliberately *absent* from this inventory. Trust roots are
@@ -35,8 +37,9 @@ and refuses to render if they point at the same path.
 
 **The separation is enforced, not merely documented.** An instance
 **refuses to start** (`TBY-CFG-002`) when a configured secret path
-resolves inside the store: `state.root`, `registries.credentialsFile`, or
-`server.tls.keyFile`. The check resolves through the real filesystem —
+resolves inside the store: `state.root`, `registries.credentialsFile`,
+`server.tls.keyFile`, and — when their method is enabled —
+`auth.oidc.clientSecretFile` and `auth.saml.keyFile`. The check resolves through the real filesystem —
 relative paths, `..`, and symbolic links included — so a path that reads
 as "outside" and lands inside is caught, and the refusal names both the
 setting and the path it resolved to (NFR-020).
