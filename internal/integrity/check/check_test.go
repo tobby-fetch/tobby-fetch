@@ -467,3 +467,50 @@ func TestTheWalkHoldsTheContentLock(t *testing.T) {
 		}
 	}
 }
+
+// TestLostPlatformIsADefect: the record states which index children the
+// recipe retained (IngredientRecord.Children). One of them missing from
+// the store is a lost platform — a defect — while a child the recipe
+// never selected stays a legitimate absence (FR-022, R-31).
+func TestLostPlatformIsADefect(t *testing.T) {
+	f := newFixture(t)
+	repo := "docker.io/library/multi"
+	amd := f.putImage(repo, "amd64", []byte("the platform that is still here"))
+	lost := "sha256:" + strings.Repeat("cd", 32)       // retained, then lost
+	unselected := "sha256:" + strings.Repeat("ab", 32) // never fetched: filtered out
+	idx := f.putIndex(repo, "1.0", amd, lost, unselected)
+	rec := store.RecipeRecord{
+		Name: "multi", Version: "1.0.0", CookbookRepo: cookbook + "/multi", ArtifactRepo: cookbook + "/multi", ArtifactTag: "1.0.0",
+		Ingredients: []store.IngredientRecord{{Name: "multi", Kind: "Image", Repo: repo, Tag: "1.0", Digest: idx, Children: []string{amd, lost}}},
+	}
+	rec.Digest = f.putImage(rec.ArtifactRepo, "1.0.0", []byte("recipe document"))
+	f.sign(f.kp, rec.ArtifactRepo, rec.Digest)
+	rec.Verified = true
+	if err := f.st.PutRecipeRecord(&rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.st.SetProvenance(repo, &store.Provenance{Class: store.ProvenanceRecipe}); err != nil {
+		t.Fatal(err)
+	}
+	rep := f.verify(check.Options{})
+	if rep.Verdict != integrity.VerdictDefects {
+		t.Fatalf("verdict = %s; a retained platform is missing", rep.Verdict)
+	}
+	var named bool
+	for _, d := range rep.Defects {
+		if d.Code != taxonomy.CodeIntegrityIncomplete {
+			t.Errorf("unexpected defect %s %v", d.Code, d.Params)
+			continue
+		}
+		if strings.Contains(d.Params["missing"], unselected) {
+			t.Errorf("the unselected child is reported missing: %v", d.Params)
+		}
+		named = named || strings.Contains(d.Params["missing"], lost)
+	}
+	if !named {
+		t.Errorf("no defect names the lost child %s: %v", lost, rep.Defects)
+	}
+	if len(rep.Recipes) != 1 || rep.Recipes[0].Complete {
+		t.Errorf("the recipe is reported complete: %+v", rep.Recipes)
+	}
+}

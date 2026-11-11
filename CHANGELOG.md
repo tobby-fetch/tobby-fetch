@@ -224,6 +224,14 @@ starting with `v0.1.0`.
   verification. Only children the repository actually holds are marked
   now.
 
+- **The store verification sees a lost platform** (R-31, B-044). An
+  absent child of an index was always read as a platform the recipe had
+  not selected (FR-022), so a platform lost from the store passed as
+  complete. The recipe graph now records, per index ingredient, the
+  children the recipe retained, and the verification reports a retained
+  child that is missing (`TBY-INT-002`). Records written before v0.6.0
+  carry no such list and are read as before until resynchronized.
+
 ### Security
 
 - **Go 1.27.4** (from 1.27.3), which fixes GO-2026-6859 in `net/http`:

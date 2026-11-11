@@ -168,6 +168,14 @@ type IngredientRecord struct {
 	Repo   string `json:"repo"`
 	Tag    string `json:"tag,omitempty"`
 	Digest string `json:"digest"`
+	// Children are the index children the recipe retained, by digest —
+	// every child, or those its platforms field selected (FR-022) — when
+	// the ingredient is an index. A platform-filtered index keeps its
+	// pinned digest while listing children the store lacks, so only this
+	// list tells a platform that was lost from one that was never
+	// selected (R-31). Absent from a record written before it existed, or
+	// for an ingredient that is not an index.
+	Children []string `json:"children,omitempty"`
 }
 
 // RecipeRecord is the stored recipe graph entry: the recipe artifact and

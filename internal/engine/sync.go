@@ -525,8 +525,12 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	// identity and resolution timestamp for the milestone-5 media manifest
 	// (FR-054), correlation for R-09.
 	kept := records[:0]
-	for _, r := range records {
+	for i, r := range records {
 		if r.Repo != "" {
+			// What the recipe retained of an index, for the store
+			// verification to tell a lost platform from an unselected one
+			// (R-31). records is indexed like the recipe's ingredients.
+			r.Children = e.retainedChildren(ctx, &recipe.Spec.Ingredients[i], r.Repo)
 			kept = append(kept, r)
 		}
 	}
@@ -972,6 +976,46 @@ func (e *Engine) ingredientRecord(ing *spec.Ingredient) store.IngredientRecord {
 		Name: ing.Name, Kind: string(ing.Kind), Repo: repo,
 		Tag: ing.Version, Digest: ing.Digest,
 	}
+}
+
+// retainedChildren lists, by digest, the children of an index ingredient
+// the recipe retained: every child without a platforms field, the
+// selected ones with it — the rule selectPlatforms applies, read back
+// from the index the store holds. Nil for an ingredient that is not an
+// index, or whose index cannot be read.
+func (e *Engine) retainedChildren(ctx context.Context, ing *spec.Ingredient, repo string) []string {
+	payload, _, _, err := e.store.RawManifest(ctx, repo, ing.Digest)
+	if err != nil {
+		return nil
+	}
+	var idx struct {
+		Manifests []struct {
+			Digest   string `json:"digest"`
+			Platform *struct {
+				OS           string `json:"os"`
+				Architecture string `json:"architecture"`
+				Variant      string `json:"variant"`
+			} `json:"platform"`
+		} `json:"manifests"`
+		Layers []json.RawMessage `json:"layers"`
+	}
+	if json.Unmarshal(payload, &idx) != nil || len(idx.Manifests) == 0 || len(idx.Layers) > 0 {
+		return nil
+	}
+	var out []string
+	for _, c := range idx.Manifests {
+		keep := len(ing.Platforms) == 0
+		for _, want := range ing.Platforms {
+			if c.Platform != nil && importer.MatchesPlatform(want, c.Platform.OS, c.Platform.Architecture, c.Platform.Variant) {
+				keep = true
+				break
+			}
+		}
+		if keep && c.Digest != "" {
+			out = append(out, c.Digest)
+		}
+	}
+	return out
 }
 
 // recordProvenance marks a repository as recipe-managed (FR-045 classes).

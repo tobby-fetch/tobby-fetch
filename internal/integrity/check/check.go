@@ -15,7 +15,8 @@
 //     complete: the manifest itself, its config and layers, and the child
 //     manifests of an index, are present. A platform-filtered index
 //     legitimately keeps its pinned digest while carrying only some of its
-//     children (FR-022), so an absent child is not a defect.
+//     children (FR-022): an absent child is a defect only when the record
+//     says the recipe retained it (IngredientRecord.Children).
 //  3. Signatures. Every recorded recipe's signature verifies against the
 //     trust roots configured on THIS instance now, scopes applied. A key
 //     that has since been removed from the roots, or a scope that no
@@ -28,8 +29,8 @@
 //
 // The walk is read-only. It repairs nothing and deletes nothing (the
 // store is byte-identical afterwards — a property the tests assert on the
-// whole tree), and the one lock it takes is the shared side of the
-// content lock, so a garbage collection cannot remove a blob under it.
+// whole tree), and the one lock it takes keeps removals away, so a
+// garbage collection cannot remove a blob under it.
 package check
 
 import (
@@ -258,6 +259,7 @@ func (w *walker) complete(rec *store.RecipeRecord) bool {
 			continue
 		}
 		ok = w.manifest(ing.Repo, ing.Digest, true) && ok
+		ok = w.retained(ing) && ok
 		for _, tag := range signatureTags(ing.Digest) {
 			if d, found := w.st.ResolveTag(w.ctx, ing.Repo, tag); found {
 				ok = w.manifest(ing.Repo, d, true) && ok
@@ -265,6 +267,28 @@ func (w *walker) complete(rec *store.RecipeRecord) bool {
 		}
 	}
 	return ok
+}
+
+// retained checks that every index child the recipe retained (the record's
+// Children, FR-022) is in the store: a lost platform is a defect, while a
+// child the recipe never selected is not. A record written before the
+// list existed carries none, and is checked as before — an absent child
+// of an index reads as unselected.
+func (w *walker) retained(ing *store.IngredientRecord) bool {
+	var missing []string
+	for _, child := range ing.Children {
+		if !w.present(ing.Repo, child) {
+			missing = append(missing, child+" (an index child the recipe retained)")
+		}
+	}
+	if len(missing) == 0 {
+		return true
+	}
+	ref := ing.Repo + "@" + ing.Digest
+	w.defect(taxonomy.CodeIntegrityIncomplete, ref, map[string]string{
+		"reference": ref, "missing": listMissing(missing),
+	})
+	return false
 }
 
 // signatureTags are the tags a manifest's signature artifacts travel
