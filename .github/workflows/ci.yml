@@ -56,6 +56,11 @@ jobs:
       # changelog ships the wrong image to everyone who installs it (B-035).
       - name: Reference chart tracks the released version
         run: sh tools/check-chart-version.sh
+      # The release workflow's publishing decision: a rehearsal never
+      # becomes a release, a multi-line `version` input never reaches
+      # $GITHUB_OUTPUT, a real name is published from a tag push only.
+      - name: Release guards refuse a forged rehearsal
+        run: sh tools/release-meta-test.sh
       - name: Lint the Windows and macOS sources
         run: |
           for goos in windows darwin; do

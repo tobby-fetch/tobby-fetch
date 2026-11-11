@@ -213,6 +213,16 @@ starting with `v0.1.0`.
   weekly rebuild, now extract `/usr/bin/tobby` and
   `/usr/libexec/tobby/trivy` from the image for both architectures and
   scan them as a root filesystem, at the same CRITICAL/HIGH threshold.
+- **A release rehearsal can no longer publish under the real names**
+  (B-039). The `version` input of a `workflow_dispatch` run was checked
+  line by line, so a multi-line value passed and its extra lines
+  (`dry_run=false`, `image=…`, a heredoc) reached the job outputs, which
+  the publishing jobs trusted through `dry_run != 'true'`. The decision now
+  lives in `tools/release-meta.sh`: any control character refuses the run,
+  only the push of a `v*` tag is a release, every publishing step tests
+  `dry_run == 'false'` **and** the tag-push event, and
+  `tools/check-publish-target.sh` refuses a real name outside a tag push.
+  `tools/release-meta-test.sh` locks it in CI.
 
 ## [0.5.2] - 2026-11-09
 

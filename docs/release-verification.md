@@ -222,7 +222,12 @@ gh run watch "$(gh run list --workflow release.yml --limit 1 --json databaseId -
 ```
 
 `version` is the tag about to be cut; the chart-version gate checks it as
-it would on the tag. What the rehearsal does:
+it would on the tag. It must be a single `vX.Y.Z[-pre]` line: any control
+character (a newline above all, which could otherwise forge extra job
+outputs) refuses the run before anything is computed. Only the **push of a
+`v*` tag** publishes under the real names — every publishing step tests for
+that event itself, not just the dry-run flag (`tools/release-meta.sh`,
+locked in CI by `tools/release-meta-test.sh`). What the rehearsal does:
 
 - builds, double-builds and compares, generates and signs the SBOMs, builds
   and scans the image, packages the chart and the FileSet — the same jobs,

@@ -125,31 +125,16 @@ jobs:
         id: meta
         env:
           INPUT_VERSION: ${{ inputs.version }}
+        # tools/release-meta.sh: only a push of a v* tag publishes under the
+        # real names; a version holding any control character (a multi-line
+        # input that would forge extra $GITHUB_OUTPUT lines) is refused
+        # before anything is written. Locked by tools/release-meta-test.sh.
         run: |
           set -eu
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            version="${INPUT_VERSION}"
-            dry_run=true
-            ns="ghcr.io/${GITHUB_REPOSITORY_OWNER}/dry-run"
-            echo "::notice::DRY RUN of ${version}: OCI artifacts go to ${ns}/, no release is created."
-          else
-            version="${GITHUB_REF_NAME}"
-            dry_run=false
-            ns="ghcr.io/${GITHUB_REPOSITORY_OWNER}"
-          fi
-          printf '%s\n' "$version" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' \
-            || { echo "::error::'${version}' is not a vX.Y.Z[-pre] version"; exit 1; }
-          sde="$(git log -1 --format=%ct)"
-          {
-            echo "version=${version}"
-            echo "commit=$(git rev-parse HEAD)"
-            echo "source_date_epoch=${sde}"
-            echo "date=$(date -u -d "@${sde}" +%Y-%m-%dT%H:%M:%SZ)"
-            echo "dry_run=${dry_run}"
-            echo "image=${ns}/${GITHUB_REPOSITORY#*/}"
-            echo "charts=${ns}/charts"
-            echo "binaries=${ns}/binaries/tobby"
-          } >> "$GITHUB_OUTPUT"
+          out="$(sh tools/release-meta.sh "${GITHUB_EVENT_NAME}" "${GITHUB_REF}" "${GITHUB_REF_NAME}" \
+            "${INPUT_VERSION}" "${GITHUB_REPOSITORY_OWNER}" "${GITHUB_REPOSITORY}" \
+            "$(git rev-parse HEAD)" "$(git log -1 --format=%ct)")"
+          printf '%s\n' "${out}" >> "$GITHUB_OUTPUT"
       - name: Build the four release targets
         env:
           SOURCE_DATE_EPOCH: ${{ steps.meta.outputs.source_date_epoch }}
@@ -822,7 +807,7 @@ jobs:
           ! grep -nE '@[A-Z_]+@' notes.md \
             || { echo "::error::a placeholder survived in the release notes"; exit 1; }
       - name: Create the release with binaries, checksums, and SBOMs
-        if: needs.build.outputs.dry_run != 'true'
+        if: needs.build.outputs.dry_run == 'false' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         run: >
           gh release create "${VERSION}"
           --verify-tag
@@ -911,7 +896,7 @@ jobs:
           path: rendered-tobby.rb
           if-no-files-found: error
       - name: Push the bump into the tap
-        if: needs.build.outputs.dry_run != 'true'
+        if: needs.build.outputs.dry_run == 'false' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
           TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
@@ -1017,7 +1002,7 @@ jobs:
             rendered-winget/tobby-fetch.tobby.installer.yaml \
             || { echo "::error::the arm64 checksum is not the one this run built"; exit 1; }
       - name: Attach the rendered manifests to the release
-        if: needs.build.outputs.dry_run != 'true'
+        if: needs.build.outputs.dry_run == 'false' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         run: >
           gh release upload "${VERSION}"
           rendered-winget/tobby-fetch.tobby.yaml
@@ -1049,7 +1034,7 @@ jobs:
       # is a warning annotation and a job summary the releaser actually
       # reads, and the release stays green.
       - name: Announce the human step (the community index is not ours to write to)
-        if: needs.build.outputs.dry_run != 'true'
+        if: needs.build.outputs.dry_run == 'false' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         run: |
           echo "::warning::winget manifests for ${VERSION} are attached to the release; submitting them to microsoft/winget-pkgs is a human step."
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
@@ -1151,7 +1136,7 @@ jobs:
           grep -q "\"hash\": \"$(awk '$2 ~ /tobby-windows-arm64\.exe$/ {print $1}' dist/SHA256SUMS)\"" "$f" \
             || { echo "::error::the arm64 checksum is not the one this run built"; exit 1; }
       - name: Attach the rendered manifest to the release
-        if: needs.build.outputs.dry_run != 'true'
+        if: needs.build.outputs.dry_run == 'false' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         run: >
           gh release upload "${VERSION}"
           rendered-scoop/tobby.json
@@ -1168,7 +1153,7 @@ jobs:
       # never used to write anything, here or anywhere else in this file.
       # A rehearsal skips the hand-off: there is no release to hand off from.
       - name: Hand off to the bucket, or fail loudly if it was left behind
-        if: needs.build.outputs.dry_run != 'true'
+        if: needs.build.outputs.dry_run == 'false' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
           TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
         run: |
@@ -1230,5 +1215,5 @@ jobs:
     with:
       base64-subjects: ${{ needs.build.outputs.hashes }}
       provenance-name: tobby.intoto.jsonl
-      upload-assets: ${{ needs.build.outputs.dry_run != 'true' }}
+      upload-assets: ${{ needs.build.outputs.dry_run == 'false' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
       upload-tag-name: ${{ needs.build.outputs.version }}
