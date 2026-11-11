@@ -99,6 +99,9 @@ type resp struct {
 	unsigned     bool
 	signer       *tls.Certificate // nil = the IdP's key
 	tamper       func(*etree.Element)
+	// preSign shapes the assertion before it is signed: what a
+	// (compromised or buggy) IdP would sign.
+	preSign func(*etree.Element)
 }
 
 const (
@@ -158,6 +161,9 @@ func (idp *testIDP) response(t testing.TB, r *resp) []byte {
 		t.Fatal(err)
 	}
 	el := doc.Root()
+	if r.preSign != nil {
+		r.preSign(el)
+	}
 	if !r.unsigned {
 		signer := idp.cert
 		if r.signer != nil {
@@ -462,4 +468,40 @@ func TestSAMLReplayCacheFailsClosed(t *testing.T) {
 	if err := c.Consume("one-more", now.Add(time.Hour)); err != nil {
 		t.Errorf("after expiry: %v", err)
 	}
+}
+
+// TestSAMLAdvisoryGO20266909 pins the two defects of GO-2026-6909 as fixed
+// in the version Tobby uses. The advisory's text names "through v0.5.1"
+// but its range has no fixed version, so govulncheck still reports it on
+// v0.6.3: this is the proof the report is stale, on the exact path Tobby
+// calls. Both shapes are signed by the trusted key — the advisory is about
+// what a signed assertion may carry.
+func TestSAMLAdvisoryGO20266909(t *testing.T) {
+	idp := newTestIDP(t)
+	svc := samlService(t, idp, 90*time.Second)
+	t.Run("signed assertion without Issuer: refused, no panic", func(t *testing.T) {
+		id, relay, _ := begin(t, svc)
+		doc := idp.response(t, &resp{inResponseTo: id, groups: []string{"staff"}, preSign: func(el *etree.Element) {
+			el.RemoveChild(el.SelectElement("Issuer"))
+		}})
+		if err := post(svc, doc, relay); err == nil {
+			t.Fatal("an assertion without Issuer was accepted")
+		}
+	})
+	t.Run("NameID in a foreign namespace is not the subject", func(t *testing.T) {
+		id, relay, _ := begin(t, svc)
+		doc := idp.response(t, &resp{inResponseTo: id, groups: []string{"staff"}, preSign: func(el *etree.Element) {
+			subj := el.SelectElement("Subject")
+			subj.RemoveChild(subj.SelectElement("NameID"))
+			foreign := etree.NewElement("x:NameID")
+			foreign.CreateAttr("xmlns:x", "urn:example:foreign")
+			foreign.SetText("admin")
+			subj.InsertChildAt(0, foreign)
+		}})
+		err := post(svc, doc, relay)
+		if err == nil {
+			res, ferr := svc.FinishSAML(relay, "")
+			t.Fatalf("an assertion whose only NameID is foreign was accepted (%+v %v)", res, ferr)
+		}
+	})
 }

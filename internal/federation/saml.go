@@ -416,7 +416,16 @@ func (s *Service) ConsumeSAML(_ context.Context, samlResponse, relay string) err
 }
 
 // verify runs the library's checks and Tobby's own on one response.
-func (p *samlProvider) verify(sp *saml.ServiceProvider, raw []byte, requestID string, now time.Time) (*Result, error) {
+func (p *samlProvider) verify(sp *saml.ServiceProvider, raw []byte, requestID string, now time.Time) (res *Result, err error) {
+	// Hostile input reaches a third-party XML-DSig stack here, the class
+	// of code that cumulated advisories in 2026 (a nil dereference after
+	// signature verification among them, GO-2026-6909): a panic on this
+	// path is a refused sign-in, never a crashed request goroutine.
+	defer func() {
+		if r := recover(); r != nil {
+			res, err = nil, p.fail("malformed", fmt.Errorf("the SAML library panicked on this response: %v", r))
+		}
+	}()
 	assertion, err := sp.ParseXMLResponse(raw, []string{requestID}, p.acs)
 	if err != nil {
 		// The library's public message is deliberately vague; the private
