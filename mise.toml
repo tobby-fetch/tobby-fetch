@@ -60,6 +60,15 @@ run = "go test -race -count=2 ./..."
 description = "Browser scenarios (R-38, chromedp — uses the Chrome already installed)"
 run = "go test -tags browser -count=2 -timeout 20m ./test/browser/..."
 
+# Identity-provider fixture (milestone 6): a real Keycloak in a container,
+# for the OIDC and SAML tests. Needs docker; the image is pulled by the
+# digest pinned in test/keycloak/IMAGE and nothing else is downloaded.
+# TOBBY_KEYCLOAK_URL attaches to a Keycloak that is already running.
+#   mise run test-keycloak
+[tasks.test-keycloak]
+description = "Keycloak fixture tests (OIDC/SAML IdP in docker, image pinned by digest)"
+run = "go test -count=1 -timeout 15m -v ./test/keycloak/..."
+
 [tasks.lint]
 description = "Strict lint (golangci-lint, zero suppressions)"
 run = "golangci-lint run"
