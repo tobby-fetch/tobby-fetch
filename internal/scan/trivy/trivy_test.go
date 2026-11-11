@@ -892,7 +892,7 @@ func TestChannelBinaryIsRehashedBeforeReuse(t *testing.T) {
 	if !st.Available {
 		t.Fatalf("the delivery was not unpacked again: %+v %v", st, s.Cause())
 	}
-	if got, err := os.ReadFile(filepath.Join(unpacked, "trivy")); err != nil || !bytes.Equal(got, raw) {
+	if got, err := os.ReadFile(filepath.Join(unpacked, "trivy")); err != nil || !bytes.Equal(got, raw) { //nolint:gosec // G304: the test's own temporary directory
 		t.Errorf("the unpacked binary is not the delivered one again (err %v)", err)
 	}
 }

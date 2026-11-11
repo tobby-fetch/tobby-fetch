@@ -46,7 +46,9 @@ func TestVerificationDoesNotStallWrites(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		release()
-		<-wrote
+		if err := <-wrote; err != nil {
+			t.Log(err)
+		}
 		t.Fatal("a content write stalled behind a removal waiting for the verification")
 	}
 
