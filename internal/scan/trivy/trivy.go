@@ -430,14 +430,18 @@ func (s *Scanner) locateBinary(ctx context.Context) (*binary, *taxonomy.Error) {
 		if loc == nil {
 			return unavailable(fmt.Sprintf("no tobby-system delivery of %s is in the store yet — synchronize the tobby-system recipe that carries the scanner first, signed and verified (a recipe admitted under a relaxed trust scope never delivers it)", ref))
 		}
-		// The previous unpack is reused when the delivery did not change;
-		// its digest was computed from the verified layer at that time.
+		// The previous unpack is reused when the delivery did not change
+		// AND the file still hashes to the digest computed from the
+		// verified layer at that time: a copy changed on disk since is
+		// never run, not even to ask its version — it is unpacked again.
 		s.stateMu.RLock()
 		prev := s.bin
 		s.stateMu.RUnlock()
-		if prev != nil && prev.origin == OriginChannel && prev.source == loc.Digest && exists(prev.path) {
-			b = *prev
-			break
+		if prev != nil && prev.origin == OriginChannel && prev.source == loc.Digest {
+			if actual, err := fileDigest(prev.path); err == nil && actual == prev.digest {
+				b = *prev
+				break
+			}
 		}
 		name := "trivy"
 		if o.GOOS == "windows" {
@@ -450,6 +454,14 @@ func (s *Scanner) locateBinary(ctx context.Context) (*binary, *taxonomy.Error) {
 		}
 		s.prune(filepath.Join(o.WorkDir, "bin"), strings.TrimPrefix(loc.Digest, "sha256:"))
 		b = binary{path: dst, digest: sum, origin: OriginChannel, pinned: true, source: loc.Digest}
+	}
+	// FR-031: the digest is verified before EVERY execution, the version
+	// probe included.
+	if actual, err := fileDigest(b.path); err != nil || actual != b.digest {
+		if err != nil {
+			actual = "unreadable: " + err.Error()
+		}
+		return unverified(b.path, b.digest, actual)
 	}
 	v, err := probeVersion(ctx, b.path, filepath.Join(o.WorkDir, "probe"))
 	if err != nil {

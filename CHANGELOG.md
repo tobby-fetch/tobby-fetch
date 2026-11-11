@@ -264,6 +264,12 @@ starting with `v0.1.0`.
   everything. Only the recipe named `tobby-system`, admitted with its
   signature verified, now delivers, and the repository is compared whole
   under the base prefix its own record states.
+- **A channel-delivered scanner binary is re-hashed before it is reused**
+  (B-045). When the delivery had not changed, the copy already unpacked
+  was run by the version probe of the next refresh without being hashed
+  again, so a file swapped in the work directory executed once. It is now
+  re-hashed before reuse — and unpacked again when it differs — and every
+  origin's binary is verified right before the version probe.
 
 ## [0.5.2] - 2026-11-09
 

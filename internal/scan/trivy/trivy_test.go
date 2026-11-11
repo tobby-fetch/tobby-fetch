@@ -827,3 +827,48 @@ func TestOnlyTheVerifiedSystemRecipeDelivers(t *testing.T) {
 		})
 	}
 }
+
+// TestChannelBinaryIsRehashedBeforeReuse: a channel-delivered binary
+// already unpacked is reused across refreshes only while it still hashes
+// to the digest of the verified layer. One changed on disk is never run —
+// not even by the version probe of the next refresh — and is unpacked
+// again from the store (FR-031: the digest is verified before every
+// execution).
+func TestChannelBinaryIsRehashedBeforeReuse(t *testing.T) {
+	f := newFixture(t, fakeConf{})
+	raw, err := os.ReadFile(f.bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := "tobby/ghcr.io/aquasecurity/trivy"
+	layer := tarOf(t, true, map[string][]byte{"usr/local/bin/trivy": raw})
+	child := f.st.manifest(repo, PinnedVersion, ociManifestType, imageManifest(f.st, layer))
+	f.st.record(store.IngredientRecord{Name: "trivy", Kind: "FileSet", Repo: repo, Tag: PinnedVersion, Digest: child})
+	o := f.opts
+	o.Path, o.Digest, o.GOOS, o.GOARCH = "", "", "linux", "amd64"
+	unpacked := filepath.Join(o.WorkDir, "bin", strings.TrimPrefix(child, "sha256:"))
+	if err := os.MkdirAll(unpacked, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configure(t, filepath.Join(unpacked, "trivy"), fakeConf{Log: f.calls.path})
+	s := New(&o)
+	if st := s.Refresh(context.Background()); !st.Available {
+		t.Fatalf("first refresh: %+v %v", st, s.Cause())
+	}
+
+	marker := filepath.Join(t.TempDir(), "EXECUTED")
+	evil := "#!/bin/sh\n: > " + marker + "\necho '{\"Version\":\"" + PinnedVersion + "\"}'\n"
+	if err := os.WriteFile(filepath.Join(unpacked, "trivy"), []byte(evil), 0o700); err != nil { //nolint:gosec // G306: a test executable
+		t.Fatal(err)
+	}
+	st := s.Refresh(context.Background())
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatalf("the changed binary was executed by the refresh (available=%v)", st.Available)
+	}
+	if !st.Available {
+		t.Fatalf("the delivery was not unpacked again: %+v %v", st, s.Cause())
+	}
+	if got, err := os.ReadFile(filepath.Join(unpacked, "trivy")); err != nil || !bytes.Equal(got, raw) {
+		t.Errorf("the unpacked binary is not the delivered one again (err %v)", err)
+	}
+}
