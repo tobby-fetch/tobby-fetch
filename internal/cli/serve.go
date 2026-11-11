@@ -370,6 +370,10 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		PushedBytes:     func(n int64) { reg.PromotionBytes.Add(float64(n)) },
 		PushRefused:     func(code string) { reg.PromotionRefusals.WithLabelValues(code).Inc() },
 	})
+	// Vulnerability scanning at retrieval (FR-031, FR-032, R-13): the
+	// pinned scanner, its database from the tobby-system delivery, the
+	// policy, the metrics — and the posture stated at startup.
+	scanning := setupScanning(ctx, cfg, st, eng, reg, logger)
 
 	// The promotion target (milestone 4, FR-013): built from the same
 	// allowlist and the same outbound transport as every other path, and
@@ -485,6 +489,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	queue.Register(tasks.TypeSync, func(runCtx context.Context, t *tasks.Task, taskLogger *slog.Logger, save func()) error {
 		err := eng.Runner()(runCtx, t, taskLogger, save)
 		refreshFileSets(runCtx)
+		// A cycle may have delivered a new database or scanner binary
+		// (tobby-system): the banner and the metrics follow at once.
+		scanning.refresh(runCtx)
 		// A cycle is the one moment the footprint moves by a lot — it
 		// fetched, and it may have pruned. Re-sampling here is what makes
 		// the warning retract when the store comes back under the
@@ -619,6 +626,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Projector:          eng,
 		MediaZone:          eng,
 		MediaGate:          mediaGate,
+		Scan:               scanning.uiState,
 	})
 	webUI.Mount(srv.Mux())
 
