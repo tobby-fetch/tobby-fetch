@@ -177,9 +177,8 @@ func TestIntegrityScreenNamesEveryDefectAndReReportsTheAssurance(t *testing.T) {
 func TestIntegrityVerifyStartsOneAndRefusesASecond(t *testing.T) {
 	running := &tasks.Task{ID: "tsk_verify", Status: tasks.StatusPending}
 	svc := &stubIntegrityService{afterRun: running}
-	mux := integrityUI(t, svc)
 	u := newTestUIWithOptions(t, &Options{Queue: newTestQueue(t), Integrity: svc}, nil)
-	mux = mount(u)
+	mux := mount(u)
 	c := login(t, mux, "op", "pw-op")
 
 	w := postForm(t, mux, c, "/integrity/verify", "csrf="+csrfOf(t, u, c), nil)

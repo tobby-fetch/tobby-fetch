@@ -181,17 +181,18 @@ func (f *Fixture) Sign(kp *sigtest.KeyPair, repo, subject string) {
 // AddRecipe puts one complete delivery in the store: the ingredient, the
 // recipe artifact, its signature (by signer, unless nil) and the graph
 // entry. It returns the record and the digest of the ingredient's layer.
-func (f *Fixture) AddRecipe(name string, signer *sigtest.KeyPair) (store.RecipeRecord, string) {
+func (f *Fixture) AddRecipe(name string, signer *sigtest.KeyPair) (rec store.RecipeRecord, layerDigest string) {
 	f.T.Helper()
 	ingRepo := "docker.io/library/" + name
 	layer := []byte("layer bytes of " + name + " — long enough to be a real blob")
+	layerDigest = Digest(layer)
 	ingDigest := f.PutImage(ingRepo, "1.0", layer)
 	artifactRepo := Cookbook + "/" + name
 	artifactDigest := f.PutImage(artifactRepo, "1.0.0", []byte("recipe document of "+name))
 	if signer != nil {
 		f.Sign(signer, artifactRepo, artifactDigest)
 	}
-	rec := store.RecipeRecord{
+	rec = store.RecipeRecord{
 		Name: name, Version: "1.0.0",
 		CookbookRepo: artifactRepo, ArtifactRepo: artifactRepo, ArtifactTag: "1.0.0",
 		Digest: artifactDigest, Zone: "zone-a", ResolvedAt: time.Now().UTC(), Verified: signer != nil,
@@ -205,19 +206,18 @@ func (f *Fixture) AddRecipe(name string, signer *sigtest.KeyPair) (store.RecipeR
 			f.T.Fatal(err)
 		}
 	}
-	return rec, Digest(layer)
+	return rec, layerDigest
 }
 
 // AdmitUnder rewrites a recipe's graph entry as the engine records one
 // admitted unsigned by the declared scope: not verified, naming the scope
 // (FR-033, FR-037).
-func (f *Fixture) AdmitUnder(rec store.RecipeRecord, scope string) store.RecipeRecord {
+func (f *Fixture) AdmitUnder(rec *store.RecipeRecord, scope string) {
 	f.T.Helper()
 	rec.Verified, rec.TrustScope = false, scope
-	if err := f.St.PutRecipeRecord(&rec); err != nil {
+	if err := f.St.PutRecipeRecord(rec); err != nil {
 		f.T.Fatal(err)
 	}
-	return rec
 }
 
 // BlobPath is where the store keeps the bytes of one digest, relative to
@@ -280,10 +280,11 @@ func Fingerprint(t *testing.T, root string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// AcceptanceStore builds the store of the FR-057 acceptance: an intact
+// Acceptance names what the FR-057 acceptance store holds: an intact
 // recipe, one with a truncated blob, one with a manifest missing a
 // referenced blob, one signed by a key that is not a trust root, and one
-// orphan blob. It returns the digests the assertions name.
+// orphan blob. BuildAcceptance fills a fixture with it; the fields are the
+// digests the assertions name.
 type Acceptance struct {
 	Truncated, Missing, Orphan string
 	MissingRecord              store.RecipeRecord

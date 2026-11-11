@@ -305,8 +305,7 @@ features:
   - id: "R-22"
     en: Reduced-trust content stays visibly marked everywhere
     fr: Le contenu admis en confiance réduite reste visible partout
-    status: upcoming
-    milestone: 6
+    status: available
     security: true
   - id: "R-20"
     en: Continuity when the enterprise directory is down
@@ -328,8 +327,7 @@ features:
   - id: "R-31"
     en: On-demand store integrity verification with timestamped report
     fr: Vérification d'intégrité du store à la demande, rapport horodaté
-    status: upcoming
-    milestone: 6
+    status: available
     security: true
 
   # ── Milestone 7 — Finishing, documentation & acceptance (v0.7.x → 1.0) ─

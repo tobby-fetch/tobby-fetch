@@ -94,10 +94,11 @@ The surface today (from the served OpenAPI document):
 | Media journey | `GET /api/v1/media`, `GET /api/v1/media/verification`, `POST /api/v1/media/verify`, `POST /api/v1/media/import` |
 | FileSets | `GET /api/v1/filesets`, `POST /api/v1/filesets/pack` |
 | Interoperability and store | `POST /api/v1/oci-layout/plan`, `POST /api/v1/oci-layout/export`, `POST /api/v1/oci-layout/import`, `POST /api/v1/store/reset` |
+| Store integrity | `POST /api/v1/store/verify`, `GET /api/v1/store/verification` |
 | Accounts and tokens | `POST /api/v1/account/password`, `GET/POST /api/v1/accounts`, `PATCH/DELETE /api/v1/accounts/{name}`, `GET/POST /api/v1/tokens`, `POST /api/v1/tokens/{name}/revoke` |
 | Network | `GET /api/v1/network`, `PUT /api/v1/network/certificate` |
 
-Three of those deserve a note, because their shape is not what a reader
+Four of those deserve a note, because their shape is not what a reader
 would guess from the path.
 
 - **`POST /api/v1/plan` answers `200` whatever the outcome.** A plan is a
@@ -113,6 +114,16 @@ would guess from the path.
   report. Asking for a second verification while one is walking the medium
   answers `409`
   ([`TBY-MED-031`](../../reference/errors/#tby-med-031)).
+- **A store verification is a task, and its report is a document.**
+  `POST /api/v1/store/verify` answers `201` with the task and a second
+  request while one is pending or running answers `409`
+  ([`TBY-INT-004`](../../reference/errors/#tby-int-004)). `GET
+  /api/v1/store/verification` serves the last report whole — its
+  timestamps, run identifier, verdict and every defect as a taxonomy code
+  naming the file or object concerned — or a snapshot carrying only the
+  progress while it runs; `verification` is `null` before any has been
+  requested. A store with defects is a *failed* task carrying its
+  principal code. See [Verify the store's integrity](../../passthrough/verify-store/).
 - **Two members of the media request body require the `admin` role**, above
   the endpoint's own operator floor: `allowZoneMismatch` and `allowStale`,
   the two waivable guards. Sending either from a lower role is

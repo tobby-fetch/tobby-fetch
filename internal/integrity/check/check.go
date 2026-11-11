@@ -532,7 +532,7 @@ func (w *walker) orphans(blobs []store.BlobFile, records []store.RecipeRecord) e
 			return fmt.Errorf("integrity: listing the tags of %s: %w", repo, err)
 		}
 		for _, tag := range tags {
-			if w.attached(repo, tag, roots[repo]) {
+			if w.attached(tag, roots[repo]) {
 				continue
 			}
 			d, ok := w.st.ResolveTag(w.ctx, repo, tag)
@@ -550,7 +550,7 @@ func (w *walker) orphans(blobs []store.BlobFile, records []store.RecipeRecord) e
 // of a digest the repository is meant to hold: "sha256-<hex>" with an
 // optional suffix (.sig, .att, .sbom). It travels with its subject, so it
 // is reachable exactly when its subject is.
-func (w *walker) attached(repo, tag string, held map[string]bool) bool {
+func (w *walker) attached(tag string, held map[string]bool) bool {
 	rest, ok := strings.CutPrefix(tag, "sha256-")
 	if !ok || len(rest) < 64 {
 		return false

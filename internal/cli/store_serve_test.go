@@ -38,7 +38,9 @@ func bootInstance(t *testing.T, cfg *config.Config) string {
 	t.Cleanup(func() {
 		http.DefaultClient.CloseIdleConnections()
 		cancel()
-		<-done
+		if err := <-done; err != nil {
+			t.Errorf("runServe returned %v, want nil", err)
+		}
 	})
 
 	var srv *server.Server
@@ -67,9 +69,9 @@ func bootInstance(t *testing.T, cfg *config.Config) string {
 	}
 }
 
-func apiCall(t *testing.T, method, target string, body io.Reader) (int, []byte) {
+func apiCall(t *testing.T, method, target string) (status int, payload []byte) {
 	t.Helper()
-	req, err := http.NewRequestWithContext(context.Background(), method, target, body)
+	req, err := http.NewRequestWithContext(context.Background(), method, target, http.NoBody)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +107,7 @@ func TestInstanceVerifiesItsStoreThroughTheAPIAndTheScreen(t *testing.T) {
 	f := checktest.New(t)
 	acc := f.BuildAcceptance()
 	bare, _ := f.AddRecipe("bare", nil)
-	f.AdmitUnder(bare, "lab")
+	f.AdmitUnder(&bare, "lab")
 	rootPEM, err := f.KP.PublicPEM()
 	if err != nil {
 		t.Fatal(err)
@@ -123,12 +125,12 @@ func TestInstanceVerifiesItsStoreThroughTheAPIAndTheScreen(t *testing.T) {
 	base := bootInstance(t, &cfg)
 
 	// Nothing verified yet: an explicit null, not an error.
-	code, raw := apiCall(t, http.MethodGet, base+"/api/v1/store/verification", nil)
+	code, raw := apiCall(t, http.MethodGet, base+"/api/v1/store/verification")
 	if code != http.StatusOK || !strings.Contains(string(raw), `"verification":null`) {
 		t.Fatalf("before any verification: %d %s", code, raw)
 	}
 
-	code, raw = apiCall(t, http.MethodPost, base+"/api/v1/store/verify", nil)
+	code, raw = apiCall(t, http.MethodPost, base+"/api/v1/store/verify")
 	if code != http.StatusCreated {
 		t.Fatalf("POST /api/v1/store/verify = %d %s, want 201", code, raw)
 	}
@@ -153,7 +155,7 @@ func TestInstanceVerifiesItsStoreThroughTheAPIAndTheScreen(t *testing.T) {
 	}
 	deadline := time.Now().Add(60 * time.Second)
 	for {
-		_, raw = apiCall(t, http.MethodGet, base+"/api/v1/store/verification", nil)
+		_, raw = apiCall(t, http.MethodGet, base+"/api/v1/store/verification")
 		status = struct {
 			TaskID       string            `json:"task_id"`
 			Status       string            `json:"status"`
@@ -197,7 +199,7 @@ func TestInstanceVerifiesItsStoreThroughTheAPIAndTheScreen(t *testing.T) {
 	}
 
 	// The task page and the task API carry the same report.
-	code, raw = apiCall(t, http.MethodGet, base+"/api/v1/tasks/"+created.Task.ID, nil)
+	code, raw = apiCall(t, http.MethodGet, base+"/api/v1/tasks/"+created.Task.ID)
 	if code != http.StatusOK || !strings.Contains(string(raw), `"verification"`) || !strings.Contains(string(raw), `"origin":"127.0.0.1`) {
 		t.Errorf("the task document lacks the report or the origin: %d %s", code, raw)
 	}
@@ -234,7 +236,7 @@ func TestInstanceVerifiesItsStoreThroughTheAPIAndTheScreen(t *testing.T) {
 
 	// The metrics: the verification is counted and dated, and the recipe
 	// under reduced assurance is counted per scope.
-	_, raw = apiCall(t, http.MethodGet, base+"/metrics", nil)
+	_, raw = apiCall(t, http.MethodGet, base+"/metrics")
 	metrics := string(raw)
 	for _, w := range []string{
 		`tobby_integrity_verifications_total{verdict="defects"} 1`,
@@ -264,7 +266,7 @@ func TestInstanceVerifiesItsStoreThroughTheAPIAndTheScreen(t *testing.T) {
 
 	// One at a time is enforced on the instance: the second verification
 	// is accepted only because the first has finished.
-	if code, raw = apiCall(t, http.MethodPost, base+"/api/v1/store/verify", nil); code != http.StatusCreated {
+	if code, raw = apiCall(t, http.MethodPost, base+"/api/v1/store/verify"); code != http.StatusCreated {
 		t.Errorf("a verification after the first finished = %d %s, want 201", code, raw)
 	}
 }

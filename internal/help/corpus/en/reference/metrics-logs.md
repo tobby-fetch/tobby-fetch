@@ -43,6 +43,9 @@ Domain metrics registered today:
 | `tobby_store_occupancy_bytes` | gauge | — | On-disk size of the store's deduplicated blob tree at the last sample; `0` while no `storage.occupancyThreshold` is configured and nothing is sampled. |
 | `tobby_store_occupancy_threshold_bytes` | gauge | — | The configured threshold; `0` means no threshold is set and the store is not monitored. |
 | `tobby_store_occupancy_exceeded` | gauge | — | `1` while the store exceeds its threshold, `0` otherwise. A gauge, not a counter, on purpose: clearing the condition must be as visible as raising it. All three exist from the first scrape. |
+| `tobby_integrity_verifications_total` | counter | `verdict` = `clean` \| `defects` | Completed on-demand store verifications ([`tobby store verify`](../cli/#tobby-store-verify), the Store integrity screen, `POST /api/v1/store/verify`). Orphaned content alone never makes a verdict `defects`. Both verdicts exist from the first scrape, at zero. |
+| `tobby_integrity_last_verification_timestamp_seconds` | gauge | — | End time of the last completed verification, in Unix seconds. **Absent until one has completed**: a value of `0` would read as 1970, a number where the truth is "never verified" — alert on absence, or on age. |
+| `tobby_assurance_reduced_recipes` | gauge | `scope` | Recipes currently held under [reduced assurance](../../security/reduced-assurance/), by the declared trust scope that admitted them. Computed at every scrape from the recipe graph, never counted by events. Every scope that allows unsigned recipes is present from the first scrape, at zero while it holds nothing, so clearing the last one is as visible as admitting the first. |
 
 The standard Go runtime and process collectors are registered alongside.
 
@@ -82,6 +85,8 @@ fixed by the log schema and safe to build extraction rules on:
 | `recipe` | The recipe being processed. |
 | `ingredient` | The ingredient reference. |
 | `digest` | The content digest concerned. |
+| `assurance` | Present **only** on records concerning content admitted under a relaxed trust scope, with the value `reduced` ([reduced assurance](../../security/reduced-assurance/)). Filter on its presence to find them. |
+| `assurance_scope` | The declared trust scope behind `assurance`, on the same records and only there. |
 
 Other fields are contextual per message (many notable lines carry a
 `requirement` field naming the SRS requirement they implement) and are not

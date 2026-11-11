@@ -50,7 +50,6 @@ func (t trust) Decide(string) media.TrustDecision {
 
 func keysOf(t *testing.T, kp *sigtest.KeyPair) *sigverify.Keys { return checktest.KeysOf(t, kp) }
 func newKeyPair(t *testing.T) *sigtest.KeyPair                 { return checktest.NewKeyPair(t) }
-func dgstOf(b []byte) string                                   { return checktest.Digest(b) }
 func blobPathOf(d string) string                               { return checktest.BlobPath(d) }
 
 func newFixture(t *testing.T) *fixture {
@@ -67,7 +66,7 @@ func (f *fixture) putIndex(repo, tag string, children ...string) string {
 	return f.PutIndex(repo, tag, children...)
 }
 func (f *fixture) sign(kp *sigtest.KeyPair, repo, subject string) { f.Sign(kp, repo, subject) }
-func (f *fixture) addRecipe(name string, signer *sigtest.KeyPair) (store.RecipeRecord, string) {
+func (f *fixture) addRecipe(name string, signer *sigtest.KeyPair) (rec store.RecipeRecord, layerDigest string) {
 	return f.AddRecipe(name, signer)
 }
 
@@ -245,7 +244,7 @@ func TestUnreadableManifestIsReportedNotSkipped(t *testing.T) {
 	// manifest. The blob no longer hashes to its digest either, and both
 	// defects are reported: the second is the consequence of the first.
 	p := filepath.Join(f.root, filepath.FromSlash(blobPathOf(rec.Ingredients[0].Digest)))
-	if err := os.WriteFile(p, []byte("{ this is not a manifest"), 0o600); err != nil { //nolint:gosec // G703: the fixture's own tree
+	if err := os.WriteFile(p, []byte("{ this is not a manifest"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	rep := f.verify(check.Options{})

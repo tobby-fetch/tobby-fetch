@@ -414,7 +414,6 @@ func TestSignatureRefusalNamesTheScope(t *testing.T) {
 		if agg := task.Aggregate(); agg.Failed != 0 {
 			t.Fatalf("aggregates = %+v (items %s), want admitted under the scope that lists the signing key", agg, itemNames(task))
 		}
-
 	})
 
 	t.Run("no scope, no name", func(t *testing.T) {

@@ -132,7 +132,7 @@ func TestReducedAssuranceReachesEverySurfaceOfASynchronization(t *testing.T) {
 // re-writes the manifest, so the medium genuinely carries an unsigned
 // recipe the way a source that admitted it under a scope would have
 // produced it.
-func unsignMedium(t *testing.T, m *medium, id string, admittedUnder string) {
+func unsignMedium(t *testing.T, m *medium, id, admittedUnder string) {
 	t.Helper()
 	ctx := context.Background()
 	name, _, _ := strings.Cut(id, "@")

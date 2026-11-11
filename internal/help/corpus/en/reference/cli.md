@@ -42,6 +42,8 @@ tobby
 ├── media
 │   ├── verify     Re-verify a transported store without pushing anything
 │   └── import     Verify a transported store, then push what it cleared
+├── store
+│   └── verify     Verify the integrity of a whole store (either mode)
 ├── recipe
 │   └── push       Validate a recipe and publish it to a cookbook
 ├── user
@@ -389,6 +391,56 @@ tobby media import --config /etc/tobby/config.yaml
 
 Exit codes: `0` imported, `1` a push failed, `3` refused by policy, `4` a
 verification failure.
+
+### tobby store verify
+
+```
+tobby store verify [flags]
+```
+
+Verifies a whole store on demand (SRS FR-057), in either mode — an
+instance's store and a transportable one are verified the same way. Four
+checks, each independent of the others' verdict:
+
+| Check | What it establishes |
+|---|---|
+| blobs | every blob is re-hashed against the digest it is stored under |
+| manifests | every manifest reachable from a recorded recipe is complete: its config, its layers, its signature artifacts, the children of an index (a platform-filtered index stays complete) |
+| signatures | every recorded recipe signature verifies against the trust roots configured **now**, scopes applied; the [reduced-assurance marker](../../security/reduced-assurance/) of a recipe admitted unsigned by a scope is re-reported |
+| orphans | content that no recorded recipe and no protected root (unit imports, seeded content, the vulnerability database) reaches is listed |
+
+The command **only reads**. It repairs nothing, deletes nothing and writes
+nothing into the store, which is byte-identical afterwards. The report is
+timestamped (start and end, run identifier, verdict) and names every defect
+as a taxonomy code with the file or object concerned; orphaned content is a
+note and never makes the verdict `defects`. It refuses a directory that is
+not already a Tobby store rather than stamp it.
+
+It runs in this process, against the directory, and works on a host where
+no instance is running. Trust roots come from the configuration
+(`trust.roots`, `trust.scopes`), never from the store. When an instance *is*
+serving the store, start the verification from its
+[Store integrity screen](../../passthrough/verify-store/) or
+`POST /api/v1/store/verify` instead: those hold the instance's content lock,
+so a removal in progress cannot read as a defect, and they leave a tracked
+task.
+
+| Flag | Purpose |
+|---|---|
+| `--storage-root` | The store to verify. Required — from the flag, `TOBBY_STORAGE_ROOT`, or `storage.root:` in the configuration file. |
+| `--output text\|json` | `json` emits the report itself on stdout, the same document `GET /api/v1/store/verification` serves under `verification`. |
+
+There is no `--wait` (the verification runs in this process), no schedule
+and no repair flag: v1 verifies on demand and reports.
+
+```sh
+tobby store verify --storage-root /mnt/usb
+tobby store verify --config /etc/tobby/config.yaml --output json | jq '.defects[] | .code + " " + .path'
+```
+
+Exit codes: `0` the store is intact, `4` a defect was found — a blob that
+does not match its digest, an incomplete or unreadable manifest, a
+signature that no longer verifies.
 
 ### tobby recipe push
 

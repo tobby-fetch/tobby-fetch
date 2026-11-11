@@ -112,7 +112,7 @@ func (s *Store) CheckBlob(ctx context.Context, b BlobFile) BlobCheck {
 		res.Err = fmt.Errorf("the directory name is not a sha256 digest: %w", err)
 		return res
 	}
-	f, err := os.Open(filepath.Join(s.root, filepath.FromSlash(b.Path))) //nolint:gosec // G304: a path built from the store's own directory listing
+	f, err := os.Open(filepath.Join(s.root, filepath.FromSlash(b.Path)))
 	if err != nil {
 		res.Err = err
 		return res

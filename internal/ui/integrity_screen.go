@@ -89,8 +89,8 @@ func (u *UI) integrityScreen(w http.ResponseWriter, r *http.Request) {
 func (u *UI) integrityVerify(w http.ResponseWriter, r *http.Request) {
 	d := u.integrityData(r)
 	status := http.StatusOK
-	switch {
-	case u.integrity == nil:
+	switch u.integrity {
+	case nil:
 		d.Failure = errView(requestLang(r), taxonomy.New(taxonomy.CodeConfigInvalid, taxonomy.Params{
 			"detail": "this instance has no task queue to run a store verification on",
 		}))
