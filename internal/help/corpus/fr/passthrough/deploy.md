@@ -274,7 +274,7 @@ de fédération est désactivée ou a une valeur par défaut.
 
 **Un défaut change en revanche quand on met à jour depuis v0.5.x : l'analyse
 de vulnérabilités s'exécute désormais, en mode consultatif.** Chaque image de
-conteneur récupérée est analysée — il n'existe pas d'interrupteur « activé » —
+conteneur récupérée est analysée, quel que soit le type sous lequel elle est déclarée, — il n'existe pas d'interrupteur « activé » —
 et, avec `scan.mode` laissé à `warn`, les résultats sont rapportés (rapport de
 tâche, API, interface, métriques, avec l'âge de la base) alors que **rien
 n'est retenu**. Une instance sans scanner ou sans base affiche à la place la

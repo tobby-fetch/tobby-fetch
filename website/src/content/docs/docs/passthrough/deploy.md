@@ -261,8 +261,8 @@ are display only. Upgrading from v0.5.x needs none of this to keep
 running: every new federation key is off or defaulted.
 
 **One default does change when you upgrade from v0.5.x: vulnerability
-scanning now runs, in advisory mode.** Every container image retrieved is
-scanned — there is no "enabled" switch — and with `scan.mode` left at `warn`
+scanning now runs, in advisory mode.** Every image retrieved is
+scanned — whatever kind it is declared as — there is no "enabled" switch — and with `scan.mode` left at `warn`
 the findings are reported (task report, API, interface, metrics, with the
 database age) while **nothing is withheld**. An instance with no scanner or
 no database shows the degraded-mode banner instead. To refuse what violates
