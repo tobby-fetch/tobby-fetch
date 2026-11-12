@@ -599,7 +599,20 @@ jobs:
             || { echo "::error::no digest from tools/release-fileset.sh"; exit 1; }
           printf '%s\n' "${REGISTRY_TOKEN}" |
             crane auth login ghcr.io -u "${{ github.actor }}" --password-stdin
-          crane copy "127.0.0.1:5000/tobby@${digest}" "${BINARIES}:${VERSION}"
+          # The first manifest written creates the package; ghcr.io may
+          # refuse the children pushed alongside it (DENIED) until the
+          # token's grant on the new package has propagated. The copy is
+          # idempotent by digest, so a bounded retry rides that window out.
+          copied=false
+          for attempt in 1 2 3 4 5; do
+            if crane copy "127.0.0.1:5000/tobby@${digest}" "${BINARIES}:${VERSION}"; then
+              copied=true
+              break
+            fi
+            echo "::warning::crane copy attempt ${attempt} failed; retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          [ "$copied" = true ] || { echo "::error::could not publish ${BINARIES}:${VERSION}"; exit 1; }
           published="$(crane digest "${BINARIES}:${VERSION}")"
           [ "$published" = "$digest" ] \
             || { echo "::error::ghcr.io serves ${published}, the job built ${digest}"; exit 1; }
