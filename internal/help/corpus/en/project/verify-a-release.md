@@ -1,6 +1,6 @@
 ---
 title: Verify a release
-description: Five independent ways to verify a Tobby release, starting with the one that works with no online infrastructure at all.
+description: Seven independent ways to verify a Tobby release, starting with the one that works with no online infrastructure at all.
 sidebar:
   order: 1
 ---
@@ -119,7 +119,58 @@ scan. That digest is cosign-signed with the same identity but **carries no
 SLSA provenance** — only immutable `vX.Y.Z` digests do. Audited
 deployments should pin a release digest.
 
-## 5. SBOM and OpenVEX
+## 5. Helm chart: signature
+
+Since v0.5.2 the reference chart is published with every release as an
+OCI artifact, under the release's own version — chart `X.Y.Z` deploys
+image `vX.Y.Z` and no other. The release notes state its digest:
+
+```bash
+cosign verify ghcr.io/tobby-fetch/charts/tobby@sha256:... \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
+
+# the version you install must resolve to the digest you verified
+helm show chart oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0 \
+  --namespace tobby --create-namespace
+```
+
+The chart carries a signature but no SLSA provenance of its own: it is
+packaged from the tagged source, which the provenance of the binaries and
+the image already attests.
+
+## 6. Binaries as a FileSet: signature, SBOMs and provenance
+
+Since v0.6.0 the Linux and Windows binaries are also published as one
+FileSet — a multi-platform OCI index at `ghcr.io/tobby-fetch/binaries/tobby`
+whose children each hold one release binary, byte for byte. It is what a
+recipe references to carry Tobby into a zone
+([update Tobby](../../air-gap/update-tobby/)). The release notes state the
+index digest:
+
+```bash
+# the index: signed, with SLSA provenance from the trusted container builder
+cosign verify ghcr.io/tobby-fetch/binaries/tobby@sha256:... \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
+slsa-verifier verify-image ghcr.io/tobby-fetch/binaries/tobby@sha256:... \
+  --source-uri github.com/tobby-fetch/tobby-fetch \
+  --source-tag v1.0.0
+
+# each platform's child carries its binary's CycloneDX SBOM as a signed attestation
+child=$(crane digest --platform linux/amd64 ghcr.io/tobby-fetch/binaries/tobby@sha256:...)
+cosign verify-attestation --type cyclonedx ghcr.io/tobby-fetch/binaries/tobby@$child \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
+```
+
+The binaries inside are the ones listed in `SHA256SUMS` and covered by
+`tobby.intoto.jsonl` (section 2), so either route verifies them. These
+signatures let your site check what it admits; they never replace your
+site's own signature on the recipe that carries them.
+
+## 7. SBOM and OpenVEX
 
 Each binary has a CycloneDX SBOM (`.cdx.json`) signed keyless via Sigstore;
 the signature ships as a self-contained `.bundle` file next to it:
