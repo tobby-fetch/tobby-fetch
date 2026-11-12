@@ -196,6 +196,8 @@ storage:
   root: /media/tobby/store
 state:
   root: /var/lib/tobby-state
+server:
+  addr: :8080
 auth:
   disabled: true
 registries:
@@ -211,11 +213,26 @@ trust:
     - name: project
       keyFile: /etc/tobby/project.pub
 EOF"
-T=$(inc exec tbc-m6u-connected -- sh -c 'tobby sync --wait --output json 2>/dev/null' || true)
-echo "$T" | jq -e '[.task.items[] | select(.status == "failed")] | length == 0' >/dev/null ||
-    fail "the mirror synchronization failed: $(echo "$T" | jq -c '[.task.items[] | select(.status=="failed") | {name, code: .error.code}]')"
+# `tobby sync` drives a RUNNING instance (POST /api/v1/sync): the store is
+# held open for writing by the process that serves it, so the mirror
+# instance must serve before it can be asked to synchronize.
+inc exec tbc-m6u-connected -- sh -c 'nohup tobby serve >/var/log/tobby.log 2>&1 &'
+wait_ready tbc-m6u-connected http://127.0.0.1:8080/readyz
+# stdout is the report (the task under .task), stderr the narration and,
+# when there is no task at all, the only place the cause is written: both
+# are kept, so a failure always states the real error and its TBY- code.
+inc exec tbc-m6u-connected -- sh -c 'tobby sync --wait --output json' >"$WORK/sync.json" 2>"$WORK/sync.err" || true
+if ! jq -e '.task.status == "done" and ([.task.items[] | select(.status == "failed")] | length == 0)' "$WORK/sync.json" >/dev/null 2>&1; then
+    if jq -e '.task' "$WORK/sync.json" >/dev/null 2>&1; then
+        fail "the mirror synchronization failed: $(jq -c '{status: .task.status, error: .task.error,
+            failed: [.task.items[] | select(.status == "failed") | {name, code: .error.code, detail: .error.detail, params: .error.params}]}' "$WORK/sync.json")"
+    fi
+    fail "the mirror synchronization produced no task document: $(tr '\n' ' ' <"$WORK/sync.err")"
+fi
 inc exec tbc-m6u-connected -- cat /media/tobby/store/meta/media.json | jq -e '[.recipes[] | select(.name=="tobby")] | length == 2' >/dev/null ||
     fail "the medium does not carry both versions"
+# [t]obby: pkill -f must not match the shell running it (B-026).
+inc exec tbc-m6u-connected -- sh -c 'pkill -f "[t]obby serve" || true; sleep 2'
 inc exec tbc-m6u-connected -- sh -c 'sync && umount /media/tobby'
 inc config device remove tbc-m6u-connected medium >/dev/null
 check "mirror flow: both versions written on the medium; medium detached"

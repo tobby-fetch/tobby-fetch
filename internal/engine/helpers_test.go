@@ -342,6 +342,63 @@ func seedChart(t *testing.T, r *registry, repoPath, tag string, withDep bool) st
 	return pushImage(t, r, repoPath, tag, mutate.ConfigMediaType(img, "application/vnd.cncf.helm.config.v1+json"))
 }
 
+// seedHelmPushedChart publishes a chart byte for byte the way `helm push`
+// does (helm 3 and 4 alike): an OCI image manifest WITHOUT the optional
+// top-level "mediaType" field — the type travels in the Content-Type
+// header only. go-containerregistry always writes the field, so seedChart
+// alone never exercised that shape (B-056, found by the m6 crucible).
+func seedHelmPushedChart(t *testing.T, r *registry, repoPath, chartName, version string) string {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	chartYAML := "apiVersion: v2\nname: " + chartName + "\nversion: " + version + "\n"
+	if err := tw.WriteHeader(&tar.Header{Name: chartName + "/Chart.yaml", Mode: 0o644, Size: int64(len(chartYAML))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte(chartYAML)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	const (
+		helmConfig = "application/vnd.cncf.helm.config.v1+json"
+		helmLayer  = "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+	)
+	cfg := []byte(`{"apiVersion":"v2","name":"` + chartName + `","version":"` + version + `"}`)
+	repo, err := name.NewRepository(r.addr + "/" + repoPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	describe := func(mt string, data []byte) map[string]any {
+		t.Helper()
+		if err := remote.WriteLayer(repo, static.NewLayer(data, types.MediaType(mt))); err != nil {
+			t.Fatal(err)
+		}
+		return map[string]any{"mediaType": mt, "digest": digest.FromBytes(data).String(), "size": len(data)}
+	}
+	manifest, err := json.Marshal(map[string]any{
+		"schemaVersion": 2,
+		"config":        describe(helmConfig, cfg),
+		"layers":        []any{describe(helmLayer, buf.Bytes())},
+		"annotations":   map[string]string{"org.opencontainers.image.title": chartName, "org.opencontainers.image.version": version},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(manifest, []byte(`"mediaType":"application/vnd.oci.image.manifest`)) {
+		t.Fatal("fixture: the manifest must omit its top-level mediaType, as helm push does")
+	}
+	if err := remote.Put(repo.Tag(version), rawManifest{bytes: manifest, mediaType: types.OCIManifestSchema1}); err != nil {
+		t.Fatal(err)
+	}
+	return digest.FromBytes(manifest).String()
+}
+
 // seedArtifact pushes a generic OCI artifact whose type is carried by the
 // config media type (the §7.3 fallback surface of artifactTypeOf).
 func seedArtifact(t *testing.T, r *registry, repoPath, tag, configMediaType string) string {
