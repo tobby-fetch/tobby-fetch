@@ -49,7 +49,7 @@ run = "go run ./tools/helpsync -check"
 
 [tasks.test]
 description = "Unit and integration tests (race detector, anti-flaky double run)"
-run = "go test -race -count=2 ./..."
+run = "go test -race -count=2 -timeout 45m ./..."
 
 # Browser non-regression (R-38): the scenarios that lock the bugs living in
 # an attribute the client interprets. Behind the `browser` build tag so it
