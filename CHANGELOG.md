@@ -215,6 +215,13 @@ transfer slip; and Tobby updates through its own channel.
 
 ### Fixed
 
+- **No chart pushed by `helm push` could be synchronized** (B-056). The
+  top-level `mediaType` of an OCI manifest is optional and helm omits it,
+  so a `HelmChart` ingredient published with helm failed in `TBY-SRV-001`
+  (`unsupported manifest media type`) at synchronization, and in
+  `TBY-STO-002` on a one-off import. Tobby now falls back to the type the
+  registry served, then to the OCI image manifest type; the stored manifest
+  stays bit-exact.
 - **A recipe admitted by an `allowUnsigned` scope was refused at push
   when its cookbook host carries a port** (B-055). Trust scopes match the
   canonical nominal repository (`registry_5000/cookbook/...`, ADR-0013),
