@@ -8,6 +8,20 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A recipe admitted by an `allowUnsigned` scope was refused at push
+  when its cookbook host carries a port** (B-055). Trust scopes match the
+  canonical nominal repository (`registry_5000/cookbook/...`, ADR-0013),
+  and the synchronization and `tobby media verify` decided in that form;
+  the re-verification before every push (FR-033) decided on the raw
+  `registry:5000/...` spelling, matched no scope, and refused the recipe
+  in `TBY-SIG-001` with an empty scope — on a passthrough cycle right
+  after the synchronization admitted it, and on `tobby media import` right
+  after the verification report called it pushable. The push now takes
+  its trust decision in the same canonical form. Hosts without a port,
+  Docker Hub included, were not affected.
+
 ## [0.6.0] - 2026-11-12
 
 Milestone 6: hardened controls and enterprise identity. Every container

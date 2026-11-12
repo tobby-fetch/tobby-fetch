@@ -472,6 +472,24 @@ func referrersFallbackTag(subjectDigest string) string {
 	return strings.Replace(subjectDigest, "sha256:", "sha256-", 1)
 }
 
+// decideStored takes the trust decision for a subject about to be pushed.
+// Trust scopes match the CANONICAL nominal repository (ports folded,
+// Docker Hub aliases folded, ADR-0013) — the pattern space the
+// synchronization and the media verification already decide in. Deciding
+// on the raw nominal reference instead would let the push re-verification
+// disagree with the verdict that admitted the subject (B-055): a
+// "host:port" cookbook then matches no scope, and an unsigned recipe that
+// verification called pushable is refused in TBY-SIG-001 with no scope.
+// A reference relocation refuses keeps its spelling, as on the verify
+// side; it then matches no documented pattern and gets the strict default.
+func (e *Engine) decideStored(nominalRepo string) Decision {
+	canonical, err := relocate.Path(nominalRepo)
+	if err != nil {
+		canonical = nominalRepo
+	}
+	return e.trust.Decide(canonical)
+}
+
 // verifyStored re-verifies a subject's signature against the LOCAL copy,
 // under the same trust decision that admitted it (FR-033, RECIPE-SPEC
 // §12.3). Strict: an unsigned subject passes only inside a declared
@@ -479,7 +497,7 @@ func referrersFallbackTag(subjectDigest string) string {
 // checked" shortcut, because the requirement asks for a check before
 // every push and a promotion service performs a great many of them.
 func (e *Engine) verifyStored(ctx context.Context, localRepo, nominalRepo, manifestDigest, subject string) error {
-	d := e.trust.Decide(nominalRepo)
+	d := e.decideStored(nominalRepo)
 	src := &storeManifests{src: e.store, repo: localRepo}
 	if d.Keys != nil {
 		_, err := sigverify.Verify(ctx, src, localRepo, manifestDigest, d.Keys)
@@ -509,7 +527,7 @@ func (e *Engine) verifyStored(ctx context.Context, localRepo, nominalRepo, manif
 // one; an ingredient with a signature that does NOT verify is, and that
 // one never crosses.
 func (e *Engine) verifySignedStored(ctx context.Context, localRepo, nominalRepo, manifestDigest, subject string) error {
-	d := e.trust.Decide(nominalRepo)
+	d := e.decideStored(nominalRepo)
 	if d.Keys == nil {
 		return nil
 	}
