@@ -334,10 +334,24 @@ jobs:
         run: |
           image="${IMAGE}"
           mkdir -p image-sboms
-          ref="$(apko publish apko.yaml "${image}:${{ needs.build.outputs.version }}" \
-            --repository-append "${RUNNER_TEMP}/packages" \
-            --keyring-append melange.rsa.pub \
-            --sbom-path image-sboms)"
+          # Same window as the binaries FileSet: on a package that does not
+          # exist yet, ghcr.io creates it with the first manifest and may
+          # refuse the next ones (DENIED) for a moment. apko builds
+          # reproducibly (SOURCE_DATE_EPOCH), so a retry pushes the same
+          # digests.
+          ref=""
+          for attempt in 1 2 3 4 5; do
+            if ref="$(apko publish apko.yaml "${image}:${{ needs.build.outputs.version }}" \
+              --repository-append "${RUNNER_TEMP}/packages" \
+              --keyring-append melange.rsa.pub \
+              --sbom-path image-sboms)"; then
+              break
+            fi
+            ref=""
+            echo "::warning::apko publish attempt ${attempt} failed; retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          [ -n "$ref" ] || { echo "::error::could not publish ${image}"; exit 1; }
           echo "published: ${ref}"
           {
             echo "image=${image}"
