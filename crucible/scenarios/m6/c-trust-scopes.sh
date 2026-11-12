@@ -127,23 +127,23 @@ check "two scopes declared: tenant-a lists root a only, tenant-b lists root b on
 # -- 2. The synchronization ---------------------------------------------------------
 c_start "$NODE"
 inc exec "$NODE" -- sh -c 'tobby sync --wait --output json' >"$WORK/sync.json" 2>/dev/null || true
-jq -e '.id != null and .type == "sync"' "$WORK/sync.json" >/dev/null ||
+jq -e '.task.id != null and .task.type == "sync"' "$WORK/sync.json" >/dev/null ||
     fail "the synchronization produced no task document: $(cat "$WORK/sync.json")"
 
 # The refusal names the scope.
-jq -e '[.items[] | select(.name == "tenant-a-app@1.0.0" and .status == "failed")] | length == 1' "$WORK/sync.json" >/dev/null ||
-    fail "tenant-a-app was not refused: $(jq -c '[.items[] | {name, status}]' "$WORK/sync.json")"
-jq -e '.items[] | select(.name == "tenant-a-app@1.0.0") | .error.code == "TBY-SIG-001"' "$WORK/sync.json" >/dev/null ||
+jq -e '[.task.items[] | select(.name == "tenant-a-app@1.0.0" and .status == "failed")] | length == 1' "$WORK/sync.json" >/dev/null ||
+    fail "tenant-a-app was not refused: $(jq -c '[.task.items[] | {name, status}]' "$WORK/sync.json")"
+jq -e '.task.items[] | select(.name == "tenant-a-app@1.0.0") | .error.code == "TBY-SIG-001"' "$WORK/sync.json" >/dev/null ||
     fail "the refusal is not TBY-SIG-001"
-jq -e '.items[] | select(.name == "tenant-a-app@1.0.0") | .error.params.scope == "tenant-a"' "$WORK/sync.json" >/dev/null ||
-    fail "plan §2.6: the refusal does not name the scope that refused it: $(jq -c '.items[] | select(.name == "tenant-a-app@1.0.0") | .error' "$WORK/sync.json")"
+jq -e '.task.items[] | select(.name == "tenant-a-app@1.0.0") | .error.params.scope == "tenant-a"' "$WORK/sync.json" >/dev/null ||
+    fail "plan §2.6: the refusal does not name the scope that refused it: $(jq -c '.task.items[] | select(.name == "tenant-a-app@1.0.0") | .error' "$WORK/sync.json")"
 check "plan §2.6: content signed by a key valid for another scope is refused with TBY-SIG-001, naming scope tenant-a"
 
 # The scope that lists B admits the same key, and the unscoped recipe is
 # unaffected: the compartment refuses what is outside it and nothing else.
-jq -e '[.items[] | select(.name | startswith("tenant-b-app@1.0.0/")) | .status] | all(. == "done")' "$WORK/sync.json" >/dev/null ||
+jq -e '[.task.items[] | select(.name | startswith("tenant-b-app@1.0.0/")) | .status] | all(. == "done")' "$WORK/sync.json" >/dev/null ||
     fail "tenant-b-app, signed by the root its scope lists, was not admitted"
-jq -e '[.items[] | select(.name | startswith("other-app@1.0.0/")) | .status] | all(. == "done")' "$WORK/sync.json" >/dev/null ||
+jq -e '[.task.items[] | select(.name | startswith("other-app@1.0.0/")) | .status] | all(. == "done")' "$WORK/sync.json" >/dev/null ||
     fail "other-app, under no scope, was not admitted"
 check "the scope listing key B admits tenant-b-app; the unscoped recipe is admitted: the refusal is the compartment's, not a general one"
 
@@ -156,7 +156,7 @@ inc exec "$NODE" -- sh -c "! find $STORE/docker/registry/v2/repositories -type d
 check "the refused recipe left nothing in the store or the recipe graph"
 
 # The operator reads it on the task page, in words.
-TASK_ID=$(jq -r '.id' "$WORK/sync.json")
+TASK_ID=$(jq -r '.task.id' "$WORK/sync.json")
 PAGE=$(inc exec "$NODE" -- sh -c "wget -q -O - http://127.0.0.1:8080/tasks/$TASK_ID")
 echo "$PAGE" | grep -q "tenant-a" || fail "the task page does not name the scope in the refusal"
 check "R-03: the task page renders the scope in the refusal message"

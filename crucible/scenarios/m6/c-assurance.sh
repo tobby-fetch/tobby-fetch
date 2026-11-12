@@ -161,12 +161,12 @@ c_start "$CONNECTED"
 inc exec "$CONNECTED" -- sh -c 'tobby sync --wait --output json' >"$WORK/sync.json" 2>/dev/null ||
     fail "the manual synchronization failed: $(cat "$WORK/sync.json")"
 
-jq -e '[.items[] | select(.name | startswith("lab-app@1.0.0"))] | length >= 2' "$WORK/sync.json" >/dev/null ||
-    fail "the task carries too few items of lab-app to prove anything: $(jq -c '[.items[].name]' "$WORK/sync.json")"
-jq -e '[.items[] | select(.name | startswith("lab-app@1.0.0")) | .assurance] | all(. != null and .level == "reduced" and .scope == "lab" and .reasons == ["unsigned"])' \
+jq -e '[.task.items[] | select(.name | startswith("lab-app@1.0.0"))] | length >= 2' "$WORK/sync.json" >/dev/null ||
+    fail "the task carries too few items of lab-app to prove anything: $(jq -c '[.task.items[].name]' "$WORK/sync.json")"
+jq -e '[.task.items[] | select(.name | startswith("lab-app@1.0.0")) | .assurance] | all(. != null and .level == "reduced" and .scope == "lab" and .reasons == ["unsigned"])' \
     "$WORK/sync.json" >/dev/null ||
-    fail "FR-037: an item of the unsigned recipe lacks the marker in the task report: $(jq -c '[.items[] | {name, assurance}]' "$WORK/sync.json")"
-jq -e '[.items[] | select(.name | startswith("signed-app@1.0.0")) | has("assurance")] | any | not' "$WORK/sync.json" >/dev/null ||
+    fail "FR-037: an item of the unsigned recipe lacks the marker in the task report: $(jq -c '[.task.items[] | {name, assurance}]' "$WORK/sync.json")"
+jq -e '[.task.items[] | select(.name | startswith("signed-app@1.0.0")) | has("assurance")] | any | not' "$WORK/sync.json" >/dev/null ||
     fail "FR-037: an item of the signed recipe carries a marker"
 check "FR-037: every item of lab-app carries the marker in the task report; signed-app's carry none"
 
@@ -178,7 +178,7 @@ jq -e '[.recipes[] | select(.name == "signed-app") | has("assurance")] | any | n
 RECIPES_PAGE=$(inc exec "$CONNECTED" -- sh -c 'wget -q -O - http://127.0.0.1:8080/recipes')
 [ "$(echo "$RECIPES_PAGE" | grep -c 'data-assurance="reduced"')" = "1" ] ||
     fail "FR-037: the recipes screen does not mark exactly one recipe"
-TASK_ID=$(jq -r '.id' "$WORK/sync.json")
+TASK_ID=$(jq -r '.task.id' "$WORK/sync.json")
 TASK_PAGE=$(inc exec "$CONNECTED" -- sh -c "wget -q -O - http://127.0.0.1:8080/tasks/$TASK_ID")
 echo "$TASK_PAGE" | grep -q 'data-assurance="reduced"' || fail "FR-037: the task page does not mark the items of lab-app"
 check "FR-037: the API and the UI (recipes, task detail) carry the marker for lab-app and for no other recipe"

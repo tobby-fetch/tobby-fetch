@@ -278,7 +278,10 @@ $dest
 EOF"
 }
 restart() { # <instance>
-    inc exec "$1" -- sh -c 'pkill -f "[t]obby serve" || true; sleep 1; nohup tobby serve >>/var/log/tobby.log 2>&1 &'
+    # Two execs: one shell holding both "[t]obby serve" and "tobby serve"
+    # would match its own pkill pattern and kill itself (B-026).
+    inc exec "$1" -- sh -c 'pkill -f "[t]obby serve" || true; sleep 1'
+    inc exec "$1" -- sh -c 'nohup tobby serve >>/var/log/tobby.log 2>&1 &'
     wait_ready "$1" http://127.0.0.1:8080/readyz
 }
 metric() { # <instance> <name> → value

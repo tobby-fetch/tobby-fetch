@@ -137,8 +137,12 @@ saml|samlpost)
     relay=$(printf '%s' "$body" | field RelayState)
     [ -n "$resp" ] || { echo "no SAMLResponse" >&2; exit 2; }
     if [ "$1" = samlpost ]; then printf 'SAMLResponse=%s\nRelayState=%s\n' "$resp" "$relay" >"$5"; exit 0; fi
-    fin=$($C -c "$4" -b "$4" -o /dev/null -w '%{redirect_url}' --data-urlencode "SAMLResponse=$resp" \
+    acs=$($C -c "$4" -b "$4" -o /dev/null -w '%{http_code} %{redirect_url}' --data-urlencode "SAMLResponse=$resp" \
         --data-urlencode "RelayState=$relay" "$T/auth/saml/acs")
+    fin="${acs#* }"
+    # A refusal (TBY-AUTH-017) answers 403 with no redirect: report it as is
+    # instead of following an empty URL.
+    [ -n "$fin" ] || { echo "$acs"; exit 0; }
     hop "$4" "$fin" ;;
 post)
     resp=$(sed -n 's/^SAMLResponse=//p' "$3"); relay=$(sed -n 's/^RelayState=//p' "$3")
