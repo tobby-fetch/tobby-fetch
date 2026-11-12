@@ -171,8 +171,14 @@ func Start(tb testing.TB, opts Options) *Fixture {
 		if _, err := exec.LookPath("docker"); err != nil {
 			skip(tb, "docker is not installed: the Keycloak fixture cannot start")
 		}
-		if out, err := docker(ctx, "info", "--format", "{{.ServerVersion}}"); err != nil {
+		out, err := docker(ctx, "info", "--format", "{{.OSType}}")
+		if err != nil {
 			skip(tb, "the docker daemon does not answer: %v\n%s", err, out)
+		}
+		// Keycloak ships Linux images only: a daemon in Windows-container
+		// mode (the GitHub Windows runner) cannot pull it.
+		if out != "linux" {
+			skip(tb, "the docker daemon runs %q containers: the Keycloak image is Linux-only", out)
 		}
 		base, name = startContainer(ctx, tb, opts)
 	}
