@@ -405,6 +405,21 @@ const (
 	// score: never compared with the threshold, never dropped (FR-031
 	// amendment). Non-blocking.
 	CodeScanUnscored Code = "TBY-SCN-022"
+	// CodeScanDetectedImage reports an ingredient declared as something
+	// other than a container image and scanned as one, because its content
+	// is one (ADR-0017): the declared kind never decides what is scanned.
+	// Non-blocking by itself — the verdict beside it decides.
+	CodeScanDetectedImage Code = "TBY-SCN-023"
+	// CodeScanOutOfScope reports an ingredient declared as something other
+	// than a container image whose content holds none (ADR-0017): it is not
+	// scanned, and says so. Non-blocking.
+	CodeScanOutOfScope Code = "TBY-SCN-024"
+	// CodeScanSystemAdvisory reports an image found in the signed
+	// tobby-system recipe — the scanner's own delivery — evaluated under an
+	// advisory policy whatever the mode: the deliveries that arm the
+	// scanner are never refused by it, or the zone could never arm one
+	// (ADR-0017). Non-blocking.
+	CodeScanSystemAdvisory Code = "TBY-SCN-025"
 
 	// On-demand store integrity verification (FR-057, R-31 — milestone
 	// 6). Read-only: every code reports, none repairs; signatures that no
@@ -581,6 +596,9 @@ var catalog = map[Code]Entry{
 	CodeScanRecipeThresholdIgnored: {Code: CodeScanRecipeThresholdIgnored, Class: ClassOperational, Params: []string{"recipe", "annotation", "threshold"}},
 	CodeScanExceptionExpired:       {Code: CodeScanExceptionExpired, Class: ClassOperational, Params: []string{"id", "expires", "level"}},
 	CodeScanUnscored:               {Code: CodeScanUnscored, Class: ClassOperational, Params: []string{"reference", "ids"}},
+	CodeScanDetectedImage:          {Code: CodeScanDetectedImage, Class: ClassOperational, Params: []string{"reference", "declared", "evidence"}},
+	CodeScanOutOfScope:             {Code: CodeScanOutOfScope, Class: ClassOperational, Params: []string{"reference", "declared"}},
+	CodeScanSystemAdvisory:         {Code: CodeScanSystemAdvisory, Class: ClassOperational, Params: []string{"reference", "recipe"}},
 
 	CodeIntegrityBlobDigest: {Code: CodeIntegrityBlobDigest, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
 	CodeIntegrityIncomplete: {Code: CodeIntegrityIncomplete, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "missing"}},

@@ -29,6 +29,7 @@
     {{if eq $r.Verdict "pass"}}<span class="t-badge t-badge--done">{{.T "scan.verdict_pass"}}</span>
     {{- else if eq $r.Verdict "warn"}}<span class="t-badge t-badge--done-errors">{{.T "scan.verdict_warn"}}</span>
     {{- else if eq $r.Verdict "block"}}<span class="t-badge t-badge--failed">{{.T "scan.verdict_block"}}</span>
+    {{- else if eq $r.Verdict "out-of-scope"}}<span class="t-badge">{{.T "scan.verdict_out_of_scope"}}</span>
     {{- else}}<span class="t-badge t-badge--failed">{{.T "scan.verdict_not_scanned"}}</span>{{end}}
   </p>
   <p class="t-muted t-note">

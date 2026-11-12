@@ -839,6 +839,7 @@
 "scan.verdict_warn": "Violates the policy (advisory)"
 "scan.verdict_block": "Blocked by the policy"
 "scan.verdict_not_scanned": "Not scanned"
+"scan.verdict_out_of_scope": "Not an image — out of scope"
 "scan.db_age": "Database age: {{.Age}}"
 "scan.threshold": "Threshold {{.Threshold}}, set at the {{.Level}} level"
 "scan.exceptions_applied": "Exceptions applied"

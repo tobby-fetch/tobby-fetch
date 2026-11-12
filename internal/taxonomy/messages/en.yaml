@@ -343,6 +343,18 @@
 "TBY-SCN-022.cause": "The advisory sources give these vulnerabilities neither a CVSS score nor a severity, so the policy cannot compare them with its threshold."
 "TBY-SCN-022.action": "Review them by hand. They are not counted against the threshold; if one must be refused, have the content fixed upstream."
 
+"TBY-SCN-023.what": "{{.reference}}, declared {{.declared}}, was scanned as a container image, detected as one from its content ({{.evidence}})."
+"TBY-SCN-023.cause": "What is scanned is decided by the content, never by the declared kind: this ingredient is, or carries, an image that a runtime could run, so the vulnerability policy applies to it as to any image."
+"TBY-SCN-023.action": "Nothing to do if the content is expected. If it is not, ask the recipe author why an image is published under this kind; the verdict beside this note applies as usual."
+
+"TBY-SCN-024.what": "{{.reference}}, declared {{.declared}}, holds no container image: it is not scanned."
+"TBY-SCN-024.cause": "Its manifest has no image configuration and no filesystem layer, and none of its files is an image archive: the scanner has nothing to read in it."
+"TBY-SCN-024.action": "Nothing to do. Content that is not an image (a model, a database, a document) is outside vulnerability scanning; review it by the means its own format calls for."
+
+"TBY-SCN-025.what": "{{.reference}}, delivered by the signed {{.recipe}} recipe, is evaluated under an advisory policy."
+"TBY-SCN-025.cause": "It is the scanner's own delivery. Refusing it with the policy it arms would leave the zone unable to arm a scanner, or to update its database."
+"TBY-SCN-025.action": "Nothing to do. Its findings stay reported; the trust in this content rests on the tobby-system recipe's signature."
+
 "TBY-INT-001.what": "The blob {{.path}} does not match its digest."
 "TBY-INT-001.cause": "Its content hashes to {{.actual}} instead of {{.expected}}: the file was damaged or altered on disk."
 "TBY-INT-001.action": "The verification changes nothing. Re-synchronize the recipes that reach this blob to fetch it again, or restore the store from a sound copy; check the disk for errors."

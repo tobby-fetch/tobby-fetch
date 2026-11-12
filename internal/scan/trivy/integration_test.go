@@ -11,6 +11,10 @@ import (
 	"time"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/static"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 	"github.com/tobby-fetch/tobby-fetch/internal/scan/trivytest"
@@ -79,6 +83,58 @@ func TestRealTrivyOffline(t *testing.T) {
 	}
 	if rep.Database.AgeSeconds <= 0 {
 		t.Errorf("the report states no database age: %+v", rep.Database)
+	}
+}
+
+// TestRealTrivyByContent: the real binary, against images that are not
+// declared as images (ADR-0017, B-054) — the known-vulnerable image pushed
+// as an OCI artifact, and carried as a `docker save` file and as an OCI
+// layout tar inside a FileSet. Each is detected by its content, handed to
+// Trivy as a one-image layout, and the known CVE is found in it.
+func TestRealTrivyByContent(t *testing.T) {
+	env := trivytest.Require(t)
+	st := newMemStore()
+	d := st.putV1(t, "tobby/ghcr.io/aquasecurity/trivy-db", DBTag, trivytest.DBArtifact(t, trivytest.DBLayer(t, env.DB)))
+	st.record(store.IngredientRecord{Name: "trivy-db", Kind: "OCIArtifact", Repo: "tobby/ghcr.io/aquasecurity/trivy-db", Tag: DBTag, Digest: d})
+	vuln := trivytest.VulnerableImage(t)
+	disguised := st.putV1(t, appRepo, "", vuln)
+	files := trivytest.TarGz(t, map[string]string{
+		"etc/site.conf":         "a=b\n",
+		"opt/model/weights.bin": string(trivytest.DockerArchive(t, vuln)),
+		"opt/model/layout.data": string(trivytest.OCILayoutTar(t, vuln)),
+	})
+	fsImg, err := mutate.AppendLayers(mutate.MediaType(empty.Image, types.OCIManifestSchema1), static.NewLayer(files, types.OCILayer))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileSet := st.putV1(t, appRepo, "", mutate.ConfigMediaType(fsImg, types.OCIConfigJSON))
+
+	s := New(&Options{
+		Store: st, WorkDir: t.TempDir(), Path: env.Binary, Digest: trivytest.FileDigest(t, env.Binary), BasePrefix: "tobby",
+		Timeout: 5 * time.Minute,
+	})
+	if status := s.Refresh(context.Background()); !status.Available || status.Database == nil {
+		t.Fatalf("status = %+v (%v)", status, s.Cause())
+	}
+	for kind, dgst := range map[string]string{"OCIArtifact": disguised, "FileSet": fileSet} {
+		t.Run(kind, func(t *testing.T) {
+			target := scan.Target{Digest: dgst, Repository: appRepo, Kind: kind}
+			c, err := s.Inspect(context.Background(), target)
+			if err != nil || !c.IsImage() {
+				t.Fatalf("content = %+v, %v", c, err)
+			}
+			if kind == "FileSet" && len(c.Images) != 3 {
+				t.Fatalf("images = %+v", c.Images)
+			}
+			target.Content = c
+			res, err := s.Scan(context.Background(), target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.ContainsFunc(res.Findings, func(f scan.Finding) bool { return f.ID == trivytest.KnownCVE && f.Package == "musl" }) {
+				t.Fatalf("%s not found in %+v", trivytest.KnownCVE, res.Findings)
+			}
+		})
 	}
 }
 

@@ -135,6 +135,7 @@
 "scan.verdict_warn": "WARN"
 "scan.verdict_block": "BLOCK"
 "scan.verdict_not-scanned": "NOT SCANNED"
+"scan.verdict_out-of-scope": "NOT AN IMAGE"
 "scan.mode_warn": "advisory"
 "scan.mode_block": "blocking"
 "scan.db_stale": "{{.Age}} (STALE)"

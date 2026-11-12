@@ -29,6 +29,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/preflight"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
+	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
@@ -466,12 +467,14 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	}
 	wg.Wait()
 
-	// FR-031: every container image is scanned at retrieval, in
+	// FR-031: every image is scanned at retrieval — a declared container
+	// image, and any ingredient whose content is one (ADR-0017) — in
 	// passthrough as in mirror mode, and before anything of the recipe is
 	// published anywhere. A refusal withholds the recipe whole (R-19
 	// granularity): not stored as a cookbook entry, not recorded on the
 	// medium, not pushed.
-	if refusals := e.scanRecipe(ctx, sink, logger, fetched, rid, zonePol); len(refusals) > 0 {
+	system := recipe.Metadata.Name == scan.SystemRecipe && verified && scopeName == ""
+	if refusals := e.scanRecipe(ctx, sink, logger, fetched, rid, zonePol, system); len(refusals) > 0 {
 		resolved.failed()
 		e.withholdRecipe(ctx, sink, logger, fetched, rid, refusals)
 		return

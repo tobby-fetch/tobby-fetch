@@ -841,6 +841,7 @@
 "scan.verdict_warn": "Enfreint la politique (consultative)"
 "scan.verdict_block": "Bloqué par la politique"
 "scan.verdict_not_scanned": "Non analysé"
+"scan.verdict_out_of_scope": "Pas une image — hors périmètre"
 "scan.db_age": "Âge de la base : {{.Age}}"
 "scan.threshold": "Seuil {{.Threshold}}, posé au niveau {{.Level}}"
 "scan.exceptions_applied": "Exceptions appliquées"

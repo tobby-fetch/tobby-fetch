@@ -606,6 +606,27 @@ Réservés à l'ouverture du jalon 6 (FR-031, FR-032) : la politique est consult
 - **Action corrective :** Examinez-les à la main. Elles ne comptent pas face au seuil ; si l'une doit être refusée, faites corriger le contenu en amont.
 - **Remédiable hors-ligne :** oui · **Bloque :** rien
 
+### TBY-SCN-023
+
+- **Quoi :** `<reference>`, déclaré `<declared>`, a été analysé comme une image de conteneur, détecté comme image d'après son contenu (`<evidence>`).
+- **Cause probable :** Ce qui est analysé est décidé par le contenu, jamais par le type déclaré : cet ingrédient est, ou contient, une image qu'un runtime pourrait exécuter ; la politique de vulnérabilités s'y applique comme à toute image.
+- **Action corrective :** Rien à faire si ce contenu est attendu. Sinon, demandez à l'auteur de la recipe pourquoi une image est publiée sous ce type ; le verdict associé à cette note s'applique normalement.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien en soi ; le verdict associé décide
+
+### TBY-SCN-024
+
+- **Quoi :** `<reference>`, déclaré `<declared>`, ne contient aucune image de conteneur : il n'est pas analysé.
+- **Cause probable :** Son manifeste n'a ni configuration d'image ni couche de système de fichiers, et aucun de ses fichiers n'est une archive d'image : l'analyseur n'a rien à y lire.
+- **Action corrective :** Rien à faire. Un contenu qui n'est pas une image (un modèle, une base de données, un document) est hors du périmètre de l'analyse de vulnérabilités ; examinez-le par les moyens propres à son format.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien
+
+### TBY-SCN-025
+
+- **Quoi :** `<reference>`, livré par la recipe signée `<recipe>`, est évalué sous une politique consultative.
+- **Cause probable :** C'est une livraison de l'analyseur lui-même. La refuser au nom de la politique qu'elle arme laisserait la zone sans moyen d'armer un analyseur, ni de mettre à jour sa base.
+- **Action corrective :** Rien à faire. Ses vulnérabilités restent rapportées ; la confiance dans ce contenu repose sur la signature de la recipe tobby-system.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien
+
 ## Limites de la destination (TBY-DST)
 
 ### TBY-DST-001
