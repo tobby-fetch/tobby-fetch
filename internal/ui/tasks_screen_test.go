@@ -36,7 +36,10 @@ func startQueue(t *testing.T, q *tasks.Queue) {
 // task always settles or survives to resume).
 func waitSettled(t *testing.T, q *tasks.Queue, id string) *tasks.Task {
 	t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
+	// A ceiling, not a duration: the task settles in about a second, but a
+	// Windows runner under -race -count=2, beside the engine suite, once
+	// took longer than 20 s.
+	deadline := time.Now().Add(60 * time.Second)
 	for {
 		task, ok := q.Get(id)
 		if ok && !task.Active() {
