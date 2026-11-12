@@ -4,6 +4,7 @@
 package config
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +18,8 @@ func TestScanEnvironment(t *testing.T) {
 	t.Setenv(EnvScanMaxDBAgeAction, "block")
 	t.Setenv(EnvScanTimeout, "3m")
 	t.Setenv(EnvScanDBRepository, "mirror/ghcr.io/aquasecurity/trivy-db")
-	t.Setenv(EnvScanTrivyPath, "/opt/trivy/trivy")
+	trivyPath := filepath.Join(t.TempDir(), "trivy") // absolute on every OS
+	t.Setenv(EnvScanTrivyPath, trivyPath)
 	t.Setenv(EnvScanTrivyDigest, "sha256:"+strings.Repeat("a", 64))
 	cfg, err := Load(path, true)
 	if err != nil {
@@ -26,7 +28,7 @@ func TestScanEnvironment(t *testing.T) {
 	s := cfg.Scan
 	if s.Mode != ScanModeBlock || s.Threshold != 5.5 || time.Duration(s.MaxDBAge) != 72*time.Hour ||
 		s.MaxDBAgeAction != ScanModeBlock || time.Duration(s.Timeout) != 3*time.Minute ||
-		s.DBRepository != "mirror/ghcr.io/aquasecurity/trivy-db" || s.Trivy.Path != "/opt/trivy/trivy" ||
+		s.DBRepository != "mirror/ghcr.io/aquasecurity/trivy-db" || s.Trivy.Path != trivyPath ||
 		s.Trivy.Digest != "sha256:"+strings.Repeat("a", 64) {
 		t.Errorf("scan = %+v", s)
 	}

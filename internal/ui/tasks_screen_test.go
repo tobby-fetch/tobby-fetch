@@ -23,7 +23,12 @@ import (
 func startQueue(t *testing.T, q *tasks.Queue) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	// Stop AND drain the workers before t.TempDir is removed: a task still
+	// persisting under _tobby/tasks would make the cleanup fail.
+	t.Cleanup(func() {
+		cancel()
+		q.Wait()
+	})
 	q.Start(ctx)
 }
 
