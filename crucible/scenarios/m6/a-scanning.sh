@@ -498,7 +498,7 @@ T=$(sync_json tbc-m6a-zone)
 [ "$(item "$T" "vulnerable@1.0.0/app" '.scan.evaluation.policy.mode_level')" = "retriever" ] ||
     fail "the report does not say the Retriever made the policy blocking"
 [ "$(item "$T" "push/clean@1.0.0/recipe" '.status')" = "done" ] || fail "the clean recipe was not promoted in the zone"
-inc exec tbc-m6a-dest -- wget -q -O /dev/null "http://127.0.0.1:5000/v2/promoted/docker.io/example/vulnerable/manifests/1.0" 2>/dev/null &&
+inc exec tbc-m6a-dest -- wget -q -O /dev/null --header "Accept: application/vnd.oci.image.manifest.v1+json" "http://127.0.0.1:5000/v2/promoted/docker.io/example/vulnerable/manifests/1.0" 2>/dev/null &&
     fail "FR-031: the vulnerable image reached the zone's promoted repository"
 check "zone/blocking (Retriever 7.0): database $DB_DIG used, $KNOWN_CVE refused and absent; clean promoted"
 
@@ -507,7 +507,7 @@ inc file push "$WORK/zone-retriever.yaml" tbc-m6a-zone/etc/tobby/retriever.yaml 
 T=$(sync_json tbc-m6a-zone)
 [ "$(item "$T" "vulnerable@1.0.0/app" '.scan.evaluation.verdict')" = "warn" ] || fail "FR-031: advisory verdict missing in the zone"
 [ "$(item "$T" "push/vulnerable@1.0.0/recipe" '.status')" = "done" ] || fail "FR-031: the advisory policy did not push"
-inc exec tbc-m6a-dest -- wget -q -O /dev/null "http://127.0.0.1:5000/v2/promoted/docker.io/example/vulnerable/manifests/1.0" ||
+inc exec tbc-m6a-dest -- wget -q -O /dev/null --header "Accept: application/vnd.oci.image.manifest.v1+json" "http://127.0.0.1:5000/v2/promoted/docker.io/example/vulnerable/manifests/1.0" ||
     fail "the advisory push did not land"
 check "zone/advisory: vulnerable pushed with $KNOWN_CVE in its report"
 
