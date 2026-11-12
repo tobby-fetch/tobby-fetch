@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -474,7 +475,8 @@ func (s *Scanner) locateBinary(ctx context.Context) (*binary, *taxonomy.Error) {
 		s.stateMu.RLock()
 		prev := s.bin
 		s.stateMu.RUnlock()
-		if prev != nil && prev.origin == OriginChannel && prev.source == loc.Digest {
+		held := prev != nil && prev.origin == OriginChannel && prev.source == loc.Digest
+		if held {
 			if actual, err := fileDigest(prev.path); err == nil && actual == prev.digest {
 				b = *prev
 				break
@@ -485,7 +487,21 @@ func (s *Scanner) locateBinary(ctx context.Context) (*binary, *taxonomy.Error) {
 			name = "trivy.exe"
 		}
 		dst := filepath.Join(o.WorkDir, "bin", strings.TrimPrefix(loc.Digest, "sha256:"), name)
+		// What an earlier unpack of this delivery left at dst — this
+		// process's, or before a restart another's — is compared with what
+		// the verified layer unpacks to: a file changed there is replaced
+		// without being run, and never silently (signalRepair).
+		found, foundErr := fileDigest(dst)
 		sum, err := unpackBinary(ctx, o.Store, loc.Repo, loc.Digest, o.GOOS, o.GOARCH, dst)
+		switch {
+		case foundErr == nil && err == nil && found != sum:
+			s.signalRepair(ctx, dst, sum, found, loc, nil)
+		case foundErr == nil && err != nil && held && found != prev.digest:
+			s.signalRepair(ctx, dst, prev.digest, found, loc, err)
+		case foundErr != nil && held:
+			// Verified by this process, gone or unreadable since.
+			s.signalRepair(ctx, dst, prev.digest, "unreadable: "+foundErr.Error(), loc, err)
+		}
 		if err != nil {
 			return unavailable(fmt.Sprintf("the tobby-system delivery %s@%s could not be unpacked: %v", loc.Repo, loc.Digest, err))
 		}
@@ -518,6 +534,34 @@ func (s *Scanner) locateBinary(ctx context.Context) (*binary, *taxonomy.Error) {
 			slog.String("requirement", "FR-031"))
 	}
 	return &b, nil
+}
+
+// signalRepair reports a channel-delivered binary found changed on disk by
+// a refresh, which unpacks the verified delivery over it without running
+// it (B-045): repaired silently, a tamper in the work directory would leave
+// no trace. A WARN record with what was expected and what was found, and
+// a scan.scanner.repaired audit event — outcome failure when the delivery
+// could not be unpacked again (the scanner is then unavailable).
+func (s *Scanner) signalRepair(ctx context.Context, path, expected, found string, loc *located, unpackErr error) {
+	outcome, effect := audit.OutcomeSuccess, "unpacked again from the verified delivery; the changed file was not executed"
+	attrs := []slog.Attr{
+		slog.String("path", path), slog.String("expected", expected), slog.String("actual", found),
+		slog.String("delivery", loc.Repo+"@"+loc.Digest),
+	}
+	if unpackErr != nil {
+		outcome, effect = audit.OutcomeFailure, "the verified delivery could not be unpacked again: the scanner is unavailable; the changed file was not executed"
+		attrs = append(attrs, slog.String("error", unpackErr.Error()))
+	}
+	attrs = append(attrs, slog.String("effect", effect),
+		slog.String("code", string(taxonomy.CodeScannerUnverified)), slog.String("requirement", "FR-031"))
+	s.opts.Logger.LogAttrs(ctx, slog.LevelWarn, "scanner binary changed on disk since it was verified", attrs...)
+	audit.Log(ctx, s.opts.Logger, &audit.Event{
+		Actor:   audit.ActorLocal,
+		Action:  audit.ActionScanScannerRepaired,
+		Target:  path,
+		Outcome: outcome,
+		Origin:  audit.OriginLocal,
+	})
 }
 
 // prepareDB finds the database the tobby-system recipe delivered and

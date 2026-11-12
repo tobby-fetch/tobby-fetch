@@ -202,6 +202,13 @@ const (
 	// ActionScanBlock is an item refused by the vulnerability policy
 	// (FR-031) — the scan events R-12 schedules for milestone 6. Track A.
 	ActionScanBlock = "scan.block"
+	// ActionScanScannerRepaired is a channel-delivered scanner binary that
+	// a refresh found changed on disk since it was verified, and unpacked
+	// again from the verified delivery without running it (FR-031, B-045):
+	// the target is the binary's path; the outcome success when the
+	// delivery was unpacked again, failure when it could not be (the
+	// scanner is then unavailable). Track A.
+	ActionScanScannerRepaired = "scan.scanner.repaired"
 	// ActionIntegrityVerify is an on-demand store verification (FR-057,
 	// R-31): who asked, on which store, with which verdict. Track C.
 	//

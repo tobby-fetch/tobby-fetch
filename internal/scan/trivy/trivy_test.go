@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,6 +25,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/audit"
+	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -924,7 +927,12 @@ func TestChannelBinaryIsRehashedBeforeReuse(t *testing.T) {
 //     already scanned is answered from the cache — the very report the
 //     genuine binary produced before the tamper.
 //
-// In neither order does the changed file run (the canary marker).
+// In neither order does the changed file run (the canary marker). A
+// refresh that repairs the unpack says so — a WARN record with the
+// expected and the found digests, and a scan.scanner.repaired audit
+// event — after a refused scan and across a restart as well, never for an
+// intact unpack; a scan that refuses logs its own ERROR. No tamper goes
+// unreported.
 func TestChannelBinaryTamperedBetweenSynchronizations(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("needs a host that executes extensionless files and shell scripts")
@@ -947,9 +955,34 @@ func TestChannelBinaryTamperedBetweenSynchronizations(t *testing.T) {
 	configure(t, unpacked, fakeConf{Log: f.calls.path})
 	clock := f.now
 	o.Now = func() time.Time { return clock }
+	var logs bytes.Buffer
+	o.Logger = logging.New(&logs, slog.LevelInfo)
+	// records returns the records logged since the last tamper that carry
+	// key=value.
+	records := func(key, value string) []map[string]any {
+		t.Helper()
+		var out []map[string]any
+		for _, line := range bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n")) {
+			if len(line) == 0 {
+				continue
+			}
+			var rec map[string]any
+			if err := json.Unmarshal(line, &rec); err != nil {
+				t.Fatalf("log record is not JSON: %v: %s", err, line)
+			}
+			if rec[key] == value {
+				out = append(out, rec)
+			}
+		}
+		return out
+	}
+	const repairedMsg = "scanner binary changed on disk since it was verified"
 	s := New(&o)
 	if st := s.Refresh(context.Background()); !st.Available {
 		t.Fatalf("first refresh: %+v %v", st, s.Cause())
+	}
+	if n := len(records("msg", repairedMsg)) + len(records("action", audit.ActionScanScannerRepaired)); n != 0 {
+		t.Fatalf("a first unpack was reported as a repair (%d records)", n)
 	}
 	target := scan.Target{Digest: f.image, Repository: appRepo, Kind: "ContainerImage"}
 	first, err := s.Scan(context.Background(), target)
@@ -958,12 +991,14 @@ func TestChannelBinaryTamperedBetweenSynchronizations(t *testing.T) {
 	}
 
 	marker := filepath.Join(t.TempDir(), "EXECUTED")
-	tamper := func() {
+	tamper := func() string {
 		t.Helper()
 		evil := "#!/bin/sh\n: > " + marker + "\necho '{\"Version\":\"" + PinnedVersion + "\"}'\n"
 		if err := os.WriteFile(unpacked, []byte(evil), 0o700); err != nil { //nolint:gosec // G306: a test executable
 			t.Fatal(err)
 		}
+		logs.Reset()
+		return digestOf([]byte(evil))
 	}
 	restored := func(when string) {
 		t.Helper()
@@ -987,19 +1022,51 @@ func TestChannelBinaryTamperedBetweenSynchronizations(t *testing.T) {
 	if st := s.Status(context.Background()); st.Available || st.Reason != taxonomy.CodeScannerUnverified {
 		t.Fatalf("status after the refused scan = %+v", st)
 	}
+	if n := len(records("msg", "scanner binary changed since it was verified: it is not executed")); n != 1 {
+		t.Errorf("refusals logged by the scan = %d; want 1", n)
+	}
 	if st := s.Refresh(context.Background()); !st.Available {
 		t.Fatalf("the next refresh did not restore the scanner: %+v %v", st, s.Cause())
 	}
 	restored("after the refused scan and a refresh")
+	// The scan dropped the binary it held, but the refresh that unpacks
+	// the delivery again still finds the changed file in its place.
+	if n := len(records("action", audit.ActionScanScannerRepaired)); n != 1 {
+		t.Errorf("repair events after a refused scan = %d; want 1", n)
+	}
 
 	// A refresh first: the tamper is repaired before anything runs, and
 	// the scan is the cached report of the genuine binary.
-	tamper()
+	evil := tamper()
 	clock = clock.Add(time.Minute)
 	if st := s.Refresh(context.Background()); !st.Available {
 		t.Fatalf("refresh over a changed binary: %+v %v", st, s.Cause())
 	}
 	restored("after a refresh over the changed binary")
+	warns := records("msg", repairedMsg)
+	if len(warns) != 1 {
+		t.Fatalf("repair warnings = %d; want 1", len(warns))
+	}
+	for k, want := range map[string]string{
+		"level": "WARN", "path": unpacked, "expected": digestOf(raw), "actual": evil,
+		"delivery": repo + "@" + child, "code": string(taxonomy.CodeScannerUnverified),
+	} {
+		if warns[0][k] != want {
+			t.Errorf("repair warning %s = %v; want %s", k, warns[0][k], want)
+		}
+	}
+	events := records("action", audit.ActionScanScannerRepaired)
+	if len(events) != 1 {
+		t.Fatalf("repair audit events = %d; want 1", len(events))
+	}
+	for k, want := range map[string]string{
+		audit.KeyLogType: audit.LogType, "actor": audit.ActorLocal, "target": unpacked,
+		"outcome": audit.OutcomeSuccess, "origin": audit.OriginLocal,
+	} {
+		if events[0][k] != want {
+			t.Errorf("repair audit event %s = %v; want %s", k, events[0][k], want)
+		}
+	}
 	again, err := s.Scan(context.Background(), target)
 	if err != nil {
 		t.Fatalf("scan after the repairing refresh: %v", err)
@@ -1009,5 +1076,27 @@ func TestChannelBinaryTamperedBetweenSynchronizations(t *testing.T) {
 	}
 	if n := f.calls.images(t); n != 1 {
 		t.Errorf("image scans = %d; want 1 (the later ones are cached)", n)
+	}
+
+	// A restart over a changed unpack: the new process holds nothing yet,
+	// and still reports the file it replaces.
+	evil = tamper()
+	if st := New(&o).Refresh(context.Background()); !st.Available {
+		t.Fatalf("refresh of a restarted scanner: %+v", st)
+	}
+	restored("after a restart over the changed binary")
+	if w := records("msg", repairedMsg); len(w) != 1 || w[0]["actual"] != evil {
+		t.Errorf("repair warnings after a restart = %v; want one naming %s", w, evil)
+	}
+	if n := len(records("action", audit.ActionScanScannerRepaired)); n != 1 {
+		t.Errorf("repair audit events after a restart = %d; want 1", n)
+	}
+	// An intact unpack, at a restart, is no repair.
+	logs.Reset()
+	if st := New(&o).Refresh(context.Background()); !st.Available {
+		t.Fatalf("refresh of a restarted scanner over an intact unpack: %+v", st)
+	}
+	if n := len(records("msg", repairedMsg)) + len(records("action", audit.ActionScanScannerRepaired)); n != 0 {
+		t.Errorf("an intact unpack was reported as a repair (%d records)", n)
 	}
 }
