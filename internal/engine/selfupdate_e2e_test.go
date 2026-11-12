@@ -63,7 +63,9 @@ func TestSelfUpdateCrossesTheAirGap(t *testing.T) {
 		r.winBin = []byte("MZ tobby.exe " + version)
 		r.image = seedIndex(t, src, "ghcr.io/tobby-fetch/tobby-fetch", "v"+version,
 			v1.Platform{OS: "linux", Architecture: "amd64"}, v1.Platform{OS: "linux", Architecture: "arm64"}).digest
-		r.chart = seedChart(t, src, "ghcr.io/tobby-fetch/charts/tobby", version, true)
+		// The chart as release.yml publishes it: by `helm push`, whose
+		// manifest omits the top-level mediaType (B-056).
+		r.chart = seedHelmPushedChart(t, src, "ghcr.io/tobby-fetch/charts/tobby", "tobby", version)
 		r.binaries = pushBinariesFileSet(t, src, "ghcr.io/tobby-fetch/binaries/tobby", "v"+version, map[string][]byte{
 			"linux/amd64": r.linuxBin, "linux/arm64": []byte("ELF arm64 " + version),
 			"windows/amd64": r.winBin, "windows/arm64": []byte("MZ arm64 " + version),

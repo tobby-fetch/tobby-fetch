@@ -14,6 +14,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/opencontainers/go-digest"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/blobfetch"
@@ -233,7 +234,18 @@ func importImage(ctx context.Context, dst Destination, repo, tag string, img v1.
 	if err != nil {
 		return err
 	}
-	if _, err := dst.PutManifest(ctx, repo, string(man.MediaType), raw, tag); err != nil {
+	// The top-level mediaType is optional and `helm push` omits it: the
+	// type is then the one the registry served the manifest under (B-056).
+	mediaType := man.MediaType
+	if mediaType == "" {
+		if mediaType, err = img.MediaType(); err != nil {
+			return err
+		}
+		if mediaType == "" {
+			mediaType = types.OCIManifestSchema1
+		}
+	}
+	if _, err := dst.PutManifest(ctx, repo, string(mediaType), raw, tag); err != nil {
 		return taxonomy.New(taxonomy.CodeStoreWrite,
 			taxonomy.Params{"detail": err.Error()}).WithCause(err)
 	}
