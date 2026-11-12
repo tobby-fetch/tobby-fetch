@@ -10,7 +10,7 @@ require (
 	github.com/crewjam/saml v0.6.3
 	github.com/distribution/distribution/v3 v3.1.2
 	github.com/distribution/reference v0.6.0
-	github.com/go-jose/go-jose/v4 v4.1.4
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/google/go-containerregistry v0.22.1
 	github.com/klauspost/compress v1.20.3
 	github.com/nicksnyder/go-i18n/v2 v2.7.0
