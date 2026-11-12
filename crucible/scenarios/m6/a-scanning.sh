@@ -353,11 +353,20 @@ evidence() { # <label> <task json>: what a verdict on step 5 must be read agains
         '"verdict=\(.scan.evaluation.verdict) scanned_at=\(.scan.scanned_at // "-") scanner=\(.scan.scanner.digest // "-") db=\(.scan.database.digest // "-") reasons=\([.scan.evaluation.reasons[]?.code] | join(","))"')"
     note "$1: $BIN on disk sha256:$(on_disk) (pinned sha256:$T_BIN_SHA); canary $(inc exec tbc-m6a-connected -- sh -c "test -e $CANARY && echo RAN || echo absent")"
     note "$1: last located: $(inc exec tbc-m6a-connected -- sh -c 'grep "vulnerability scanner located" /var/log/tobby.log | tail -1' |
-        jq -r '"path=\(.path) digest=\(.digest) origin=\(.origin) at=\(.time)"' 2>/dev/null)"
+        jq -r '"path=\(.path) digest=\(.digest) origin=\(.origin) at=\(.ts)"' 2>/dev/null)"
 }
 tamper() {
     inc exec tbc-m6a-connected -- sh -c "rm -f $CANARY; printf '#!/bin/sh\n: >$CANARY\necho \047{\"Version\":\"$TRIVY_VERSION\"}\047\n' >'$BIN'"
-    [ "$(on_disk)" != "$T_BIN_SHA" ] || fail "staging: the tamper did not change the binary"
+    TAMPERED=$(on_disk)
+    [ "$TAMPERED" != "$T_BIN_SHA" ] || fail "staging: the tamper did not change the binary"
+}
+repaired() { # <expected count>: the repairs so far are audited, the last one names the canary
+    n=$(inc exec tbc-m6a-connected -- grep -c '"action":"scan.scanner.repaired"' /var/log/tobby.log || true)
+    [ "$n" = "$1" ] || fail "FR-094: $n scan.scanner.repaired audit events; want $1"
+    inc exec tbc-m6a-connected -- sh -c 'grep "scanner binary changed on disk since it was verified" /var/log/tobby.log | tail -1' |
+        jq -e --arg a "sha256:$TAMPERED" --arg e "sha256:$T_BIN_SHA" --arg p "$BIN" \
+            '.level == "WARN" and .actual == $a and .expected == $e and .path == $p' >/dev/null ||
+        fail "FR-031: the repair is not logged as a WARN naming $BIN, the pinned and the tampered digests"
 }
 never_ran() { # <when>
     if inc exec tbc-m6a-connected -- test -e "$CANARY"; then fail "FR-031: the tampered binary was executed ($1)"; fi
@@ -402,6 +411,7 @@ never_ran "restoring run"
 [ "$(on_disk)" = "$T_BIN_SHA" ] || fail "the verified delivery was not unpacked again over the tampered binary"
 [ "$(item "$T" "clean@1.0.0/app" '.scan.evaluation.verdict')" = "pass" ] ||
     fail "the verified delivery did not restore the scanner after the tamper"
+repaired 1
 
 tamper
 T=$(sync_json tbc-m6a-connected)
@@ -410,7 +420,8 @@ never_ran "run with tobby-system first"
 [ "$(on_disk)" = "$T_BIN_SHA" ] || fail "B-045: the refresh after tobby-system did not unpack the delivery over the tampered binary"
 [ "$(item "$T" "clean@1.0.0/app" '.scan.scanner.digest')" = "sha256:$T_BIN_SHA" ] ||
     fail "the scan after the repairing refresh is not the pinned executable's"
-check "tampered binary never executed: refused without a redelivery (TBY-SCN-002, item refused under block), restored by the next tobby-system refresh, and repaired before any scan when tobby-system comes first"
+repaired 2
+check "tampered binary never executed: refused without a redelivery (TBY-SCN-002, item refused under block), restored by the next tobby-system refresh, and repaired before any scan when tobby-system comes first — each repair logged (WARN, expected and found digests) and audited (scan.scanner.repaired)"
 
 # -- 6. R-13: a stale database under the block action ------------------------
 config tbc-m6a-connected mirror /var/lib/scratch "$S" "  mode: block

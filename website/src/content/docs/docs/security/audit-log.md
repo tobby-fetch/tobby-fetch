@@ -70,6 +70,7 @@ only, with the same compatibility discipline as the REST API
 | `token.expire` | each refusal of a token past its expiry, under the token's name (R-14); a revoked token's refusal is an `auth.authenticate` failure under its name | v0.6.x |
 | `auth.local_under_federation` | a local-account sign-in while OIDC or SAML is enabled — break-glass use, kept filterable on its own; target `ui` or the machine surface (FR-078, R-20) | v0.6.x |
 | `scan.block` | an item refused by the vulnerability policy — violation, not scanned under a blocking policy, or stale database under the block action (FR-031); the target is the item's `reference@digest`, the outcome `denied` | v0.6.x |
+| `scan.scanner.repaired` | a scanner binary delivered by tobby-system, found changed on disk since it was verified and unpacked again from the verified delivery, without being run (FR-031); the target is the binary's path, the outcome `success`, or `failure` when the delivery could not be unpacked again (the scanner is then unavailable). A WARN record beside it names the expected and the found digests | v0.6.x |
 
 The media events joined the catalogue with v0.5.0: the two audited waivers
 of a media import — a medium addressed to another zone and a medium older

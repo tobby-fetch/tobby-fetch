@@ -315,6 +315,14 @@ transfer slip; and Tobby updates through its own channel.
   again, so a file swapped in the work directory executed once. It is now
   re-hashed before reuse — and unpacked again when it differs — and every
   origin's binary is verified right before the version probe.
+- **A scanner binary repaired on disk is reported.** When a refresh finds
+  the unpacked channel binary changed since it was verified — after a
+  refused scan, after a run that records tobby-system, or at startup — it
+  still unpacks the verified delivery over it without running it, and now
+  also logs a WARN record with the path, the expected digest and the one
+  found, and writes a `scan.scanner.repaired` audit event (outcome
+  `failure` when the delivery cannot be unpacked again). An intact unpack
+  is not reported.
 - **The scanner's work directory is private** (B-046). Without a state
   directory it was the fixed `os.TempDir()/tobby-scanner`, which another
   local user could create first and fill with a database the scanner then
