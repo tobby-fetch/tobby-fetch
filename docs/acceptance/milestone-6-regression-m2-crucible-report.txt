@@ -1,0 +1,12 @@
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Intel Xeon E3-1230 V2 8 threads, 32 GB RAM, Ubuntu 24.04.5 LTS (kernel 6.8.0-146), Incus 7.6 (Zabbly stable; distro 6.0.0 lacks OCI), oras 1.2.3; ref milestone-6 @ 4d8ad1b; node created 2026-11-12T12:06Z, destroyed 2026-11-12T13:08Z (verified HTTP 404)
+ok   scenario m2 started 2026-11-12T12:20:43Z
+ok   built tobby for linux/amd64
+ok   instances launched (source registry + secure node)
+ok   source registry serving (10.180.10.117:8080)
+ok   R-01: no-account start refused (exit 3, TBY-AUTH-001)
+ok   account created (first account admin), secure node ready
+ok   anonymous refused on API (RFC 9457) and registry (Basic challenge)
+ok   import through the API done (3/3), pinned digest preserved (sha256:371d5f9329a8283c30651900074078bd7188f0aa8daf24601b4370a77745c48e)
+ok   standard third-party client pulls the import with Basic credentials
+ok   FR-029: task survived a SIGKILL restart, settled done, zero re-transfer
+ok   scenario m2 complete — report: crucible-report-m2.txt

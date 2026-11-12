@@ -1,0 +1,17 @@
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Intel Xeon E3-1230 V2 8 threads, 32 GB RAM, Ubuntu 24.04.5 LTS (kernel 6.8.0-146), Incus 7.6 (Zabbly stable; distro 6.0.0 lacks OCI), oras 1.2.3; ref milestone-6 @ 4d8ad1b; node created 2026-11-12T12:06Z, destroyed 2026-11-12T13:08Z (verified HTTP 404)
+ok   scenario m6 started 2026-11-12T12:37:00Z
+ok   tooling available (jq, curl, cosign)
+ok   built tobby for linux/amd64
+ok   the medium (/dev/loop0) is a real block device, formatted and mounted on the connected node
+ok   egress canary failed as required (air gap proven by construction)
+ok   lab-app is unsigned (no signature tag, cosign agrees); signed-app verifies under key A
+ok   FR-037: every item of lab-app carries the marker in the task report; signed-app's carry none
+ok   FR-037: the API and the UI (recipes, task detail) carry the marker for lab-app and for no other recipe
+ok   FR-037: the log field (with its scope) and the tobby_assurance_reduced_recipes metric carry the marker
+ok   FR-037/FR-054: the media manifest records the marker per recipe, and omits it for a recipe of full assurance
+ok   the medium is re-attached and mounted on the isolated node
+ok   FR-037: a strict destination blocks lab-app (TBY-SIG-001) and still shows the source's claim; signed-app is pushable and unmarked
+ok   FR-037: with a scope of its own the destination admits lab-app under ITS marker (dest-lab), the source's claim (lab) beside it
+ok   FR-037: with the claim removed from the manifest, the destination still marks lab-app from its own verdict
+ok   RECIPE-SPEC §7.1: the zone registry holds the same digests as the source, one version tag, and no trace of any marker
+ok   scenario m6 c-assurance complete — report: crucible-report-m6-c-assurance.txt

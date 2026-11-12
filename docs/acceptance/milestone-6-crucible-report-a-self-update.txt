@@ -1,0 +1,10 @@
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Intel Xeon E3-1230 V2 8 threads, 32 GB RAM, Ubuntu 24.04.5 LTS (kernel 6.8.0-146), Incus 7.6 (Zabbly stable; distro 6.0.0 lacks OCI), oras 1.2.3; ref milestone-6 @ 4d8ad1b; node created 2026-11-12T12:06Z, destroyed 2026-11-12T13:08Z (verified HTTP 404)
+ok   scenario m6 started 2026-11-12T12:29:49Z
+ok   built tobby for the four release platforms
+ok   nodes launched, medium mounted, egress canary failed as required
+ok   tobby 0.6.0 signed by the site key, 0.6.1 by the project key only (each checked against both)
+ok   mirror flow: both versions written on the medium; medium detached
+ok   verification: 0.6.0 pushable, 0.6.1 blocked on its signature; the zone cookbook holds 0.6.0 only
+ok   the linux/amd64 binary that crossed is byte-identical to the build, and runs once deployed by hand
+ok   NFR-019: no self-update mechanism — the update is the recipe a person carried and deployed
+ok   scenario m6/a-self-update complete — report: crucible-report-m6-a-self-update.txt
