@@ -24,9 +24,11 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/buildinfo"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
+	"github.com/tobby-fetch/tobby-fetch/internal/slip"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -56,6 +58,10 @@ type MediaOptions struct {
 	// of what the Media screen polls (FR-061). Nil on an instance that
 	// guards nothing.
 	Gate *mediagate.Gate
+	// Scan reads the scanning state the transfer slip reports (R-07):
+	// the policy in force and the database in use. Nil leaves the slip
+	// saying the policy is advisory and no database is known.
+	Scan func() slip.ScanContext
 }
 
 // RegisterMedia mounts the media endpoints.
@@ -72,6 +78,10 @@ func RegisterMedia(a *API, opts *MediaOptions) {
 	// whether the content surfaces answer, what the verification in
 	// progress is doing, and the last verdict — read-only, hence viewer.
 	a.Handle("GET /api/v1/media/verification", a.RequireRole(auth.RoleViewer, m.verification))
+	// The transfer slip (R-07): the Media screen's content as a printable
+	// document, HTML or text. A read of records the instance already
+	// holds — it hashes nothing — hence viewer.
+	a.Handle("GET /api/v1/media/slip", a.RequireRole(auth.RoleViewer, m.slip))
 	a.Handle("POST /api/v1/media/verify", a.RequireRole(auth.RoleOperator, m.verify))
 	a.Handle("POST /api/v1/media/import", a.RequireRole(auth.RoleOperator, m.importMedia))
 }
@@ -272,4 +282,75 @@ func (m *mediaAPI) auditImport(r *http.Request, actor, outcome string) {
 		Actor: actor, Action: audit.ActionMediaImport, Target: m.opts.StorageRoot,
 		Outcome: outcome, Origin: auth.ClientOrigin(r),
 	})
+}
+
+// slip serves GET /api/v1/media/slip: the transfer slip (R-07), in a
+// format (html, the default; text; json) and a language (en or fr; the
+// Accept-Language header when absent). It works on both sides of a
+// transfer — on a source it summarizes what the store delivers — so it
+// does not require a destination engine.
+//
+// It hashes nothing: it reads the manifest, the last verdict the gate
+// holds, and the scan reports of the task documents. A verdict is
+// therefore the last one reached, whichever surface produced it; a slip
+// drawn before any verification says no verification was run rather than
+// running one.
+//
+// The document is unsigned and says so at its head and its foot (ADR-0006,
+// decision 10): the JSON form states "signed": false as well.
+func (m *mediaAPI) slip(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	format := q.Get("format")
+	switch format {
+	case "":
+		format = slip.FormatHTML
+	case slip.FormatHTML, slip.FormatText, slip.FormatJSON:
+	default:
+		m.api.Problem(w, r, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
+			"file": "the query", "path": "format", "constraint": "must be html, text or json",
+		}))
+		return
+	}
+	lang := q.Get("lang")
+	switch lang {
+	case "":
+		lang = slip.NormalizeLang(r.Header.Get("Accept-Language"))
+	case "en", "fr":
+	default:
+		m.api.Problem(w, r, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
+			"file": "the query", "path": "lang", "constraint": "must be en or fr",
+		}))
+		return
+	}
+
+	inst := &slip.Instance{Version: buildinfo.Version(), Root: m.opts.StorageRoot, Queue: m.opts.Queue}
+	if m.opts.Engine != nil {
+		sum := m.opts.Engine.MediaSummary()
+		inst.Zone, inst.LastImport = m.opts.Engine.Zone(), sum.LastImport
+	}
+	if m.opts.Gate != nil {
+		inst.Report = m.opts.Gate.Status().Report
+	}
+	inst.Scan = m.opts.Scan
+	sl := inst.Slip()
+
+	body, contentType, err := sl.Render(format, lang)
+	if err != nil {
+		m.api.Problem(w, r, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", contentType)
+	h.Set("Cache-Control", "no-store")
+	h.Set("X-Content-Type-Options", "nosniff")
+	if format == slip.FormatHTML {
+		// The page loads nothing: its own inline stylesheet is the only
+		// source its policy allows.
+		h.Set("Content-Security-Policy", slip.CSP())
+	}
+	if q.Get("download") == "1" {
+		h.Set("Content-Disposition", `attachment; filename="`+sl.Filename(format)+`"`)
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body) //nolint:gosec // G705: body is the slip package's rendering, escaped by html/template
 }

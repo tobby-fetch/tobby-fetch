@@ -15,6 +15,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/metrics"
 	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 	"github.com/tobby-fetch/tobby-fetch/internal/scan/trivy"
+	"github.com/tobby-fetch/tobby-fetch/internal/slip"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/ui"
 )
@@ -146,6 +147,14 @@ func (s *scanning) metricState() metrics.ScanState {
 		m.DBStale = age > s.maxAge || scan.FromFuture(st.Database.BuiltAt, time.Now())
 	}
 	return m
+}
+
+// slipState is the scanning state the transfer slip reports (R-07): the
+// same facts the interface's banners read, in the slip's own type so the
+// API mirror and the screen cannot differ.
+func (s *scanning) slipState() slip.ScanContext {
+	st := s.uiState()
+	return slip.ScanContext{Blocking: st.Blocking, Cause: st.Cause, Database: st.Database, MaxAge: st.MaxAge}
 }
 
 // uiState is what the interface reads on every page.

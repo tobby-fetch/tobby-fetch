@@ -269,8 +269,22 @@ l'un ou l'autre, trois points à soigner dès l'installation (détails dans
 `displayName` libelle le bouton de connexion ; `auth.oidc.nameClaim` et
 `auth.saml.nameAttribute` choisissent le nom affiché pour une personne.
 Tous trois ne servent qu'à l'affichage. Une mise à jour depuis v0.5.x
-n'exige rien de tout cela : chaque nouvelle clé est désactivée ou a une
-valeur par défaut.
+n'exige rien de tout cela pour continuer à fonctionner : chaque nouvelle clé
+de fédération est désactivée ou a une valeur par défaut.
+
+**Un défaut change en revanche quand on met à jour depuis v0.5.x : l'analyse
+de vulnérabilités s'exécute désormais, en mode consultatif.** Chaque image de
+conteneur récupérée est analysée — il n'existe pas d'interrupteur « activé » —
+et, avec `scan.mode` laissé à `warn`, les résultats sont rapportés (rapport de
+tâche, API, interface, métriques, avec l'âge de la base) alors que **rien
+n'est retenu**. Une instance sans scanner ou sans base affiche à la place la
+bannière du mode dégradé. Pour refuser ce qui dépasse un seuil, posez
+`scan.mode: block` (ou `TOBBY_SCAN_MODE=block` ; le seuil est
+`scan.threshold`, `7.0` par défaut), ou posez un seuil pour un périmètre
+précis : le `spec.scanPolicy.threshold` d'un Retriever ou l'annotation
+`recipe.tobby.dev/scan-threshold` d'une recipe, chacun bloquant pour ce qu'il
+couvre. Un refus retient la recipe entière. Voir
+[l'analyse de vulnérabilités](../../security/vulnerability-scanning/).
 
 Suite : pointez l'instance vers le monde extérieur à travers
 [le réseau d'entreprise](../../passthrough/network/).

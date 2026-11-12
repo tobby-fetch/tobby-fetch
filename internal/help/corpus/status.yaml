@@ -327,8 +327,10 @@ features:
   - id: "R-07"
     en: Printable transfer report (bilingual, marked as unsigned aid)
     fr: Bordereau de transfert imprimable (bilingue, marqué aide non signée)
-    status: upcoming
-    milestone: 6
+    status: available
+    note:
+      en: Delivered in v0.6.0.
+      fr: Livré en v0.6.0.
   - id: "R-31"
     en: On-demand store integrity verification with timestamped report
     fr: Vérification d'intégrité du store à la demande, rapport horodaté

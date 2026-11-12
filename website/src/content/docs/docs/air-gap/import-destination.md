@@ -69,6 +69,10 @@ signed recipes land in the zone's own cookbook with their signatures.
 
 <!-- TODO: screenshot: the Media screen on the destination side — the three-step sequence with a verification running and its progress -->
 
+The screen also draws the [transfer slip](../../air-gap/transfer-slip/): the
+same content as a printable, bilingual, **unsigned** page, or as an HTML or
+text file, to hand over with the disk.
+
 Reading the screen is a `viewer` action. Verifying and importing are
 `operator` actions. Waiving one of the two refusals below is an
 administrator's, and the waiver checkboxes are rendered only for one.

@@ -653,6 +653,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	api.RegisterPlan(restAPI, &api.PlanOptions{Planner: eng.Planner()})
 	api.RegisterMedia(restAPI, &api.MediaOptions{
 		Engine: eng, Queue: queue, StorageRoot: cfg.Storage.Root, Gate: mediaGate,
+		Scan: scanning.slipState,
 	})
 	api.RegisterIntegrity(restAPI, &api.IntegrityOptions{Verifier: integritySvc})
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{

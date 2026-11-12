@@ -353,6 +353,41 @@ tobby media verify --storage-root /mnt/usb --zone production --output json | jq 
 Exit codes: `0` every delivery is pushable, `3` refused by policy (zone
 identity, freshness), `4` a verification failure.
 
+### tobby media slip
+
+```
+tobby media slip [flags]
+```
+
+Draws the [transfer slip](../../air-gap/transfer-slip/) (R-07): the
+printable, bilingual account of one physical transfer — the medium, its
+freshness and inventory, the verification report, the vulnerability-scan
+reports per recipe and element, and the reduced-assurance markers.
+
+With a zone identity the command is the destination side: it verifies the
+medium first, as `media verify` does and writing nothing, so the slip
+carries the verdict. Without one it is the source side. A store with no
+manifest still gets a slip, which names the refusal. The slip is **unsigned**
+and says so at its head and its foot: it is an aid, not proof of
+authenticity, and Tobby signs nothing.
+
+| Flag | Purpose |
+|---|---|
+| `--output text\|html\|json` | `text` (default) is the plain-text document, `html` a self-contained page with inline print rules that loads nothing, `json` the language-neutral document the API serves. |
+| `--lang en\|fr` | Language of the slip. Default: `LC_ALL` / `LC_MESSAGES` / `LANG`, English otherwise. |
+| `--zone` | The zone this instance serves; optional here. |
+| `--allow-zone-mismatch`, `--allow-stale` | As on `media verify`: preview what a waived import would do. |
+
+```sh
+tobby media slip --storage-root /mnt/usb --zone production --lang fr
+tobby media slip --storage-root /mnt/usb --zone production --output html > slip.html
+```
+
+The command does not read the scanner: its scan section says so, and the
+per-element reports stand on their own. Exit codes: `0` whatever the
+verdict — a blocked medium is a successful slip of a bad medium — and `4`
+when the verification itself could not run.
+
 ### tobby media import
 
 ```

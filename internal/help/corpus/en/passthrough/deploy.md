@@ -257,8 +257,21 @@ things to get right at install time (details on
 
 `displayName` labels the sign-in button; `auth.oidc.nameClaim` and
 `auth.saml.nameAttribute` choose the name shown for a person. All three
-are display only. Upgrading from v0.5.x needs none of this: every new key
-is off or defaulted.
+are display only. Upgrading from v0.5.x needs none of this to keep
+running: every new federation key is off or defaulted.
+
+**One default does change when you upgrade from v0.5.x: vulnerability
+scanning now runs, in advisory mode.** Every container image retrieved is
+scanned — there is no "enabled" switch — and with `scan.mode` left at `warn`
+the findings are reported (task report, API, interface, metrics, with the
+database age) while **nothing is withheld**. An instance with no scanner or
+no database shows the degraded-mode banner instead. To refuse what violates
+a threshold, set `scan.mode: block` (or `TOBBY_SCAN_MODE=block`; the
+threshold is `scan.threshold`, `7.0` by default), or pose a threshold for one
+perimeter: a Retriever's `spec.scanPolicy.threshold` or a recipe's
+`recipe.tobby.dev/scan-threshold` annotation, each blocking for what it
+covers. A refusal withholds the whole recipe. See
+[vulnerability scanning](../../security/vulnerability-scanning/).
 
 Next: point the instance at the outside world through
 [the enterprise network](../../passthrough/network/).

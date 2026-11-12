@@ -91,7 +91,7 @@ The surface today (from the served OpenAPI document):
 | Tasks | `GET /api/v1/tasks`, `GET /api/v1/tasks/{id}`, `GET /api/v1/tasks/{id}/logs` |
 | Recipes and sync | `GET /api/v1/recipes`, `GET /api/v1/recipes/{recipe}/mapping`, `POST /api/v1/recipes/publish`, `POST /api/v1/sync`, `GET /api/v1/sync/prune-preview`, `GET /api/v1/retriever`, `PUT/DELETE /api/v1/retriever/interval` |
 | Plan (side-effect-free) | `POST /api/v1/plan` |
-| Media journey | `GET /api/v1/media`, `GET /api/v1/media/verification`, `POST /api/v1/media/verify`, `POST /api/v1/media/import` |
+| Media journey | `GET /api/v1/media`, `GET /api/v1/media/verification`, `GET /api/v1/media/slip`, `POST /api/v1/media/verify`, `POST /api/v1/media/import` |
 | FileSets | `GET /api/v1/filesets`, `POST /api/v1/filesets/pack` |
 | Interoperability and store | `POST /api/v1/oci-layout/plan`, `POST /api/v1/oci-layout/export`, `POST /api/v1/oci-layout/import`, `POST /api/v1/store/reset` |
 | Store integrity | `POST /api/v1/store/verify`, `POST /api/v1/store/verify/cancel`, `GET /api/v1/store/verification` |
@@ -114,6 +114,9 @@ would guess from the path.
   report. Asking for a second verification while one is walking the medium
   answers `409`
   ([`TBY-MED-031`](../../reference/errors/#tby-med-031)).
+  `GET /api/v1/media/slip` is the [transfer slip](../../air-gap/transfer-slip/):
+  the screen's content as a printable `html`, `text` or `json` document, in
+  English or French, unsigned and saying so; it hashes nothing.
 - **A store verification is a task, and its report is a document.**
   `POST /api/v1/store/verify` answers `201` with the task and a second
   request while one is pending or running answers `409`

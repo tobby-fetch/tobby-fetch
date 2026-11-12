@@ -150,6 +150,9 @@ func TestEveryReportedDocumentMatchesItsSchema(t *testing.T) {
 		stdout, stderr := runJSON(t, "", "media", "verify", "--storage-root", root, "--zone", servedZone)
 		assertDocument(t, "tobby media verify", stdout, stderr)
 
+		stdout, stderr = runJSON(t, "", "media", "slip", "--storage-root", root, "--zone", servedZone)
+		assertDocument(t, "tobby media slip", stdout, stderr)
+
 		registry := httptest.NewServer(nil)
 		t.Cleanup(registry.Close)
 		cfgPath := mediumConfig(t, root, servedZone, registry.Listener.Addr().String())

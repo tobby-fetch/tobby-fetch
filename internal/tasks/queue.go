@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/url"
 	"os"
@@ -870,4 +871,37 @@ func (q *Queue) ReadLog(id string, from int64) (chunk []byte, next int64, err er
 		return nil, from, err
 	}
 	return chunk, from + int64(len(chunk)), nil
+}
+
+// ReadAll reads the persisted tasks of a store WITHOUT opening a queue:
+// Open creates the directory, re-queues interrupted tasks and rewrites
+// them, all writes, and a command that only reads a store (the transfer
+// slip, R-07) must leave it as it found it. A task file that cannot be
+// read is skipped, as Open skips it; a store with no task directory has no
+// tasks.
+func ReadAll(storeRoot string) ([]*Task, error) {
+	dir := filepath.Join(storeRoot, tasksDir)
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("tasks: reading %s: %w", dir, err)
+	}
+	var out []*Task
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // G304: enumerated task files under the store
+		if err != nil {
+			return nil, fmt.Errorf("tasks: reading %s: %w", e.Name(), err)
+		}
+		var t Task
+		if err := json.Unmarshal(raw, &t); err != nil {
+			continue
+		}
+		out = append(out, &t)
+	}
+	return out, nil
 }

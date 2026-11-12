@@ -71,6 +71,9 @@ func fixtures() []commandFixture {
 		{path: "tobby media verify", args: func(t *testing.T) []string {
 			return []string{"--storage-root", tmp(t), "--zone", "zone-a"}
 		}},
+		{path: "tobby media slip", args: func(t *testing.T) []string {
+			return []string{"--storage-root", tmp(t), "--zone", "zone-a"}
+		}},
 		{path: "tobby media import", args: func(t *testing.T) []string {
 			return []string{"--storage-root", tmp(t), "--zone", "zone-a"}
 		}},
