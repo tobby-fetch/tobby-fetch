@@ -5,6 +5,7 @@ package scan
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -130,6 +131,63 @@ type Target struct {
 	// Platform optionally narrows a multi-platform index to one child,
 	// "os/arch[/variant]".
 	Platform string
+	// Content is what Inspect found in an ingredient NOT declared as a
+	// container image (ADR-0017): the images to scan in it. Nil for a
+	// declared container image, scanned as it always was.
+	Content *Content
+}
+
+// SystemRecipe is the name of the recipe that carries the scanner's own
+// deliveries: the database and, on Linux and Windows hosts, the binary
+// (FR-032, ADR-0008 decision 3).
+const SystemRecipe = "tobby-system"
+
+// Evidence values of a DetectedImage (ADR-0017).
+const (
+	EvidenceImageConfig      = "image-config"
+	EvidenceFilesystemLayers = "filesystem-layers"
+	EvidenceDockerArchive    = "docker-archive"
+	EvidenceOCILayout        = "oci-layout"
+)
+
+// Content is what an ingredient declared as something other than a
+// container image actually holds, judged by its content and never by its
+// declared kind (ADR-0017): an OCI artifact can be an image wearing
+// another media type, a FileSet can carry `docker save` archives.
+type Content struct {
+	// Declared is the kind the recipe declared ("OCIArtifact", "FileSet",
+	// "HelmChart").
+	Declared string `json:"declared"`
+	// Images lists what was detected as an image; empty when the content
+	// is not one, and the ingredient is then out of the scan's scope.
+	Images []DetectedImage `json:"images,omitempty"`
+}
+
+// DetectedImage is one image found in an ingredient's content.
+type DetectedImage struct {
+	// Digest is the manifest that is an image, or the layer blob that
+	// holds an image archive.
+	Digest string `json:"digest"`
+	// Path is the file, inside the layer Digest names, that is an image
+	// archive; empty when Digest itself is the image (or the archive).
+	Path string `json:"path,omitempty"`
+	// Evidence is what made it an image: image-config, filesystem-layers,
+	// docker-archive or oci-layout.
+	Evidence string `json:"evidence"`
+}
+
+// IsImage reports whether anything in the content is an image.
+func (c *Content) IsImage() bool { return c != nil && len(c.Images) > 0 }
+
+// Evidences lists the distinct evidences, in detection order.
+func (c *Content) Evidences() []string {
+	var out []string
+	for _, im := range c.Images {
+		if !slices.Contains(out, im.Evidence) {
+			out = append(out, im.Evidence)
+		}
+	}
+	return out
 }
 
 // Result is a scanner's normalized answer about one Target.
@@ -163,7 +221,14 @@ type Status struct {
 // Scan returns an error only when no Result could be produced; that error
 // is a *taxonomy.Error from the TBY-SCN family, so the per-item report can
 // say "not scanned" with the reason.
+//
+// Inspect judges an ingredient that is NOT declared as a container image
+// by its content (ADR-0017): it needs neither the binary nor the
+// database, so an image hiding under another kind is recognized — and,
+// under a blocking policy, refused — even in the degraded mode. An error
+// means the content could not be judged.
 type Scanner interface {
 	Scan(ctx context.Context, t Target) (*Result, error)
+	Inspect(ctx context.Context, t Target) (*Content, error)
 	Status(ctx context.Context) Status
 }

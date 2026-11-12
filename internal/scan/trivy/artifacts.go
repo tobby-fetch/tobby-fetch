@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
+	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 )
 
@@ -55,7 +56,7 @@ type located struct {
 // SystemRecipe is the name of the recipe that carries the scanner's own
 // deliveries: the database and, on Linux and Windows hosts, the binary
 // (FR-032, ADR-0008 decision 3).
-const SystemRecipe = "tobby-system"
+const SystemRecipe = scan.SystemRecipe
 
 // locate finds the current copy of a tobby-system ingredient. With an
 // explicit repository it looks for that one; otherwise for the relocation

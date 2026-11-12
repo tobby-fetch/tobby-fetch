@@ -28,6 +28,7 @@ successor.
 | [ADR-0014](ADR-0014-crucible-test-infrastructure-incus.md) | Crucible test infrastructure: Incus | Accepted |
 | [ADR-0015](ADR-0015-ui-invariants.md) | Web UI invariants: canonical URLs, reserved prefixes, htmx doctrine | Accepted |
 | [ADR-0016](ADR-0016-media-manifest.md) | Media manifest: an unsigned inventory, and what verification rests on | Accepted |
+| [ADR-0017](ADR-0017-scan-by-content.md) | Scanning by content, whatever the declared kind | Accepted |
 
 ## Statuses
 

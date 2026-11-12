@@ -355,6 +355,20 @@ starting with `v0.1.0`.
   log line now says so, `tobby store verify` reports that content as
   reachable from no recipe (locked by a test), and *Vulnerability
   scanning* and *Managing media* (EN/FR) document it.
+- **A declared kind no longer bypasses vulnerability scanning** (B-054,
+  ADR-0017). Only ingredients declared `ContainerImage` were scanned: an
+  image declared `OCIArtifact` (an "LLM model"), or a `docker save`
+  archive carried as a file of a `FileSet`, crossed unexamined, under a
+  blocking policy too. Every other ingredient is now inspected by its
+  content — image config, filesystem layers that really are tars,
+  `docker save` archives and OCI layout tars recognized by their bytes,
+  one level deep, streamed and bounded, without extraction — and scanned
+  when it is or carries an image, under the same policy. The report says
+  so (`TBY-SCN-023`, with a `content` object); an ingredient holding no
+  image gets an `out-of-scope` verdict (`TBY-SCN-024`); content that
+  cannot be judged is refused under a blocking policy. The signed
+  `tobby-system` recipe's own deliveries are evaluated advisory
+  (`TBY-SCN-025`), so a zone can always arm its scanner.
 
 ## [0.5.2] - 2026-11-09
 

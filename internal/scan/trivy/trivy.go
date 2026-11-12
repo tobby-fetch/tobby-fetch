@@ -114,6 +114,9 @@ type Scanner struct {
 	dbErr   *taxonomy.Error
 	cache   map[cacheKey]*scan.Result
 	order   []cacheKey
+	// inspected caches content inspections (ADR-0017): content-addressed,
+	// so a digest's verdict never changes.
+	inspected map[cacheKey]*scan.Content
 }
 
 var _ scan.Scanner = (*Scanner)(nil)
@@ -149,6 +152,8 @@ func New(opts *Options) *Scanner {
 		binErr: taxonomy.New(taxonomy.CodeScannerUnavailable, taxonomy.Params{"detail": "the scanner has not been located yet"}),
 		dbErr:  taxonomy.New(taxonomy.CodeScanDBMissing, taxonomy.Params{"repository": "(not looked up yet)"}),
 		cache:  map[cacheKey]*scan.Result{},
+
+		inspected: map[cacheKey]*scan.Content{},
 	}
 }
 
@@ -276,7 +281,7 @@ func (s *Scanner) Scan(ctx context.Context, t scan.Target) (*scan.Result, error)
 		return nil, e
 	}
 
-	key := cacheKey{target: t.Digest, platform: t.Platform, db: db.artifact, bin: bin.digest}
+	key := cacheKey{target: t.Digest + contentKey(t.Content), platform: t.Platform, db: db.artifact, bin: bin.digest}
 	s.stateMu.RLock()
 	cached := s.cache[key]
 	s.stateMu.RUnlock()
@@ -288,20 +293,12 @@ func (s *Scanner) Scan(ctx context.Context, t scan.Target) (*scan.Result, error)
 	fail := func(err error) error {
 		return taxonomy.New(taxonomy.CodeScanFailed, taxonomy.Params{"reference": ref, "detail": err.Error()}).WithCause(err)
 	}
-	targets, err := targetsOf(ctx, s.opts.Store, t.Repository, t.Digest, t.Platform)
-	if err != nil {
-		return nil, fail(err)
-	}
 	var (
 		findings []scan.Finding
 		seen     = map[string]bool{}
 		version  = bin.version
 	)
-	for _, img := range targets {
-		v, fs, err := s.scanImage(ctx, bin, db, t.Repository, img)
-		if err != nil {
-			return nil, fail(err)
-		}
+	merge := func(v string, fs []scan.Finding) {
 		if v != "" {
 			version = v
 		}
@@ -311,6 +308,30 @@ func (s *Scanner) Scan(ctx context.Context, t scan.Target) (*scan.Result, error)
 				seen[k] = true
 				findings = append(findings, f)
 			}
+		}
+	}
+	if t.Content != nil {
+		// Declared as something else, detected as an image (ADR-0017):
+		// what is scanned is what Inspect found.
+		if !t.Content.IsImage() {
+			return nil, fail(errors.New("the content holds no image to scan"))
+		}
+		v, fs, err := s.scanContent(ctx, bin, db, t)
+		if err != nil {
+			return nil, fail(err)
+		}
+		merge(v, fs)
+	} else {
+		targets, err := targetsOf(ctx, s.opts.Store, t.Repository, t.Digest, t.Platform)
+		if err != nil {
+			return nil, fail(err)
+		}
+		for _, img := range targets {
+			v, fs, err := s.scanImage(ctx, bin, db, s.opts.Store, t.Repository, img)
+			if err != nil {
+				return nil, fail(err)
+			}
+			merge(v, fs)
 		}
 	}
 	info := bin.info()
@@ -326,7 +347,7 @@ func (s *Scanner) Scan(ctx context.Context, t scan.Target) (*scan.Result, error)
 }
 
 // scanImage scans one single-platform image from a private copy.
-func (s *Scanner) scanImage(ctx context.Context, bin *binary, db *database, repo string, img imageTarget) (string, []scan.Finding, error) {
+func (s *Scanner) scanImage(ctx context.Context, bin *binary, db *database, st Store, repo string, img imageTarget) (string, []scan.Finding, error) {
 	if err := os.MkdirAll(s.opts.WorkDir, 0o700); err != nil {
 		return "", nil, err
 	}
@@ -336,7 +357,7 @@ func (s *Scanner) scanImage(ctx context.Context, bin *binary, db *database, repo
 	}
 	defer os.RemoveAll(scratch) //nolint:errcheck // best-effort cleanup of a private directory
 	layout := filepath.Join(scratch, "layout")
-	if err := writeLayout(ctx, s.opts.Store, repo, img, layout); err != nil {
+	if err := writeLayout(ctx, st, repo, img, layout); err != nil {
 		return "", nil, err
 	}
 	args := []string{

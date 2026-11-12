@@ -33,12 +33,30 @@ type fakeScanner struct {
 	results map[string]*scan.Result
 	err     error
 	calls   []string
+	// contents answers Inspect by digest (ADR-0017); an unlisted digest
+	// holds no image. inspectErr fails every inspection.
+	contents   map[string]*scan.Content
+	inspectErr error
+	targets    []scan.Target
+}
+
+func (f *fakeScanner) Inspect(_ context.Context, t scan.Target) (*scan.Content, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.inspectErr != nil {
+		return nil, f.inspectErr
+	}
+	if c, ok := f.contents[t.Digest]; ok {
+		return c, nil
+	}
+	return &scan.Content{Declared: t.Kind}, nil
 }
 
 func (f *fakeScanner) Scan(_ context.Context, t scan.Target) (*scan.Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, t.Repository+"@"+t.Digest)
+	f.targets = append(f.targets, t)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -76,6 +94,7 @@ type scanEnv struct {
 	scanner  *fakeScanner
 	vulnDig  string
 	cleanDig string
+	modelDig string
 	hostRepo string
 	retr     string
 }
@@ -151,7 +170,7 @@ func newScanEnv(t *testing.T, o *scanEnvOpts) *scanEnv {
 		s.Freshness.MaxAge = 168 * time.Hour
 	}
 	eng.SetScan(&s)
-	return &scanEnv{src: src, dst: dst, eng: eng, scanner: fs, vulnDig: vulnDig, cleanDig: cleanDig,
+	return &scanEnv{src: src, dst: dst, eng: eng, scanner: fs, vulnDig: vulnDig, cleanDig: cleanDig, modelDig: modelDig,
 		hostRepo: strings.ReplaceAll(src.addr, ":", "_"), retr: retr}
 }
 
@@ -201,9 +220,11 @@ func TestScanAdvisoryDefaultPushesAndReports(t *testing.T) {
 	if !slices.Contains(reasonCodes(it.Scan), taxonomy.CodeScanPolicyAdvisory) {
 		t.Errorf("reasons = %v", reasonCodes(it.Scan))
 	}
-	// Not scanned: the OCI artifact carries no scan section.
-	if m := itemByName(t, task, "vuln@1.0.0/model"); m.Scan != nil {
-		t.Errorf("an OCI artifact was scanned: %+v", m.Scan)
+	// Inspected, not scanned: the OCI artifact holds no image, and its
+	// report says so (ADR-0017).
+	if m := itemByName(t, task, "vuln@1.0.0/model"); m.Scan == nil || m.Scan.Policy.Verdict != scan.VerdictOutOfScope ||
+		m.Scan.Content == nil || m.Scan.Content.Declared != "OCIArtifact" || !slices.Contains(reasonCodes(m.Scan), taxonomy.CodeScanOutOfScope) {
+		t.Errorf("the OCI artifact's report = %+v", m.Scan)
 	}
 	for _, n := range []string{"push/vuln@1.0.0/app", "push/vuln@1.0.0/recipe", "push/clean@1.0.0/recipe"} {
 		if s := itemByName(t, task, n).Status; s != tasks.StatusDone {

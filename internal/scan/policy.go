@@ -113,6 +113,11 @@ const (
 	// database absent, scan failed. Under ModeBlock the item is refused
 	// as well; the Reasons say why it was not scanned.
 	VerdictNotScanned Verdict = "not-scanned"
+	// VerdictOutOfScope means an ingredient declared as something other
+	// than a container image was inspected and holds no image (ADR-0017):
+	// there is nothing the scanner reads, and it proceeds whatever the
+	// mode. Content says what was inspected.
+	VerdictOutOfScope Verdict = "out-of-scope"
 )
 
 // Reason is one cause of a verdict, as a taxonomy code plus parameters —
@@ -186,4 +191,7 @@ type Report struct {
 	Counts    Counts     `json:"counts"`
 	Findings  []Finding  `json:"findings,omitempty"`
 	Policy    Evaluation `json:"evaluation"`
+	// Content is set for an ingredient not declared as a container image:
+	// its declared kind and what its content was detected as (ADR-0017).
+	Content *Content `json:"content,omitempty"`
 }

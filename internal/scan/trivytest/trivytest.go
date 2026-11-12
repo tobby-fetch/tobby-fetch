@@ -16,15 +16,19 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"testing"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/static"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 )
 
@@ -244,4 +248,59 @@ func FileDigest(t testing.TB, path string) string {
 		t.Fatal(err)
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
+}
+
+// DockerArchive is `docker save` output for img: the shape an image takes
+// when it is smuggled as a file (ADR-0017).
+func DockerArchive(t testing.TB, img v1.Image) []byte {
+	t.Helper()
+	ref, err := name.ParseReference("example.invalid/smuggled:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := tarball.Write(ref, img, &buf); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// OCILayoutTar is an OCI image layout holding img, packed as a tar.
+func OCILayoutTar(t testing.TB, img v1.Image) []byte {
+	t.Helper()
+	dir := t.TempDir()
+	p, err := layout.Write(dir, empty.Index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.AppendImage(img); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	err = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		raw, err := os.ReadFile(p) //nolint:gosec // G304: the test's own temporary directory
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dir, p)
+		if err != nil {
+			return err
+		}
+		if err := tw.WriteHeader(&tar.Header{Name: filepath.ToSlash(rel), Mode: 0o644, Size: int64(len(raw)), Typeflag: tar.TypeReg}); err != nil {
+			return err
+		}
+		_, err = tw.Write(raw)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }

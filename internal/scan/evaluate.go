@@ -243,6 +243,32 @@ func NotScanned(p *Policy, subj Subject, cause *taxonomy.Error) *Report {
 	return &Report{Policy: ev}
 }
 
+// OutOfScope is the report of an ingredient declared as something other
+// than a container image whose content holds none (ADR-0017): nothing for
+// the scanner to read, never a refusal, and said — never a silent skip.
+func OutOfScope(p *Policy, subj Subject, c *Content) *Report {
+	ev := Evaluation{Verdict: VerdictOutOfScope, Policy: *p}
+	ev.Reasons = append(ev.Reasons, Reason{Code: taxonomy.CodeScanOutOfScope, Params: map[string]string{
+		"reference": subj.Reference,
+		"declared":  c.Declared,
+	}})
+	return &Report{Policy: ev, Content: c}
+}
+
+// Detected marks a report as the scan of an ingredient that was declared
+// as something other than a container image and detected as one by its
+// content (ADR-0017): the content is recorded, and the first reason says
+// so on every surface the report reaches.
+func (r *Report) Detected(subj Subject, c *Content) {
+	r.Content = c
+	note := Reason{Code: taxonomy.CodeScanDetectedImage, Params: map[string]string{
+		"reference": subj.Reference,
+		"declared":  c.Declared,
+		"evidence":  strings.Join(c.Evidences(), ", "),
+	}}
+	r.Policy.Reasons = append([]Reason{note}, r.Policy.Reasons...)
+}
+
 // notes are the non-blocking reasons every verdict carries: an ignored
 // recipe annotation, expired exceptions, unscored findings.
 func notes(p *Policy, subj Subject, ev *Evaluation) []Reason {

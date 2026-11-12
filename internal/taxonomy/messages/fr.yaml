@@ -343,6 +343,18 @@
 "TBY-SCN-022.cause": "Les sources d'avis ne donnent à ces vulnérabilités ni score CVSS ni sévérité : la politique ne peut pas les comparer à son seuil."
 "TBY-SCN-022.action": "Examinez-les à la main. Elles ne comptent pas face au seuil ; si l'une doit être refusée, faites corriger le contenu en amont."
 
+"TBY-SCN-023.what": "{{.reference}}, déclaré {{.declared}}, a été analysé comme une image de conteneur, détecté comme image d'après son contenu ({{.evidence}})."
+"TBY-SCN-023.cause": "Ce qui est analysé est décidé par le contenu, jamais par le type déclaré : cet ingrédient est, ou contient, une image qu'un runtime pourrait exécuter ; la politique de vulnérabilités s'y applique comme à toute image."
+"TBY-SCN-023.action": "Rien à faire si ce contenu est attendu. Sinon, demandez à l'auteur de la recipe pourquoi une image est publiée sous ce type ; le verdict associé à cette note s'applique normalement."
+
+"TBY-SCN-024.what": "{{.reference}}, déclaré {{.declared}}, ne contient aucune image de conteneur : il n'est pas analysé."
+"TBY-SCN-024.cause": "Son manifeste n'a ni configuration d'image ni couche de système de fichiers, et aucun de ses fichiers n'est une archive d'image : l'analyseur n'a rien à y lire."
+"TBY-SCN-024.action": "Rien à faire. Un contenu qui n'est pas une image (un modèle, une base de données, un document) est hors du périmètre de l'analyse de vulnérabilités ; examinez-le par les moyens propres à son format."
+
+"TBY-SCN-025.what": "{{.reference}}, livré par la recipe signée {{.recipe}}, est évalué sous une politique consultative."
+"TBY-SCN-025.cause": "C'est une livraison de l'analyseur lui-même. La refuser au nom de la politique qu'elle arme laisserait la zone sans moyen d'armer un analyseur, ni de mettre à jour sa base."
+"TBY-SCN-025.action": "Rien à faire. Ses vulnérabilités restent rapportées ; la confiance dans ce contenu repose sur la signature de la recipe tobby-system."
+
 "TBY-INT-001.what": "Le blob {{.path}} ne correspond pas à son digest."
 "TBY-INT-001.cause": "Son contenu donne {{.actual}} au lieu de {{.expected}} : le fichier a été endommagé ou modifié sur le disque."
 "TBY-INT-001.action": "La vérification ne modifie rien. Re-synchronisez les recipes qui atteignent ce blob pour le récupérer à nouveau, ou restaurez le store depuis une copie saine ; vérifiez le disque."

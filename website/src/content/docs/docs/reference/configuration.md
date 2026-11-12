@@ -161,8 +161,9 @@ bypass. The full model is on
 
 ### Vulnerability scanning
 
-Every container image is scanned at retrieval, in passthrough as in
-mirror mode (FR-031, ADR-0008). There is deliberately no `enabled` switch:
+Every image is scanned at retrieval — a declared container image, and any
+ingredient whose content is one, whatever its declared kind (ADR-0017) —
+in passthrough as in mirror mode (FR-031, ADR-0008). There is deliberately no `enabled` switch:
 the scan always runs and its results are always visible — the default
 **advisory** mode reports violations on every surface and lets the content
 through, with a permanent banner saying so. The Retriever's

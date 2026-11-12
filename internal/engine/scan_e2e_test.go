@@ -62,6 +62,8 @@ func TestScanDatabaseCrossesTheAirGap(t *testing.T) {
 	src := newRegistry(t)
 	dbDig := pushImage(t, src, trivy.DefaultDBRef, trivy.DBTag, trivytest.DBArtifact(t, dbLayer))
 	vulnDig := pushImage(t, src, "docker.io/example/vulnerable", "1.0", trivytest.VulnerableImage(t))
+	// The same image, declared as a model (ADR-0017, B-054).
+	disguisedDig := pushImage(t, src, "docker.io/example/llm", "1.0", trivytest.VulnerableImage(t))
 	publishSigned := func(name string, ings []spec.Ingredient) {
 		raw := cookedRecipeYAML(t, name, "1.0.0", ings)
 		d := publishRecipe(t, src.st, "docker.io/cookbook/"+name, "1.0.0", raw)
@@ -74,7 +76,10 @@ func TestScanDatabaseCrossesTheAirGap(t *testing.T) {
 	publishSigned("vulnerable", []spec.Ingredient{{
 		Name: "app", Kind: spec.IngredientContainerImage, Ref: "docker.io/example/vulnerable", Version: "1.0", Digest: vulnDig,
 	}})
-	entries := []spec.RecipeSelector{{Name: "tobby-system", Version: "1.0.0"}, {Name: "vulnerable", Version: "1.0.0"}}
+	publishSigned("disguised", []spec.Ingredient{{
+		Name: "model", Kind: spec.IngredientOCIArtifact, Ref: "docker.io/example/llm", Version: "1.0", Digest: disguisedDig,
+	}})
+	entries := []spec.RecipeSelector{{Name: "tobby-system", Version: "1.0.0"}, {Name: "vulnerable", Version: "1.0.0"}, {Name: "disguised", Version: "1.0.0"}}
 	subs := map[string]string{"docker.io": src.addr, "ghcr.io": src.addr}
 
 	// 2. The medium, written by a mirror instance with an advisory policy.
@@ -124,7 +129,7 @@ func TestScanDatabaseCrossesTheAirGap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("importing the medium: %v", err)
 	}
-	for _, id := range []string{"tobby-system@1.0.0", "vulnerable@1.0.0"} {
+	for _, id := range []string{"tobby-system@1.0.0", "vulnerable@1.0.0", "disguised@1.0.0"} {
 		if it := itemByName(t, imp, "media/"+id); it.Status != tasks.StatusDone {
 			t.Fatalf("%s = %s %+v", id, it.Status, it.Error)
 		}
@@ -133,7 +138,7 @@ func TestScanDatabaseCrossesTheAirGap(t *testing.T) {
 	// 4. A passthrough instance inside the isolated zone. Its only
 	// upstream is the zone registry; nothing else is reachable.
 	zoneSubs := map[string]string{"docker.io": zoneRegistry.addr, "ghcr.io": zoneRegistry.addr}
-	zoneEntries := []spec.RecipeSelector{{Name: "tobby-system", Version: "1.0.0"}, {Name: "vulnerable", Version: "1.0.0"}}
+	zoneEntries := entries
 	for _, mode := range []scan.Mode{scan.ModeBlock, scan.ModeWarn} {
 		t.Run(string(mode), func(t *testing.T) {
 			zoneStore := openStore(t)
@@ -161,6 +166,19 @@ func TestScanDatabaseCrossesTheAirGap(t *testing.T) {
 				it := itemByName(t, task, "vulnerable@1.0.0/app")
 				if it.Scan == nil || it.Scan.Policy.Verdict != scan.VerdictNotScanned {
 					t.Errorf("scan = %+v", it.Scan)
+				}
+				// The image declared as a model is detected without a
+				// scanner, and under block it does not cross either.
+				m := itemByName(t, task, "disguised@1.0.0/model")
+				if m.Scan == nil || m.Scan.Policy.Verdict != scan.VerdictNotScanned || !slices.Contains(reasonCodes(m.Scan), taxonomy.CodeScanDetectedImage) {
+					t.Errorf("disguised scan = %+v", m.Scan)
+				}
+				if p := itemByName(t, task, "push/disguised@1.0.0/recipe"); (mode == scan.ModeBlock) != (p.Status == tasks.StatusFailed) {
+					t.Errorf("mode %s: the disguised recipe = %s", mode, p.Status)
+				}
+				// The database, an artifact, is out of scope and crosses.
+				if db := itemByName(t, task, "tobby-system@1.0.0/trivy-db"); db.Scan == nil || db.Scan.Policy.Verdict != scan.VerdictOutOfScope {
+					t.Errorf("the database's report = %+v", db.Scan)
 				}
 				return
 			}
@@ -196,6 +214,20 @@ func TestScanDatabaseCrossesTheAirGap(t *testing.T) {
 				if it.Scan.Policy.Verdict != scan.VerdictWarn {
 					t.Errorf("verdict = %s", it.Scan.Policy.Verdict)
 				}
+			}
+			// The image declared as a model: scanned for real, the same
+			// finding, the same verdict as the declared image.
+			m := itemByName(t, task, "disguised@1.0.0/model")
+			if m.Scan == nil || !slices.Contains(m.Scan.Policy.Violations, trivytest.KnownCVE) || !slices.Contains(reasonCodes(m.Scan), taxonomy.CodeScanDetectedImage) {
+				t.Fatalf("disguised scan = %+v", m.Scan)
+			}
+			dp := itemByName(t, task, "push/disguised@1.0.0/recipe")
+			_, _, _, disguisedErr := downstream.st.RawManifest(context.Background(), "docker.io/example/llm", "1.0")
+			if mode == scan.ModeBlock && (dp.Status != tasks.StatusFailed || dp.Error.Code != taxonomy.CodeScanPolicyBlocked || disguisedErr == nil) {
+				t.Errorf("under block the disguised recipe = %s %+v (pushed: %v)", dp.Status, dp.Error, disguisedErr == nil)
+			}
+			if mode == scan.ModeWarn && dp.Status != tasks.StatusDone {
+				t.Errorf("advisory: the disguised recipe = %s", dp.Status)
 			}
 			if s := itemByName(t, task, "push/tobby-system@1.0.0/recipe").Status; s != tasks.StatusDone {
 				t.Errorf("the database did not cross further down: %s", s)

@@ -618,6 +618,8 @@ func (v *viewer) scanRow(it *ScanItem) []cell {
 		vt = toneWarn
 	case string(scan.VerdictBlock), string(scan.VerdictNotScanned):
 		vt = toneBad
+	case string(scan.VerdictOutOfScope):
+		vt = toneMute
 	}
 	verdict := t.t("scan.verdict_" + it.Verdict)
 	mode := "—"

@@ -149,21 +149,23 @@ func (e *Engine) policyFor(r *spec.Recipe, zone zonePolicy, logger *slog.Logger)
 	})
 }
 
-// scanned reports whether an ingredient kind is scanned at retrieval.
-// Container images are; the other kinds carry no operating-system or
-// language package database Trivy reads as such (ADR-0008 decision 1:
-// "where applicable"), and the tobby-system deliveries — the database
-// itself, the scanner binary — are among them.
-func scanned(kind spec.IngredientKind) bool { return kind == spec.IngredientContainerImage }
-
-// scanRecipe scans the container images of one synchronized recipe, at
-// retrieval, in passthrough as in mirror mode (FR-031). Each report lands
-// on the ingredient's fetch item — never nil for a scanned kind: an item
-// that could not be scanned says so, with the reason. It returns the
-// refusals by ingredient name: what violates a blocking policy, what
-// could not be scanned under one, what was scanned with a database beyond
-// scan.maxDbAge under the block action.
-func (e *Engine) scanRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, f *FetchedRecipe, rid string, zone zonePolicy) map[string]*taxonomy.Error {
+// scanRecipe scans the images of one synchronized recipe, at retrieval, in
+// passthrough as in mirror mode (FR-031). What is scanned is decided by
+// the content, never by the declared kind (ADR-0017): a declared container
+// image is scanned as it always was; any other ingredient is inspected
+// first, scanned when its content is or carries an image, and reported out
+// of scope otherwise. Each report lands on the ingredient's fetch item —
+// never nil: an item that could not be scanned or inspected says so, with
+// the reason. It returns the refusals by ingredient name: what violates a
+// blocking policy, what could not be scanned or judged under one, what
+// was scanned with a database beyond scan.maxDbAge under the block action.
+//
+// system is true for the signed tobby-system recipe, admitted without a
+// relaxed trust scope: the images its non-image ingredients carry — the
+// scanner binary's FileSet is one — are scanned and reported under an
+// advisory policy, because refusing the deliveries that arm the scanner
+// would leave the zone unable to arm one (TBY-SCN-025).
+func (e *Engine) scanRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, f *FetchedRecipe, rid string, zone zonePolicy, system bool) map[string]*taxonomy.Error {
 	if e.scan.Scanner == nil {
 		return nil
 	}
@@ -171,9 +173,6 @@ func (e *Engine) scanRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	refusals := map[string]*taxonomy.Error{}
 	for i := range f.Recipe.Spec.Ingredients {
 		ing := &f.Recipe.Spec.Ingredients[i]
-		if !scanned(ing.Kind) {
-			continue
-		}
 		itemName := rid + "/" + ing.Name
 		failed := false
 		sink.update(func(t *tasks.Task) bool {
@@ -191,21 +190,18 @@ func (e *Engine) scanRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 		}
 		ref := ing.Ref + "@" + ing.Digest
 		subj := scan.Subject{Reference: ref, Recipe: rid}
-		var rep *scan.Report
-		res, err := e.scan.Scanner.Scan(ctx, scan.Target{Digest: ing.Digest, Repository: repo, Kind: string(ing.Kind)})
-		if err != nil {
-			var te *taxonomy.Error
-			if !errors.As(err, &te) {
-				te = taxonomy.New(taxonomy.CodeScanFailed, taxonomy.Params{"reference": ref, "detail": err.Error()}).WithCause(err)
-			}
-			rep = scan.NotScanned(&policy, subj, te)
-		} else {
-			rep = scan.Evaluate(&policy, subj, res, e.scan.Freshness, e.scan.Now())
-		}
+		rep := e.scanIngredient(ctx, ing, repo, subj, &policy, system)
 		sink.update(func(t *tasks.Task) bool {
 			itemFor(t, itemName).Scan = rep
 			return true
 		})
+		if rep.Policy.Verdict == scan.VerdictOutOfScope {
+			logger.LogAttrs(ctx, slog.LevelInfo, "ingredient not scanned: its content holds no container image",
+				slog.String("ingredient", ing.Name), slog.String("digest", ing.Digest),
+				slog.String("declared", string(ing.Kind)),
+				slog.String("code", string(taxonomy.CodeScanOutOfScope)), slog.String("requirement", "FR-031/ADR-0017"))
+			continue
+		}
 		if e.scan.Observe != nil {
 			e.scan.Observe(rep)
 		}
@@ -224,6 +220,56 @@ func (e *Engine) scanRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	return refusals
 }
 
+// scanIngredient produces one ingredient's report. A declared container
+// image is scanned as it is; anything else is judged by its content first
+// (ADR-0017), and a content that cannot be judged is not scanned — refused
+// under a blocking policy like any item that could not be scanned.
+func (e *Engine) scanIngredient(ctx context.Context, ing *spec.Ingredient, repo string, subj scan.Subject, policy *scan.Policy, system bool) *scan.Report {
+	target := scan.Target{Digest: ing.Digest, Repository: repo, Kind: string(ing.Kind)}
+	notScanned := func(p *scan.Policy, err error) *scan.Report {
+		var te *taxonomy.Error
+		if !errors.As(err, &te) {
+			te = taxonomy.New(taxonomy.CodeScanFailed, taxonomy.Params{"reference": subj.Reference, "detail": err.Error()}).WithCause(err)
+		}
+		return scan.NotScanned(p, subj, te)
+	}
+	if ing.Kind == spec.IngredientContainerImage {
+		res, err := e.scan.Scanner.Scan(ctx, target)
+		if err != nil {
+			return notScanned(policy, err)
+		}
+		return scan.Evaluate(policy, subj, res, e.scan.Freshness, e.scan.Now())
+	}
+	content, err := e.scan.Scanner.Inspect(ctx, target)
+	if err != nil {
+		rep := notScanned(policy, err)
+		rep.Content = &scan.Content{Declared: string(ing.Kind)}
+		return rep
+	}
+	if !content.IsImage() {
+		return scan.OutOfScope(policy, subj, content)
+	}
+	p, fresh := *policy, e.scan.Freshness
+	if system {
+		p.Mode = scan.ModeWarn
+		fresh.Block = false
+	}
+	target.Content = content
+	var rep *scan.Report
+	if res, err := e.scan.Scanner.Scan(ctx, target); err != nil {
+		rep = notScanned(&p, err)
+	} else {
+		rep = scan.Evaluate(&p, subj, res, fresh, e.scan.Now())
+	}
+	rep.Detected(subj, content)
+	if system {
+		rep.Policy.Reasons = append(rep.Policy.Reasons, scan.Reason{Code: taxonomy.CodeScanSystemAdvisory, Params: map[string]string{
+			"reference": subj.Reference, "recipe": scan.SystemRecipe,
+		}})
+	}
+	return rep
+}
+
 // logScanReport writes the per-item record: the verdict, the counts, the
 // database age — on every report, as R-13 requires — and the reasons.
 func logScanReport(ctx context.Context, logger *slog.Logger, ing *spec.Ingredient, rep *scan.Report) {
@@ -237,6 +283,10 @@ func logScanReport(ctx context.Context, logger *slog.Logger, ing *spec.Ingredien
 		slog.Int("critical", rep.Counts.Critical), slog.Int("high", rep.Counts.High),
 		slog.Int("medium", rep.Counts.Medium), slog.Int("low", rep.Counts.Low), slog.Int("unknown", rep.Counts.Unknown),
 		slog.String("requirement", "FR-031"),
+	}
+	if rep.Content != nil {
+		attrs = append(attrs, slog.String("declared", rep.Content.Declared),
+			slog.String("detected", strings.Join(rep.Content.Evidences(), ",")))
 	}
 	if rep.Database != nil {
 		attrs = append(attrs,

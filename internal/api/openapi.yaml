@@ -2373,6 +2373,29 @@ components:
             $ref: "#/components/schemas/ScanFinding"
         evaluation:
           $ref: "#/components/schemas/ScanEvaluation"
+        content:
+          type: object
+          description: >-
+            Set for an ingredient NOT declared as a container image
+            (ADR-0017): its declared kind and the images its content was
+            detected as holding. Empty images with an out-of-scope verdict:
+            the content holds none.
+          properties:
+            declared:
+              type: string
+              enum: [OCIArtifact, FileSet, HelmChart]
+            images:
+              type: array
+              items:
+                type: object
+                properties:
+                  digest: { type: string }
+                  path:
+                    type: string
+                    description: The file, inside the layer digest names, that is an image archive.
+                  evidence:
+                    type: string
+                    enum: [image-config, filesystem-layers, docker-archive, oci-layout]
     ScanFinding:
       type: object
       properties:
@@ -2406,7 +2429,11 @@ components:
       properties:
         verdict:
           type: string
-          enum: [pass, warn, block, not-scanned]
+          enum: [pass, warn, block, not-scanned, out-of-scope]
+          description: >-
+            out-of-scope is an ingredient declared as something other than
+            a container image whose content holds none (ADR-0017): never a
+            refusal.
         policy:
           type: object
           properties:

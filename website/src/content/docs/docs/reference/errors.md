@@ -563,6 +563,27 @@ Reserved at the opening of milestone 6 (FR-031, FR-032): the policy is advisory 
 - **Corrective action:** Review them by hand. They are not counted against the threshold; if one must be refused, have the content fixed upstream.
 - **Fixable offline:** yes · **Blocks:** nothing
 
+### TBY-SCN-023
+
+- **What happened:** `<reference>`, declared `<declared>`, was scanned as a container image, detected as one from its content (`<evidence>`).
+- **Probable cause:** What is scanned is decided by the content, never by the declared kind: this ingredient is, or carries, an image that a runtime could run, so the vulnerability policy applies to it as to any image.
+- **Corrective action:** Nothing to do if the content is expected. If it is not, ask the recipe author why an image is published under this kind; the verdict beside this note applies as usual.
+- **Fixable offline:** yes · **Blocks:** nothing by itself; the verdict beside it decides
+
+### TBY-SCN-024
+
+- **What happened:** `<reference>`, declared `<declared>`, holds no container image: it is not scanned.
+- **Probable cause:** Its manifest has no image configuration and no filesystem layer, and none of its files is an image archive: the scanner has nothing to read in it.
+- **Corrective action:** Nothing to do. Content that is not an image (a model, a database, a document) is outside vulnerability scanning; review it by the means its own format calls for.
+- **Fixable offline:** yes · **Blocks:** nothing
+
+### TBY-SCN-025
+
+- **What happened:** `<reference>`, delivered by the signed `<recipe>` recipe, is evaluated under an advisory policy.
+- **Probable cause:** It is the scanner's own delivery. Refusing it with the policy it arms would leave the zone unable to arm a scanner, or to update its database.
+- **Corrective action:** Nothing to do. Its findings stay reported; the trust in this content rests on the tobby-system recipe's signature.
+- **Fixable offline:** yes · **Blocks:** nothing
+
 ## Destination limits (TBY-DST)
 
 ### TBY-DST-001
