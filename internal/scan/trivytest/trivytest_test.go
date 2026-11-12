@@ -117,3 +117,45 @@ func TestRequireSkipsWithoutEnvironment(t *testing.T) {
 		t.Errorf("env = %+v", e)
 	}
 }
+
+// TestSmuggledImageShapes: the two file shapes an image takes when it is
+// smuggled through a FileSet (ADR-0017) carry what the detector reads —
+// a docker-save manifest.json, an OCI layout's oci-layout and index.json —
+// with forward-slash names on every host.
+func TestSmuggledImageShapes(t *testing.T) {
+	img := VulnerableImage(t)
+	names := func(archive []byte) map[string]bool {
+		t.Helper()
+		tr := tar.NewReader(bytes.NewReader(archive))
+		out := map[string]bool{}
+		for {
+			hdr, err := tr.Next()
+			if errors.Is(err, io.EOF) {
+				return out
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(hdr.Name, `\`) {
+				t.Errorf("tar entry %q uses a backslash", hdr.Name)
+			}
+			out[hdr.Name] = true
+		}
+	}
+	if got := names(DockerArchive(t, img)); !got["manifest.json"] {
+		t.Errorf("docker archive misses manifest.json: %v", got)
+	}
+	got := names(OCILayoutTar(t, img))
+	if !got["oci-layout"] || !got["index.json"] {
+		t.Errorf("OCI layout tar misses oci-layout or index.json: %v", got)
+	}
+	blobs := 0
+	for n := range got {
+		if strings.HasPrefix(n, "blobs/sha256/") {
+			blobs++
+		}
+	}
+	if blobs < 3 { // manifest, config, one layer
+		t.Errorf("OCI layout tar holds %d blobs, want at least 3", blobs)
+	}
+}

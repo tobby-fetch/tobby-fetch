@@ -81,9 +81,10 @@ func TestAFrozenBodyIsAbandonedAndRetried(t *testing.T) {
 	if got := requests.Load(); got != attempts {
 		t.Errorf("origin saw %d blob requests, want %d (the stall error must stay retryable)", got, attempts)
 	}
-	// Bounded: three stall windows plus the backoffs, with slack for a
-	// loaded CI host — nowhere near a hang, and no real two-minute wait.
-	if elapsed > 15*time.Second {
+	// Bounded: three stall windows plus the backoffs (~2 s), with slack
+	// for a loaded CI host — the macOS race runner once took 20 s — and
+	// still nowhere near a hang or a single real two-minute window.
+	if elapsed > 45*time.Second {
 		t.Errorf("Open took %s; the watchdog did not bound the frozen body", elapsed)
 	}
 }
