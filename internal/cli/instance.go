@@ -63,6 +63,9 @@ type instanceFlags struct {
 	url       string
 	tokenFile string
 	timeout   string
+	// plaintext is --allow-plaintext-token: the explicit opt-in to send
+	// the API token over http:// to an instance that is not on this host.
+	plaintext bool
 }
 
 func (f *instanceFlags) register(cmd *cobra.Command) {
@@ -73,6 +76,8 @@ func (f *instanceFlags) register(cmd *cobra.Command) {
 		"file holding the static API token; "+EnvAPIToken+" is read when it is absent (the token is never a flag — flag values are visible in the process table)")
 	fs.StringVar(&f.timeout, "request-timeout", "",
 		`per-request timeout against the instance, e.g. "30s" (default 30s)`)
+	fs.BoolVar(&f.plaintext, "allow-plaintext-token", false,
+		"send the API token to an http:// instance that is not on this host (refused by default: the token would cross the network in clear; FR-075)")
 }
 
 // defaultRequestTimeout bounds one call to the instance. It bounds a
@@ -100,6 +105,9 @@ func newInstanceClient(cmd *cobra.Command, cfg *config.Config, f *instanceFlags)
 	}
 	token, err := f.token()
 	if err != nil {
+		return nil, err
+	}
+	if err := f.checkTransport(cmd, base, token); err != nil {
 		return nil, err
 	}
 	timeout := defaultRequestTimeout
@@ -161,6 +169,53 @@ func (f *instanceFlags) baseURL(cmd *cobra.Command, cfg *config.Config) (string,
 		}
 	}
 	return strings.TrimRight(u.String(), "/"), nil
+}
+
+// checkTransport refuses to send a token in clear across the network
+// (FR-075: no path relaxes security implicitly). A bearer token over
+// http:// is readable by anyone on the path, so it goes only to an
+// instance on this host — loopback — or over https://, unless the
+// operator opts in with --allow-plaintext-token, which is then stated on
+// stderr every time. Without a token (an instance under the
+// authentication override) there is nothing to protect.
+func (f *instanceFlags) checkTransport(cmd *cobra.Command, base, token string) error {
+	u, err := url.Parse(base)
+	if err != nil {
+		return err
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+	default:
+		return &usageError{
+			err:  fmt.Errorf("--instance %q: the scheme must be https:// (or http:// for an instance on this host)", base),
+			hint: "see '" + cmd.CommandPath() + " --help'",
+		}
+	}
+	if token == "" || loopbackHost(u.Hostname()) {
+		return nil
+	}
+	if !f.plaintext {
+		return &usageError{
+			err: fmt.Errorf("--instance %s is plain http:// on another host: the API token would cross the network in clear — "+
+				"serve the instance over TLS and use https://, or pass --allow-plaintext-token to accept the exposure", base),
+			hint: "see '" + cmd.CommandPath() + " --help'",
+		}
+	}
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+		"warning: --allow-plaintext-token: the API token is sent in clear to %s (FR-075)\n", base)
+	return nil
+}
+
+// loopbackHost reports whether host names this machine: "localhost" or a
+// loopback address. Any other name may resolve anywhere.
+func loopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // localInstanceURL builds the loopback URL of the instance this host

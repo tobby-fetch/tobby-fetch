@@ -71,22 +71,25 @@ func mapEngineError(err error, subject string) *taxonomy.Error {
 		}).WithCause(err)
 	}
 
-	// FR-033: signature verdicts.
+	// FR-033: signature verdicts. The trust scope that decided the verdict
+	// is named when one matched (scopeOf): a key valid for another scope
+	// is refused here, and the operator reads WHICH scope refused it.
+	scope := scopeOf(err)
 	var noKey *sigverify.NoTrustedKeyError
 	if errors.As(err, &noKey) {
 		return taxonomy.New(taxonomy.CodeSignature, taxonomy.Params{
-			"recipe": subject, "fingerprints": strings.Join(noKey.Tried, ", "),
+			"recipe": subject, "fingerprints": strings.Join(noKey.Tried, ", "), "scope": scope,
 		}).WithCause(err)
 	}
 	var badSig *sigverify.BadSignatureError
 	if errors.As(err, &badSig) {
 		return taxonomy.New(taxonomy.CodeSignature, taxonomy.Params{
-			"recipe": subject, "fingerprints": badSig.Reason,
+			"recipe": subject, "fingerprints": badSig.Reason, "scope": scope,
 		}).WithCause(err)
 	}
 	if errors.Is(err, sigverify.ErrNoSignature) {
 		return taxonomy.New(taxonomy.CodeSignature, taxonomy.Params{
-			"recipe": subject, "fingerprints": "no signature artifact found",
+			"recipe": subject, "fingerprints": "no signature artifact found", "scope": scope,
 		}).WithCause(err)
 	}
 
@@ -125,4 +128,37 @@ func mapEngineError(err error, subject string) *taxonomy.Error {
 	}
 
 	return taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err)
+}
+
+// scopedError carries the declared trust scope that decided a signature
+// verdict (FR-033, RECIPE-SPEC §12.3) through the error chain to the one
+// place that builds the taxonomy entry. The verdict itself stays the
+// sigverify error underneath — errors.Is and errors.As see through it —
+// and only the mapping reads the scope, so no call site between the
+// verification and the report has to know it exists.
+type scopedError struct {
+	scope string
+	err   error
+}
+
+func (e *scopedError) Error() string { return e.err.Error() }
+func (e *scopedError) Unwrap() error { return e.err }
+
+// withScope names the scope that decided err. An empty scope is the
+// strict default, which has no name to give, and a nil error stays nil.
+func withScope(scope string, err error) error {
+	if err == nil || scope == "" {
+		return err
+	}
+	return &scopedError{scope: scope, err: err}
+}
+
+// scopeOf returns the scope an error was decided under, or "" for the
+// strict default.
+func scopeOf(err error) string {
+	var se *scopedError
+	if errors.As(err, &se) {
+		return se.scope
+	}
+	return ""
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/opencontainers/go-digest"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/blobfetch"
@@ -122,10 +123,38 @@ func copyImage(ctx context.Context, dst Store, repo, tag string, img v1.Image, b
 	if err != nil {
 		return transferred, err
 	}
-	if _, err := dst.PutManifest(ctx, repo, string(man.MediaType), raw, tag); err != nil {
+	mediaType, err := manifestMediaType(img, man)
+	if err != nil {
+		return transferred, err
+	}
+	if _, err := dst.PutManifest(ctx, repo, string(mediaType), raw, tag); err != nil {
 		return transferred, err
 	}
 	return transferred, nil
+}
+
+// manifestMediaType is the media type an image manifest is stored under.
+//
+// The top-level "mediaType" field of an OCI image manifest is optional,
+// and `helm push` omits it on every chart it publishes: the type then
+// travels in the Content-Type the registry answered with, which is what
+// the image's descriptor carries. Reading the field alone stored nothing
+// under an empty type and failed every Helm-published chart (B-056).
+func manifestMediaType(img v1.Image, man *v1.Manifest) (types.MediaType, error) {
+	if man.MediaType != "" {
+		return man.MediaType, nil
+	}
+	mt, err := img.MediaType()
+	if err != nil {
+		return "", err
+	}
+	if mt == "" {
+		// Neither the payload nor the transport named a type: an image
+		// manifest without the field is, by the OCI specification, an
+		// OCI image manifest.
+		mt = types.OCIManifestSchema1
+	}
+	return mt, nil
 }
 
 // copyIndexChildren copies every child of an index — nested indexes

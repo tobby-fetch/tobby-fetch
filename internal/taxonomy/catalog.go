@@ -9,8 +9,9 @@ import "net/http"
 // CFG (configuration), VAL (recipe/retriever validation, FR-011), REG
 // (source registry access), POL (policy refusals, FR-030), SIG (signature
 // and digest verification, FR-033), DST (destination limits, FR-035), STO
-// (local store), MED (removable-media transport, FR-054), TSK (tasks),
-// SRV (instance itself).
+// (local store), MED (removable-media transport, FR-054), SCN
+// (vulnerability scanning, FR-031/FR-032), INT (on-demand store integrity,
+// FR-057), TSK (tasks), SRV (instance itself).
 //
 // Codes marked "reserved" have no emitter yet: the class is fixed at
 // milestone 2 (roadmap directive) so later milestones plug engines into an
@@ -64,6 +65,42 @@ const (
 	// like CodeAuthFailed: the message must reveal nothing about
 	// accounts or thresholds (NFR-015).
 	CodeAuthRateLimited Code = "TBY-AUTH-012"
+
+	// CodeTokenExpired is a static token presented after its expiry (FR-072
+	// amendment, R-14). Distinct from CodeAuthFailed — the corrective action
+	// is a new token, not a corrected one — and parameter-free like it: the
+	// message names no token (NFR-015).
+	CodeTokenExpired Code = "TBY-AUTH-013" //nolint:gosec // G101: a stable error code, not a credential
+	// CodeOIDCFailed is a federated OIDC sign-in whose callback did not
+	// validate — state, nonce, PKCE verifier, signature, issuer or audience
+	// (FR-070). The precise check goes to the logs only.
+	CodeOIDCFailed Code = "TBY-AUTH-014"
+	// CodeSAMLFailed is a SAML response refused by the service provider —
+	// unsigned, replayed, IdP-initiated, outside its validity window, or
+	// naming another audience, destination or issuer (FR-071). The precise
+	// check goes to the logs only.
+	CodeSAMLFailed Code = "TBY-AUTH-015"
+	// CodeIDPUnreachable is a federated sign-in that could not reach its
+	// identity provider (FR-078, R-20): discovery, key set, token endpoint
+	// or metadata URL. Never a total blockage — the local methods stay
+	// available and the sign-in page says so.
+	CodeIDPUnreachable Code = "TBY-AUTH-016"
+	// CodeFederatedNoRole is a federated identity that authenticated but
+	// matches no group of the role mapping (FR-074): refused, never
+	// defaulted to viewer.
+	CodeFederatedNoRole Code = "TBY-AUTH-017"
+	// CodeFederatedThrottled refuses a federated sign-in started too often
+	// from one network origin (B-049): every start holds server memory for
+	// the round trip and may contact the identity provider, and it is
+	// unauthenticated, so its rate is bounded per origin like failed
+	// authentications (TBY-AUTH-012). Operational, parameter-free but for
+	// the provider name.
+	CodeFederatedThrottled Code = "TBY-AUTH-018"
+	// CodeLocalNameReserved refuses a local account or token name holding
+	// ":", the separator of federated identity keys ("oidc:<sub>",
+	// "saml:<NameID>"): two principals never share a name in the audit
+	// trail (FR-094).
+	CodeLocalNameReserved Code = "TBY-AUTH-019"
 
 	// CodeConfigInvalid is a rejected configuration (FR-003 validation).
 	CodeConfigInvalid Code = "TBY-CFG-001"
@@ -323,6 +360,91 @@ const (
 	// was not explicitly allowed to be replaced.
 	CodeLayoutTarget Code = "TBY-LAY-003"
 
+	// Vulnerability scanning (FR-031, FR-032, ADR-0008 — milestone 6).
+	// Item-level verdicts and degraded modes; the 02x codes are
+	// non-blocking notes, on the MED-02x pattern.
+	//
+	// CodeScannerUnavailable is the degraded mode of FR-031: no usable
+	// scanner binary. Never silent — banner, log record, metric, and every
+	// item reported not scanned with this code.
+	CodeScannerUnavailable Code = "TBY-SCN-001"
+	// CodeScannerUnverified is a scanner binary whose digest does not match
+	// its pin: it is never executed (FR-031).
+	CodeScannerUnverified Code = "TBY-SCN-002"
+	// CodeScanDBMissing is the absent-database degraded mode of FR-032
+	// (R-13): explicit and visible, never silent.
+	CodeScanDBMissing Code = "TBY-SCN-003"
+	// CodeScanDBStale is a vulnerability database older than scan.maxDbAge
+	// (R-13): reported on every surface, and a refusal when
+	// scan.maxDbAgeAction is block.
+	CodeScanDBStale Code = "TBY-SCN-004"
+	// CodeScanPolicyBlocked is an item refused by a blocking scan policy
+	// (FR-031): findings at or above the threshold that no exception
+	// covers.
+	CodeScanPolicyBlocked Code = "TBY-SCN-005"
+	// CodeScanPolicyAdvisory reports the same violation under the advisory
+	// default: the item proceeds, the finding stays visible. Non-blocking.
+	CodeScanPolicyAdvisory Code = "TBY-SCN-006"
+	// CodeScanFailed is a scan the scanner started and could not finish —
+	// the item is reported not scanned.
+	CodeScanFailed Code = "TBY-SCN-007"
+	// CodeScanDBFuture is a vulnerability database whose recorded build
+	// time lies beyond this instance's clock, past the tolerated skew
+	// (R-13): its age cannot be stated, so it is treated as stale — on
+	// every surface, and a refusal when scan.maxDbAgeAction is block.
+	CodeScanDBFuture Code = "TBY-SCN-008"
+	// CodeScanRecipeThresholdIgnored reports a recipe annotation that would
+	// have RAISED the threshold: a recipe can only harden a zone's policy
+	// (RECIPE-SPEC §10.4). Non-blocking.
+	CodeScanRecipeThresholdIgnored Code = "TBY-SCN-020"
+	// CodeScanExceptionExpired reports an exception past its expiry: it no
+	// longer applies. Non-blocking by itself — the finding it covered is
+	// evaluated again.
+	CodeScanExceptionExpired Code = "TBY-SCN-021"
+	// CodeScanUnscored reports findings of UNKNOWN severity with no CVSS
+	// score: never compared with the threshold, never dropped (FR-031
+	// amendment). Non-blocking.
+	CodeScanUnscored Code = "TBY-SCN-022"
+	// CodeScanDetectedImage reports an ingredient declared as something
+	// other than a container image and scanned as one, because its content
+	// is one (ADR-0017): the declared kind never decides what is scanned.
+	// Non-blocking by itself — the verdict beside it decides.
+	CodeScanDetectedImage Code = "TBY-SCN-023"
+	// CodeScanOutOfScope reports an ingredient declared as something other
+	// than a container image whose content holds none (ADR-0017): it is not
+	// scanned, and says so. Non-blocking.
+	CodeScanOutOfScope Code = "TBY-SCN-024"
+	// CodeScanSystemAdvisory reports an image found in the signed
+	// tobby-system recipe — the scanner's own delivery — evaluated under an
+	// advisory policy whatever the mode: the deliveries that arm the
+	// scanner are never refused by it, or the zone could never arm one
+	// (ADR-0017). Non-blocking.
+	CodeScanSystemAdvisory Code = "TBY-SCN-025"
+
+	// On-demand store integrity verification (FR-057, R-31 — milestone
+	// 6). Read-only: every code reports, none repairs; signatures that no
+	// longer verify reuse CodeSignature, which names the scope.
+	//
+	// CodeIntegrityBlobDigest is a blob whose bytes do not hash to the digest
+	// it is stored under, found by an on-demand verification (FR-057, R-31).
+	CodeIntegrityBlobDigest Code = "TBY-INT-001"
+	// CodeIntegrityIncomplete is a manifest reachable from a recorded recipe
+	// that references content the store does not hold (FR-057).
+	CodeIntegrityIncomplete Code = "TBY-INT-002"
+	// CodeIntegrityOrphan reports content no recipe and no protected root
+	// reaches (FR-057, FR-045). Non-blocking: listed, never deleted by the
+	// verification.
+	CodeIntegrityOrphan Code = "TBY-INT-003"
+	// CodeIntegrityRunning is a second on-demand verification asked for while
+	// one is running: one at a time (FR-057).
+	CodeIntegrityRunning Code = "TBY-INT-004"
+	// CodeIntegrityUnreadable is a manifest or index in the store that cannot
+	// be parsed, so the walk cannot establish what it reaches (FR-057).
+	CodeIntegrityUnreadable Code = "TBY-INT-005"
+	// CodeIntegrityCancelled is a verification an operator cancelled before
+	// it reached a verdict (FR-057): it reports nothing about the store.
+	CodeIntegrityCancelled Code = "TBY-INT-006"
+
 	// CodeTaskNotFound is a task identifier unknown to this instance.
 	CodeTaskNotFound Code = "TBY-TSK-001"
 
@@ -350,6 +472,14 @@ var catalog = map[Code]Entry{
 	CodeAccountUnknown:  {Code: CodeAccountUnknown, Class: ClassOperational, HTTPStatus: http.StatusNotFound, Params: []string{"name"}},
 	CodeLastAdmin:       {Code: CodeLastAdmin, Class: ClassPolicy, HTTPStatus: http.StatusConflict, Params: []string{"name"}},
 	CodeAuthRateLimited: {Code: CodeAuthRateLimited, Class: ClassOperational, HTTPStatus: http.StatusTooManyRequests},
+
+	CodeTokenExpired:       {Code: CodeTokenExpired, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized},
+	CodeOIDCFailed:         {Code: CodeOIDCFailed, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized, Params: []string{"provider"}},
+	CodeSAMLFailed:         {Code: CodeSAMLFailed, Class: ClassOperational, HTTPStatus: http.StatusUnauthorized, Params: []string{"provider"}},
+	CodeIDPUnreachable:     {Code: CodeIDPUnreachable, Class: ClassOperational, HTTPStatus: http.StatusBadGateway, Params: []string{"provider"}},
+	CodeFederatedNoRole:    {Code: CodeFederatedNoRole, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"provider"}},
+	CodeLocalNameReserved:  {Code: CodeLocalNameReserved, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"name"}},
+	CodeFederatedThrottled: {Code: CodeFederatedThrottled, Class: ClassOperational, HTTPStatus: http.StatusTooManyRequests, Params: []string{"provider"}},
 
 	CodeConfigInvalid: {Code: CodeConfigInvalid, Class: ClassOperational, Params: []string{"detail"}},
 	// Never served over HTTP: the instance refuses to start, so there is
@@ -386,7 +516,7 @@ var catalog = map[Code]Entry{
 	// source does not publish.
 	CodePlatformMissing: {Code: CodePlatformMissing, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "platforms", "available"}},
 
-	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "fingerprints"}},
+	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "fingerprints", "scope"}},
 	CodeDigestMismatch: {Code: CodeDigestMismatch, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "expected", "actual"}},
 	CodeArtifactType:   {Code: CodeArtifactType, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "expected", "actual"}},
 
@@ -452,6 +582,30 @@ var catalog = map[Code]Entry{
 	CodeLayoutInvalid: {Code: CodeLayoutInvalid, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
 	CodeLayoutUnsafe:  {Code: CodeLayoutUnsafe, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "entry", "reason"}},
 	CodeLayoutTarget:  {Code: CodeLayoutTarget, Class: ClassOperational, HTTPStatus: http.StatusConflict, Params: []string{"path"}},
+
+	// Milestone 6 — scanning (6.1, R-13) and store integrity (R-31). The
+	// non-blocking notes carry no status: they are never a response body.
+	CodeScannerUnavailable:         {Code: CodeScannerUnavailable, Class: ClassOperational, Params: []string{"detail"}},
+	CodeScannerUnverified:          {Code: CodeScannerUnverified, Class: ClassVerification, Params: []string{"path", "expected", "actual"}},
+	CodeScanDBMissing:              {Code: CodeScanDBMissing, Class: ClassOperational, Params: []string{"repository"}},
+	CodeScanDBStale:                {Code: CodeScanDBStale, Class: ClassPolicy, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"age", "max"}},
+	CodeScanPolicyBlocked:          {Code: CodeScanPolicyBlocked, Class: ClassPolicy, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "violations", "threshold", "level"}},
+	CodeScanPolicyAdvisory:         {Code: CodeScanPolicyAdvisory, Class: ClassOperational, Params: []string{"reference", "violations", "threshold", "level"}},
+	CodeScanFailed:                 {Code: CodeScanFailed, Class: ClassOperational, Params: []string{"reference", "detail"}},
+	CodeScanDBFuture:               {Code: CodeScanDBFuture, Class: ClassPolicy, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"built_at", "now"}},
+	CodeScanRecipeThresholdIgnored: {Code: CodeScanRecipeThresholdIgnored, Class: ClassOperational, Params: []string{"recipe", "annotation", "threshold"}},
+	CodeScanExceptionExpired:       {Code: CodeScanExceptionExpired, Class: ClassOperational, Params: []string{"id", "expires", "level"}},
+	CodeScanUnscored:               {Code: CodeScanUnscored, Class: ClassOperational, Params: []string{"reference", "ids"}},
+	CodeScanDetectedImage:          {Code: CodeScanDetectedImage, Class: ClassOperational, Params: []string{"reference", "declared", "evidence"}},
+	CodeScanOutOfScope:             {Code: CodeScanOutOfScope, Class: ClassOperational, Params: []string{"reference", "declared"}},
+	CodeScanSystemAdvisory:         {Code: CodeScanSystemAdvisory, Class: ClassOperational, Params: []string{"reference", "recipe"}},
+
+	CodeIntegrityBlobDigest: {Code: CodeIntegrityBlobDigest, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
+	CodeIntegrityIncomplete: {Code: CodeIntegrityIncomplete, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "missing"}},
+	CodeIntegrityOrphan:     {Code: CodeIntegrityOrphan, Class: ClassOperational, Params: []string{"path"}},
+	CodeIntegrityRunning:    {Code: CodeIntegrityRunning, Class: ClassOperational, HTTPStatus: http.StatusConflict, Params: []string{"task"}},
+	CodeIntegrityCancelled:  {Code: CodeIntegrityCancelled, Class: ClassOperational, Params: []string{"task"}},
+	CodeIntegrityUnreadable: {Code: CodeIntegrityUnreadable, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
 
 	CodeTaskNotFound: {Code: CodeTaskNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound, Params: []string{"id"}},
 

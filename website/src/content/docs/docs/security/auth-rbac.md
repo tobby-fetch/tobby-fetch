@@ -16,18 +16,16 @@ start open.
 | --- | --- | --- | --- |
 | Basic auth, local accounts | default, isolated hosts | FR-073, ADR-0009 | delivered v0.4.0 |
 | Static bearer tokens | API automation, CI | FR-072, ADR-0009 | delivered v0.4.0 |
-| OIDC (authorization code) | enterprise IdP | FR-070, ADR-0009 | upcoming, milestone 6 |
-| SAML 2.0 (SP-initiated) | legacy enterprise IdP | FR-071, ADR-0009 | upcoming, milestone 6 |
+| OIDC (authorization code) | enterprise IdP | FR-070, ADR-0009 | delivered v0.6.0 |
+| SAML 2.0 (SP-initiated) | legacy enterprise IdP | FR-071, ADR-0009 | delivered v0.6.0 |
 
-:::note[Upcoming — milestone 6]
-Enterprise identity (OIDC then SAML, group-to-role mapping) ships at
-milestone 6, alongside continuity guarantees when the IdP is down: local
-accounts and tokens keep working, with their use logged distinctly
-(R-20). Milestone 6 also hardens authentication further — session
-inactivity expiry, optional token expiry, lifecycle audit (R-14).
-Per-origin throttling of failed authentication attempts already shipped
-in v0.4.2. Track all of it on the [project status](../../discover/status/) page.
-:::
+The four methods coexist: enabling OIDC or SAML never disables local
+accounts or tokens, and they keep working when the identity provider is
+down (FR-078). Configuration, group-to-role mapping, the session and token
+lifetimes and the outage behaviour are on
+[Enterprise identity](../enterprise-identity/). Per-origin throttling of
+failed authentication attempts shipped in v0.4.2; idle session expiry and
+optional token expiry (R-14) with v0.6.0.
 
 ## The three roles
 
@@ -50,6 +48,7 @@ so they share one table.
 | Action | UI route | API endpoint | Floor |
 | --- | --- | --- | --- |
 | Sign-in page, language, theme | `GET/POST /login`, `POST /lang`, `POST /theme` | — | public (deliberately minimal) |
+| Federated sign-in round trips, SP descriptor | `/auth/oidc/…`, `/auth/saml/…` (only when enabled) | — | public |
 | Dashboard, tasks, content, recipes, mapping, help, about, API docs | `GET /`, `/tasks…`, `/content…`, `/recipes…`, `/help`, `/about…`, `/api-docs` | `GET /api/v1/content…`, `/tasks…`, `/recipes…`, `/openapi.yaml` | viewer |
 | Own password change | `POST /account/password` | `POST /api/v1/account/password` | any authenticated role |
 | Unit import (and inspection) | `GET/POST /import` | `POST /api/v1/import`, `GET /api/v1/import/inspect` | operator |
@@ -73,7 +72,9 @@ content.
 Refusals are coded, not just numbered: no credential → `TBY-AUTH-002`;
 role below the floor → `TBY-AUTH-003` naming the required role; missing
 anti-forgery token → `TBY-AUTH-004` (NFR-012); expired session →
-`TBY-AUTH-005`. See [errors](../../reference/errors/).
+`TBY-AUTH-005`; expired token → `TBY-AUTH-013`; federated sign-in refused
+→ `TBY-AUTH-014` (OIDC), `TBY-AUTH-015` (SAML), provider unreachable →
+`TBY-AUTH-016`, no mapped group → `TBY-AUTH-017`. See [errors](../../reference/errors/).
 
 **The matrix cannot drift.** `internal/ui/rbac_matrix_test.go` walks the
 route table the server actually mounts and fails if any route is missing
@@ -93,7 +94,9 @@ current one; success and failure are both audit-logged (FR-077 —
 delivered v0.3.0).
 
 API tokens carry their own role, are shown once at creation, stored only
-as hashes, and revocable immediately (FR-072). Rotate them by overlap:
+as hashes, and revocable immediately (FR-072). They may carry an expiry
+(R-14), shown in every listing; an expired token is refused with its own
+code and the refusal is audited. Rotate them by overlap:
 create the replacement token, roll the clients, revoke the old one —
 no window without a valid credential.
 

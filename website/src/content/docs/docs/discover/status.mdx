@@ -7,8 +7,8 @@ sidebar:
 
 import StatusTable from "../../../../components/StatusTable.astro";
 
-Tobby is released and under active development. Milestones 1–5 are delivered;
-the current release line is **v0.5.x**. The table below is rendered from a
+Tobby is released and under active development. Milestones 1–6 are delivered;
+the current release line is **v0.6.x**. The table below is rendered from a
 single data file (`status.yaml`) and feeds every status badge on this site —
 including the filtered security view on the
 [security one-pager](../../security/one-pager/). If a page and this table ever
@@ -31,21 +31,21 @@ features.
 | 3 — Recipe engine | v0.3.x | Delivered (v0.3.0, 2026-08-16) |
 | 4 — Passthrough | v0.4.x | Delivered (v0.4.0 → v0.4.2) |
 | 5 — Mirror & air-gap | v0.5.x | Delivered (v0.5.0 → v0.5.2) |
-| 6 — Hardened controls & enterprise identity | v0.6.x | Upcoming |
+| 6 — Hardened controls & enterprise identity | v0.6.x | Delivered (v0.6.0, 2026-11-12) |
 | 7 — Finishing, documentation & acceptance | v0.7.x → 1.0.0 | Upcoming |
 
 **Observed cadence.** The first five milestones shipped between 2026-08-11
 (v0.1.0) and 2026-08-27 (v0.5.0), with two hardening patches along the way
 (v0.4.1 on 2026-08-18, v0.4.2 on 2026-08-22) and two maintenance releases
-since (v0.5.1 on 2026-11-07, v0.5.2 on 2026-11-09). That is the cadence of the
+after them (v0.5.1 on 2026-11-07, v0.5.2 on 2026-11-09); milestone 6
+followed on 2026-11-12 (v0.6.0). That is the cadence of the
 initial development phase, not a commitment: each milestone ships when its
 acceptance scenarios pass on the [crucible](../../project/tests-and-proofs/),
 not on a date.
 
-**Path to 1.0.** Two milestones remain: milestone 6 adds vulnerability
-scanning with policy and enterprise identity (OIDC, then SAML), and
-milestone 7 closes with finishing work, complete bilingual documentation,
-and an adversarial acceptance run on the release candidate. Version 1.0.0 freezes the four
+**Path to 1.0.** One milestone remains: milestone 7 closes with finishing
+work, complete bilingual documentation, and an adversarial acceptance run
+on the release candidate. Version 1.0.0 freezes the four
 public surfaces (CLI, API, configuration, storage layout) under SemVer —
 the [release and compatibility policy](../../project/release-compatibility/)
 is the canonical home for what is stable already and what freezes at 1.0.
@@ -56,6 +56,42 @@ Each milestone train has a raw acceptance report; they are published under
 [acceptance reports](../../project/acceptance-reports/). The full changelog
 lives in the repository
 ([CHANGELOG.md](https://github.com/tobby-fetch/tobby-fetch/blob/main/CHANGELOG.md)).
+
+### v0.6.0 — 2026-11-12 (milestone 6)
+
+Hardened controls and enterprise identity: every image is scanned for
+vulnerabilities under a policy, and people sign in through the
+organization's identity provider.
+
+- **Vulnerability scanning with a policy** (6.1, 6.2, R-13). Every
+  container image is scanned at retrieval by a pinned, offline Trivy run
+  out of process. The policy is **advisory by default** — findings are
+  reported, nothing is withheld — and becomes **blocking** with
+  `scan.mode: block` or a CVSS threshold posed by a Retriever or a recipe,
+  with hand-listed exceptions. A refusal withholds the whole recipe. The
+  database and the scanner cross the air gap by the `tobby-system`
+  channel, and a stale database is never silent.
+- **Scanning follows the content, not the declared kind**
+  ([ADR-0017](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0017-scan-by-content.md)):
+  an image declared as an `OCIArtifact`, or a `docker save` archive carried
+  in a `FileSet`, is recognized by its bytes and scanned under the same
+  policy.
+- **Enterprise sign-in: OpenID Connect and SAML 2.0** (6.3), off by
+  default, beside local accounts and tokens; groups map onto the three
+  roles. An unreachable provider never stops the instance nor ends a
+  session (R-20); idle sessions expire and tokens can (R-14).
+- **On-demand store integrity verification** (R-31): `tobby store verify`,
+  the Store integrity screen and the API re-hash every blob, check every
+  recorded recipe's manifests and signatures, and list orphans, in a
+  timestamped report — reading only, never repairing.
+- **Reduced-trust content stays marked** (R-22): a recipe admitted
+  unsigned under a relaxed trust scope carries a reduced-assurance marker
+  in reports, screens, logs, metrics and the media manifest.
+- **The printable transfer slip** (R-07): the Media screen as a bilingual
+  HTML or text document, unsigned and saying so.
+- **Tobby updates through its own channel** (R-25): every release is
+  published recipe-ready, binaries included, so a zone carries Tobby
+  across the air gap under its own signature. Nothing updates by itself.
 
 ### v0.5.2 — 2026-11-09 (maintenance)
 
@@ -121,8 +157,9 @@ isolated zone.
 - **Windows is a validated platform, not a compiled one** (5.6): the mirror
   journey runs end to end on a Windows CI runner, against a genuine FAT32
   volume. Eight defects that first real run found are fixed. The winget and
-  Scoop manifests are built and attached to each release; neither channel is
-  published yet — see [supported platforms](../../reference/platforms/).
+  Scoop manifests are built and attached to each release. Both channels have
+  since been published — Scoop, then winget as `tobby-fetch.tobby` on
+  2026-09-26 — see [supported platforms](../../reference/platforms/).
 
 ### v0.4.2 — 2026-08-22
 

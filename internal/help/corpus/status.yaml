@@ -8,8 +8,8 @@
 # milestone: the milestone that delivers (or completes) the feature;
 #            omitted when the feature is fully available.
 # security: true marks rows shown on the security one-pager.
-updated: "2026-11-09"
-version: "v0.5.2"
+updated: "2026-11-12"
+version: "v0.6.0"
 features:
   # ── Milestone 1 — Foundations (delivered, v0.1.x) ──────────────────────
   - id: "1.1"
@@ -29,12 +29,11 @@ features:
   - id: "R-12"
     en: Security audit log
     fr: Journal d'audit de sécurité
-    status: partial
-    milestone: 6
+    status: available
     security: true
     note:
-      en: Foundation, authentication, token and media-override events shipped; scan events at milestone 6.
-      fr: Socle et événements authentification/tokens livrés ; overrides média au jalon 5, scan au jalon 6.
+      en: Foundation, authentication, token and media-override events, then scan refusals, session and token expiry, local sign-in under federation and store verification with v0.6.0.
+      fr: Socle, événements authentification/tokens et overrides média, puis refus de scan, expiration des sessions et tokens, connexion locale sous fédération et vérification du store en v0.6.0.
   - id: "1.3"
     en: Embedded OCI registry with canonical relocation layout
     fr: Registry OCI embarquée et rangement canonique
@@ -185,7 +184,7 @@ features:
     fr: Déploiement de référence (chart Helm durci et manifests bruts)
     status: available
 
-  # ── Milestone 5 — Mirror & air-gap (upcoming, v0.5.x) ──────────────────
+  # ── Milestone 5 — Mirror & air-gap (delivered, v0.5.x) ─────────────────
   - id: "5.1"
     en: Mirror synchronization onto a transportable store
     fr: Synchronisation miroir sur store transportable
@@ -251,85 +250,91 @@ features:
   - id: "5.6"
     en: Windows workstation for the mirror journey (winget, Scoop)
     fr: Poste Windows pour le parcours miroir (winget, Scoop)
-    status: partial
-    milestone: 6
+    status: available
     note:
       en: >-
         The mirror journey is validated on a Windows CI runner and the single
-        binary is released for it. Scoop is published — `scoop bucket add tobby
-        https://github.com/tobby-fetch/scoop-bucket`. winget is published —
-        `winget install tobby-fetch.tobby` — and can lag a few days behind a
-        release, since each version goes through review in an index maintained
-        by other people.
+        binary is released for it. Both workstation channels are published:
+        Scoop — `scoop bucket add tobby https://github.com/tobby-fetch/scoop-bucket`
+        — and winget — `winget install tobby-fetch.tobby`, in the community
+        index since 2026-09-26. winget can lag a few days behind a release,
+        since each version is reviewed in an index maintained by other people.
       fr: >-
         Le parcours miroir est validé sur un runner Windows et le binaire unique
-        est publié pour cette plateforme. Scoop est publié — `scoop bucket add
-        tobby https://github.com/tobby-fetch/scoop-bucket`. winget est publié —
-        `winget install tobby-fetch.tobby` — et peut avoir quelques jours de
-        retard sur une release, chaque version passant par une revue dans un
-        index maintenu par d'autres.
+        est publié pour cette plateforme. Les deux canaux poste sont publiés :
+        Scoop — `scoop bucket add tobby https://github.com/tobby-fetch/scoop-bucket`
+        — et winget — `winget install tobby-fetch.tobby`, dans l'index
+        communautaire depuis le 2026-09-26. winget peut avoir quelques jours de
+        retard sur une release, chaque version étant relue dans un index
+        maintenu par d'autres.
 
+  # ── Milestone 6 — Hardened controls & enterprise identity (delivered, v0.6.x)
   - id: "6.1"
     en: Vulnerability scanning with policy (Trivy, blocking or advisory)
     fr: Analyse de vulnérabilités avec politique (Trivy, bloquante ou consultative)
-    status: upcoming
-    milestone: 6
+    status: available
+    note:
+      en: Delivered in v0.6.0.
+      fr: Livré en v0.6.0.
     security: true
   - id: "R-13"
     en: Guaranteed freshness of the vulnerability database
     fr: Fraîcheur garantie de la base de vulnérabilités
-    status: upcoming
-    milestone: 6
+    status: available
+    note:
+      en: Delivered in v0.6.0.
+      fr: Livré en v0.6.0.
     security: true
   - id: "R-14"
     en: Authentication hardening (rate limiting, session and token expiry)
     fr: Durcissement de l'authentification (limitation de tentatives, expirations)
-    status: partial
-    milestone: 6
+    status: available
     security: true
     note:
-      en: Failed-authentication rate limiting shipped in v0.4.2; session and token expiry land with milestone 6.
-      fr: Limitation des échecs d'authentification livrée en v0.4.2 ; expirations de session et de token au jalon 6.
+      en: Rate limiting since v0.4.2; idle session expiry, optional token expiry and their audit events with v0.6.0.
+      fr: Limitation des tentatives depuis v0.4.2 ; expiration des sessions inactives, expiration optionnelle des tokens et leurs événements d'audit en v0.6.0.
   - id: "6.2"
     en: Offline vulnerability database, carried by Tobby itself
     fr: Base de vulnérabilités hors-ligne, transportée par Tobby lui-même
-    status: upcoming
-    milestone: 6
+    status: available
+    note:
+      en: Delivered in v0.6.0.
+      fr: Livré en v0.6.0.
     security: true
   - id: "R-25"
     en: Tobby updates through its own channel, across the air gap
     fr: Mise à jour de Tobby par son propre canal, à travers l'air-gap
-    status: upcoming
-    milestone: 6
+    status: available
+    note:
+      en: Delivered in v0.6.0 — the first release published recipe-ready.
+      fr: Livré en v0.6.0 — la première release publiée prête pour une recipe.
     security: true
   - id: "R-22"
     en: Reduced-trust content stays visibly marked everywhere
     fr: Le contenu admis en confiance réduite reste visible partout
-    status: upcoming
-    milestone: 6
+    status: available
     security: true
   - id: "R-20"
     en: Continuity when the enterprise directory is down
     fr: Continuité quand l'annuaire d'entreprise est en panne
-    status: upcoming
-    milestone: 6
+    status: available
     security: true
   - id: "6.3"
     en: "Enterprise identity: OIDC, then SAML 2.0"
     fr: "Identité d'entreprise : OIDC puis SAML 2.0"
-    status: upcoming
-    milestone: 6
+    status: available
     security: true
   - id: "R-07"
     en: Printable transfer report (bilingual, marked as unsigned aid)
     fr: Bordereau de transfert imprimable (bilingue, marqué aide non signée)
-    status: upcoming
-    milestone: 6
+    status: available
+    note:
+      en: Delivered in v0.6.0.
+      fr: Livré en v0.6.0.
   - id: "R-31"
     en: On-demand store integrity verification with timestamped report
     fr: Vérification d'intégrité du store à la demande, rapport horodaté
-    status: upcoming
-    milestone: 6
+    status: available
     security: true
 
   # ── Milestone 7 — Finishing, documentation & acceptance (v0.7.x → 1.0) ─

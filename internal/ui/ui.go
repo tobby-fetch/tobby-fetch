@@ -12,6 +12,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
@@ -28,6 +29,10 @@ import (
 // shared listener. It owns the root of the URL space; machine surfaces
 // live under the reserved prefixes (ADR-0015 §2).
 type UI struct {
+	// federation is the federated sign-in; nil (a nil *Service answers
+	// "nothing enabled") offers local sign-in only.
+	federation *federation.Service
+
 	render *Renderer
 	authn  *auth.Authenticator
 	store  *store.Store
@@ -92,6 +97,8 @@ type UI struct {
 	// verdict the last one reached. Nil on an instance that guards
 	// nothing, which renders the sequence unavailable rather than broken.
 	mediaGate *mediagate.Gate
+	// integrity runs the on-demand store verification (FR-057, R-31).
+	integrity IntegrityVerifier
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -182,6 +189,20 @@ type Options struct {
 	// screen and its mirror cannot answer differently (FR-061).
 	MediaZone MediaZone
 	MediaGate *mediagate.Gate
+	// Integrity backs the Store integrity screen (FR-057, R-31) — the
+	// service the /api/v1/store endpoints use, so the screen and its
+	// mirror answer alike (FR-061). Nil: the screen says this instance
+	// cannot verify.
+	Integrity IntegrityVerifier
+
+	// Federation is the federated sign-in (FR-070, FR-071, FR-078): the
+	// provider buttons of the sign-in page and the /auth/ round trips
+	// (MountFederation). Nil offers local sign-in only.
+	Federation *federation.Service
+
+	// Scan reads the vulnerability-scanning state for the banners and the
+	// Retriever screen's indicator (FR-031, FR-032, R-13).
+	Scan func() ScanState
 }
 
 // New assembles the UI.
@@ -198,6 +219,7 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 	if opts.Occupancy != nil {
 		render.Occupancy = opts.Occupancy.Current
 	}
+	render.Scan = opts.Scan
 	return &UI{
 		render:            render,
 		authn:             authn,
@@ -226,6 +248,8 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		projector:         opts.Projector,
 		mediaZone:         opts.MediaZone,
 		mediaGate:         opts.MediaGate,
+		integrity:         opts.Integrity,
+		federation:        opts.Federation,
 	}
 }
 
@@ -319,8 +343,20 @@ func (u *UI) Mount(rt Router) {
 	// actions — with the two FR-054 waivers reserved to an administrator
 	// in the handler, exactly as the API mirror enforces them.
 	mux.Handle("GET /media", app(u.mediaScreen))
+	// The transfer slip (R-07): a read of the same records the screen
+	// shows, drawn as a printable document — viewer, like the screen.
+	mux.Handle("GET /media/slip", app(u.mediaSlip))
 	mux.Handle("POST /media/verify", operator(u.mediaVerify))
 	mux.Handle("POST /media/import", operator(u.mediaImport))
+
+	// The Store integrity screen (FR-057, R-31): the on-demand verification
+	// of the whole store, in both modes. Reading the last report is a
+	// listing like any other; starting a verification re-hashes the disk
+	// and holds the serial task worker, so it is an operator action — the
+	// same floor as the Media screen's, mirrored at /api/v1/store/verify.
+	mux.Handle("GET /integrity", app(u.integrityScreen))
+	mux.Handle("POST /integrity/verify", operator(u.integrityVerify))
+	mux.Handle("POST /integrity/cancel", operator(u.integrityCancel))
 
 	// Account self-service (R-34, FR-061): every authenticated role,
 	// viewer included — the admin gate stays on /admin/accounts.
@@ -443,7 +479,7 @@ func (u *UI) tasksBadge(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`<span id="task-badge"></span>`))
 		return
 	}
-	_, _ = fmt.Fprintf(w, `<span id="task-badge" class="t-nav-count" hx-get="/tasks/badge" hx-trigger="every 30s" hx-swap="outerHTML">%d</span>`, n)
+	_, _ = fmt.Fprintf(w, `<span id="task-badge" class="t-nav-count" hx-get="/tasks/badge" hx-trigger="every 30s" hx-headers='{"X-Tobby-Background":"1"}' hx-swap="outerHTML">%d</span>`, n)
 }
 
 func (u *UI) notFound(w http.ResponseWriter, r *http.Request) {
@@ -456,7 +492,20 @@ type loginData struct {
 	// Failed switches the taxonomized failure block on (generic message:
 	// the page never reveals whether the account exists, NFR-015).
 	Failed *ErrView
+	// Providers are the federated sign-in buttons (FR-070, FR-071), each
+	// with its unavailability block while its provider is unreachable
+	// (FR-078). Empty without federation.
+	Providers []loginProvider
 }
+
+// loginPageData assembles the sign-in page.
+func (u *UI) loginPageData(r *http.Request, next string, failed *ErrView) loginData {
+	return loginData{Next: next, Failed: failed, Providers: u.loginProviders(r, next)}
+}
+
+// loginExpiredParam marks a redirect to the login page caused by a dead
+// session (R-14): the page then explains it with TBY-AUTH-005.
+const loginExpiredParam = "expired"
 
 // loginPage serves the sign-in form. With authentication disabled there is
 // nothing to sign into: 302 to the dashboard, where the permanent banner
@@ -470,7 +519,11 @@ func (u *UI) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, sanitizeNext(r.URL.Query().Get("next")), http.StatusFound) //nolint:gosec // G710: the target went through sanitizeNext, which only keeps a same-host path (B-033)
 		return
 	}
-	u.render.Page(w, r, "login", loginData{Next: sanitizeNext(r.URL.Query().Get("next"))})
+	var failed *ErrView
+	if r.URL.Query().Get(loginExpiredParam) == "1" {
+		failed = errView(requestLang(r), taxonomy.New(taxonomy.CodeSessionExpired, nil))
+	}
+	u.render.Page(w, r, "login", u.loginPageData(r, sanitizeNext(r.URL.Query().Get("next")), failed))
 }
 
 // loginSubmit verifies the credentials, opens the session, and redirects
@@ -492,10 +545,8 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	// to brute-force what the machine surfaces now bound. Same taxonomy
 	// entry as the 429 the API serves (FR-061 parity).
 	if !u.authn.FailureAllowed(origin) {
-		v := u.render.view(r, loginData{
-			Next:   next,
-			Failed: errView(requestLang(r), taxonomy.New(taxonomy.CodeAuthRateLimited, nil)),
-		})
+		v := u.render.view(r, u.loginPageData(r, next,
+			errView(requestLang(r), taxonomy.New(taxonomy.CodeAuthRateLimited, nil))))
 		u.render.render(w, r, "login", http.StatusTooManyRequests, v)
 		return
 	}
@@ -503,24 +554,27 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	acct, ok := u.authn.Store.VerifyPassword(name, r.PostFormValue("password"), u.now())
 	if !ok {
 		u.authn.RecordFailure(origin)
+		u.authn.Observe(auth.MethodBasic, auth.OutcomeFailure)
 		audit.Log(r.Context(), u.logger, &audit.Event{
 			Actor: name, Action: audit.ActionLogin, Target: "ui",
 			Outcome: audit.OutcomeDenied, Origin: origin,
 		})
-		v := u.render.view(r, loginData{
-			Next:   next,
-			Failed: errView(requestLang(r), taxonomy.New(taxonomy.CodeAuthFailed, nil)),
-		})
+		v := u.render.view(r, u.loginPageData(r, next,
+			errView(requestLang(r), taxonomy.New(taxonomy.CodeAuthFailed, nil))))
 		u.render.render(w, r, "login", http.StatusUnauthorized, v)
 		return
 	}
 
-	sess := u.authn.Sessions.Create(acct.Name, acct.Role, u.now())
+	sess := u.authn.Sessions.CreateWith(acct.Name, acct.Role, auth.MethodBasic, u.now())
 	u.setSessionCookie(w, r, sess.ID, sess.Expires)
+	u.authn.Observe(auth.MethodBasic, auth.OutcomeSuccess)
 	audit.Log(r.Context(), u.logger, &audit.Event{
 		Actor: acct.Name, Action: audit.ActionLogin, Target: "ui",
-		Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r),
+		Outcome: audit.OutcomeSuccess, Origin: origin,
 	})
+	// Break-glass visibility (FR-078): with a federated method enabled, a
+	// local sign-in gets its own record on top of the ordinary one.
+	u.authn.LocalUnderFederation(r.Context(), acct.Name, audit.SurfaceUI, origin)
 	http.Redirect(w, r, next, http.StatusSeeOther) //nolint:gosec // G710: next went through sanitizeNext, which only keeps a same-host path (B-033)
 }
 
@@ -530,7 +584,7 @@ func (u *UI) logout(w http.ResponseWriter, r *http.Request) {
 	if sess, ok := sessionFrom(r.Context()); ok {
 		u.authn.Sessions.Delete(sess.ID)
 		audit.Log(r.Context(), u.logger, &audit.Event{
-			Actor: sess.Account, Action: audit.ActionLogout, Target: "ui",
+			Actor: sess.Account, ActorName: sess.Display, Action: audit.ActionLogout, Target: "ui",
 			Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r),
 		})
 	}

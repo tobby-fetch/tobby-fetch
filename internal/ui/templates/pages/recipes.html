@@ -84,6 +84,9 @@
                admitted the unsigned recipe. */}}
           {{if .Verified}}<span class="t-badge t-badge--done">{{$.T "recipes.verified_ok"}}</span>
           {{else}}<span class="t-badge t-badge--done-errors" title="{{$.T "recipes.verified_scope_title" "Scope" .TrustScope}}">{{$.T "recipes.verified_scope" "Scope" .TrustScope}}</span>{{end}}
+          {{/* The same fact as a marker (FR-037): the one vocabulary every
+               surface carries for content of reduced assurance. */}}
+          {{template "assurance-badge" (withData $ .Assurance)}}
         </td>
         <td class="t-num">{{len .Ingredients}}</td>
         <td><a href="{{.MappingHref}}">{{$.T "recipes.mapping_link"}}</a></td>

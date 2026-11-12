@@ -3,7 +3,9 @@
 Every release ships with SLSA Build L3 provenance, cosign-signed CycloneDX
 SBOMs, a signed multi-arch container image, bit-reproducible binaries, and
 bit-reproducible Linux packages (.deb/.rpm/.apk) built from those binaries
-(ADR-0011). This page shows how a consumer verifies each claim. Replace
+(ADR-0011), and — from v0.6.0 on — the Linux and Windows binaries as a
+recipe-ready OCI `FileSet` (R-25). This page shows how a consumer verifies
+each claim. Replace
 `v1.0.0` with the release you are checking.
 
 Tools: [slsa-verifier](https://github.com/slsa-framework/slsa-verifier) (v2.7.1
@@ -99,7 +101,81 @@ Note: the rolling `latest` tag is refreshed by a weekly rebuild against
 current Wolfi packages. That digest is cosign-signed with the same identity
 but carries no SLSA provenance — only immutable `vX.Y.Z` digests do.
 
-## 5. Independent rebuild (air-gapped verification)
+## 5. Recipe-ready artifacts: the binaries as a FileSet
+
+Every release publishes what a recipe needs to carry Tobby into a zone, all
+to `ghcr.io/tobby-fetch`:
+
+| Artifact | Reference | Recipe kind |
+|---|---|---|
+| Container image | `ghcr.io/tobby-fetch/tobby-fetch:v1.0.0` | `ContainerImage` |
+| Reference chart | `ghcr.io/tobby-fetch/charts/tobby:1.0.0` | `HelmChart` |
+| Binaries | `ghcr.io/tobby-fetch/binaries/tobby:v1.0.0` | `FileSet` |
+
+The image and the chart are the ones of section 4 and of the release notes —
+nothing is published twice. The binaries are new: one multi-platform image
+index with four children — `linux/amd64`, `linux/arm64`, `windows/amd64`,
+`windows/arm64` — each a single-layer image holding one file at its root,
+`tobby` or `tobby.exe`, byte-for-byte the release asset
+`tobby-<os>-<arch>[.exe]` (darwin is not included). It is a `FileSet`
+(RECIPE-SPEC §7.4) because it is files per platform: a recipe's `platforms`
+keeps only the children a zone runs, and extraction follows the
+specification, with no artifact type of ours to learn.
+[`examples/tobby.yaml`](../examples/tobby.yaml) references all three.
+
+The release notes state each digest. Verify by digest, with the identity
+pinned to the release tag rather than to the repository — a rehearsal of
+the release workflow (section 7) signs under the same repository, but never
+from a tag:
+
+```bash
+id='https://github.com/tobby-fetch/tobby-fetch/.github/workflows/release.yml@refs/tags/v1.0.0'
+bin='ghcr.io/tobby-fetch/binaries/tobby@sha256:...'   # digest from the release notes
+
+# signature on the index
+cosign verify "$bin" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "$id"
+
+# SLSA provenance of the index — same trusted container builder as the image
+slsa-verifier verify-image "$bin" \
+  --source-uri github.com/tobby-fetch/tobby-fetch \
+  --source-tag v1.0.0
+
+# the CycloneDX SBOM of one binary, a signed attestation on its child
+child="$(crane digest --platform windows/amd64 "$bin")"
+cosign verify-attestation --type cyclonedx \
+  "ghcr.io/tobby-fetch/binaries/tobby@${child}" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "$id"
+```
+
+The binary inside a child is also a subject of the binaries' SLSA
+provenance (section 1) and of `SHA256SUMS`, so an extracted file verifies
+exactly like a downloaded one:
+
+```bash
+crane export "ghcr.io/tobby-fetch/binaries/tobby@${child}" - | tar -xf - tobby.exe
+mv tobby.exe tobby-windows-amd64.exe
+slsa-verifier verify-artifact tobby-windows-amd64.exe \
+  --provenance-path tobby.intoto.jsonl \
+  --source-uri github.com/tobby-fetch/tobby-fetch \
+  --source-tag v1.0.0
+```
+
+The index digest is reproducible too: `tools/release-fileset.sh` packs the
+reproducible binaries with fixed metadata, so the same tag yields the same
+FileSet digest.
+
+**What these signatures are for.** They let *you* check, where you cook,
+that what you are about to admit is what this project released. They do not
+make the project a trust root of your zones: the recipe that carries Tobby
+is cooked and signed by **your** qualification chain, and destinations trust
+your keys only — exactly as for any other software. Nor does anything update
+by itself: no Tobby looks for a newer Tobby (NFR-019). An upgrade is the same
+recipe at the next version, through the ordinary mirror flow.
+
+## 6. Independent rebuild (air-gapped verification)
 
 Binaries and Linux packages are bit-reproducible: the same tag rebuilds to
 the same SHA-256, so a consumer with no access to Sigstore or GitHub
@@ -131,3 +207,47 @@ Any digest mismatch means the published binary was not produced from the
 tagged source. The release pipeline itself enforces this property: a second,
 independent build job must reproduce the first build's digests before a
 release can be published.
+
+## 7. Rehearsing a release (maintainers)
+
+The release workflow can be run end to end without releasing anything, and
+should be before any tag that changes it. A `workflow_dispatch` run of
+`.github/workflows/release.yml` is **always** a dry run — no input turns it
+into a release:
+
+```bash
+# from the branch that carries the change, before it is merged or tagged
+gh workflow run release.yml --ref <branch> -f version=v1.0.0
+gh run watch "$(gh run list --workflow release.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+```
+
+`version` is the tag about to be cut; the chart-version gate checks it as
+it would on the tag. It must be a single `vX.Y.Z[-pre]` line: any control
+character (a newline above all, which could otherwise forge extra job
+outputs) refuses the run before anything is computed. Only the **push of a
+`v*` tag** publishes under the real names — every publishing step tests for
+that event itself, not just the dry-run flag (`tools/release-meta.sh`,
+locked in CI by `tools/release-meta-test.sh`). What the rehearsal does:
+
+- builds, double-builds and compares, generates and signs the SBOMs, builds
+  and scans the image, packages the chart and the FileSet — the same jobs,
+  the same steps;
+- publishes the image, chart and FileSet under
+  `ghcr.io/tobby-fetch/dry-run/…` (`dry-run/tobby-fetch`,
+  `dry-run/charts/tobby`, `dry-run/binaries/tobby`), signs them keyless,
+  attests the SBOMs and generates both SLSA provenances there. Every name is
+  computed once by the build job, and every publishing job re-checks it
+  (`tools/check-publish-target.sh`) before pushing;
+- creates **no** GitHub release and uploads no asset, pushes nothing into
+  the Homebrew tap, attaches no winget or Scoop manifest. The would-be
+  release (notes and assets), the rendered formula and the rendered
+  manifests are kept as workflow artifacts (`dry-run-*`), and the notes are
+  shown in the run summary.
+
+What it leaves behind, knowingly: packages under `dry-run/` in the
+organisation's registry — delete them once the rehearsal is read — and
+public Rekor entries for the dry-run digests, signed by the release workflow
+from `refs/heads/<branch>`, never from a tag, which is why section 5 pins
+the identity to the tag. As on a real release, a missing
+`HOMEBREW_TAP_TOKEN` turns the homebrew job red: the rehearsal says so
+before the tag does.

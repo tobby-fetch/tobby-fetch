@@ -57,16 +57,16 @@ Every release publishes this chart as an OCI artifact, signed with cosign
 like the image:
 
 ```sh
-helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.5.2 \
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
   --namespace tobby --create-namespace \
   --set config.mode=passthrough
 ```
 
-The chart version is the Tobby version — chart `0.5.2` deploys image
-`v0.5.2` — so pin `--version`. Verify before installing:
+The chart version is the Tobby version — chart `0.6.0` deploys image
+`v0.6.0` — so pin `--version`. Verify before installing:
 
 ```sh
-cosign verify ghcr.io/tobby-fetch/charts/tobby:0.5.2 \
+cosign verify ghcr.io/tobby-fetch/charts/tobby:0.6.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
 ```
@@ -102,7 +102,7 @@ kubectl -n tobby create secret docker-registry tobby-registry-credentials \
   --docker-username=tobby \
   --docker-password="$(cat ./token)"
 
-helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.5.2 \
+helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
   --namespace tobby --reuse-values \
   --set registryCredentials.enabled=true \
   --set registryCredentials.existingSecret=tobby-registry-credentials
@@ -153,7 +153,7 @@ value to change instead:
 Reviewing what you are about to install:
 
 ```sh
-helm template tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.5.2 --set config.mode=passthrough
+helm template tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 --set config.mode=passthrough
 ```
 
 ---
@@ -206,7 +206,7 @@ claim:
 kubectl -n tobby scale deploy/tobby --replicas=0
 
 kubectl -n tobby run tobby-bootstrap --rm -it --restart=Never \
-  --image=ghcr.io/tobby-fetch/tobby-fetch:v0.5.2 \
+  --image=ghcr.io/tobby-fetch/tobby-fetch:v0.6.0 \
   --overrides='{
     "spec": {
       "securityContext": {
@@ -215,7 +215,7 @@ kubectl -n tobby run tobby-bootstrap --rm -it --restart=Never \
       },
       "containers": [{
         "name": "tobby-bootstrap",
-        "image": "ghcr.io/tobby-fetch/tobby-fetch:v0.5.2",
+        "image": "ghcr.io/tobby-fetch/tobby-fetch:v0.6.0",
         "stdin": true, "tty": true,
         "args": ["user", "add", "admin", "--state-root", "/var/lib/tobby/state"],
         "securityContext": {

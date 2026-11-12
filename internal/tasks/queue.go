@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/url"
 	"os"
@@ -61,6 +62,9 @@ type Queue struct {
 	tasks   map[string]*Task
 	runners map[string]Runner
 	pending chan string
+	// lanes holds the dedicated workers of RegisterLane: task types that
+	// must not wait behind — nor hold up — the serial worker.
+	lanes map[string]chan string
 	// resuming is the FR-029 backlog: the tasks Open found active, oldest
 	// first, waiting for the worker to reach them (B-019). It is a slice
 	// and not the channel on purpose — the channel is bounded and nothing
@@ -125,6 +129,7 @@ func Open(storeRoot string, logger *slog.Logger, opts ...QueueOption) (*Queue, e
 		tasks:   map[string]*Task{},
 		runners: map[string]Runner{},
 		pending: make(chan string, pendingCapacity),
+		lanes:   map[string]chan string{},
 		Now:     time.Now,
 	}
 	for _, opt := range opts {
@@ -185,6 +190,25 @@ func (q *Queue) Register(taskType string, r Runner) {
 	q.runners[taskType] = r
 }
 
+// laneCapacity bounds the pending tasks of one lane. Lanes carry
+// operations that run one at a time and refuse a second request while one
+// is in flight, so a handful is generous.
+const laneCapacity = 8
+
+// RegisterLane installs the runner for a task type that runs on its OWN
+// worker, beside the serial one: it neither waits for a long synchronization
+// nor holds one up. The on-demand store verification (FR-057) is the
+// reason — a promotion service cannot stall for hours behind a disk walk.
+// Tasks of a lane run one after the other, like everything else here;
+// whoever creates them enforces "one at a time" (Queue.ActiveOfType).
+// Call before Start.
+func (q *Queue) RegisterLane(taskType string, r Runner) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.runners[taskType] = r
+	q.lanes[taskType] = make(chan string, laneCapacity)
+}
+
 // TaskOption adjusts a task at creation time (Queue.Create).
 type TaskOption func(*Task)
 
@@ -202,6 +226,13 @@ func WithLayout(l *Layout) TaskOption {
 		cp := *l
 		t.Layout = &cp
 	}
+}
+
+// WithOrigin records where the request for the task came from (a client
+// address, or "local"), for the audit event a finished task writes
+// (FR-094): the request is long gone by then.
+func WithOrigin(origin string) TaskOption {
+	return func(t *Task) { t.Origin = origin }
 }
 
 // WithPrune states what this synchronization does about content the
@@ -236,8 +267,12 @@ func (q *Queue) Create(taskType, reference, actor string, items []Item, opts ...
 	// was told "queue is full". Refusing first leaves no trace. The
 	// worker cannot observe the id before the map insert below: execute
 	// takes q.mu, which this function holds until it returns.
+	ch := q.pending
+	if lane, ok := q.lanes[taskType]; ok {
+		ch = lane
+	}
 	select {
-	case q.pending <- t.ID:
+	case ch <- t.ID:
 	default:
 		return nil, errors.New("tasks: queue is full")
 	}
@@ -308,6 +343,28 @@ func (q *Queue) HasPending(taskType string) bool {
 	return false
 }
 
+// ActiveOfType returns the identifier of a pending or running task of the
+// given type, and whether there is one. It is how a type that runs one at
+// a time (the FR-057 verification) tells a second request to wait for the
+// first, instead of queueing a duplicate behind it.
+func (q *Queue) ActiveOfType(taskType string) (string, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	var newest *Task
+	for _, t := range q.tasks {
+		if t.Type != taskType || !t.Active() {
+			continue
+		}
+		if newest == nil || t.Created.After(newest.Created) {
+			newest = t
+		}
+	}
+	if newest == nil {
+		return "", false
+	}
+	return newest.ID, true
+}
+
 // Start runs the worker until ctx is canceled. A task interrupted by
 // shutdown stays running on disk and resumes on the next Open.
 //
@@ -316,6 +373,41 @@ func (q *Queue) HasPending(taskType string) bool {
 // accepted, and running them first is the order Open used to obtain by
 // filling the channel ahead of any caller.
 func (q *Queue) Start(ctx context.Context) {
+	// Lanes first: each gets its own worker, and the tasks of a lane type
+	// found active at Open (FR-029) are handed to it rather than to the
+	// serial worker, which they would otherwise occupy for hours.
+	q.mu.Lock()
+	rest := q.resuming[:0:0]
+	for _, id := range q.resuming {
+		if lane, ok := q.lanes[q.tasks[id].Type]; ok {
+			select {
+			case lane <- id:
+				continue
+			default:
+			}
+		}
+		rest = append(rest, id)
+	}
+	q.resuming = rest
+	lanes := make([]chan string, 0, len(q.lanes))
+	for _, lane := range q.lanes {
+		lanes = append(lanes, lane)
+	}
+	q.mu.Unlock()
+	for _, lane := range lanes {
+		q.worker.Add(1)
+		go func() {
+			defer q.worker.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case id := <-lane:
+					q.execute(ctx, id)
+				}
+			}
+		}()
+	}
 	q.worker.Add(1)
 	go func() {
 		defer q.worker.Done()
@@ -475,6 +567,8 @@ func (t *Task) clone() *Task {
 	cp.Items = cloneItems(t.Items)
 	cp.ChartDependencies = append([]ChartDependency(nil), t.ChartDependencies...)
 	cp.Resolutions = append([]Resolution(nil), t.Resolutions...)
+	// Verification is set whole by its runner and never mutated in place,
+	// so the working copy and the published task may share it.
 	return &cp
 }
 
@@ -495,6 +589,7 @@ func (q *Queue) publish(dst, src *Task) {
 	dst.Items = cloneItems(src.Items)
 	dst.ChartDependencies = append([]ChartDependency(nil), src.ChartDependencies...)
 	dst.Resolutions = append([]Resolution(nil), src.Resolutions...)
+	dst.Verification = src.Verification
 	q.persist(dst)
 }
 
@@ -776,4 +871,37 @@ func (q *Queue) ReadLog(id string, from int64) (chunk []byte, next int64, err er
 		return nil, from, err
 	}
 	return chunk, from + int64(len(chunk)), nil
+}
+
+// ReadAll reads the persisted tasks of a store WITHOUT opening a queue:
+// Open creates the directory, re-queues interrupted tasks and rewrites
+// them, all writes, and a command that only reads a store (the transfer
+// slip, R-07) must leave it as it found it. A task file that cannot be
+// read is skipped, as Open skips it; a store with no task directory has no
+// tasks.
+func ReadAll(storeRoot string) ([]*Task, error) {
+	dir := filepath.Join(storeRoot, tasksDir)
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("tasks: reading %s: %w", dir, err)
+	}
+	var out []*Task
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // G304: enumerated task files under the store
+		if err != nil {
+			return nil, fmt.Errorf("tasks: reading %s: %w", e.Name(), err)
+		}
+		var t Task
+		if err := json.Unmarshal(raw, &t); err != nil {
+			continue
+		}
+		out = append(out, &t)
+	}
+	return out, nil
 }

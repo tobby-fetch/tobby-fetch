@@ -6,6 +6,7 @@ package media
 import (
 	"time"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
@@ -156,6 +157,14 @@ type RecipeVerdict struct {
 	// Unsigned records that the recipe carries no signature and was
 	// admitted by an allowUnsigned scope. Never true outside one.
 	Unsigned bool `json:"unsigned,omitempty"`
+	// Assurance is THIS instance's reduced-assurance marker for the
+	// recipe, computed from its own trust verdict (FR-037, R-22): nil is
+	// full assurance.
+	Assurance *assurance.Marker `json:"assurance,omitempty"`
+	// SourceAssurance re-displays the marker the media manifest claims
+	// for the recipe — what the SOURCE zone decided. A claim of an
+	// unsigned document: shown beside Assurance, never instead of it.
+	SourceAssurance *assurance.Marker `json:"sourceAssurance,omitempty"`
 	// Files and Bytes are what this recipe reaches on the medium.
 	Files int   `json:"files"`
 	Bytes int64 `json:"bytes"`

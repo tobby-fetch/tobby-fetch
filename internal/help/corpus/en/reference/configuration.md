@@ -81,6 +81,31 @@ Value syntax in the environment:
 |---|---|---|---|---|
 | `auth.disabled` | bool | `false` | `TOBBY_AUTH_DISABLED` | Switches authentication off for every surface. A deliberate opt-in — settable in the file or the environment, **never by flag** — audited at startup and bannered permanently in the UI. See [Authentication, accounts and RBAC](../../security/auth-rbac/). |
 | `auth.sessionTTL` | duration | `12h` | `TOBBY_AUTH_SESSION_TTL` | UI session lifetime. Sessions live in memory: a restart signs everyone out. |
+| `auth.session.idleTimeout` | duration | `30m` | *(file only)* | Ends a UI session after this long without user activity: navigations and actions renew it, the page's own background polls do not. Must be positive. `auth.sessionTTL` still bounds the session's whole life. Each expiry is audited as `session.expire` (R-14). |
+| `auth.tokens.defaultLifetime` | duration | *(none)* | *(file only)* | Gives API tokens created without an explicit expiry one this far in the future. Unset keeps the long-lived token. An expired token is refused with `TBY-AUTH-013` and the refusal is audited as `token.expire` (R-14). |
+| `auth.oidc.enabled` | bool | `false` | *(file only)* | OpenID Connect sign-in (FR-070), beside the local methods. See [Enterprise identity](../../security/enterprise-identity/). |
+| `auth.oidc.issuer` | URL | *(none)* | *(file only)* | The provider's issuer, `https://` only; discovery happens from it and nowhere else, and the tokens' `iss` must match it exactly. |
+| `auth.oidc.clientID` | string | *(none)* | *(file only)* | This instance's client identifier — the audience its ID tokens must name. |
+| `auth.oidc.clientSecretFile` | path | *(none)* | *(file only)* | The client secret, in a file outside the store (NFR-020); never the value itself. |
+| `auth.oidc.redirectURL` | URL | *(none)* | *(file only)* | The callback registered at the provider; its path must be `/auth/oidc/callback`. |
+| `auth.oidc.scopes` | list | *(none)* | *(file only)* | Scopes requested beyond `openid`. |
+| `auth.oidc.groupsClaim` | string | `groups` | *(file only)* | The ID token claim carrying the groups. |
+| `auth.oidc.nameClaim` | string | `preferred_username` | *(file only)* | The claim shown as the person's name, on screen and as `actor_name` in logs and audit. Display only: the identity key is always `sub`. |
+| `auth.oidc.signingAlgorithms` | list | every asymmetric algorithm | *(file only)* | Allow-list of ID token signatures. `none` and `HS*` are refused. |
+| `auth.oidc.displayName` | string | `OpenID Connect` | *(file only)* | Label of the sign-in button. |
+| `auth.oidc.roles` | map | *(none)* | *(file only)* | `viewer`, `operator`, `admin`: the groups granting each role. Highest wins; no match is a refusal. Required non-empty when enabled. |
+| `auth.saml.enabled` | bool | `false` | *(file only)* | SAML 2.0 sign-in, SP-initiated only (FR-071). |
+| `auth.saml.entityID` | string | *(none)* | *(file only)* | This service provider's entity ID — the audience assertions must name. |
+| `auth.saml.acsURL` | URL | *(none)* | *(file only)* | The assertion consumer service; its path must be `/auth/saml/acs`. Responses must name it as their Destination. |
+| `auth.saml.idpMetadataFile` | path | *(none)* | *(file only)* | The identity provider's metadata, pinned. Exactly one of this and `idpMetadataURL`. |
+| `auth.saml.idpMetadataURL` | URL | *(none)* | *(file only)* | Fetch the metadata over `https://` instead — an explicit outbound connection (NFR-019). Requires `idpCertificateFile`. |
+| `auth.saml.idpCertificateFile` | path | *(none)* | *(file only)* | The provider's signing certificate (PEM), pinned. Required with `idpMetadataURL`; with a metadata file, replaces the certificates it carries. |
+| `auth.saml.certFile`, `auth.saml.keyFile` | paths | *(none)* | *(file only)* | The service provider's key pair, which signs its requests. The key is a secret path (NFR-020). |
+| `auth.saml.groupsAttribute` | string | `groups` | *(file only)* | The assertion attribute (Name or FriendlyName) carrying the groups. |
+| `auth.saml.nameAttribute` | string | *(none)* | *(file only)* | An attribute shown as the person's name, on screen and as `actor_name` in logs and audit. Display only: the identity key is always the persistent NameID. Without it the NameID is shown. |
+| `auth.saml.clockSkew` | duration | `90s` | *(file only)* | Tolerated clock difference with the provider, both directions; at most `5m`. |
+| `auth.saml.displayName` | string | `SAML` | *(file only)* | Label of the sign-in button. |
+| `auth.saml.roles` | map | *(none)* | *(file only)* | As `auth.oidc.roles`. |
 
 ### Outbound network
 
@@ -133,6 +158,39 @@ bypass. The full model is on
 |---|---|---|
 | `trust.roots[]` | list | Trusted public keys (cosign, key-based). Each root has a `name` and exactly one of `key` (inline PEM), `keyFile`, `keyURL` (`https://` only, fetched and cached at configuration time — never at verification time). Multiple roots enable rotation by overlap. |
 | `trust.scopes[]` | list | Declared relaxation perimeters, evaluated in order, first match wins. Each scope has a `name`, `repositories` glob patterns on the recipe's **canonical nominal** cookbook path (`*` within a segment, `**` across; a port's `:` is written `_`), and must change something: `allowUnsigned: true` and/or a `roots` restriction. Relaxed scopes are reported on every surface, never silent. |
+
+### Vulnerability scanning
+
+Every image is scanned at retrieval — a declared container image, and any
+ingredient whose content is one, whatever its declared kind (ADR-0017) —
+in passthrough as in mirror mode (FR-031, ADR-0008). There is deliberately no `enabled` switch:
+the scan always runs and its results are always visible — the default
+**advisory** mode reports violations on every surface and lets the content
+through, with a permanent banner saying so. The Retriever's
+`spec.scanPolicy` and the recipe annotation `recipe.tobby.dev/scan-threshold`
+refine the instance level; the model is on
+[Vulnerability scanning](../../security/vulnerability-scanning/).
+
+| Key | Type | Default | Environment | Purpose |
+|---|---|---|---|---|
+| `scan.mode` | string | `warn` | `TOBBY_SCAN_MODE` | `warn` (advisory) or `block`: a violating item is then refused — never pushed, never written on a medium — and so is an item that could not be scanned. A threshold posed by the Retriever or a recipe makes the policy blocking for its perimeter even under `warn`. |
+| `scan.threshold` | number | `7.0` | `TOBBY_SCAN_THRESHOLD` | CVSS base score from which a finding violates the policy, inclusive, a finite number from `0` to `10` (`NaN` and infinities are refused, in the file as in the variable). A finding without a CVSS score sits at the lower bound of its severity band (`LOW` 0.1, `MEDIUM` 4.0, `HIGH` 7.0, `CRITICAL` 9.0); an `UNKNOWN` one is reported as unscored, never compared. |
+| `scan.exceptions[]` | list | none | — | CVE identifiers tolerated beyond the threshold: `id`, optional `justification`, optional `expires` (RFC 3339). Added to the Retriever's own list. An expired exception no longer applies and is reported as expired. Configuration file only. |
+| `scan.maxDbAge` | duration | `168h` | `TOBBY_SCAN_MAX_DB_AGE` | Maximum age of the vulnerability database, measured from the build timestamp it records (R-13). Must be positive. |
+| `scan.maxDbAgeAction` | string | `warn` | `TOBBY_SCAN_MAX_DB_AGE_ACTION` | Beyond `maxDbAge`: `warn` reports staleness on the report, the UI and the metrics; `block` refuses items scanned with a stale database (`TBY-SCN-004`), whatever `scan.mode` says. |
+| `scan.timeout` | duration | `10m` | `TOBBY_SCAN_TIMEOUT` | Bound of one scan, the scanner process included. A timed-out item is reported not scanned. |
+| `scan.dbRepository` | string | relocation of `ghcr.io/aquasecurity/trivy-db` | `TOBBY_SCAN_DB_REPOSITORY` | Repository of this store holding the database, when it is not the relocation of the upstream one the `tobby-system` recipe carries. |
+| `scan.trivy.path` | string | none | `TOBBY_SCAN_TRIVY_PATH` | An explicit scanner binary, absolute. Without `scan.trivy.digest` it is accepted only when it is the release this build pins (Trivy 0.76.2); on macOS any `trivy` is accepted, unpinned. |
+| `scan.trivy.digest` | string | none | `TOBBY_SCAN_TRIVY_DIGEST` | `sha256:<hex>` pin of `scan.trivy.path`, verified before every execution. |
+| `scan.trivy.ref` | string | `ghcr.io/aquasecurity/trivy` | `TOBBY_SCAN_TRIVY_REF` | Nominal reference of the `tobby-system` FileSet carrying the binary on Linux and Windows hosts. Exclusive with `scan.trivy.path`. |
+
+Where the binary comes from, per platform: the container image bundles
+the pinned release at `/usr/libexec/tobby/trivy`; a Linux or Windows host
+binary takes it from the `tobby-system` channel; macOS takes the first
+`trivy` on the `PATH`. Missing or unverifiable, it is the **degraded
+mode**: a startup log record, a danger banner, `tobby_scan_scanner_available
+0`, and every item reported not scanned with the reason — refused under a
+blocking policy.
 
 ### FileSets
 
@@ -235,6 +293,16 @@ sync:
 
 preflight:
   safetyMarginPercent: 10           # refuse before filling the volume (FR-055)
+
+scan:
+  mode: block                       # refuse what violates the policy (FR-031)
+  threshold: 7.0                    # CVSS, inclusive
+  exceptions:
+    - id: CVE-2024-12345
+      justification: vulnerable parser disabled in our build
+      expires: 2027-03-31T00:00:00Z
+  maxDbAge: 168h                    # the database must have crossed this week
+  maxDbAgeAction: warn
 
 logging:
   level: info

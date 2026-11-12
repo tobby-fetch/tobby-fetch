@@ -19,7 +19,9 @@ package ui
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
@@ -48,19 +50,29 @@ type adminData struct {
 	// Self is the acting administrator's own login, so the table can mark
 	// its row and keep the operator from mistaking it for someone else's.
 	Self string
+	// Now dates the page, so a token past its expiry shows as expired
+	// (R-14) rather than active.
+	Now time.Time
+	// DefaultLifetimeDays is auth.tokens.defaultLifetime in whole days,
+	// zero when tokens are long-lived by default — the hint under the
+	// lifetime field says which applies to an empty field.
+	DefaultLifetimeDays int
 }
 
 // adminScreenData snapshots the store for the page. A nil store (FR-075
 // authentication override) renders empty tables: the permanent banner
 // already explains that no account gate exists.
 func (u *UI) adminScreenData(r *http.Request) *adminData {
-	d := &adminData{}
+	d := &adminData{Now: u.now()}
 	if id, ok := auth.IdentityFrom(r.Context()); ok {
 		d.Self = id.Name
 	}
 	if st := u.authn.Store; st != nil {
 		d.Accounts = st.Accounts()
 		d.Tokens = st.Tokens()
+		if l := st.DefaultTokenLifetime(); l > 0 {
+			d.DefaultLifetimeDays = max(1, int(l/(24*time.Hour)))
+		}
 	}
 	return d
 }
@@ -95,6 +107,11 @@ func (u *UI) adminAccountCreate(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, auth.ErrExists) {
 			u.renderAccountsError(w, r, name,
 				taxonomy.New(taxonomy.CodeAccountExists, taxonomy.Params{"name": name}))
+			return
+		}
+		if errors.Is(err, auth.ErrReservedName) {
+			u.renderAccountsError(w, r, name,
+				taxonomy.New(taxonomy.CodeLocalNameReserved, taxonomy.Params{"name": name}))
 			return
 		}
 		u.render.Error(w, r, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))
@@ -208,6 +225,26 @@ func (u *UI) renderAccountsError(w http.ResponseWriter, r *http.Request, name st
 	u.renderAdmin(w, r, ev.Status, d)
 }
 
+// maxTokenLifetimeDays bounds the lifetime field: ten years is already
+// "long-lived", and the bound keeps the arithmetic far from overflow.
+const maxTokenLifetimeDays = 3650
+
+// tokenExpiry turns the lifetime field into an expiry instant: empty is
+// the zero time (the configured default applies, R-14), a whole number of
+// days from 1 to maxTokenLifetimeDays counts from now, anything else is
+// refused.
+func (u *UI) tokenExpiry(days string) (time.Time, error) {
+	days = strings.TrimSpace(days)
+	if days == "" {
+		return time.Time{}, nil
+	}
+	n, err := strconv.Atoi(days)
+	if err != nil || n < 1 || n > maxTokenLifetimeDays {
+		return time.Time{}, errors.New("token lifetime must be a whole number of days between 1 and 3650")
+	}
+	return u.now().Add(time.Duration(n) * 24 * time.Hour), nil
+}
+
 // renderAccountsToast re-renders the screen with the confirmation toast.
 func (u *UI) renderAccountsToast(w http.ResponseWriter, r *http.Request, key, name string) {
 	v := u.render.view(r, u.adminScreenData(r))
@@ -227,16 +264,18 @@ func (u *UI) adminTokenCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(r.PostFormValue("name"))
 	role, roleErr := auth.ParseRole(r.PostFormValue("role"))
-	if name == "" || roleErr != nil {
-		// Unreachable through the form (required input, closed select):
-		// hand-crafted requests get the page back with the inline message.
+	expires, lifeErr := u.tokenExpiry(r.PostFormValue("lifetimeDays"))
+	if name == "" || roleErr != nil || lifeErr != nil {
+		// Unreachable through the form (required input, closed select,
+		// bounded number): hand-crafted requests get the page back with
+		// the inline message.
 		d := u.adminScreenData(r)
 		d.FormError, d.Name = "admin.err_invalid", name
 		u.renderAdmin(w, r, http.StatusBadRequest, d)
 		return
 	}
 	id, _ := auth.IdentityFrom(r.Context())
-	secret, tok, err := st.CreateToken(name, role, u.now())
+	secret, tok, err := st.CreateTokenExpiring(name, role, u.now(), expires)
 	if err != nil {
 		if errors.Is(err, auth.ErrExists) {
 			audit.Log(r.Context(), u.logger, &audit.Event{
@@ -246,6 +285,16 @@ func (u *UI) adminTokenCreate(w http.ResponseWriter, r *http.Request) {
 			d := u.adminScreenData(r)
 			d.FormError, d.Name = "admin.err_name_taken", name
 			u.renderAdmin(w, r, http.StatusConflict, d)
+			return
+		}
+		if errors.Is(err, auth.ErrReservedName) {
+			audit.Log(r.Context(), u.logger, &audit.Event{
+				Actor: id.Name, Action: audit.ActionTokenCreate, Target: name,
+				Outcome: audit.OutcomeFailure, Origin: auth.ClientOrigin(r),
+			})
+			d := u.adminScreenData(r)
+			d.FormError, d.Name = "admin.err_name_reserved", name
+			u.renderAdmin(w, r, http.StatusUnprocessableEntity, d)
 			return
 		}
 		u.render.Error(w, r, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))

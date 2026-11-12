@@ -641,3 +641,141 @@ func TestUnknownCodeRendersInsteadOfPanicking(t *testing.T) {
 		t.Error("an empty finding code rendered to nothing")
 	}
 }
+
+// reducedMedium builds a medium whose source admitted one recipe unsigned
+// under the declared scope "lab-sources" and verified the other against a
+// trust root: the pair every FR-037 assertion below needs.
+func reducedMedium(t *testing.T) (f *fixture, raw []byte) {
+	t.Helper()
+	f = newFixture(t)
+	f.addRecipe("alpha", "1.0.0", true)
+	bare := f.addRecipe("bare", "1.0.0", false)
+	// The ledger records the relaxed admission the way the engine does.
+	bare.TrustScope = "lab-sources"
+	if err := f.st.PutRecipeRecord(&bare); err != nil {
+		t.Fatal(err)
+	}
+	f.write(time.Now().UTC())
+	raw, err := os.ReadFile(f.path(media.ManifestPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f, raw
+}
+
+// TestManifestRecordsTheAssurancePerRecipe locks the FR-037 manifest
+// field: a recipe admitted under a relaxed scope carries the marker, one
+// verified against a trust root carries none — and the field is OMITTED,
+// not null, so a medium without reduced content stays readable by a build
+// that predates it (the strict reader refuses unknown fields).
+func TestManifestRecordsTheAssurancePerRecipe(t *testing.T) {
+	_, raw := reducedMedium(t)
+	var doc struct {
+		Recipes []map[string]any `json:"recipes"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range doc.Recipes {
+		marker, has := r["assurance"]
+		switch r["name"] {
+		case "bare":
+			m, _ := marker.(map[string]any)
+			if !has || m["level"] != "reduced" || m["scope"] != "lab-sources" {
+				t.Errorf("bare carries assurance %v, want reduced under lab-sources", marker)
+			}
+		case "alpha":
+			if has {
+				t.Errorf("a signed recipe carries an assurance field: %v", marker)
+			}
+		}
+	}
+}
+
+// TestDestinationReDisplaysTheSourceClaimBesideItsOwnVerdict is the
+// FR-037 destination half. Three situations, one rule: the manifest's
+// marker is a CLAIM shown as such, the destination's own trust verdict
+// decides its own marker, and a claim of full assurance hides nothing.
+func TestDestinationReDisplaysTheSourceClaimBesideItsOwnVerdict(t *testing.T) {
+	f, _ := reducedMedium(t)
+
+	// This instance also admits the unsigned recipe under a scope of its
+	// own, named differently: both markers show, each with its own scope.
+	rep := f.verify(media.VerifyOptions{Zone: zoneA, Trust: trustFor{keys: f.keys, allowUnsigned: true, scope: "zone-b-lab"}})
+	bare := verdictOf(t, rep, "bare")
+	if !bare.Assurance.Reduced() || bare.Assurance.Scope != "zone-b-lab" {
+		t.Errorf("own marker = %+v, want reduced under THIS instance's scope zone-b-lab", bare.Assurance)
+	}
+	if !bare.SourceAssurance.Reduced() || bare.SourceAssurance.Scope != "lab-sources" {
+		t.Errorf("source claim = %+v, want the manifest's reduced/lab-sources re-displayed", bare.SourceAssurance)
+	}
+	alpha := verdictOf(t, rep, "alpha")
+	if alpha.Assurance != nil || alpha.SourceAssurance != nil {
+		t.Errorf("a signed recipe carries markers %+v / %+v", alpha.Assurance, alpha.SourceAssurance)
+	}
+
+	// The source claims reduced, but this instance holds a key that
+	// verifies the recipe: no own marker. The claim still shows.
+	f2 := newFixture(t)
+	rec := f2.addRecipe("gamma", "1.0.0", true) // signed with f2's key
+	rec.Verified, rec.TrustScope = false, "lab-sources"
+	if err := f2.st.PutRecipeRecord(&rec); err != nil {
+		t.Fatal(err)
+	}
+	f2.write(time.Now().UTC())
+	rep = f2.verify(media.VerifyOptions{Zone: zoneA})
+	gamma := verdictOf(t, rep, "gamma")
+	if gamma.Assurance != nil {
+		t.Errorf("own marker = %+v on a recipe this instance verified against a root", gamma.Assurance)
+	}
+	if !gamma.SourceAssurance.Reduced() {
+		t.Error("the source's claim was dropped because this instance verified the recipe itself")
+	}
+
+	// The reverse, which is the one that matters: the source CLAIMS
+	// nothing (full assurance, or a manifest written before the field),
+	// yet this instance only admits the recipe through a relaxed scope.
+	// The manifest's silence never hides it.
+	f3 := newFixture(t)
+	f3.addRecipe("delta", "1.0.0", false)
+	f3.write(time.Now().UTC())
+	rep = f3.verify(media.VerifyOptions{Zone: zoneA, Trust: trustFor{keys: f3.keys, allowUnsigned: true, scope: "zone-b-lab"}})
+	delta := verdictOf(t, rep, "delta")
+	if !delta.Assurance.Reduced() || delta.SourceAssurance != nil {
+		t.Errorf("markers = %+v / %+v, want an own reduced marker and no claim: a manifest claiming full assurance must never hide it",
+			delta.Assurance, delta.SourceAssurance)
+	}
+}
+
+// TestMalformedAssuranceClaimBlocksTheManifest: the claim is displayed, so
+// a marker this build could not have written — another level, no scope —
+// makes the manifest internally inconsistent, like any other malformed
+// field, instead of reaching a screen.
+func TestMalformedAssuranceClaimBlocksTheManifest(t *testing.T) {
+	f, raw := reducedMedium(t)
+	for name, claim := range map[string]string{
+		"another level": `{"level":"full","scope":"lab-sources","reasons":["unsigned"]}`,
+		"no scope":      `{"level":"reduced","scope":"","reasons":["unsigned"]}`,
+		"unknown cause": `{"level":"reduced","scope":"x","reasons":["vibes"]}`,
+	} {
+		var doc map[string]any
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range doc["recipes"].([]any) {
+			if rm := r.(map[string]any); rm["name"] == "bare" {
+				var marker any
+				_ = json.Unmarshal([]byte(claim), &marker)
+				rm["assurance"] = marker
+			}
+		}
+		out, _ := json.Marshal(doc)
+		if err := os.WriteFile(f.path(media.ManifestPath), out, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		rep := f.verify(media.VerifyOptions{Zone: zoneA})
+		if len(rep.Blocks) != 1 || rep.Blocks[0].Code != taxonomy.CodeMediaManifestUnreadable {
+			t.Errorf("%s: blocks = %v, want a single %s", name, blockCodes(rep), taxonomy.CodeMediaManifestUnreadable)
+		}
+	}
+}

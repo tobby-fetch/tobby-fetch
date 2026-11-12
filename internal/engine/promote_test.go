@@ -241,13 +241,13 @@ func TestPromotionTransfersOnlyMissingBlobs(t *testing.T) {
 // transferred instead".
 //
 // The happy-path recipe selects two of three platforms, and the
-// destination validates index members — which is what a conforming
-// registry does. The requirement's outcome is that the promotion
+// destination validates index members — as a registry library does by
+// default. The requirement's outcome is that the promotion
 // succeeds, at the SAME pinned digest, with the third platform fetched
 // rather than the index rewritten.
 func TestPromotionWidensPlatformsWhenSparseIndexRefused(t *testing.T) {
 	env := newHappyEnv(t)
-	dest := newDestRegistry(t)
+	dest := newDestRegistry(t, refusingSparseIndexes())
 	withDestination(t, env.eng, dest, config.Destination{}, nil)
 
 	if _, err := runSync(t, env.eng); err != nil {

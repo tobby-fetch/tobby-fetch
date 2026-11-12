@@ -54,7 +54,7 @@ every file it reaches against its inventory entry AND against the digest
 it is stored under, then its signature against THIS instance's trust
 roots. Trust roots present on the medium are ignored.`,
 	}
-	cmd.AddCommand(newMediaVerifyCmd(), newMediaImportCmd())
+	cmd.AddCommand(newMediaVerifyCmd(), newMediaImportCmd(), newMediaSlipCmd())
 	return cmd
 }
 
@@ -362,7 +362,10 @@ func openMedia(ctx context.Context, cfg *config.Config, stderr io.Writer, intent
 	}
 	op.logger = logging.WithRunID(logger, op.runID)
 
-	st, err := store.Open(ctx, cfg.Storage.Root, op.logger)
+	// Opened for inspection, whatever the intent: the registry library's
+	// upload purger would delete week-old upload sessions on the medium,
+	// a write outside the operation log FR-054 allows (B-042).
+	st, err := store.OpenWith(ctx, cfg.Storage.Root, op.logger, store.Options{Inspect: true})
 	if err != nil {
 		op.close()
 		return nil, err
@@ -482,7 +485,7 @@ func writeReport(cmd *cobra.Command, report *reportFlag, rep *media.Report) erro
 	for i := range rep.Recipes {
 		v := &rep.Recipes[i]
 		if v.Pushable {
-			_, _ = fmt.Fprintf(out, "  pushable  %s@%s (%d files, %d bytes)\n", v.Name, v.Version, v.Files, v.Bytes)
+			_, _ = fmt.Fprintf(out, "  pushable  %s@%s (%d files, %d bytes)%s\n", v.Name, v.Version, v.Files, v.Bytes, assuranceNote(v))
 			continue
 		}
 		// The refusal names the file (FR-054 acceptance).
@@ -490,7 +493,7 @@ func writeReport(cmd *cobra.Command, report *reportFlag, rep *media.Report) erro
 		if where == "" {
 			where = v.CookbookRepo
 		}
-		_, _ = fmt.Fprintf(out, "  BLOCKED   %s@%s — %s at %s\n", v.Name, v.Version, v.Reason.Code, where)
+		_, _ = fmt.Fprintf(out, "  BLOCKED   %s@%s — %s at %s%s\n", v.Name, v.Version, v.Reason.Code, where, assuranceNote(v))
 	}
 	for i := range rep.Findings {
 		_, _ = fmt.Fprintf(out, "  reported  %s %s (never pushed)\n", rep.Findings[i].Code, rep.Findings[i].Path)
@@ -510,11 +513,29 @@ func writeImportReport(cmd *cobra.Command, report *reportFlag, task *tasks.Task)
 		task.Status, agg.Done, agg.Skipped, agg.Failed)
 	for i := range task.Items {
 		item := &task.Items[i]
+		mark := ""
+		if item.Assurance.Reduced() {
+			mark = " [reduced assurance: scope " + item.Assurance.Scope + "]"
+		}
 		if item.Error == nil {
-			_, _ = fmt.Fprintf(out, "  %-8s %s\n", item.Status, item.Name)
+			_, _ = fmt.Fprintf(out, "  %-8s %s%s\n", item.Status, item.Name, mark)
 			continue
 		}
-		_, _ = fmt.Fprintf(out, "  %-8s %s — %s\n", item.Status, item.Name, item.Error.Code)
+		_, _ = fmt.Fprintf(out, "  %-8s %s — %s%s\n", item.Status, item.Name, item.Error.Code, mark)
 	}
 	return nil
+}
+
+// assuranceNote renders a delivery's FR-037 markers for the text report:
+// this instance's own verdict first, then — as a claim, never instead —
+// what the source zone declared in the manifest.
+func assuranceNote(v *media.RecipeVerdict) string {
+	var note string
+	if v.Assurance.Reduced() {
+		note += " [reduced assurance: scope " + v.Assurance.Scope + "]"
+	}
+	if v.SourceAssurance.Reduced() {
+		note += " [source zone declares reduced assurance: scope " + v.SourceAssurance.Scope + "]"
+	}
+	return note
 }

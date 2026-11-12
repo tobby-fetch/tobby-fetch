@@ -68,6 +68,14 @@ strength of a network failure is not a trade this product makes. And every
 removed item is named — repository, tag, digest, and the recipe that brought
 it — in the run log, not merely counted.
 
+A recipe the vulnerability policy **withholds** is one such failed recipe.
+Its ingredients were fetched before they could be scanned, so their bytes
+stay on the medium and travel with it — delivered by nothing: the recipe
+is absent from the media manifest, no destination verifies or pushes it,
+and `tobby store verify` lists that content as reachable from no recipe
+(`TBY-INT-003`). It goes once the recipe is fixed or dropped from the
+Retriever and a prune runs, or when the medium is started over.
+
 The result is that a cycling medium stays proportional to the zone's
 *current* needs rather than to its history.
 

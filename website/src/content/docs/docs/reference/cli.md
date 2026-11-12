@@ -42,6 +42,8 @@ tobby
 ├── media
 │   ├── verify     Re-verify a transported store without pushing anything
 │   └── import     Verify a transported store, then push what it cleared
+├── store
+│   └── verify     Verify the integrity of a whole store (either mode)
 ├── recipe
 │   └── push       Validate a recipe and publish it to a cookbook
 ├── user
@@ -179,6 +181,7 @@ for writing, and a second writer is exactly what the store format forbids.
 | `--instance <url>` | `TOBBY_INSTANCE_URL`, then the configured listen address on localhost | Base URL of the instance to drive, e.g. `https://tobby.example:8443`. |
 | `--token-file <path>` | `TOBBY_API_TOKEN` when absent | File holding the static API token (operator role). The token is deliberately **not** a flag: flag values are visible in the process table. |
 | `--request-timeout <d>` | `30s` | Per-request budget against the instance. It bounds a request, never the wait. |
+| `--allow-plaintext-token` | `false` | Send the API token to an `http://` instance that is **not on this host**. Refused by default: the token would cross the network in clear; use `https://`, or `http://` on loopback (`localhost`, `127.0.0.1`, `[::1]`). With the flag, a warning says so on every run (FR-075). |
 | `--wait` | `false` | Block until the task reaches a terminal state, and exit on the task's own outcome. |
 | `--wait-timeout <d>` | *(none)* | Give up waiting after this long. Giving up says so and names the task — the synchronization keeps running on the instance. |
 | `--prune` | *(the instance's own setting)* | `--prune` removes content no recipe reaches any more; `--prune=false` forbids it for this run. Absent means "do what this instance does by default". |
@@ -350,6 +353,41 @@ tobby media verify --storage-root /mnt/usb --zone production --output json | jq 
 Exit codes: `0` every delivery is pushable, `3` refused by policy (zone
 identity, freshness), `4` a verification failure.
 
+### tobby media slip
+
+```
+tobby media slip [flags]
+```
+
+Draws the [transfer slip](../../air-gap/transfer-slip/) (R-07): the
+printable, bilingual account of one physical transfer — the medium, its
+freshness and inventory, the verification report, the vulnerability-scan
+reports per recipe and element, and the reduced-assurance markers.
+
+With a zone identity the command is the destination side: it verifies the
+medium first, as `media verify` does and writing nothing, so the slip
+carries the verdict. Without one it is the source side. A store with no
+manifest still gets a slip, which names the refusal. The slip is **unsigned**
+and says so at its head and its foot: it is an aid, not proof of
+authenticity, and Tobby signs nothing.
+
+| Flag | Purpose |
+|---|---|
+| `--output text\|html\|json` | `text` (default) is the plain-text document, `html` a self-contained page with inline print rules that loads nothing, `json` the language-neutral document the API serves. |
+| `--lang en\|fr` | Language of the slip. Default: `LC_ALL` / `LC_MESSAGES` / `LANG`, English otherwise. |
+| `--zone` | The zone this instance serves; optional here. |
+| `--allow-zone-mismatch`, `--allow-stale` | As on `media verify`: preview what a waived import would do. |
+
+```sh
+tobby media slip --storage-root /mnt/usb --zone production --lang fr
+tobby media slip --storage-root /mnt/usb --zone production --output html > slip.html
+```
+
+The command does not read the scanner: its scan section says so, and the
+per-element reports stand on their own. Exit codes: `0` whatever the
+verdict — a blocked medium is a successful slip of a bad medium — and `4`
+when the verification itself could not run.
+
 ### tobby media import
 
 ```
@@ -389,6 +427,58 @@ tobby media import --config /etc/tobby/config.yaml
 
 Exit codes: `0` imported, `1` a push failed, `3` refused by policy, `4` a
 verification failure.
+
+### tobby store verify
+
+```
+tobby store verify [flags]
+```
+
+Verifies a whole store on demand (SRS FR-057), in either mode — an
+instance's store and a transportable one are verified the same way. Four
+checks, each independent of the others' verdict:
+
+| Check | What it establishes |
+|---|---|
+| blobs | every blob is re-hashed against the digest it is stored under |
+| manifests | every manifest reachable from a recorded recipe is complete: its config, its layers, its signature artifacts, the children of an index the recipe retained (a platform it did not select is no defect; one it retained and the store lost is) |
+| signatures | every recorded recipe signature verifies against the trust roots configured **now**, scopes applied; the [reduced-assurance marker](../../security/reduced-assurance/) of a recipe admitted unsigned by a scope is re-reported |
+| orphans | content that no recorded recipe and no protected root (unit imports, seeded content, the vulnerability database) reaches is listed |
+
+The command **only reads**. It repairs nothing, deletes nothing and writes
+nothing into the store, which is byte-identical afterwards. The report is
+timestamped (start and end, run identifier, verdict) and names every defect
+as a taxonomy code with the file or object concerned; orphaned content is a
+note and never makes the verdict `defects`. It refuses a directory that is
+not already a Tobby store rather than stamp it.
+
+Without `--instance` it runs in this process, against the directory, and
+works on a host where no instance is running. Trust roots come from the
+configuration (`trust.roots`, `trust.scopes`), never from the store. When an
+instance *is* serving the store, that form **refuses** — it cannot see the
+instance's content lock — and names `--instance`: the verification then runs
+on the instance as a tracked task, under its content lock, on a lane of its
+own that never holds up a synchronization. See
+[Verify the store's integrity](../../passthrough/verify-store/).
+
+| Flag | Purpose |
+|---|---|
+| `--storage-root` | The store to verify. Required — from the flag, `TOBBY_STORAGE_ROOT`, or `storage.root:` in the configuration file. |
+| `--output text\|json` | `json` emits the report itself on stdout, the same document `GET /api/v1/store/verification` serves under `verification`. With `--instance` and no `--wait`, the task the instance created. |
+| `--instance` | Base URL of the running instance to drive (default `TOBBY_INSTANCE_URL`, then the configured listen address); token from `TOBBY_API_TOKEN` or `--token-file`, sent over `http://` only to this host unless `--allow-plaintext-token`. |
+| `--wait`, `--wait-timeout` | With `--instance`: follow the task to its end, print the report, and exit on its outcome. |
+
+There is no schedule and no repair flag: v1 verifies on demand and reports.
+
+```sh
+tobby store verify --storage-root /mnt/usb
+tobby store verify --config /etc/tobby/config.yaml --output json | jq '.defects[] | .code + " " + .path'
+```
+
+Exit codes: `0` the store is intact, `1` the verification was cancelled or failed,
+`4` a defect was found — a blob that
+does not match its digest, an incomplete or unreadable manifest, a
+signature that no longer verifies.
 
 ### tobby recipe push
 

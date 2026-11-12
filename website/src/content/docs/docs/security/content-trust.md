@@ -77,17 +77,28 @@ nominal reference, never a substituted endpoint (FR-036).
 A scope that admits unsigned content is not a quiet setting: it is
 reported in the effective configuration, in logs, and in every task
 report that used it (FR-075 principle — security relaxations are visible
-by construction).
+by construction). What it admitted stays visible too, item by item:
+content admitted under a relaxed scope carries a
+[reduced-assurance marker](../reduced-assurance/) on every surface that
+reports it.
+
+**A scope's `roots` are a compartment.** A recipe matching a scope that
+lists `roots` is verified against those roots only. A key that is a valid
+trust root elsewhere in the same configuration — but is not listed by the
+scope — does not verify it, and the refusal names the scope:
+`TBY-SIG-001` carries a `scope` parameter, so you read which perimeter
+refused the recipe instead of hunting through every root
+([error reference](../../reference/errors/#tby-sig-001)). The same holds on
+a synchronization, on the signature re-check before a push, in a plan, and
+when a transported medium is verified on the destination side.
 
 :::note[Upcoming]
-Three refinements are on the roadmap: a per-content **reduced-trust
-marker** carried into reports, UI, metrics, and the media inventory
-(R-22 — milestone 6); **provenance visible content by content** — recipe-
-verified, unit import, direct push (R-17 — milestone 7); and the
-documented **emergency path** — a locally written recipe signed with the
-organization's emergency key, admitted under a declared `emergency` scope
-(R-21 — milestone 7, documentation-only). Track them on the
-[project status](../../discover/status/) page.
+Two refinements are on the roadmap: **provenance visible content by
+content** — recipe-verified, unit import, direct push (R-17 — milestone
+7); and the documented **emergency path** — a locally written recipe
+signed with the organization's emergency key, admitted under a declared
+`emergency` scope (R-21 — milestone 7, documentation-only). Track them on
+the [project status](../../discover/status/) page.
 :::
 
 ## The two accepted signature formats

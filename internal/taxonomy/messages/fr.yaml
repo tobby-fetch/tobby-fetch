@@ -20,7 +20,7 @@
 "TBY-AUTH-004.action": "Le formulaire a été rechargé avec un jeton neuf : soumettez-le à nouveau."
 
 "TBY-AUTH-005.what": "Votre session a expiré."
-"TBY-AUTH-005.cause": "Aucune activité pendant une durée supérieure à la vie de la session, ou l'instance a redémarré."
+"TBY-AUTH-005.cause": "Aucune activité pendant plus que le délai d'inactivité, la session a atteint sa durée de vie maximale, ou l'instance a redémarré."
 "TBY-AUTH-005.action": "Reconnectez-vous ; vous reviendrez à la page où vous étiez."
 
 "TBY-AUTH-006.what": "Le mot de passe actuel est erroné."
@@ -50,6 +50,34 @@
 "TBY-AUTH-012.what": "Trop de tentatives d'authentification échouées depuis votre adresse réseau ; les tentatives suivantes sont temporairement refusées."
 "TBY-AUTH-012.cause": "Des identifiants erronés ont été présentés à répétition depuis la même origine. Chaque vérification échouée est volontairement coûteuse, l'instance limite donc les origines qui échouent en boucle plutôt que de brûler CPU et mémoire pour elles."
 "TBY-AUTH-012.action": "Patientez un instant, vérifiez l'identifiant (mot de passe du compte ou secret du jeton), puis réessayez. Si cette adresse est une sortie partagée, un autre client derrière elle est peut-être mal configuré — le journal d'audit liste les tentatives échouées et les noms de compte revendiqués."
+
+"TBY-AUTH-013.what": "Le jeton d'API a expiré."
+"TBY-AUTH-013.cause": "Le jeton a été créé avec une date d'expiration, et cette date est passée. Un jeton expiré est refusé comme un jeton révoqué, et le refus est journalisé dans l'audit."
+"TBY-AUTH-013.action": "Demandez un nouveau jeton à un administrateur (écran des comptes ou `POST /api/v1/tokens`), puis remplacez le jeton expiré dans le client qui l'a présenté."
+
+"TBY-AUTH-014.what": "La connexion via {{.provider}} a échoué."
+"TBY-AUTH-014.cause": "La réponse du fournisseur d'identité n'a pas passé les contrôles de Tobby (state, nonce, signature, émetteur ou audience) — souvent une connexion commencée dans un autre onglet, un écart d'horloge, ou un client enregistré avec une autre URL de retour."
+"TBY-AUTH-014.action": "Recommencez la connexion depuis cette page. Si elle échoue encore, un administrateur trouve le contrôle en échec dans le journal de l'instance sous le même identifiant de corrélation ; la connexion locale reste disponible entre-temps."
+
+"TBY-AUTH-015.what": "La connexion via {{.provider}} a échoué."
+"TBY-AUTH-015.cause": "La réponse SAML a été refusée : non signée, déjà utilisée, ne répondant pas à une connexion lancée par cette instance, hors de sa fenêtre de validité, ou destinée à une autre audience ou destination."
+"TBY-AUTH-015.action": "Recommencez la connexion depuis cette page — Tobby n'accepte que les connexions qu'il a lui-même lancées. Si elle échoue encore, un administrateur trouve le contrôle refusé dans le journal de l'instance sous le même identifiant de corrélation ; la connexion locale reste disponible entre-temps."
+
+"TBY-AUTH-016.what": "La connexion via {{.provider}} est indisponible : le fournisseur d'identité est injoignable."
+"TBY-AUTH-016.cause": "Le fournisseur n'a pas répondu à temps, ou le chemin réseau vers lui est coupé. Les sessions en cours et les jetons d'API ne sont pas affectés."
+"TBY-AUTH-016.action": "Utilisez la connexion locale entre-temps — elle reste disponible quand la fédération est en panne, et son usage est consigné dans le journal d'audit. Vérifiez le chemin réseau vers le fournisseur (proxy, AC privée) et sa disponibilité ; la connexion fédérée revient sans redémarrage."
+
+"TBY-AUTH-017.what": "Vous êtes authentifié chez {{.provider}}, mais aucun rôle Tobby ne vous est attribué."
+"TBY-AUTH-017.cause": "Aucun des groupes transmis par le fournisseur d'identité pour votre compte n'est associé à un rôle sur cette instance. Tobby n'attribue jamais de rôle par défaut."
+"TBY-AUTH-017.action": "Demandez à un administrateur d'ajouter l'un de vos groupes à la correspondance des rôles de la configuration (`roles.viewer`, `roles.operator` ou `roles.admin` dans la section du fournisseur), ou de vous ajouter à un groupe déjà associé."
+
+"TBY-AUTH-018.what": "Trop de connexions par {{.provider}} ont été entamées depuis votre adresse réseau ; en entamer une autre est temporairement refusé."
+"TBY-AUTH-018.cause": "Chaque connexion entamée retient un peu de mémoire sur cette instance jusqu'à son terme, et peut contacter le fournisseur d'identité, avant que quiconque soit authentifié. L'instance borne la fréquence à laquelle une même adresse réseau peut en entamer, pour qu'un afflux depuis une adresse ne chasse jamais les connexions que d'autres personnes ont en cours."
+"TBY-AUTH-018.action": "Patientez quelques secondes puis reconnectez-vous — une fois. S'il s'agit d'une adresse de sortie partagée, un autre client derrière elle boucle peut-être sur la page de connexion."
+
+"TBY-AUTH-019.what": "Le nom {{.name}} ne peut pas désigner un compte ou un token local."
+"TBY-AUTH-019.cause": "Le caractère « : » est réservé aux identités fédérées, dont la clé est `oidc:<sujet>` ou `saml:<NameID>` ; un compte ou un token local nommé comme l'une d'elles s'en distinguerait mal dans la piste d'audit."
+"TBY-AUTH-019.action": "Choisissez un nom sans « : » (par exemple un tiret ou un point à la place)."
 
 "TBY-CFG-001.what": "La configuration est invalide."
 "TBY-CFG-001.cause": "{{.detail}}"
@@ -128,8 +156,8 @@
 "TBY-POL-004.action": "Publiez le changement sous un nouveau metadata.version et un nouveau tag. Republier une version sur un contenu différent changerait en silence ce que des zones ont déjà résolu."
 
 "TBY-SIG-001.what": "La signature de la recipe n'a pas pu être vérifiée."
-"TBY-SIG-001.cause": "Aucune clé de confiance configurée ne valide la signature de {{.recipe}} (clés essayées : {{.fingerprints}})."
-"TBY-SIG-001.action": "Vérifiez que les clés de confiance de la zone incluent la clé qui a signé cette recipe. Une recipe non vérifiée n'est jamais admise."
+"TBY-SIG-001.cause": "{{if .scope}}Aucune clé de confiance autorisée par le périmètre de confiance {{.scope}} ne valide la signature de {{.recipe}} (clés essayées : {{.fingerprints}}). Une clé valide pour un autre périmètre ne s'applique pas dans celui-ci.{{else}}Aucune clé de confiance configurée ne valide la signature de {{.recipe}} (clés essayées : {{.fingerprints}}).{{end}}"
+"TBY-SIG-001.action": "{{if .scope}}Vérifiez les clés listées par le périmètre {{.scope}} (trust.scopes[].roots) : elles doivent inclure la clé qui a signé cette recipe, ou la recipe relève d'un autre périmètre.{{else}}Vérifiez que les clés de confiance de la zone incluent la clé qui a signé cette recipe.{{end}} Une recipe non vérifiée n'est jamais admise."
 
 "TBY-SIG-002.what": "Un digest épinglé ne correspond pas au contenu récupéré."
 "TBY-SIG-002.cause": "{{.reference}} épingle {{.expected}} mais le registre a servi {{.actual}} — le contenu a changé ou a été altéré."
@@ -270,6 +298,86 @@
 "TBY-LAY-003.what": "La destination de l'export existe déjà."
 "TBY-LAY-003.cause": "{{.path}} est déjà présent, et cet export n'était pas autorisé à le remplacer."
 "TBY-LAY-003.action": "Choisissez une autre destination, ou relancez l'export avec l'option de remplacement (`--overwrite` en ligne de commande) une fois certain que ce qui s'y trouve peut être perdu."
+
+"TBY-SCN-001.what": "L'analyseur de vulnérabilités est indisponible : le contenu n'est pas analysé."
+"TBY-SCN-001.cause": "{{.detail}}"
+"TBY-SCN-001.action": "Rendez l'analyseur disponible pour cette plateforme : il est intégré à l'image conteneur ; sur un hôte Linux ou Windows, synchronisez la recipe tobby-system qui le transporte ; sous macOS, installez trivy dans le PATH. Sous `scan.mode: block`, rien de ce qui n'a pu être analysé n'est poussé d'ici là."
+
+"TBY-SCN-002.what": "Le binaire de l'analyseur {{.path}} ne correspond pas à son digest épinglé et n'a pas été exécuté."
+"TBY-SCN-002.cause": "Attendu {{.expected}}, trouvé {{.actual}} : le fichier a été remplacé ou endommagé après son épinglage."
+"TBY-SCN-002.action": "Restaurez le binaire depuis la recipe tobby-system (ou depuis la release épinglée), ou mettez à jour `scan.trivy.digest` si le changement est voulu. Le contenu est signalé non analysé d'ici là."
+
+"TBY-SCN-003.what": "Aucune base de vulnérabilités n'est disponible : le contenu n'est pas analysé."
+"TBY-SCN-003.cause": "Le store ne contient aucune base sous {{.repository}}."
+"TBY-SCN-003.action": "Synchronisez d'abord la recipe tobby-system qui transporte la base — par le support miroir en zone isolée. La vérification des supports n'a pas besoin de la base."
+
+"TBY-SCN-004.what": "La base de vulnérabilités a {{.age}}, au-delà des {{.max}} acceptés par cette instance."
+"TBY-SCN-004.cause": "La base n'a pas été rafraîchie assez récemment : les vulnérabilités publiées depuis sa construction sont inconnues de l'analyseur."
+"TBY-SCN-004.action": "Synchronisez la recipe tobby-system pour apporter une base fraîche — par le prochain support en zone isolée. Sous `scan.maxDbAgeAction: block`, les éléments analysés avec une base périmée ne sont pas poussés d'ici là."
+
+"TBY-SCN-005.what": "{{.reference}} enfreint la politique de vulnérabilités et n'a pas été poussé."
+"TBY-SCN-005.cause": "Des vulnérabilités au niveau du seuil de {{.threshold}} ou au-delà (posé au niveau {{.level}}) ne sont couvertes par aucune exception : {{.violations}}."
+"TBY-SCN-005.action": "Publiez une version corrigée en amont et mettez à jour la recipe, ou — si le risque est accepté dans cette zone — listez la CVE en exception dans le `spec.scanPolicy` du Retriever ou dans `scan.exceptions`, avec sa justification."
+
+"TBY-SCN-006.what": "{{.reference}} enfreint la politique de vulnérabilités ; il a été poussé car la politique est consultative."
+"TBY-SCN-006.cause": "Des vulnérabilités au niveau du seuil de {{.threshold}} ou au-delà (posé au niveau {{.level}}) ne sont couvertes par aucune exception : {{.violations}}."
+"TBY-SCN-006.action": "Examinez les vulnérabilités. Pour refuser un tel contenu plutôt que le signaler, réglez `scan.mode: block` ; pour accepter une CVE précise dans cette zone, listez-la en exception avec sa justification."
+
+"TBY-SCN-007.what": "{{.reference}} n'a pas pu être analysé."
+"TBY-SCN-007.cause": "L'analyseur s'est arrêté sur une erreur : {{.detail}}"
+"TBY-SCN-007.action": "Relancez la synchronisation. Si l'erreur persiste, le journal de l'instance porte la sortie de l'analyseur sous le même identifiant de corrélation. Sous `scan.mode: block`, l'élément n'est pas poussé tant qu'il n'est pas analysé."
+
+"TBY-SCN-008.what": "La base de vulnérabilités se dit construite le {{.built_at}}, après l'horloge de cette instance ({{.now}})."
+"TBY-SCN-008.cause": "Son âge ne peut pas être établi ; elle est donc traitée comme périmée : soit l'horloge de cet hôte retarde, soit les métadonnées de la base sont fausses."
+"TBY-SCN-008.action": "Vérifiez l'horloge de cet hôte (et de la zone qui a cuisiné la recipe tobby-system), puis synchronisez une base dont la date de construction est passée. Sous `scan.maxDbAgeAction: block`, les éléments analysés avec elle ne sont pas poussés d'ici là."
+
+"TBY-SCN-020.what": "Le seuil d'analyse porté par {{.recipe}} a été ignoré."
+"TBY-SCN-020.cause": "La recipe demande {{.annotation}}, au-dessus des {{.threshold}} en vigueur pour cette zone ; une recipe peut abaisser le seuil, jamais le relever."
+"TBY-SCN-020.action": "Rien à faire sur cette instance : le seuil de la zone s'applique. L'auteur de la recipe peut retirer ou abaisser l'annotation `recipe.tobby.dev/scan-threshold`."
+
+"TBY-SCN-021.what": "L'exception pour {{.id}} a expiré le {{.expires}} et ne s'applique plus."
+"TBY-SCN-021.cause": "L'exception déclarée au niveau {{.level}} porte une date d'expiration dépassée."
+"TBY-SCN-021.action": "Renouvelez l'exception avec un nouveau `expires` et sa justification si le risque reste accepté, ou retirez-la et traitez la vulnérabilité."
+
+"TBY-SCN-022.what": "{{.reference}} porte des vulnérabilités sans score de criticité : {{.ids}}."
+"TBY-SCN-022.cause": "Les sources d'avis ne donnent à ces vulnérabilités ni score CVSS ni sévérité : la politique ne peut pas les comparer à son seuil."
+"TBY-SCN-022.action": "Examinez-les à la main. Elles ne comptent pas face au seuil ; si l'une doit être refusée, faites corriger le contenu en amont."
+
+"TBY-SCN-023.what": "{{.reference}}, déclaré {{.declared}}, a été analysé comme une image de conteneur, détecté comme image d'après son contenu ({{.evidence}})."
+"TBY-SCN-023.cause": "Ce qui est analysé est décidé par le contenu, jamais par le type déclaré : cet ingrédient est, ou contient, une image qu'un runtime pourrait exécuter ; la politique de vulnérabilités s'y applique comme à toute image."
+"TBY-SCN-023.action": "Rien à faire si ce contenu est attendu. Sinon, demandez à l'auteur de la recipe pourquoi une image est publiée sous ce type ; le verdict associé à cette note s'applique normalement."
+
+"TBY-SCN-024.what": "{{.reference}}, déclaré {{.declared}}, ne contient aucune image de conteneur : il n'est pas analysé."
+"TBY-SCN-024.cause": "Son manifeste n'a ni configuration d'image ni couche de système de fichiers, et aucun de ses fichiers n'est une archive d'image : l'analyseur n'a rien à y lire."
+"TBY-SCN-024.action": "Rien à faire. Un contenu qui n'est pas une image (un modèle, une base de données, un document) est hors du périmètre de l'analyse de vulnérabilités ; examinez-le par les moyens propres à son format."
+
+"TBY-SCN-025.what": "{{.reference}}, livré par la recipe signée {{.recipe}}, est évalué sous une politique consultative."
+"TBY-SCN-025.cause": "C'est une livraison de l'analyseur lui-même. La refuser au nom de la politique qu'elle arme laisserait la zone sans moyen d'armer un analyseur, ni de mettre à jour sa base."
+"TBY-SCN-025.action": "Rien à faire. Ses vulnérabilités restent rapportées ; la confiance dans ce contenu repose sur la signature de la recipe tobby-system."
+
+"TBY-INT-001.what": "Le blob {{.path}} ne correspond pas à son digest."
+"TBY-INT-001.cause": "Son contenu donne {{.actual}} au lieu de {{.expected}} : le fichier a été endommagé ou modifié sur le disque."
+"TBY-INT-001.action": "La vérification ne modifie rien. Re-synchronisez les recipes qui atteignent ce blob pour le récupérer à nouveau, ou restaurez le store depuis une copie saine ; vérifiez le disque."
+
+"TBY-INT-002.what": "{{.reference}} est incomplet dans le store."
+"TBY-INT-002.cause": "Il référence un contenu absent du store : {{.missing}}."
+"TBY-INT-002.action": "Re-synchronisez la recipe qui l'atteint pour récupérer le contenu manquant, ou restaurez le store depuis une copie saine."
+
+"TBY-INT-003.what": "{{.path}} n'est atteint par aucune recipe."
+"TBY-INT-003.cause": "Aucune recipe enregistrée ni aucune racine protégée (imports unitaires, base de vulnérabilités, contenu amorcé) n'atteint ce contenu."
+"TBY-INT-003.action": "Rien n'est requis. Pour récupérer l'espace, élaguez selon le Retriever ou retirez la recipe qui le portait ; la vérification elle-même ne supprime jamais rien."
+
+"TBY-INT-004.what": "Une vérification du store est déjà en cours."
+"TBY-INT-004.cause": "La vérification {{.task}} parcourt le store ; en lancer deux à la fois diviserait leur débit par deux sans rien apprendre de plus."
+"TBY-INT-004.action": "Suivez la vérification en cours sur l'écran des tâches, ou attendez sa fin pour en lancer une nouvelle."
+
+"TBY-INT-005.what": "{{.path}} ne peut pas être lu comme un manifest."
+"TBY-INT-005.cause": "{{.detail}}"
+"TBY-INT-005.action": "Re-synchronisez la recipe qui l'atteint, ou restaurez le store depuis une copie saine ; ce que ce manifest référence n'a pas pu être contrôlé."
+
+"TBY-INT-006.what": "La vérification du store a été annulée."
+"TBY-INT-006.cause": "La vérification {{.task}} a été arrêtée avant d'atteindre un verdict : elle ne dit rien du store."
+"TBY-INT-006.action": "Lancez une nouvelle vérification quand vous voulez une réponse. Rien n'a été modifié : une vérification ne fait que lire."
 
 "TBY-TSK-001.what": "La tâche n'existe pas."
 "TBY-TSK-001.cause": "Aucune tâche d'identifiant {{.id}} sur cette instance — lien erroné, ou store réinitialisé."

@@ -14,6 +14,12 @@ package:
   copyright:
     - license: GPL-3.0-only
       attestation: Copyright © 2026 infraBuilder SASU and contributors
+    # The pinned vulnerability scanner the image bundles (ADR-0008
+    # decision 4), redistributed unmodified from its upstream release.
+    - license: Apache-2.0
+      paths:
+        - usr/libexec/tobby/trivy
+      attestation: Copyright Aqua Security Software Ltd. and Trivy contributors
 
 environment:
   contents:
@@ -44,3 +50,38 @@ pipeline:
         *) echo "unsupported arch ${{build.arch}}" >&2; exit 1 ;;
       esac
       install -Dm755 "dist/tobby-linux-${goarch}" "${{targets.destdir}}/usr/bin/tobby"
+
+  # The pinned vulnerability scanner (ADR-0008 decision 4, FR-031): the
+  # upstream release archive, fetched by checksum, and the executable in
+  # it checked against the digest Tobby itself pins
+  # (internal/scan/trivy/pins.go) — the instance verifies that same digest
+  # again before every execution. The three places move together: this
+  # file, pins.go and the CI step that installs the same release.
+  - name: Fetch the pinned Trivy release (x86_64)
+    if: ${{build.arch}} == 'x86_64'
+    uses: fetch
+    with:
+      uri: https://github.com/aquasecurity/trivy/releases/download/v0.76.2/trivy_0.76.2_Linux-64bit.tar.gz
+      expected-sha256: bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf
+      extract: false
+  - name: Fetch the pinned Trivy release (aarch64)
+    if: ${{build.arch}} == 'aarch64'
+    uses: fetch
+    with:
+      uri: https://github.com/aquasecurity/trivy/releases/download/v0.76.2/trivy_0.76.2_Linux-ARM64.tar.gz
+      expected-sha256: ab9d51f86e6a5fb936f605faff6b593ac51bc378fff4d3e8b9d58358b9c367c3
+      extract: false
+  - name: Install the pinned scanner beside tobby, verified
+    runs: |
+      set -eu
+      case "${{build.arch}}" in
+        x86_64)  archive=trivy_0.76.2_Linux-64bit.tar.gz
+                 want=6a972c69606c7b3ea4c6bdcc6fc9332ea9ad38381624310c1e85cc77345909f3 ;;
+        aarch64) archive=trivy_0.76.2_Linux-ARM64.tar.gz
+                 want=7844c3851b28470b6d7f0975fa0b3262c5b2272c9a54a91f522801bb8926f51f ;;
+        *) echo "unsupported arch ${{build.arch}}" >&2; exit 1 ;;
+      esac
+      mkdir -p .trivy
+      tar -xzf "$archive" -C .trivy trivy
+      echo "${want}  .trivy/trivy" | sha256sum -c -
+      install -Dm755 .trivy/trivy "${{targets.destdir}}/usr/libexec/tobby/trivy"

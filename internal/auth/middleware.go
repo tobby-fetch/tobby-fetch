@@ -52,6 +52,13 @@ type Authenticator struct {
 	// reported for FR-094 authentication-success events; zero means
 	// defaultAuthWindow. See recordSuccess for why a window exists at all.
 	AuthWindow time.Duration
+	// Observer receives the tobby_auth_* metric events (R-14, R-20). Nil
+	// observes nothing.
+	Observer Observer
+	// Federated reports whether a federated method (OIDC, SAML) is
+	// enabled on this instance. A local-account sign-in while it is is
+	// break-glass use, audited on its own (FR-078). Nil means no.
+	Federated func() bool
 
 	// seenMu guards seen. An Authenticator is always used through a
 	// pointer (one per instance), so the lock travels with it.
@@ -67,6 +74,77 @@ type Authenticator struct {
 	// /files/ and UI login surfaces share each origin's budget: a brute
 	// force does not get a fresh allowance per surface.
 	failures failureLimiter
+}
+
+// Observer is the metric side of authentication (FR-091, the
+// tobby_auth_* families). The auth package only states what happened; the
+// instance decides how it is counted.
+type Observer interface {
+	// Attempt counts one credential check or sign-in by method and
+	// outcome (OutcomeSuccess, OutcomeFailure, OutcomeExpired).
+	Attempt(method Method, outcome string)
+	// SessionExpired counts one UI session ended by expiry.
+	SessionExpired(reason ExpiryReason)
+	// LocalUnderFederation counts one local-account sign-in while a
+	// federated method is enabled.
+	LocalUnderFederation()
+}
+
+// The outcomes of the tobby_auth_attempts_total metric. Closed set.
+const (
+	OutcomeSuccess = "success"
+	OutcomeFailure = "failure"
+	OutcomeExpired = "expired"
+)
+
+// SurfaceFiles names the FileSet serving surface (/files/) as the target
+// of its authentication events.
+const SurfaceFiles = "files"
+
+// observe forwards one attempt to the observer, if any.
+func (a *Authenticator) observe(method Method, outcome string) {
+	if a.Observer != nil {
+		a.Observer.Attempt(method, outcome)
+	}
+}
+
+// Observe counts a sign-in a surface outside this package performed (the
+// UI form, the federated callbacks).
+func (a *Authenticator) Observe(method Method, outcome string) { a.observe(method, outcome) }
+
+// FederationEnabled reports whether a federated method is enabled.
+func (a *Authenticator) FederationEnabled() bool {
+	return a.Federated != nil && a.Federated()
+}
+
+// LocalUnderFederation records a local-account sign-in while federation is
+// enabled — the dedicated FR-078 event, filterable on its own: on an
+// instance whose people sign in through the directory, a local account in
+// use is break-glass (the identity provider is down, or someone bypasses
+// it), and the trail must show it apart from ordinary traffic. A no-op
+// when no federated method is enabled. surface is the target: "ui" for
+// the sign-in form, the machine surface otherwise.
+func (a *Authenticator) LocalUnderFederation(ctx context.Context, account, surface, origin string) {
+	if !a.FederationEnabled() {
+		return
+	}
+	if a.Observer != nil {
+		a.Observer.LocalUnderFederation()
+	}
+	audit.Log(ctx, a.Logger, &audit.Event{
+		Actor:   account,
+		Action:  audit.ActionLocalUnderFederation,
+		Target:  surface,
+		Outcome: audit.OutcomeSuccess,
+		Origin:  origin,
+	})
+}
+
+// Check is the audited credential check of a machine surface, for the
+// surfaces wired outside this package (the /files/ gate): same events,
+// same throttle, same verdicts as /v2/ and /api/v1.
+func (a *Authenticator) Check(r *http.Request, surface string) (Identity, Verdict) {
+	return a.authenticateAudited(r, surface)
 }
 
 // defaultAuthWindow is the deduplication window for successful
@@ -91,52 +169,81 @@ func (a *Authenticator) now() time.Time {
 // Authenticate resolves the request's identity from Basic or Bearer
 // credentials. It does not write a response.
 func (a *Authenticator) Authenticate(r *http.Request) (Identity, bool) {
+	id, res := a.authenticate(r)
+	return id, res.state == TokenValid
+}
+
+// authResult is what one credential check found. state is TokenValid for
+// any accepted credential, password included; token is set whenever a
+// presented token secret matched a token — valid, revoked or expired —
+// so the refusal can be named and audited.
+type authResult struct {
+	state TokenState
+	token *Token
+	// method is the method the presented credential claimed.
+	method Method
+}
+
+func (a *Authenticator) authenticate(r *http.Request) (Identity, authResult) {
 	if a.Disabled {
-		return AnonymousIdentity, true
+		return AnonymousIdentity, authResult{state: TokenValid}
 	}
+	refused := authResult{state: TokenUnknown, method: MethodBasic}
 	header := r.Header.Get("Authorization")
 	switch {
 	case strings.HasPrefix(header, "Bearer "):
-		secret := strings.TrimPrefix(header, "Bearer ")
-		if tok, ok := a.Store.VerifyToken(secret); ok {
-			return Identity{Name: tok.Name, Role: tok.Role, Token: true}, true
-		}
+		return a.checkToken(strings.TrimPrefix(header, "Bearer "))
 	case strings.HasPrefix(header, "Basic "):
 		name, pass, ok := r.BasicAuth()
 		if !ok {
-			return Identity{}, false
+			return Identity{}, refused
 		}
 		// A token secret is accepted as the Basic password so docker/helm
 		// login works with tokens too (FR-076): the token's own name wins.
 		if strings.HasPrefix(pass, tokenPrefix) {
-			if tok, ok := a.Store.VerifyToken(pass); ok {
-				return Identity{Name: tok.Name, Role: tok.Role, Token: true}, true
-			}
-			return Identity{}, false
+			return a.checkToken(pass)
 		}
 		if acct, ok := a.Store.VerifyPassword(name, pass, a.now()); ok {
-			return Identity{Name: acct.Name, Role: acct.Role}, true
+			return Identity{Name: acct.Name, Role: acct.Role, Method: MethodBasic},
+				authResult{state: TokenValid, method: MethodBasic}
 		}
 	}
-	return Identity{}, false
+	return Identity{}, refused
 }
 
-// verdict is the outcome of one audited authentication attempt: it
+// checkToken verifies a presented token secret.
+func (a *Authenticator) checkToken(secret string) (Identity, authResult) {
+	tok, state := a.Store.VerifyToken(secret, a.now())
+	res := authResult{state: state, method: MethodToken}
+	if state != TokenUnknown {
+		res.token = &tok
+	}
+	if state != TokenValid {
+		return Identity{}, res
+	}
+	return Identity{Name: tok.Name, Role: tok.Role, Token: true, Method: MethodToken}, res
+}
+
+// Verdict is the outcome of one audited authentication attempt: it
 // exists so the surfaces can tell a throttled origin (429, Retry-After)
 // from a wrong credential (401, challenge) — collapsing both into a
 // boolean is exactly what let the throttle-free path ship.
-type verdict int
+type Verdict int
 
 const (
-	// verdictOK: a valid credential; the identity is usable.
-	verdictOK verdict = iota
-	// verdictNone: no credential was presented at all.
-	verdictNone
-	// verdictFailed: a credential was presented and refused.
-	verdictFailed
-	// verdictThrottled: the origin exhausted its failure budget; the
+	// VerdictOK is a valid credential; the identity is usable.
+	VerdictOK Verdict = iota
+	// VerdictNone is no credential was presented at all.
+	VerdictNone
+	// VerdictFailed is a credential was presented and refused.
+	VerdictFailed
+	// VerdictThrottled is the origin exhausted its failure budget; the
 	// credential was NOT verified (that is the point — no argon2id ran).
-	verdictThrottled
+	VerdictThrottled
+	// VerdictExpired is a token past its expiry (R-14) — refused with its
+	// own code, TBY-AUTH-013, because the fix is a new token, not a
+	// corrected one.
+	VerdictExpired
 )
 
 // FailureAllowed reports whether origin still has failed-authentication
@@ -188,12 +295,20 @@ func throttled(w http.ResponseWriter) {
 func (a *Authenticator) Registry(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, v := a.authenticateAudited(r, audit.SurfaceRegistry)
-		if v == verdictThrottled {
+		if v == VerdictThrottled {
 			throttled(w)
 			return
 		}
-		if v != verdictOK {
-			if v == verdictNone {
+		if v == VerdictExpired {
+			// Plain-text surface: the same 401 and challenge as a wrong
+			// credential — standard clients prompt again — with the
+			// reason in the body, which `docker login` prints.
+			w.Header().Set("WWW-Authenticate", `Basic realm="tobby"`)
+			http.Error(w, "the token has expired (TBY-AUTH-013)", http.StatusUnauthorized)
+			return
+		}
+		if v != VerdictOK {
+			if v == VerdictNone {
 				// Nothing was verified, so nothing was audited above: the
 				// refused access is the record. A wrong credential already
 				// has its own auth.authenticate failure — one refusal must
@@ -255,29 +370,48 @@ func (a *Authenticator) Registry(next http.Handler) http.Handler {
 // requests are not audited individually — the failures that exhausted
 // the budget each were, and per-request records would let the attacker
 // keep writing the trail; the transition is logged once (logThrottled).
-func (a *Authenticator) authenticateAudited(r *http.Request, surface string) (Identity, verdict) {
+func (a *Authenticator) authenticateAudited(r *http.Request, surface string) (Identity, Verdict) {
 	if a.Disabled {
-		return AnonymousIdentity, verdictOK
+		return AnonymousIdentity, VerdictOK
 	}
 	if !credentialPresented(r) {
-		return Identity{}, verdictNone
+		return Identity{}, VerdictNone
 	}
 	origin := ClientOrigin(r)
 	if !a.failures.allowed(origin, a.now()) {
-		return Identity{}, verdictThrottled
+		return Identity{}, VerdictThrottled
 	}
-	id, ok := a.Authenticate(r)
-	if !ok {
+	id, res := a.authenticate(r)
+	if res.state != TokenValid {
 		a.RecordFailure(origin)
+		actor := presentedName(r)
+		if res.token != nil {
+			// A matched token is named: the refusal of a revoked or expired
+			// token is a lifecycle event of THAT token (FR-072 amendment).
+			actor = res.token.Name
+		}
+		if res.state == TokenExpired {
+			a.observe(res.method, OutcomeExpired)
+			audit.Log(r.Context(), a.Logger, &audit.Event{
+				Actor:   actor,
+				Action:  audit.ActionTokenExpire,
+				Target:  res.token.Name,
+				Outcome: audit.OutcomeDenied,
+				Origin:  origin,
+			})
+			return Identity{}, VerdictExpired
+		}
+		a.observe(res.method, OutcomeFailure)
 		audit.Log(r.Context(), a.Logger, &audit.Event{
-			Actor:   presentedName(r),
+			Actor:   actor,
 			Action:  audit.ActionAuthenticate,
 			Target:  surface,
 			Outcome: audit.OutcomeFailure,
 			Origin:  origin,
 		})
-		return id, verdictFailed
+		return Identity{}, VerdictFailed
 	}
+	a.observe(id.Method, OutcomeSuccess)
 	if a.recordSuccess(surface, r) {
 		audit.Log(r.Context(), a.Logger, &audit.Event{
 			Actor:   id.Name,
@@ -286,8 +420,13 @@ func (a *Authenticator) authenticateAudited(r *http.Request, surface string) (Id
 			Outcome: audit.OutcomeSuccess,
 			Origin:  origin,
 		})
+		if id.Method == MethodBasic {
+			// Same event-versus-traffic rule as the record above: once per
+			// credential, origin and window.
+			a.LocalUnderFederation(r.Context(), id.Name, surface, origin)
+		}
 	}
-	return id, verdictOK
+	return id, VerdictOK
 }
 
 // recordSuccess reports whether this success is a new event rather than
@@ -383,7 +522,7 @@ func ClientOrigin(r *http.Request) string {
 func (a *Authenticator) API(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, v := a.authenticateAudited(r, audit.SurfaceAPI)
-		if v == verdictThrottled {
+		if v == VerdictThrottled {
 			// Same taxonomy entry the UI renders for the same condition
 			// (FR-061 parity), in the RFC 9457 form of this surface. No
 			// session fallback: a throttled origin presented a credential.
@@ -392,16 +531,31 @@ func (a *Authenticator) API(next http.Handler) http.Handler {
 				taxonomy.New(taxonomy.CodeAuthRateLimited, nil))
 			return
 		}
-		ok := v == verdictOK
+		if v == VerdictExpired {
+			w.Header().Set("WWW-Authenticate", `Basic realm="tobby", Bearer`)
+			taxonomy.WriteProblem(w, r.Header.Get("Accept-Language"),
+				taxonomy.New(taxonomy.CodeTokenExpired, nil))
+			return
+		}
+		ok := v == VerdictOK
+		sessState := SessionUnknown
 		if !ok && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
 			// A UI session reaching a read-only API path is not a new
 			// authentication: session.login already recorded it, and the
 			// browser sends the cookie on every fragment poll.
-			id, ok = a.sessionIdentity(r)
+			id, sessState = a.sessionIdentity(r)
+			ok = sessState == SessionLive
 		}
 		if !ok {
-			if v == verdictNone {
+			if v == VerdictNone {
 				a.deny(r, audit.ActionAPIAccess, audit.OutcomeDenied, "")
+			}
+			if sessState == SessionIdle || sessState == SessionLifetime {
+				// The cookie was a session that just expired: say so, with
+				// the code the UI uses for the same condition (FR-061).
+				taxonomy.WriteProblem(w, r.Header.Get("Accept-Language"),
+					taxonomy.New(taxonomy.CodeSessionExpired, nil))
+				return
 			}
 			w.Header().Set("WWW-Authenticate", `Basic realm="tobby", Bearer`)
 			taxonomy.WriteProblem(w, r.Header.Get("Accept-Language"),
@@ -413,18 +567,19 @@ func (a *Authenticator) API(next http.Handler) http.Handler {
 }
 
 // sessionIdentity resolves a UI session cookie into an identity, for the
-// read-only API paths.
-func (a *Authenticator) sessionIdentity(r *http.Request) (Identity, bool) {
+// read-only API paths. The lookup renews the session like any other
+// authenticated request (R-14).
+func (a *Authenticator) sessionIdentity(r *http.Request) (Identity, SessionState) {
 	if a.Sessions == nil {
-		return Identity{}, false
+		return Identity{}, SessionUnknown
 	}
 	c, err := r.Cookie(SessionCookie)
 	if err != nil || c.Value == "" {
-		return Identity{}, false
+		return Identity{}, SessionUnknown
 	}
-	sess, ok := a.Sessions.Get(c.Value, a.now())
-	if !ok {
-		return Identity{}, false
+	sess, st := a.Sessions.Lookup(c.Value, ClientOrigin(r), a.now())
+	if st != SessionLive {
+		return Identity{}, st
 	}
-	return Identity{Name: sess.Account, Role: sess.Role}, true
+	return Identity{Name: sess.Account, DisplayName: sess.Display, Role: sess.Role, Method: sess.Method}, SessionLive
 }

@@ -23,7 +23,12 @@ import (
 func startQueue(t *testing.T, q *tasks.Queue) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	// Stop AND drain the workers before t.TempDir is removed: a task still
+	// persisting under _tobby/tasks would make the cleanup fail.
+	t.Cleanup(func() {
+		cancel()
+		q.Wait()
+	})
 	q.Start(ctx)
 }
 
@@ -31,7 +36,10 @@ func startQueue(t *testing.T, q *tasks.Queue) {
 // task always settles or survives to resume).
 func waitSettled(t *testing.T, q *tasks.Queue, id string) *tasks.Task {
 	t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
+	// A ceiling, not a duration: the task settles in about a second, but a
+	// Windows runner under -race -count=2, beside the engine suite, once
+	// took longer than 20 s.
+	deadline := time.Now().Add(60 * time.Second)
 	for {
 		task, ok := q.Get(id)
 		if ok && !task.Active() {

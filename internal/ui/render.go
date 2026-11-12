@@ -55,6 +55,7 @@ var pageFiles = []string{
 	"help",
 	"help-page",
 	"import",
+	"integrity",
 	"login",
 	"media",
 	"recipe-mapping",
@@ -287,6 +288,9 @@ type Renderer struct {
 	// to appear AND retract without a restart. Nil on an instance wired
 	// without a store.
 	Occupancy func() store.Occupancy
+	// Scan reads the vulnerability-scanning state (FR-031, FR-032, R-13)
+	// for its banners; nil on an instance assembled without scanning.
+	Scan func() ScanState
 }
 
 // NewRenderer parses the embedded templates.
@@ -347,6 +351,7 @@ func (rd *Renderer) view(r *http.Request, data any) *View {
 			Text: v.T("banner.anonymous_filesets", "Names", strings.Join(rd.AnonymousFileSets, ", ")),
 		})
 	}
+	v.Banners = append(v.Banners, rd.scanBanners(v)...)
 	// Operational last, and persistent by construction: it is re-read on
 	// every page, so it goes away by itself when the store comes back
 	// under the threshold (R-33) — no dismissal, no restart.

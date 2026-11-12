@@ -1,0 +1,11 @@
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Intel Xeon E3-1230 V2 8 threads, 32 GB RAM, Ubuntu 24.04.5 LTS (kernel 6.8.0-146), Incus 7.6 (Zabbly stable; distro 6.0.0 lacks OCI), oras 1.2.3; ref milestone-6 @ 4d8ad1b; node created 2026-11-12T12:06Z, destroyed 2026-11-12T13:08Z (verified HTTP 404)
+ok   scenario m6 started 2026-11-12T12:38:16Z
+ok   tooling available (jq, curl, cosign)
+ok   built tobby for linux/amd64
+ok   tenant-a-app is signed by B, valid for the zone, and cosign confirms A does not verify it
+ok   two scopes declared: tenant-a lists root a only, tenant-b lists root b only; both keys are configured roots
+ok   plan §2.6: content signed by a key valid for another scope is refused with TBY-SIG-001, naming scope tenant-a
+ok   the scope listing key B admits tenant-b-app; the unscoped recipe is admitted: the refusal is the compartment's, not a general one
+ok   the refused recipe left nothing in the store or the recipe graph
+ok   R-03: the task page renders the scope in the refusal message
+ok   scenario m6 c-trust-scopes complete — report: crucible-report-m6-c-trust-scopes.txt

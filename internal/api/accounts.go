@@ -212,6 +212,8 @@ func accountProblem(name string, err error) *taxonomy.Error {
 		return taxonomy.New(taxonomy.CodeAccountUnknown, taxonomy.Params{"name": name})
 	case errors.Is(err, auth.ErrExists):
 		return taxonomy.New(taxonomy.CodeAccountExists, taxonomy.Params{"name": name})
+	case errors.Is(err, auth.ErrReservedName):
+		return taxonomy.New(taxonomy.CodeLocalNameReserved, taxonomy.Params{"name": name})
 	default:
 		return taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err)
 	}
@@ -241,10 +243,13 @@ type tokenJSON struct {
 	Role    auth.Role `json:"role"`
 	Created time.Time `json:"created"`
 	Revoked bool      `json:"revoked"`
+	// Expires is the optional expiry of FR-072's R-14 amendment; absent
+	// for a long-lived token.
+	Expires time.Time `json:"expires,omitzero"`
 }
 
 func newTokenJSON(t *auth.Token) tokenJSON {
-	return tokenJSON{Name: t.Name, Role: t.Role, Created: t.Created, Revoked: t.Revoked}
+	return tokenJSON{Name: t.Name, Role: t.Role, Created: t.Created, Revoked: t.Revoked, Expires: t.Expires}
 }
 
 // listTokens serves GET /api/v1/tokens, revoked included (the mirror shows
@@ -265,6 +270,9 @@ func (c *accountsAPI) listTokens(w http.ResponseWriter, r *http.Request) {
 type createTokenRequest struct {
 	Name string `json:"name"`
 	Role string `json:"role"`
+	// Expires is the optional expiry (R-14). Absent applies
+	// auth.tokens.defaultLifetime, or none.
+	Expires time.Time `json:"expires,omitzero"`
 }
 
 // createToken serves POST /api/v1/tokens: 201 with the clear secret —
@@ -289,12 +297,16 @@ func (c *accountsAPI) createToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := auth.IdentityFrom(r.Context())
-	secret, tok, err := c.store.CreateToken(req.Name, role, c.now())
+	secret, tok, err := c.store.CreateTokenExpiring(req.Name, role, c.now(), req.Expires)
 	if err != nil {
 		audit.Log(r.Context(), c.api.logger, &audit.Event{
 			Actor: id.Name, Action: audit.ActionTokenCreate, Target: req.Name,
 			Outcome: audit.OutcomeFailure, Origin: auth.ClientOrigin(r),
 		})
+		if errors.Is(err, auth.ErrReservedName) {
+			c.api.Problem(w, r, taxonomy.New(taxonomy.CodeLocalNameReserved, taxonomy.Params{"name": req.Name}))
+			return
+		}
 		c.api.Problem(w, r, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))
 		return
 	}
@@ -302,9 +314,11 @@ func (c *accountsAPI) createToken(w http.ResponseWriter, r *http.Request) {
 		Actor: id.Name, Action: audit.ActionTokenCreate, Target: tok.Name,
 		Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r),
 	})
-	c.api.JSON(w, http.StatusCreated, map[string]any{
-		"name": tok.Name, "role": tok.Role, "secret": secret,
-	})
+	created := map[string]any{"name": tok.Name, "role": tok.Role, "secret": secret}
+	if !tok.Expires.IsZero() {
+		created["expires"] = tok.Expires
+	}
+	c.api.JSON(w, http.StatusCreated, created)
 }
 
 // passwordRequest is the POST /api/v1/account/password body.

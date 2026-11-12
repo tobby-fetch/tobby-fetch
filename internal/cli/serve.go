@@ -27,8 +27,11 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/buildinfo"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
+	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
+	"github.com/tobby-fetch/tobby-fetch/internal/integrity"
+	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check"
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
@@ -122,14 +125,36 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			return taxonomy.New(taxonomy.CodeNoAccount, nil)
 		}
 	}
+	reg := metrics.New()
+	authMetrics := metrics.RegisterAuth(reg)
+	sessions := auth.NewSessions(time.Duration(cfg.Auth.SessionTTL))
 	authn := &auth.Authenticator{
 		Store:    accounts,
-		Sessions: auth.NewSessions(time.Duration(cfg.Auth.SessionTTL)),
+		Sessions: sessions,
 		Disabled: cfg.Auth.Disabled,
 		Logger:   logger,
+		Observer: authObserver{authMetrics},
 	}
-
-	reg := metrics.New()
+	if accounts != nil {
+		accounts.SetDefaultTokenLifetime(time.Duration(cfg.Auth.Tokens.DefaultLifetime))
+	}
+	// Session expiry (R-14, FR-072 amendment): the idle bound on top of the
+	// absolute lifetime, and one audit record plus one metric increment
+	// per expiry, whoever finds it — the request that presented the dead
+	// cookie, or the periodic sweep for a session nobody came back to.
+	sessions.SetIdleTimeout(time.Duration(cfg.Auth.Session.IdleTimeout))
+	sessions.OnExpire(func(sess *auth.Session, reason auth.ExpiryReason, origin string) {
+		authMetrics.SessionExpired(string(reason))
+		audit.Log(context.Background(), logger, &audit.Event{
+			Actor:     sess.Account,
+			ActorName: sess.Display,
+			Action:    audit.ActionSessionExpire,
+			Target:    string(reason),
+			Outcome:   audit.OutcomeSuccess,
+			Origin:    origin,
+		})
+	})
+	go sweepSessions(ctx, sessions)
 	srv := server.New(cfg.Server.Addr, time.Duration(cfg.Shutdown.GracePeriod), reg, logger)
 	if serveHook != nil {
 		serveHook(srv)
@@ -303,6 +328,23 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		slog.String("egress", egress.Describe()),
 		slog.String("requirement", "FR-080/FR-081"))
 
+	// Federated sign-in (FR-070, FR-071) on the same egress — the
+	// identity provider sits behind the same proxy and private CA as
+	// everything else. Building it reads the operator's files and
+	// contacts nobody: an identity provider that is down never stops the
+	// instance from starting (FR-078); the probe runs in the background.
+	fed, err := federation.New(&federation.Options{
+		OIDC: cfg.Auth.OIDC, SAML: cfg.Auth.SAML,
+		Client:   egress.Client(federationTimeout),
+		Logger:   logger,
+		Observer: authMetrics,
+	})
+	if err != nil {
+		return err
+	}
+	authn.Federated = fed.Enabled
+	go fed.Run(ctx)
+
 	// In-blob resumption of large downloads (FR-029, R-29). One resumer
 	// for the instance, on the same shared transport as everything else,
 	// spooling into the STATE directory — never the store, which is
@@ -370,6 +412,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		PushedBytes:     func(n int64) { reg.PromotionBytes.Add(float64(n)) },
 		PushRefused:     func(code string) { reg.PromotionRefusals.WithLabelValues(code).Inc() },
 	})
+	// Vulnerability scanning at retrieval (FR-031, FR-032, R-13): the
+	// pinned scanner, its database from the tobby-system delivery, the
+	// policy, the metrics — and the posture stated at startup.
+	scanning := setupScanning(ctx, cfg, st, eng, reg, logger)
+	defer scanning.close()
 
 	// The promotion target (milestone 4, FR-013): built from the same
 	// allowlist and the same outbound transport as every other path, and
@@ -442,6 +489,23 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// each direction, so no surface can reach a verdict the gate does not
 	// hear, and no screen can open the gate by any other means.
 	eng.SetMediaVerdicts(mediaGate.Observe)
+
+	// FR-037 (R-22): how many recipes this instance holds under reduced
+	// assurance, per declared scope, read from the recipe graph at every
+	// scrape — never counted by events that a removal path could forget.
+	reg.RegisterReducedRecipes(eng.RelaxedScopes(), func() map[string]int {
+		records, rerr := st.RecipeRecords()
+		if rerr != nil {
+			return nil
+		}
+		held := map[string]int{}
+		for i := range records {
+			if m := records[i].Assurance; m.Reduced() {
+				held[m.Scope]++
+			}
+		}
+		return held
+	})
 	mediaGate.SetVerify(func(vctx context.Context, opts mediagate.Options, progress func(media.Progress)) (*media.Report, error) {
 		return eng.VerifyMedia(vctx, logger, engine.MediaOptions{
 			AllowZoneMismatch: opts.AllowZoneMismatch,
@@ -466,6 +530,15 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			slog.String("requirement", "FR-052/R-28"))
 	}
 	queue.Register(tasks.TypeMediaImport, eng.MediaImportRunner())
+
+	// FR-057 (R-31): the on-demand verification of the whole store, as a
+	// tracked task. One service behind the API, the screen and the queue
+	// (FR-061), verifying against THIS instance's trust roots — never keys
+	// carried by the store — and feeding the integrity metrics.
+	integritySvc := check.NewService(st, queue, engine.MediaTrust{Policy: trust}, func(rep *integrity.Report) {
+		reg.ObserveIntegrityVerification(string(rep.Verdict), rep.FinishedAt)
+	})
+	integritySvc.Register()
 	eng.SetDestination(destination)
 	if destination != nil {
 		logger.LogAttrs(ctx, slog.LevelInfo, "promotion destination configured",
@@ -485,6 +558,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	queue.Register(tasks.TypeSync, func(runCtx context.Context, t *tasks.Task, taskLogger *slog.Logger, save func()) error {
 		err := eng.Runner()(runCtx, t, taskLogger, save)
 		refreshFileSets(runCtx)
+		// A cycle may have delivered a new database or scanner binary
+		// (tobby-system): the banner and the metrics follow at once.
+		scanning.refresh(runCtx)
 		// A cycle is the one moment the footprint moves by a lot — it
 		// fetched, and it may have pruned. Re-sampling here is what makes
 		// the warning retract when the store comes back under the
@@ -577,7 +653,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	api.RegisterPlan(restAPI, &api.PlanOptions{Planner: eng.Planner()})
 	api.RegisterMedia(restAPI, &api.MediaOptions{
 		Engine: eng, Queue: queue, StorageRoot: cfg.Storage.Root, Gate: mediaGate,
+		Scan: scanning.slipState,
 	})
+	api.RegisterIntegrity(restAPI, &api.IntegrityOptions{Verifier: integritySvc})
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{
 		Cert:     serverCert,
 		CertFile: cfg.Server.TLS.CertFile,
@@ -619,8 +697,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Projector:          eng,
 		MediaZone:          eng,
 		MediaGate:          mediaGate,
+		Integrity:          integritySvc,
+		Federation:         fed,
+		Scan:               scanning.uiState,
 	})
 	webUI.Mount(srv.Mux())
+	webUI.MountFederation(srv.Mux())
 
 	if cfg.Auth.Disabled {
 		// The FR-075 override is loud on every channel: audit record at
@@ -655,6 +737,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// Storage checked and configuration valid: the instance can serve
 	// (FR-092 readiness conditions at this milestone).
 	srv.SetReady(true)
+	// `tobby store verify` refuses a store an instance is serving (it
+	// cannot see this instance's content lock); the marker is how it knows.
+	defer markServing(cfg, srv.Addr)()
 
 	runErr := srv.Run(ctx)
 
@@ -856,18 +941,18 @@ func filesAuth(a *auth.Authenticator, anonymous map[string]bool, next http.Handl
 			next.ServeHTTP(w, r)
 			return
 		}
-		presented := r.Header.Get("Authorization") != ""
-		origin := auth.ClientOrigin(r)
-		if presented && !a.FailureAllowed(origin) {
+		id, v := a.Check(r, auth.SurfaceFiles)
+		switch v {
+		case auth.VerdictOK:
+		case auth.VerdictThrottled:
 			w.Header().Set("Retry-After", auth.RetryAfter)
 			http.Error(w, "too many failed authentication attempts", http.StatusTooManyRequests)
 			return
-		}
-		id, ok := a.Authenticate(r)
-		if !ok {
-			if presented {
-				a.RecordFailure(origin)
-			}
+		case auth.VerdictExpired:
+			w.Header().Set("WWW-Authenticate", `Basic realm="tobby"`)
+			http.Error(w, "the token has expired (TBY-AUTH-013)", http.StatusUnauthorized)
+			return
+		default:
 			w.Header().Set("WWW-Authenticate", `Basic realm="tobby"`)
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return
@@ -878,6 +963,41 @@ func filesAuth(a *auth.Authenticator, anonymous map[string]bool, next http.Handl
 		}
 		next.ServeHTTP(w, r.WithContext(auth.WithIdentity(r.Context(), id)))
 	})
+}
+
+// authObserver adapts the metric families to auth.Observer: the auth
+// package states what happened, the metrics package counts it, and
+// neither imports the other.
+type authObserver struct{ m *metrics.Auth }
+
+func (o authObserver) Attempt(method auth.Method, outcome string) {
+	o.m.Attempt(string(method), outcome)
+}
+func (o authObserver) SessionExpired(reason auth.ExpiryReason) { o.m.SessionExpired(string(reason)) }
+func (o authObserver) LocalUnderFederation()                   { o.m.LocalUnderFederation() }
+
+// federationTimeout bounds one request to an identity provider: a
+// black-holed provider costs a refused federated sign-in after this long,
+// never a hung page (FR-078).
+const federationTimeout = 15 * time.Second
+
+// sessionSweepInterval paces the periodic session sweep: a minute keeps
+// the session.expire record of an abandoned session within a minute of
+// the expiry itself, for a map walk per minute.
+const sessionSweepInterval = time.Minute
+
+// sweepSessions expires abandoned sessions until ctx ends (R-14).
+func sweepSessions(ctx context.Context, sessions *auth.Sessions) {
+	t := time.NewTicker(sessionSweepInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-t.C:
+			sessions.Sweep(now)
+		}
+	}
 }
 
 // syncFileSets resolves the declared FileSets and hands what resolved to

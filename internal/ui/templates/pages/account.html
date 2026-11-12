@@ -15,12 +15,20 @@
     <h2 class="t-kick">{{.T "account.profile_title"}}</h2>
     <dl>
       <dt>{{.T "account.profile_name"}}</dt>
-      <dd class="t-mono" translate="no">{{.Identity.Name}}</dd>
+      <dd class="t-mono" translate="no">{{.Identity.Label}}</dd>
+      {{if .Identity.DisplayName}}<dt>{{.T "account.profile_key"}}</dt>
+      <dd class="t-mono t-muted" translate="no" data-identity-key>{{.Identity.Name}}</dd>{{end}}
       <dt>{{.T "account.profile_role"}}</dt>
       <dd><span class="t-badge" translate="no" lang="en">{{.Identity.Role}}</span></dd>
     </dl>
   </div>
 
+  {{if .Data.Federated}}
+  <div class="t-card" data-account-federated>
+    {{with .Data.Err}}{{template "error-block" (withErr $ .)}}{{end}}
+    <p>{{.T "account.federated" "Provider" .Data.Federated}}</p>
+  </div>
+  {{else}}
   {{/* Classic POST — the response is this page again: the taxonomized
        block on failure, the confirmation toast on success. */}}
   <form class="t-card t-form" method="post" action="/account/password">
@@ -39,5 +47,6 @@
     <button type="submit" class="t-btn t-btn--primary">{{.T "account.pw_submit"}}</button>
     <p class="t-muted t-note">{{.T "account.pw_note"}}</p>
   </form>
+  {{end}}
 </section>
 {{end}}

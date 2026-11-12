@@ -95,7 +95,7 @@
      re-emitted ONLY while a listed task is active — the stop decision is
      server-side, in this template (UI-SPEC §8.3). */}}
 {{define "task-rows"}}
-<tbody id="task-rows"{{if .Data.AnyActive}} hx-get="{{.Data.PollURL}}" hx-trigger="every 3s" hx-swap="morph:outerHTML" hx-target="this"{{end}}>
+<tbody id="task-rows"{{if .Data.AnyActive}} hx-get="{{.Data.PollURL}}" hx-trigger="every 3s" hx-headers='{"X-Tobby-Background":"1"}' hx-swap="morph:outerHTML" hx-target="this"{{end}}>
   {{range .Data.Rows}}
   <tr id="task-{{.ID}}">
     <td class="t-primary t-mono"><a href="/tasks/{{.ID}}" translate="no">{{.ID}}</a></td>

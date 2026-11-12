@@ -178,5 +178,5 @@ proxy that records every connection attempt (ADR-0014). See
 | Media verification before any push, serving or local write | FR-054, ADR-0006, ADR-0016 | delivered v0.5.0 |
 | Per-recipe blocking, no override on integrity or signature | R-19 | delivered v0.5.0 |
 | Secrets never on media, enforced at startup | R-16, NFR-020 | delivered v0.5.0 |
-| Trivy scanning with policy, offline DB | FR-031, FR-032, ADR-0008 | upcoming, milestone 6 |
+| Trivy scanning with policy, offline DB carried by Tobby | FR-031, FR-032, ADR-0008 — [Vulnerability scanning](../vulnerability-scanning/) | v0.6.0 |
 | OIDC then SAML | FR-070, FR-071 | upcoming, milestone 6 |

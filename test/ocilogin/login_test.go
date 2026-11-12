@@ -513,7 +513,13 @@ func TestHelmChartRoundTrip(t *testing.T) {
 func helmEnv(t *testing.T, name string) []string {
 	t.Helper()
 	cfg := filepath.Join(t.TempDir(), "helm-"+name+".json")
-	if err := os.WriteFile(cfg, []byte(`{"auths":{}}`), 0o600); err != nil {
+	// Not an empty "auths": helm's credential store (oras-go) treats a file
+	// with no auth configured as a cue to detect the platform's native store
+	// — wincred, osxkeychain, pass — and writes the login there. On a Windows
+	// runner that store can hang past the run timeout after "Login
+	// Succeeded". One placeholder entry keeps every credential in this
+	// throwaway file, on every platform.
+	if err := os.WriteFile(cfg, []byte(`{"auths":{"placeholder.invalid":{}}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return []string{"HELM_REGISTRY_CONFIG=" + cfg}

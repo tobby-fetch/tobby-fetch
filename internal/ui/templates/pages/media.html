@@ -19,7 +19,7 @@
 {{end}}
 
 {{define "media-body"}}
-<div id="media-body"{{if .Data.Running}} hx-get="/media" hx-trigger="every 2s" hx-swap="morph:outerHTML" hx-target="this"{{end}}>
+<div id="media-body"{{if .Data.Running}} hx-get="/media" hx-trigger="every 2s" hx-headers='{"X-Tobby-Background":"1"}' hx-swap="morph:outerHTML" hx-target="this"{{end}}>
   <div class="t-titlerow">
     <h1 class="t-page-title">{{.T "media.title"}}</h1>
     {{if .Data.Destination}}
@@ -100,6 +100,29 @@
     <p class="t-muted t-note">{{.T "media.no_medium_note"}}</p>
   </div>
   {{end}}
+
+  {{/* ---------------------------------------------------------------
+       The transfer slip (R-07): this screen as a printable, bilingual,
+       UNSIGNED document. The links are files and a new tab, never
+       boosted (B-013) — hx-boost would swap the document into the page.
+       The notice says what the slip is not, on the screen as in the
+       document (ADR-0006, decision 10).
+       --------------------------------------------------------------- */}}
+  <div class="t-card t-media-slip">
+    <p class="t-report-title">{{.T "media.slip_title"}}</p>
+    <p class="t-muted">{{.T "media.slip_help"}}</p>
+    <p class="t-media-slip-actions">
+      <a class="t-btn t-btn--secondary t-btn--sm" href="/media/slip" target="_blank" rel="noopener"
+         hx-boost="false">{{.T "media.slip_open"}}</a>
+      <a class="t-btn t-btn--secondary t-btn--sm" href="/media/slip?lang={{.OtherLang}}" target="_blank" rel="noopener"
+         hx-boost="false" lang="{{.OtherLang}}">{{if eq .OtherLang "fr"}}{{.T "media.slip_open_fr"}}{{else}}{{.T "media.slip_open_en"}}{{end}}</a>
+      <a class="t-btn t-btn--secondary t-btn--sm" href="/media/slip?download=1" download
+         hx-boost="false">↓ {{.T "media.slip_download_html"}}</a>
+      <a class="t-btn t-btn--secondary t-btn--sm" href="/media/slip?format=text&amp;download=1" download
+         hx-boost="false">↓ {{.T "media.slip_download_text"}}</a>
+    </p>
+    <p class="t-muted t-note">{{.T "media.slip_unsigned"}}</p>
+  </div>
 
   {{/* ---------------------------------------------------------------
        The serving gate (FR-054): an instance that refuses to serve says
@@ -310,6 +333,10 @@
           {{if .Unsigned}}<span class="t-badge t-badge--outdated" title="{{$.T "media.unsigned_title"}}">{{$.T "media.unsigned"}}</span>{{end}}
           {{if .KeyFingerprint}}<span class="t-chip"><span class="t-chip-label">{{$.T "media.key"}}</span> <span translate="no" title="{{.KeyFingerprint}}">{{$.Trunc .KeyFingerprint 20}}</span></span>{{end}}
           {{if .TrustScope}}<span class="t-chip"><span class="t-chip-label">{{$.T "media.scope"}}</span> <span translate="no">{{.TrustScope}}</span></span>{{end}}
+          {{/* FR-037: this instance's own marker, and — beside it, as a
+               claim of the source zone — what the manifest declared. */}}
+          {{template "assurance-badge" (withData $ .Assurance)}}
+          {{template "assurance-claim" (withData $ .SourceAssurance)}}
         </td>
       </tr>
       {{if .Err}}

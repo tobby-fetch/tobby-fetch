@@ -56,6 +56,11 @@ jobs:
       # changelog ships the wrong image to everyone who installs it (B-035).
       - name: Reference chart tracks the released version
         run: sh tools/check-chart-version.sh
+      # The release workflow's publishing decision: a rehearsal never
+      # becomes a release, a multi-line `version` input never reaches
+      # $GITHUB_OUTPUT, a real name is published from a tag push only.
+      - name: Release guards refuse a forged rehearsal
+        run: sh tools/release-meta-test.sh
       - name: Lint the Windows and macOS sources
         run: |
           for goos in windows darwin; do
@@ -131,6 +136,43 @@ jobs:
           tar -xzf "$tmp/oras.tgz" -C "$tmp" oras
           sudo install -m 0755 "$tmp/oras" /usr/local/bin/oras
           rm -rf "$tmp"
+      # The real-Trivy tests (milestone 6, FR-031/FR-032): the scanner
+      # release Tobby pins (internal/scan/trivy/pins.go, melange.yaml —
+      # the three move together), checked against its published checksum
+      # and against the executable digest Tobby pins, and a current
+      # vulnerability database pulled as the OCI artifact upstream
+      # publishes. TOBBY_TEST_REQUIRE_TRIVY below turns a runner that lost
+      # either into a failure rather than a skip.
+      - name: Install the pinned Trivy and its database (real-scanner tests)
+        if: runner.os == 'Linux'
+        env:
+          TRIVY_VERSION: "0.76.2"
+        run: |
+          set -eu
+          case "$(uname -m)" in
+            x86_64)  arch=64bit
+                     archive_sha=bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf
+                     bin_sha=6a972c69606c7b3ea4c6bdcc6fc9332ea9ad38381624310c1e85cc77345909f3 ;;
+            aarch64) arch=ARM64
+                     archive_sha=ab9d51f86e6a5fb936f605faff6b593ac51bc378fff4d3e8b9d58358b9c367c3
+                     bin_sha=7844c3851b28470b6d7f0975fa0b3262c5b2272c9a54a91f522801bb8926f51f ;;
+            *) echo "::error::unsupported runner architecture $(uname -m)"; exit 1 ;;
+          esac
+          dir="${RUNNER_TEMP}/trivy"
+          mkdir -p "$dir/db"
+          curl -fsSL -o "$dir/trivy.tgz" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${arch}.tar.gz"
+          echo "${archive_sha}  ${dir}/trivy.tgz" | sha256sum -c -
+          tar -xzf "$dir/trivy.tgz" -C "$dir" trivy
+          echo "${bin_sha}  ${dir}/trivy" | sha256sum -c -
+          ( cd "$dir/db" && { oras pull mirror.gcr.io/aquasec/trivy-db:2 || oras pull ghcr.io/aquasecurity/trivy-db:2; } )
+          test -s "$dir/db/db.tar.gz"
+          "$dir/trivy" version
+          {
+            echo "TOBBY_TEST_TRIVY=$dir/trivy"
+            echo "TOBBY_TEST_TRIVY_DB=$dir/db/db.tar.gz"
+            echo "TOBBY_TEST_REQUIRE_TRIVY=1"
+          } >> "$GITHUB_ENV"
       # A run where the clients silently went missing again would look
       # exactly like a green one, so the versions taken from the
       # environment are printed before anything uses them.
@@ -215,9 +257,19 @@ jobs:
       # on macOS because the platform verifier ignores SSL_CERT_FILE — and
       # a suite that reports "ok" for a check it never performed is worse
       # than one that has no check at all.
+      # The OIDC/SAML tests (milestone 6) run against a real Keycloak in a
+      # container. The image is pinned by digest in test/keycloak/IMAGE —
+      # the single place that names it — and pulled here, on its own, so a
+      # registry hiccup reads as a failed pull rather than as a test that
+      # timed out waiting for a server that never started. This is the only
+      # network use of the fixture (NFR-019).
+      - name: Pull the pinned Keycloak image (IdP fixture)
+        if: runner.os == 'Linux'
+        run: docker pull "$(cat test/keycloak/IMAGE)"
       - name: Unit and integration tests
         env:
           TOBBY_OCILOGIN_REQUIRE_DOCKER: ${{ runner.os == 'Linux' && '1' || '' }}
+          TOBBY_KEYCLOAK_REQUIRE_DOCKER: ${{ runner.os == 'Linux' && '1' || '' }}
         # -timeout: the default is ten minutes PER PACKAGE, and internal/ui
         # is now large enough that the slower runner architecture used to
         # hit it under -race -count=2. The fixture cost was cut where it
@@ -379,8 +431,13 @@ jobs:
         run: |
           go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      # tools/govulncheck.sh: every reachable finding fails, except the
+      # reviewed entries of tools/govulncheck-allow.yaml (wrong database
+      # entries only, each with evidence and a review date that expires).
       - name: Reachable known vulnerabilities (stdlib included)
-        run: govulncheck ./...
+        env:
+          GOVULNCHECK: govulncheck
+        run: sh tools/govulncheck.sh
 
   secrets:
     name: Secret scan (gitleaks, full history)

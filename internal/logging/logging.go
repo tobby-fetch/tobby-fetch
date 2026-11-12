@@ -30,6 +30,15 @@ const (
 	KeyRecipe     = "recipe"
 	KeyIngredient = "ingredient"
 	KeyDigest     = "digest"
+	// KeyAssurance carries the reduced-assurance marker of the record's
+	// recipe or item (FR-037, R-22): present only on reduced assurance,
+	// where its value is the level ("reduced"). Filtering on its presence
+	// finds exactly the records that concern content admitted under a
+	// relaxed trust scope.
+	KeyAssurance = "assurance"
+	// KeyAssuranceScope names the declared trust scope behind
+	// KeyAssurance, on the same records and only there (FR-037).
+	KeyAssuranceScope = "assurance_scope"
 )
 
 // New returns a JSON logger writing to w at the given level.

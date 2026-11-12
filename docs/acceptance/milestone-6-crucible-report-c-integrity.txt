@@ -1,0 +1,16 @@
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Intel Xeon E3-1230 V2 8 threads, 32 GB RAM, Ubuntu 24.04.5 LTS (kernel 6.8.0-146), Incus 7.6 (Zabbly stable; distro 6.0.0 lacks OCI), oras 1.2.3; ref milestone-6 @ 4d8ad1b; node created 2026-11-12T12:06Z, destroyed 2026-11-12T13:08Z (verified HTTP 404)
+ok   scenario m6 started 2026-11-12T12:37:44Z
+ok   tooling available (jq, curl, cosign)
+ok   built tobby for linux/amd64
+ok   three deliveries published: int-app and int-tool signed by A, int-old signed by B alone (cosign agrees)
+ok   the mirror store holds three recipes and a media manifest (a transportable store)
+ok   FR-057: an intact transportable store verifies clean from the API and the screen
+ok   FR-057: tobby store verify exits 0 on the intact store and leaves it byte-identical
+ok   manipulation 1 verified: docker/registry/v2/blobs/sha256/1a/1a3f81dada5b80b17bbffecf223f7c5cbda0900c35d082b74697e01555d0eced/data no longer hashes to its digest
+ok   manipulation 2 verified: sha256:31250d681845cfedda7541b52ae0dd09fa6ab6282021a42a0d4a16c6350f74c8, referenced by a manifest of int-tool, is gone from disk
+ok   manipulation 3 verified: a well-formed orphan blob is planted at docker/registry/v2/blobs/sha256/5b/5bc9705a0994483bcdee579cc7a59e42e45de9b7c70de9c27a315db06368b62d/data
+ok   manipulation 4 verified: key B is no longer a trust root; int-old's signature is valid under B and not under A
+ok   FR-057: exit 4; the report names the truncated blob, the incomplete manifest, the refused signature and the orphan; the store is byte-identical
+ok   FR-061: the running instance reports the same defects through the API and the screen; the metric and the audit event record it
+ok   FR-057: a second verification asked for while one is in flight is refused with 409, never queued behind it (201/409)
+ok   scenario m6 c-integrity complete — report: crucible-report-m6-c-integrity.txt

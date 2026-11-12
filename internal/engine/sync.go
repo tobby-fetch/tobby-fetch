@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -21,11 +22,14 @@ import (
 
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
+	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/preflight"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
+	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
@@ -110,6 +114,12 @@ type Engine struct {
 	// imports is the per-zone freshness register (R-28), held in the
 	// INSTANCE state directory and never on the medium.
 	imports *media.Imports
+	// scan is vulnerability scanning at retrieval (FR-031, FR-032); its
+	// zero value scans nothing (no Scanner installed).
+	scan ScanSettings
+	// zoneThresholdSet remembers whether the last served Retriever posed
+	// a scan threshold, which makes the policy blocking for its zone.
+	zoneThresholdSet atomic.Bool
 	// verdicts receives every verification report this engine produces,
 	// whichever surface asked for one — the serving gate of FR-054 is
 	// built on it (internal/mediagate). Nil on an instance that serves
@@ -205,6 +215,10 @@ func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) e
 		return e.mapError(err, e.source)
 	}
 	zone := retr.Metadata.Name
+	// The zone's scan policy (RECIPE-SPEC §10.4): its threshold and
+	// exceptions refine the instance's for every recipe of this run.
+	zonePol := zonePolicyOf(retr.Spec.ScanPolicy)
+	e.zoneThresholdSet.Store(zonePol.threshold != nil)
 	// The instant this run resolved its Retriever. It dates the DELIVERY,
 	// which is what the destination's freshness guard compares against
 	// (R-28) — not the moment the bookkeeping was written, which would
@@ -236,7 +250,7 @@ func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) e
 		if cookbookRef == "" {
 			cookbookRef = retr.Spec.Cookbook
 		}
-		e.syncRecipe(ctx, sink, logger, cookbookRef, entry, zone, resolved)
+		e.syncRecipe(ctx, sink, logger, cookbookRef, entry, zone, zonePol, resolved)
 	}
 
 	// Prune last, and only here (FR-045). It is the only scope that knows
@@ -275,7 +289,7 @@ func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) e
 
 // syncRecipe resolves, verifies and fetches one Retriever entry. Failures
 // land on the entry's items; other entries continue.
-func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, cookbookRef string, entry *spec.RecipeSelector, zone string, resolved *resolvedRecipes) {
+func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, cookbookRef string, entry *spec.RecipeSelector, zone string, zonePol zonePolicy, resolved *resolvedRecipes) {
 	logger = logger.With(slog.String("recipe", entry.Name))
 	cb := NewCookbook(e.remotes, cookbookRef)
 
@@ -344,6 +358,18 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 		})
 		return true
 	})
+	// FR-037 (R-22): content admitted under a relaxed scope carries the
+	// reduced-assurance marker on every surface — the log records from
+	// here on (a field present only on reduced assurance), and the task
+	// items of this recipe, which the deferred pass below stamps once
+	// they all exist (they are created as the run goes).
+	marker := assurance.ForAdmission(verified, scopeName)
+	logger = withAssurance(logger, marker)
+	if marker != nil {
+		stamp := func() { sink.update(func(t *tasks.Task) bool { return stampAssurance(t, rid, marker) }) }
+		stamp()
+		defer stamp()
+	}
 	logger.LogAttrs(ctx, slog.LevelInfo, "recipe verified",
 		slog.String("digest", fetched.ManifestDigest),
 		slog.Bool("signature_verified", verified),
@@ -441,6 +467,19 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	}
 	wg.Wait()
 
+	// FR-031: every image is scanned at retrieval — a declared container
+	// image, and any ingredient whose content is one (ADR-0017) — in
+	// passthrough as in mirror mode, and before anything of the recipe is
+	// published anywhere. A refusal withholds the recipe whole (R-19
+	// granularity): not stored as a cookbook entry, not recorded on the
+	// medium, not pushed.
+	system := recipe.Metadata.Name == scan.SystemRecipe && verified && scopeName == ""
+	if refusals := e.scanRecipe(ctx, sink, logger, fetched, rid, zonePol, system); len(refusals) > 0 {
+		resolved.failed()
+		e.withholdRecipe(ctx, sink, logger, fetched, rid, refusals)
+		return
+	}
+
 	// The recipe artifact itself: stored with its signature so the local
 	// store is a cookbook for the zone below (cascade; FR-034 groundwork).
 	recipeItemName := rid + "/recipe"
@@ -489,8 +528,12 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	// identity and resolution timestamp for the milestone-5 media manifest
 	// (FR-054), correlation for R-09.
 	kept := records[:0]
-	for _, r := range records {
+	for i, r := range records {
 		if r.Repo != "" {
+			// What the recipe retained of an index, for the store
+			// verification to tell a lost platform from an unselected one
+			// (R-31). records is indexed like the recipe's ingredients.
+			r.Children = e.retainedChildren(ctx, &recipe.Spec.Ingredients[i], r.Repo)
 			kept = append(kept, r)
 		}
 	}
@@ -517,6 +560,7 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	// selected by a version expression and recorded under the concrete
 	// version it resolved to, and prune joins on the recorded one.
 	resolved.keep(recipe.Metadata.Name, recipe.Metadata.Version)
+	e.refreshAfter(ctx, recipe)
 }
 
 // verifyRecipe applies FR-033: verify against the decision's key set;
@@ -531,7 +575,7 @@ func (e *Engine) verifyRecipe(ctx context.Context, f *FetchedRecipe, d Decision)
 		if errors.Is(err, sigverify.ErrNoSignature) && d.AllowUnsigned {
 			return false, d.Scope, nil
 		}
-		return false, d.Scope, err
+		return false, d.Scope, withScope(d.Scope, err)
 	}
 	if d.AllowUnsigned {
 		return false, d.Scope, nil
@@ -539,6 +583,7 @@ func (e *Engine) verifyRecipe(ctx context.Context, f *FetchedRecipe, d Decision)
 	return false, d.Scope, taxonomy.New(taxonomy.CodeSignature, taxonomy.Params{
 		"recipe":       f.NominalRepo + ":" + f.Tag,
 		"fingerprints": "none — no trust root is configured",
+		"scope":        d.Scope,
 	})
 }
 
@@ -936,6 +981,46 @@ func (e *Engine) ingredientRecord(ing *spec.Ingredient) store.IngredientRecord {
 	}
 }
 
+// retainedChildren lists, by digest, the children of an index ingredient
+// the recipe retained: every child without a platforms field, the
+// selected ones with it — the rule selectPlatforms applies, read back
+// from the index the store holds. Nil for an ingredient that is not an
+// index, or whose index cannot be read.
+func (e *Engine) retainedChildren(ctx context.Context, ing *spec.Ingredient, repo string) []string {
+	payload, _, _, err := e.store.RawManifest(ctx, repo, ing.Digest)
+	if err != nil {
+		return nil
+	}
+	var idx struct {
+		Manifests []struct {
+			Digest   string `json:"digest"`
+			Platform *struct {
+				OS           string `json:"os"`
+				Architecture string `json:"architecture"`
+				Variant      string `json:"variant"`
+			} `json:"platform"`
+		} `json:"manifests"`
+		Layers []json.RawMessage `json:"layers"`
+	}
+	if json.Unmarshal(payload, &idx) != nil || len(idx.Manifests) == 0 || len(idx.Layers) > 0 {
+		return nil
+	}
+	var out []string
+	for _, c := range idx.Manifests {
+		keep := len(ing.Platforms) == 0
+		for _, want := range ing.Platforms {
+			if c.Platform != nil && importer.MatchesPlatform(want, c.Platform.OS, c.Platform.Architecture, c.Platform.Variant) {
+				keep = true
+				break
+			}
+		}
+		if keep && c.Digest != "" {
+			out = append(out, c.Digest)
+		}
+	}
+	return out
+}
+
 // recordProvenance marks a repository as recipe-managed (FR-045 classes).
 func (e *Engine) recordProvenance(repo, rid, runID string) {
 	name, version, _ := strings.Cut(rid, "@")
@@ -999,4 +1084,39 @@ func artifactTypeOf(manifest []byte) string {
 		return man.ArtifactType
 	}
 	return man.Config.MediaType
+}
+
+// withAssurance adds the FR-037 log fields to a logger when the marker is
+// reduced, and returns it untouched otherwise: the fields exist only on
+// records concerning content of reduced assurance.
+func withAssurance(logger *slog.Logger, m *assurance.Marker) *slog.Logger {
+	level, ok := m.Log()
+	if !ok {
+		return logger
+	}
+	return logger.With(
+		slog.String(logging.KeyAssurance, level),
+		slog.String(logging.KeyAssuranceScope, m.Scope))
+}
+
+// stampAssurance sets the reduced-assurance marker on every task item
+// that belongs to the recipe rid ("name@version"): the entry's own row,
+// its ingredients and artifact ("rid/…"), the promotion halves
+// ("push/rid/…") and the media-import verdict ("media/rid"). The marker
+// is set whole and shared, never mutated afterwards (tasks.Item). It
+// reports whether it changed anything, which is the sink's "persist me".
+func stampAssurance(t *tasks.Task, rid string, m *assurance.Marker) bool {
+	changed := false
+	for i := range t.Items {
+		name := t.Items[i].Name
+		if name != rid && name != mediaItemPrefix+rid &&
+			!strings.HasPrefix(name, rid+"/") && !strings.HasPrefix(name, pushItemPrefix+rid+"/") {
+			continue
+		}
+		if t.Items[i].Assurance != m {
+			t.Items[i].Assurance = m
+			changed = true
+		}
+	}
+	return changed
 }

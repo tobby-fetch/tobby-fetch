@@ -1,0 +1,18 @@
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Intel Xeon E3-1230 V2 8 threads, 32 GB RAM, Ubuntu 24.04.5 LTS (kernel 6.8.0-146), Incus 7.6 (Zabbly stable; distro 6.0.0 lacks OCI), oras 1.2.3; ref milestone-6 @ 4d8ad1b; node created 2026-11-12T12:06Z, destroyed 2026-11-12T13:08Z (verified HTTP 404)
+ok   scenario m6 started 2026-11-12T12:32:30Z
+ok   tooling available (openssl, jq)
+ok   built tobby for linux/amd64
+ok   throw-away PKI generated (CA, tbc-m6b-idp.incus tbc-m6b-tobby.incus, SP key pair)
+ok   nodes ready: Keycloak (stopped for now) and the instance node
+ok   IdP metadata pinned from the descriptor (signing certificate present); IdP stopped
+ok   FR-078: the instance starts and is ready while the identity provider is down
+ok   R-20: the sign-in page states TBY-AUTH-016 naming the provider, local form kept
+ok   R-20: local admin signed in (auth.local_under_federation recorded), token authorizes the API
+ok   the outage block cleared on its own, no restart
+ok   6.3: OIDC and SAML sign-in succeed for viewer, operator and admin, mapped by group
+ok   6.3: the account in no mapped group is refused on both protocols (TBY-AUTH-017)
+ok   attacks refused: forged OIDC state (014), replayed SAML response, response finished by another browser (015)
+ok   R-20: outage mid-session — session and token unaffected; federated sign-in back without a restart
+ok   R-14: a token authorizes until its expiry, then TBY-AUTH-013 with a token.expire record; long-lived token unchanged
+ok   R-14: a session idle past auth.session.idleTimeout ends with TBY-AUTH-005 and a session.expire (idle) record
+ok   scenario m6 b-auth complete — report: crucible-report-m6-b-auth.txt

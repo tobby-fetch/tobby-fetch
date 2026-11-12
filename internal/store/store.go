@@ -59,6 +59,34 @@ type Store struct {
 	// gcMu is the FR-044 exclusive lock: content writes hold it shared
 	// (write.go, B-017), garbage collection holds it exclusively (gc.go).
 	gcMu sync.RWMutex
+	// inspectMu keeps removals out of an integrity verification's way
+	// (verify.go) without touching gcMu: the verification holds it shared,
+	// every exclusive path takes it before gcMu (exclusive). A removal
+	// asked for during a verification therefore waits on inspectMu — not
+	// queued on gcMu, where Go's writer-preferring RWMutex would block
+	// every content write behind it until the walk ends.
+	inspectMu sync.RWMutex
+}
+
+// exclusive takes the FR-044 lock exclusively — after any running
+// integrity verification has finished — and returns its release.
+func (s *Store) exclusive() (release func()) {
+	s.inspectMu.Lock()
+	s.gcMu.Lock()
+	return func() {
+		s.gcMu.Unlock()
+		s.inspectMu.Unlock()
+	}
+}
+
+// Options tunes how a store is opened.
+type Options struct {
+	// Inspect opens the store for a command that promises to leave it
+	// byte-identical — `store verify`, the media commands (FR-054, R-31).
+	// The registry library's upload purger, which otherwise starts with
+	// every opening and deletes upload sessions older than a week, is not
+	// started: a verification writes nothing, removes nothing.
+	Inspect bool
 }
 
 // Open initializes the embedded registry on the given storage root.
@@ -67,6 +95,11 @@ type Store struct {
 // it (FR-041). Deletion is enabled so recipe-scoped removal and garbage
 // collection (FR-044) can build on it.
 func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error) {
+	return OpenWith(ctx, root, logger, Options{})
+}
+
+// OpenWith is Open with options.
+func OpenWith(ctx context.Context, root string, logger *slog.Logger, opts Options) (*Store, error) {
 	if root == "" {
 		return nil, fmt.Errorf("store: root directory is required")
 	}
@@ -95,11 +128,26 @@ func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error)
 		driverName: configuration.Parameters{"rootdirectory": root},
 		"delete":   configuration.Parameters{"enabled": true},
 	}
+	if opts.Inspect {
+		cfg.Storage["maintenance"] = configuration.Parameters{
+			"uploadpurging": map[any]any{"enabled": false},
+		}
+	}
 	// The HTTP secret signs upload-session state. Ephemeral is fine for a
 	// single instance; generating it ourselves keeps the library from
 	// logging a startup warning.
 	cfg.HTTP.Secret = randomSecret()
 	cfg.Catalog.MaxEntries = 1000
+	// B-036, FR-042: the registry stores and serves partial platform sets
+	// (sparse indexes, FR-022) — the original index at its pinned digest,
+	// listing platforms the store does not hold. Tobby's own writes have
+	// always kept them that way (PutManifest), but the library's default
+	// refuses a pushed index whose members are not all present, so a
+	// Tobby serving as a zone registry refused the sparse index another
+	// Tobby promoted into it — and an isolated zone has no way to fetch
+	// the platforms a recipe left out. Index completeness is therefore not
+	// validated; every other manifest check stays on.
+	cfg.Validation.Manifests.Indexes.Platforms = "none"
 
 	// The distribution library logs through logrus. Tobby's own logs are
 	// slog JSON (FR-090); the library's internal noise is kept to warnings
@@ -113,7 +161,15 @@ func Open(ctx context.Context, root string, logger *slog.Logger) (*Store, error)
 		logrus.FieldKeyMsg:   "msg",
 	}})
 
+	// With index completeness off, the library warns at every start that
+	// "other container tooling might expect all image indexes to be
+	// complete". That trade-off is FR-022's, made on purpose and
+	// documented there; the warning would only repeat it on every store
+	// opening, CLI commands included. The library is held to errors for
+	// the duration of the call only; its errors still reach the log.
+	logrus.SetLevel(logrus.ErrorLevel)
 	app := handlers.NewApp(ctx, cfg)
+	logrus.SetLevel(logrus.WarnLevel)
 
 	// Second access to the same backend for the browsing accessors
 	// (browse.go): the storage library over the same root directory as the

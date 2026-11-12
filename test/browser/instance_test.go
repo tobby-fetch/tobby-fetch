@@ -28,6 +28,8 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
+	"github.com/tobby-fetch/tobby-fetch/internal/federation"
+	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -126,9 +128,25 @@ type spec struct {
 	// destination-side Media screen over it (R-02, FR-054).
 	medium bool
 	verify mediagate.Verify
+	// integrity wires the Store integrity screen (FR-057, R-31) over the
+	// queue, with the given runner standing in for the walk — a scenario
+	// must decide when the verdict lands, or it races the browser.
+	integrity tasks.Runner
+	// fed enables federated sign-in beside the local form (6.3, R-20).
+	fed *federation.Service
+	// idle sets auth.session.idleTimeout (R-14); zero leaves none.
+	idle time.Duration
+	// scan is the vulnerability-scanning state the shell reads (FR-031).
+	scan func() ui.ScanState
 }
 
 type option func(*spec)
+
+// withFederation offers federated sign-in on the sign-in page.
+func withFederation(fed *federation.Service) option { return func(s *spec) { s.fed = fed } }
+
+// withIdleTimeout ends sessions after d without a request (R-14).
+func withIdleTimeout(d time.Duration) option { return func(s *spec) { s.idle = d } }
 
 // withContent seeds repositories of several kinds, so the Content screen
 // has something to filter.
@@ -152,6 +170,15 @@ func withQueue(runner tasks.Runner) option {
 func withMedium(verify mediagate.Verify) option {
 	return func(s *spec) { s.medium, s.verify = true, verify }
 }
+
+// withIntegrity wires the Store integrity screen over a task queue whose
+// store-verify runner is the one given (R-31).
+func withIntegrity(runner tasks.Runner) option {
+	return func(s *spec) { s.queue, s.integrity = true, runner }
+}
+
+// withScan wires the vulnerability-scanning state the banners read.
+func withScan(state func() ui.ScanState) option { return func(s *spec) { s.scan = state } }
 
 func newInstance(t *testing.T, opts ...option) *instance {
 	t.Helper()
@@ -187,8 +214,14 @@ func newInstance(t *testing.T, opts ...option) *instance {
 		if sp.runner != nil {
 			q.Register(tasks.TypeUnitImport, sp.runner)
 		}
+		if sp.integrity != nil {
+			q.Register(tasks.TypeStoreVerify, sp.integrity)
+		}
 		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
+		// Stop the workers AND wait for them: a runner cancelled here still
+		// records its task's end, and a write landing after the temporary
+		// directory is removed fails the cleanup of an otherwise green test.
+		t.Cleanup(func() { cancel(); q.Wait() })
 		q.Start(ctx)
 		inst.Queue = q
 	}
@@ -205,9 +238,14 @@ func newInstance(t *testing.T, opts ...option) *instance {
 		Sessions: auth.NewSessions(12 * time.Hour),
 		Logger:   logger,
 	}
+	authn.Sessions.SetIdleTimeout(sp.idle)
+	if sp.fed != nil {
+		authn.Federated = sp.fed.Enabled
+	}
 
 	uiOpts := &ui.Options{
-		Version: "0.3.0-e2e", Mode: "mirror", Store: st, Queue: inst.Queue,
+		Version: "0.3.0-e2e", Mode: "mirror", Store: st, Queue: inst.Queue, Scan: sp.scan,
+		Federation: sp.fed,
 	}
 	if sp.medium {
 		seedMedium(t, st)
@@ -218,8 +256,14 @@ func newInstance(t *testing.T, opts ...option) *instance {
 		uiOpts.MediaGate = gate
 	}
 
+	if sp.integrity != nil {
+		uiOpts.Integrity = check.NewService(st, inst.Queue, nil, nil)
+	}
+
 	mux := http.NewServeMux()
-	ui.New(authn, logger, uiOpts).Mount(mux)
+	webUI := ui.New(authn, logger, uiOpts)
+	webUI.Mount(mux)
+	webUI.MountFederation(mux)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	inst.URL = srv.URL

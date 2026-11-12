@@ -42,18 +42,18 @@ default — the state also spools resumable downloads, see
 ### With Helm
 
 ```sh
-helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.5.2 \
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
   --namespace tobby --create-namespace \
   --set config.mode=passthrough
 ```
 
-The chart version **is** the Tobby version: chart `0.5.2` deploys the
-`v0.5.2` image, and nothing else. Pin `--version` — without it Helm takes
+The chart version **is** the Tobby version: chart `0.6.0` deploys the
+`v0.6.0` image, and nothing else. Pin `--version` — without it Helm takes
 the newest chart, which is an upgrade you did not choose. Each published
 chart is signed keylessly by the release workflow, like the image:
 
 ```sh
-cosign verify ghcr.io/tobby-fetch/charts/tobby:0.5.2 \
+cosign verify ghcr.io/tobby-fetch/charts/tobby:0.6.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
 ```
@@ -84,7 +84,7 @@ kubectl -n tobby create secret docker-registry tobby-registry-credentials \
   --docker-username=tobby \
   --docker-password="$(cat ./token)"
 
-helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.5.2 \
+helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
   --namespace tobby --reuse-values \
   --set registryCredentials.enabled=true \
   --set registryCredentials.existingSecret=tobby-registry-credentials
@@ -136,9 +136,9 @@ verify (`SHA256SUMS` or SLSA provenance), copy the file across, install
 with no network:
 
 ```sh
-dpkg -i tobby_0.5.2_linux_amd64.deb                    # Debian/Ubuntu
-rpm -i tobby_0.5.2_linux_amd64.rpm                     # RHEL/SUSE/Fedora
-apk add --allow-untrusted tobby_0.5.2_linux_amd64.apk  # Alpine
+dpkg -i tobby_0.6.0_linux_amd64.deb                    # Debian/Ubuntu
+rpm -i tobby_0.6.0_linux_amd64.rpm                     # RHEL/SUSE/Fedora
+apk add --allow-untrusted tobby_0.6.0_linux_amd64.apk  # Alpine
 ```
 
 The packages deliberately carry no package-manager signature: trust
@@ -191,7 +191,7 @@ docker run -d --name tobby --read-only \
   -v /srv/tobby/store:/var/lib/tobby/store \
   -v /srv/tobby/state:/var/lib/tobby/state \
   -v /srv/tobby/config.yaml:/etc/tobby/config.yaml:ro \
-  ghcr.io/tobby-fetch/tobby-fetch:v0.5.2 \
+  ghcr.io/tobby-fetch/tobby-fetch:v0.6.0 \
   serve --config /etc/tobby/config.yaml
 ```
 
@@ -235,6 +235,43 @@ short-lived pod mounting the state claim — the exact recipe is in
 
 If you must run open, `auth.disabled: true` is an explicit opt-in that
 puts a permanent warning banner in the UI (FR-075). Never leave it on.
+
+## Signing in through the corporate directory
+
+OIDC and SAML are off by default, and the local `admin` stays — it is the
+break-glass account when the directory is down. To enable either, three
+things to get right at install time (details on
+[Enterprise identity](../../security/enterprise-identity/)):
+
+- **Callback URLs live under `/auth/`.** Register exactly
+  `https://<host>/auth/oidc/callback` (OIDC) or the assertion consumer
+  service `https://<host>/auth/saml/acs` (SAML; the SP descriptor is
+  `https://<host>/auth/saml/metadata`). Configuration naming any other
+  path is refused at startup. A reverse proxy in front must pass `/auth/`
+  through.
+- **Pin the SAML identity provider.** Prefer `auth.saml.idpMetadataFile`;
+  `auth.saml.idpMetadataURL` requires the signing certificate pinned in
+  `auth.saml.idpCertificateFile`.
+- **Mount the secrets outside the store**: `auth.oidc.clientSecretFile`
+  and `auth.saml.keyFile`, like every secret path.
+
+`displayName` labels the sign-in button; `auth.oidc.nameClaim` and
+`auth.saml.nameAttribute` choose the name shown for a person. All three
+are display only. Upgrading from v0.5.x needs none of this to keep
+running: every new federation key is off or defaulted.
+
+**One default does change when you upgrade from v0.5.x: vulnerability
+scanning now runs, in advisory mode.** Every image retrieved is
+scanned — whatever kind it is declared as — there is no "enabled" switch — and with `scan.mode` left at `warn`
+the findings are reported (task report, API, interface, metrics, with the
+database age) while **nothing is withheld**. An instance with no scanner or
+no database shows the degraded-mode banner instead. To refuse what violates
+a threshold, set `scan.mode: block` (or `TOBBY_SCAN_MODE=block`; the
+threshold is `scan.threshold`, `7.0` by default), or pose a threshold for one
+perimeter: a Retriever's `spec.scanPolicy.threshold` or a recipe's
+`recipe.tobby.dev/scan-threshold` annotation, each blocking for what it
+covers. A refusal withholds the whole recipe. See
+[vulnerability scanning](../../security/vulnerability-scanning/).
 
 Next: point the instance at the outside world through
 [the enterprise network](../../passthrough/network/).

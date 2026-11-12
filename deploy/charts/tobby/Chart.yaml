@@ -18,8 +18,8 @@ type: application
 # both together with CHANGELOG.md; tools/check-chart-version.sh fails CI
 # when it does not, and fails the release when they disagree with the tag
 # (B-035 — appVersion once sat at 0.3.0 for three releases).
-version: 0.5.2
-appVersion: "0.5.2"
+version: 0.6.0
+appVersion: "0.6.0"
 
 # HTTP probes use the `GET /path` httpGet form and `Recreate` deployment
 # strategy; both are long-standing APIs. 1.25 is the floor because the

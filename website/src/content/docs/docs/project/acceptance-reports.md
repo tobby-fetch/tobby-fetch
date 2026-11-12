@@ -21,7 +21,9 @@ milestone-1 to milestone-4 files are that run reproducing them; the
 previous full replay was 2026-08-22, for the v0.4.2 re-acceptance. The
 latest full replay is 2026-11-07, for the v0.5.1 maintenance release: the
 same 88 checks after the move to Go 1.27 and every dependency's latest
-release, in one report.
+release, in one report. The latest is 2026-11-12, for v0.6.0: milestones 1
+to 5 again (the same 88 checks) and the six milestone-6 scenarios (81
+checks), on commit `4d8ad1b`.
 
 
 ## The reports
@@ -109,6 +111,52 @@ caught a regression the release itself had introduced: the m4 scenario
 read the test proxy's log in a form the release had just changed, which
 the hermetic CI tier would have failed on too. Its trailer records the
 two staging defects the new guest image exposed, fixed before the run.
+
+### Milestone 6 — hardened controls and enterprise identity
+
+Run 2026-11-12 on commit `4d8ad1b`, on a disposable bare-metal host
+created and destroyed in the same session. Milestones 1 to 5 replayed
+first, 88 checks, one report each
+([m1](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-6-regression-m1-crucible-report.txt),
+[m2](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-6-regression-m2-crucible-report.txt),
+[m3](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-6-regression-m3-crucible-report.txt),
+[m4](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-6-regression-m4-crucible-report.txt),
+[m5](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-6-regression-m5-crucible-report.txt)).
+Then six scenarios, 81 checks:
+
+- [a-scanning](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-6-crucible-report-a-scanning.txt):
+  the pinned Trivy binary delivered through the `tobby-system` channel,
+  advisory and blocking policies, the database crossing the air gap, and a
+  scanner binary tampered on disk never executed — repaired from the
+  verified delivery and audited (`scan.scanner.repaired`), or refused.
+- [a-self-update](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-6-crucible-report-a-self-update.txt):
+  Tobby carrying its own next release across the gap, the version signed
+  by the site key pushable and the one signed only by the project key
+  blocked.
+- [b-auth](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-6-crucible-report-b-auth.txt):
+  OIDC and SAML against a real Keycloak, roles from groups, the local
+  account still usable with the identity provider unreachable.
+- [c-assurance](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-6-crucible-report-c-assurance.txt),
+  [c-integrity](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-6-crucible-report-c-integrity.txt),
+  [c-trust-scopes](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-6-crucible-report-c-trust-scopes.txt):
+  reduced-assurance markers carried to the destination and the transfer
+  slip, the store integrity check, trust scopes on both sides of the gap.
+
+All checks pass — with one disclosure. The a-scanning scenario was fixed
+on the node during the run: two of its probes fetched a manifest without
+an `Accept` header, which an OCI registry answers with 404, so the
+"advisory push landed" check failed although the image was there, and the
+"blocked image absent" check passed vacuously. The probes now send the OCI
+media type; the product was not changed. The first, failing run is
+published beside the passing one
+([a-scanning-first-run-FAILED](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-6-crucible-report-a-scanning-first-run-FAILED.txt)).
+
+An earlier run the same day, on commit `0bc893e`, failed three of the six
+scenarios and found two product defects nothing else had: a recipe
+admitted by an `allowUnsigned` scope refused at push when its cookbook host
+carries a port (B-055), and no chart published by `helm push` able to be
+synchronized, because helm omits a field the test fixtures always wrote
+(B-056). Both are fixed in v0.6.0, each with a test that failed before.
 
 ### [milestone-4-quality-audit.md](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-4-quality-audit.md) — point-in-time audit
 

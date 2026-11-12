@@ -68,8 +68,7 @@ func (s *Store) DeleteRepository(ctx context.Context, name string, logger *slog.
 	if managing := s.ManagingRecipes(name); len(managing) > 0 {
 		return &RecipeManagedError{Repo: name, Recipes: managing}
 	}
-	s.gcMu.Lock()
-	defer s.gcMu.Unlock()
+	defer s.exclusive()()
 
 	dir := filepath.Join(s.root, "docker", "registry", "v2", "repositories", filepath.FromSlash(name))
 	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
@@ -96,8 +95,7 @@ func (s *Store) DeleteRepository(ctx context.Context, name string, logger *slog.
 // recipe-removal path unlinks content tag by tag (relocated repositories
 // are shared across recipes; reachability decides what survives, FR-044).
 func (s *Store) DeleteTag(ctx context.Context, name, tag string) error {
-	s.gcMu.Lock()
-	defer s.gcMu.Unlock()
+	defer s.exclusive()()
 	if err := s.untag(ctx, name, tag); err != nil {
 		return err
 	}
@@ -174,8 +172,7 @@ func (s *Store) PruneTags(ctx context.Context, refs []TagRef, logger *slog.Logge
 	if len(refs) == 0 {
 		return res, nil
 	}
-	s.gcMu.Lock()
-	defer s.gcMu.Unlock()
+	defer s.exclusive()()
 
 	touched := make([]string, 0, len(refs))
 	seen := map[string]bool{}
@@ -267,8 +264,7 @@ func (e *RecipeManagedError) Error() string {
 // blobs under the exclusive lock. Exposed for the recipe-removal flow,
 // which untags several repositories before one sweep.
 func (s *Store) Sweep(ctx context.Context, logger *slog.Logger) error {
-	s.gcMu.Lock()
-	defer s.gcMu.Unlock()
+	defer s.exclusive()()
 	res, err := s.sweep(ctx)
 	if err != nil {
 		return err
@@ -385,14 +381,33 @@ func (s *Store) markRepository(ctx context.Context, name string) (map[digest.Dig
 }
 
 // markManifest marks one manifest and everything it references.
+//
+// A digest is marked only once the manifest is found in THIS repository.
+// An index child the store does not hold — a sparse index (FR-022) —
+// marks nothing: the embedded registry accepts such an index from any
+// client (B-036), so an index naming the digest of a blob it never
+// uploaded would otherwise keep that blob alive against every sweep
+// (FR-044), and hide it from the orphan report (R-31). visited guards the
+// walk against cycles, whether the digest resolved or not.
 func (s *Store) markManifest(ctx context.Context, ms distribution.ManifestService, d digest.Digest, reach map[digest.Digest]bool) error {
-	if reach[d] {
+	return s.markManifestOnce(ctx, ms, d, reach, map[digest.Digest]bool{})
+}
+
+func (s *Store) markManifestOnce(ctx context.Context, ms distribution.ManifestService, d digest.Digest, reach, visited map[digest.Digest]bool) error {
+	if reach[d] || visited[d] {
 		return nil
 	}
-	reach[d] = true
+	visited[d] = true
 	m, err := ms.Get(ctx, d)
+	var unknown distribution.ErrManifestUnknownRevision
+	if errors.As(err, &unknown) {
+		return nil // dangling reference (sparse index child): not held here, nothing to mark
+	}
+	// Held — or unreadable for another reason, where keeping the digest
+	// is the side that cannot lose content.
+	reach[d] = true
 	if err != nil {
-		return nil //nolint:nilerr // dangling reference (sparse index child): nothing more to mark
+		return nil //nolint:nilerr // unreadable manifest: keep the digest marked, mark nothing below
 	}
 	mediaType, _, err := m.Payload()
 	if err != nil {
@@ -401,7 +416,7 @@ func (s *Store) markManifest(ctx context.Context, ms distribution.ManifestServic
 	for _, ref := range m.References() {
 		if isIndex(mediaType) {
 			// An index references child manifests: walk them.
-			if err := s.markManifest(ctx, ms, ref.Digest, reach); err != nil {
+			if err := s.markManifestOnce(ctx, ms, ref.Digest, reach, visited); err != nil {
 				return err
 			}
 			continue

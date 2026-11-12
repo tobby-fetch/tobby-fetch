@@ -1,0 +1,9 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* The reduced-assurance marker (FR-037, R-22). Both partials are invoked
+     with (withData $ marker) and render NOTHING for a nil marker: absence
+     means full assurance, so a screen that forgot to pass one cannot
+     invent a claim. The badge is this instance's own verdict; the claim
+     is what the source zone declared in the medium's manifest — shown as
+     a claim, beside the badge and never instead of it. */}}
+{{define "assurance-badge"}}{{with .Data}}<span class="t-badge t-badge--done-errors" data-assurance="reduced" title="{{$.T "assurance.reduced_hint" "Scope" .Scope}}">{{$.T "assurance.reduced"}}</span>{{end}}{{end}}
+{{define "assurance-claim"}}{{with .Data}}<span class="t-chip" data-assurance-claim="reduced">{{$.T "assurance.source_claim" "Scope" .Scope}}</span>{{end}}{{end}}

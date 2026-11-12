@@ -109,9 +109,12 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 ### TBY-AUTH-005
 
 - **Quoi :** votre session a expiré.
-- **Cause probable :** aucune activité pendant une durée supérieure à la
-  vie de la session (`auth.sessionTTL`, 12 h par défaut), ou l'instance a
-  redémarré — les sessions vivent en mémoire.
+- **Cause probable :** aucune activité pendant plus que le délai
+  d'inactivité (`auth.session.idleTimeout`, 30 min par défaut), la session
+  a atteint sa durée de vie absolue (`auth.sessionTTL`, 12 h par défaut),
+  ou l'instance a redémarré — les sessions vivent en mémoire. Chaque
+  expiration est consignée par un événement d'audit `session.expire` avec
+  sa raison, `idle` ou `lifetime`.
 - **Action corrective :** reconnectez-vous ; vous reviendrez à la page où
   vous étiez.
 - **Remédiable hors-ligne :** oui · **Bloque :** la session seulement
@@ -194,6 +197,55 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
   sortie partagée, un autre client est peut-être mal configuré — le journal
   d'audit liste les tentatives échouées et les noms de compte revendiqués.
 - **Remédiable hors-ligne :** oui · **Bloque :** l'origine réseau, temporairement
+
+### TBY-AUTH-013
+
+- **Quoi :** Le jeton d'API a expiré.
+- **Cause probable :** Le jeton a été créé avec une date d'expiration, et cette date est passée. Un jeton expiré est refusé comme un jeton révoqué, et le refus est journalisé dans l'audit.
+- **Action corrective :** Demandez un nouveau jeton à un administrateur (écran des comptes ou `POST /api/v1/tokens`), puis remplacez le jeton expiré dans le client qui l'a présenté.
+- **Remédiable hors-ligne :** oui · **Bloque :** la requête ; le jeton reste refusé
+
+### TBY-AUTH-014
+
+- **Quoi :** La connexion via `<provider>` a échoué.
+- **Cause probable :** La réponse du fournisseur d'identité n'a pas passé les contrôles de Tobby (state, nonce, signature, émetteur ou audience) — souvent une connexion commencée dans un autre onglet, un écart d'horloge, ou un client enregistré avec une autre URL de retour.
+- **Action corrective :** Recommencez la connexion depuis cette page. Si elle échoue encore, un administrateur trouve le contrôle en échec dans le journal de l'instance sous le même identifiant de corrélation ; la connexion locale reste disponible entre-temps.
+- **Remédiable hors-ligne :** oui · **Bloque :** la tentative de connexion
+
+### TBY-AUTH-015
+
+- **Quoi :** La connexion via `<provider>` a échoué.
+- **Cause probable :** La réponse SAML a été refusée : non signée, déjà utilisée, ne répondant pas à une connexion lancée par cette instance, hors de sa fenêtre de validité, ou destinée à une autre audience ou destination.
+- **Action corrective :** Recommencez la connexion depuis cette page — Tobby n'accepte que les connexions qu'il a lui-même lancées. Si elle échoue encore, un administrateur trouve le contrôle refusé dans le journal de l'instance sous le même identifiant de corrélation ; la connexion locale reste disponible entre-temps.
+- **Remédiable hors-ligne :** oui · **Bloque :** la tentative de connexion
+
+### TBY-AUTH-016
+
+- **Quoi :** La connexion via `<provider>` est indisponible : le fournisseur d'identité est injoignable.
+- **Cause probable :** Le fournisseur n'a pas répondu à temps, ou le chemin réseau vers lui est coupé. Les sessions en cours et les jetons d'API ne sont pas affectés.
+- **Action corrective :** Utilisez la connexion locale entre-temps — elle reste disponible quand la fédération est en panne, et son usage est consigné dans le journal d'audit. Vérifiez le chemin réseau vers le fournisseur (proxy, AC privée) et sa disponibilité ; la connexion fédérée revient sans redémarrage.
+- **Remédiable hors-ligne :** selon : la connexion locale fonctionne hors-ligne ; la connexion fédérée a besoin du fournisseur · **Bloque :** la connexion fédérée seulement
+
+### TBY-AUTH-017
+
+- **Quoi :** Vous êtes authentifié chez `<provider>`, mais aucun rôle Tobby ne vous est attribué.
+- **Cause probable :** Aucun des groupes transmis par le fournisseur d'identité pour votre compte n'est associé à un rôle sur cette instance. Tobby n'attribue jamais de rôle par défaut.
+- **Action corrective :** Demandez à un administrateur d'ajouter l'un de vos groupes à la correspondance des rôles de la configuration (`roles.viewer`, `roles.operator` ou `roles.admin` dans la section du fournisseur), ou de vous ajouter à un groupe déjà associé.
+- **Remédiable hors-ligne :** oui · **Bloque :** la tentative de connexion
+
+### TBY-AUTH-018
+
+- **Quoi :** Trop de connexions par `<provider>` ont été entamées depuis votre adresse réseau ; en entamer une autre est temporairement refusé.
+- **Cause probable :** Chaque connexion entamée retient un peu de mémoire sur cette instance jusqu'à son terme, et peut contacter le fournisseur d'identité, avant que quiconque soit authentifié. L'instance borne la fréquence à laquelle une même adresse réseau peut en entamer, pour qu'un afflux depuis une adresse ne chasse jamais les connexions que d'autres personnes ont en cours.
+- **Action corrective :** Patientez quelques secondes puis reconnectez-vous — une fois. S'il s'agit d'une adresse de sortie partagée, un autre client derrière elle boucle peut-être sur la page de connexion.
+- **Remédiable hors-ligne :** oui · **Bloque :** l'ouverture d'une connexion fédérée depuis cette adresse, quelques secondes ; les comptes locaux et les tokens ne sont pas touchés
+
+### TBY-AUTH-019
+
+- **Quoi :** Le nom `<name>` ne peut pas désigner un compte ou un token local.
+- **Cause probable :** Le caractère « : » est réservé aux identités fédérées, dont la clé est `oidc:<sujet>` ou `saml:<NameID>` ; un compte ou un token local nommé comme l'une d'elles s'en distinguerait mal dans la piste d'audit.
+- **Action corrective :** Choisissez un nom sans « : » (par exemple un tiret ou un point à la place).
+- **Remédiable hors-ligne :** oui · **Bloque :** la création de ce compte ou de ce token
 
 ## Configuration (TBY-CFG)
 
@@ -438,9 +490,15 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 
 - **Quoi :** la signature de la recipe n'a pas pu être vérifiée.
 - **Cause probable :** aucune clé de confiance configurée ne valide la
-  signature de *\<recipe\>* (les empreintes essayées sont listées).
+  signature de *\<recipe\>* (les empreintes essayées sont listées). Quand un
+  périmètre de confiance déclaré correspond à la recipe, le message **nomme ce
+  périmètre** (*\<périmètre\>*) et les clés essayées sont celles qu'il
+  autorise : une clé valide ailleurs, mais absente des `roots` du périmètre,
+  ne s'applique pas dedans.
 - **Action corrective :** vérifiez que les clés de confiance de la zone
-  incluent la clé qui a signé cette recipe (voir
+  incluent la clé qui a signé cette recipe — ou, quand un périmètre est nommé,
+  que ses `roots` la listent, ou que la recipe relève d'un autre périmètre
+  (voir
   [Signatures, clés de confiance et liste blanche](../../security/content-trust/)).
   Une recipe non vérifiée n'est jamais admise.
 - **Remédiable hors-ligne :** oui, quand la bonne clé publique est disponible localement (les clés de confiance sont la configuration de la destination) ; une recipe réellement non signée ou mal signée doit être re-signée en amont · **Bloque :** la recipe concernée (classe vérification, sortie 4) ; jamais dérogeable
@@ -466,6 +524,108 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
   de type est légitime, mettez à jour et re-signez la recipe ; sinon
   considérez la source comme compromise.
 - **Remédiable hors-ligne :** non · **Bloque :** l'ingrédient ou la recipe concerné (classe vérification, sortie 4) ; jamais dérogeable
+
+## Analyse de vulnérabilités (TBY-SCN)
+
+Réservés à l'ouverture du jalon 6 (FR-031, FR-032) : la politique est consultative par défaut, la plupart de ces codes signalent donc plus qu'ils ne refusent.
+
+### TBY-SCN-001
+
+- **Quoi :** L'analyseur de vulnérabilités est indisponible : le contenu n'est pas analysé.
+- **Cause probable :** `<detail>`
+- **Action corrective :** Rendez l'analyseur disponible pour cette plateforme : il est intégré à l'image conteneur ; sur un hôte Linux ou Windows, synchronisez la recipe tobby-system qui le transporte ; sous macOS, installez trivy dans le PATH. Sous `scan.mode: block`, rien de ce qui n'a pu être analysé n'est poussé d'ici là.
+- **Remédiable hors-ligne :** oui, une fois la recipe tobby-system transférée · **Bloque :** l'analyse ; en mode bloquant, tout push
+
+### TBY-SCN-002
+
+- **Quoi :** Le binaire de l'analyseur `<path>` ne correspond pas à son digest épinglé et n'a pas été exécuté.
+- **Cause probable :** Attendu `<expected>`, trouvé `<actual>` : le fichier a été remplacé ou endommagé après son épinglage.
+- **Action corrective :** Restaurez le binaire depuis la recipe tobby-system (ou depuis la release épinglée), ou mettez à jour `scan.trivy.digest` si le changement est voulu. Le contenu est signalé non analysé d'ici là.
+- **Remédiable hors-ligne :** oui · **Bloque :** l'analyse
+
+### TBY-SCN-003
+
+- **Quoi :** Aucune base de vulnérabilités n'est disponible : le contenu n'est pas analysé.
+- **Cause probable :** Le store ne contient aucune base sous `<repository>`.
+- **Action corrective :** Synchronisez d'abord la recipe tobby-system qui transporte la base — par le support miroir en zone isolée. La vérification des supports n'a pas besoin de la base.
+- **Remédiable hors-ligne :** oui, une fois la recipe tobby-system transférée · **Bloque :** l'analyse ; en mode bloquant, tout push
+
+### TBY-SCN-004
+
+- **Quoi :** La base de vulnérabilités a `<age>`, au-delà des `<max>` acceptés par cette instance.
+- **Cause probable :** La base n'a pas été rafraîchie assez récemment : les vulnérabilités publiées depuis sa construction sont inconnues de l'analyseur.
+- **Action corrective :** Synchronisez la recipe tobby-system pour apporter une base fraîche — par le prochain support en zone isolée. Sous `scan.maxDbAgeAction: block`, les éléments analysés avec une base périmée ne sont pas poussés d'ici là.
+- **Remédiable hors-ligne :** oui, une fois une base fraîche transférée · **Bloque :** rien en mode avertir ; le push de l'élément en mode bloquer
+
+### TBY-SCN-005
+
+- **Quoi :** `<reference>` enfreint la politique de vulnérabilités et n'a pas été poussé.
+- **Cause probable :** Des vulnérabilités au niveau du seuil de `<threshold>` ou au-delà (posé au niveau `<level>`) ne sont couvertes par aucune exception : `<violations>`.
+- **Action corrective :** Publiez une version corrigée en amont et mettez à jour la recipe, ou — si le risque est accepté dans cette zone — listez la CVE en exception dans le `spec.scanPolicy` du Retriever ou dans `scan.exceptions`, avec sa justification.
+- **Remédiable hors-ligne :** non : le correctif vient de l'amont, ou d'une exception décidée par la zone · **Bloque :** l'élément et sa recipe
+
+### TBY-SCN-006
+
+- **Quoi :** `<reference>` enfreint la politique de vulnérabilités ; il a été poussé car la politique est consultative.
+- **Cause probable :** Des vulnérabilités au niveau du seuil de `<threshold>` ou au-delà (posé au niveau `<level>`) ne sont couvertes par aucune exception : `<violations>`.
+- **Action corrective :** Examinez les vulnérabilités. Pour refuser un tel contenu plutôt que le signaler, réglez `scan.mode: block` ; pour accepter une CVE précise dans cette zone, listez-la en exception avec sa justification.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien
+
+### TBY-SCN-007
+
+- **Quoi :** `<reference>` n'a pas pu être analysé.
+- **Cause probable :** L'analyseur s'est arrêté sur une erreur : `<detail>`
+- **Action corrective :** Relancez la synchronisation. Si l'erreur persiste, le journal de l'instance porte la sortie de l'analyseur sous le même identifiant de corrélation. Sous `scan.mode: block`, l'élément n'est pas poussé tant qu'il n'est pas analysé.
+- **Remédiable hors-ligne :** oui · **Bloque :** l'élément en mode bloquer ; rien en mode avertir
+
+### TBY-SCN-008
+
+- **Quoi :** La base de vulnérabilités se dit construite le `<built_at>`, après l'horloge de cette instance (`<now>`).
+- **Cause probable :** Son âge ne peut pas être établi ; elle est donc traitée comme périmée : soit l'horloge de cet hôte retarde, soit les métadonnées de la base sont fausses. Une date de construction en avance d'une heure au plus est tolérée comme décalage d'horloge.
+- **Action corrective :** Vérifiez l'horloge de cet hôte (et de la zone qui a cuisiné la recipe tobby-system), puis synchronisez une base dont la date de construction est passée. Sous `scan.maxDbAgeAction: block`, les éléments analysés avec elle ne sont pas poussés d'ici là.
+- **Remédiable hors-ligne :** oui · **Bloque :** les éléments analysés avec elle sous `scan.maxDbAgeAction: block` ; rien en mode avertir
+
+### TBY-SCN-020
+
+- **Quoi :** Le seuil d'analyse porté par `<recipe>` a été ignoré.
+- **Cause probable :** La recipe demande `<annotation>`, au-dessus des `<threshold>` en vigueur pour cette zone ; une recipe peut abaisser le seuil, jamais le relever.
+- **Action corrective :** Rien à faire sur cette instance : le seuil de la zone s'applique. L'auteur de la recipe peut retirer ou abaisser l'annotation `recipe.tobby.dev/scan-threshold`.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien
+
+### TBY-SCN-021
+
+- **Quoi :** L'exception pour `<id>` a expiré le `<expires>` et ne s'applique plus.
+- **Cause probable :** L'exception déclarée au niveau `<level>` porte une date d'expiration dépassée.
+- **Action corrective :** Renouvelez l'exception avec un nouveau `expires` et sa justification si le risque reste accepté, ou retirez-la et traitez la vulnérabilité.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien en soi
+
+### TBY-SCN-022
+
+- **Quoi :** `<reference>` porte des vulnérabilités sans score de criticité : `<ids>`.
+- **Cause probable :** Les sources d'avis ne donnent à ces vulnérabilités ni score CVSS ni sévérité : la politique ne peut pas les comparer à son seuil.
+- **Action corrective :** Examinez-les à la main. Elles ne comptent pas face au seuil ; si l'une doit être refusée, faites corriger le contenu en amont.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien
+
+### TBY-SCN-023
+
+- **Quoi :** `<reference>`, déclaré `<declared>`, a été analysé comme une image de conteneur, détecté comme image d'après son contenu (`<evidence>`).
+- **Cause probable :** Ce qui est analysé est décidé par le contenu, jamais par le type déclaré : cet ingrédient est, ou contient, une image qu'un runtime pourrait exécuter ; la politique de vulnérabilités s'y applique comme à toute image.
+- **Action corrective :** Rien à faire si ce contenu est attendu. Sinon, demandez à l'auteur de la recipe pourquoi une image est publiée sous ce type ; le verdict associé à cette note s'applique normalement.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien en soi ; le verdict associé décide
+
+### TBY-SCN-024
+
+- **Quoi :** `<reference>`, déclaré `<declared>`, ne contient aucune image de conteneur : il n'est pas analysé.
+- **Cause probable :** Son manifeste n'a ni configuration d'image ni couche de système de fichiers, et aucun de ses fichiers n'est une archive d'image : l'analyseur n'a rien à y lire.
+- **Action corrective :** Rien à faire. Un contenu qui n'est pas une image (un modèle, une base de données, un document) est hors du périmètre de l'analyse de vulnérabilités ; examinez-le par les moyens propres à son format.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien
+
+### TBY-SCN-025
+
+- **Quoi :** `<reference>`, livré par la recipe signée `<recipe>`, est évalué sous une politique consultative.
+- **Cause probable :** C'est une livraison de l'analyseur lui-même. La refuser au nom de la politique qu'elle arme laisserait la zone sans moyen d'armer un analyseur, ni de mettre à jour sa base.
+- **Action corrective :** Rien à faire. Ses vulnérabilités restent rapportées ; la confiance dans ce contenu repose sur la signature de la recipe tobby-system.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien
 
 ## Limites de la destination (TBY-DST)
 
@@ -786,6 +946,52 @@ remet quand même ses recipes intactes.
   poussables vers la registry de zone, qui les sert ensuite.
 - **Corrigeable hors ligne :** oui · **Bloque :** la registry embarquée et la
   surface de fichiers, pour ce support
+
+## Intégrité du store (TBY-INT)
+
+Levés par la vérification d'intégrité à la demande (FR-057) : `tobby store verify`, l'écran Intégrité du store et `POST /api/v1/store/verify`. Une vérification constate ; elle ne répare ni ne supprime jamais rien. Un blob endommagé, un manifest incomplet et un manifest illisible sont des défauts de la classe vérification (sortie 4) ; le contenu orphelin est une note qui ne bloque rien. Une recipe dont la signature ne se vérifie plus réutilise [TBY-SIG-001](#tby-sig-001), qui nomme le périmètre de confiance.
+
+### TBY-INT-001
+
+- **Quoi :** Le blob `<path>` ne correspond pas à son digest.
+- **Cause probable :** Son contenu donne `<actual>` au lieu de `<expected>` : le fichier a été endommagé ou modifié sur le disque.
+- **Action corrective :** La vérification ne modifie rien. Re-synchronisez les recipes qui atteignent ce blob pour le récupérer à nouveau, ou restaurez le store depuis une copie saine ; vérifiez le disque.
+- **Remédiable hors-ligne :** selon : re-télécharger demande une source ; restaurer une copie non · **Bloque :** rien — le rapport le constate
+
+### TBY-INT-002
+
+- **Quoi :** `<reference>` est incomplet dans le store.
+- **Cause probable :** Il référence un contenu absent du store : `<missing>`.
+- **Action corrective :** Re-synchronisez la recipe qui l'atteint pour récupérer le contenu manquant, ou restaurez le store depuis une copie saine.
+- **Remédiable hors-ligne :** selon : re-télécharger demande une source ; restaurer une copie non · **Bloque :** rien — le rapport le constate
+
+### TBY-INT-003
+
+- **Quoi :** `<path>` n'est atteint par aucune recipe.
+- **Cause probable :** Aucune recipe enregistrée ni aucune racine protégée (imports unitaires, base de vulnérabilités, contenu amorcé) n'atteint ce contenu.
+- **Action corrective :** Rien n'est requis. Pour récupérer l'espace, élaguez selon le Retriever ou retirez la recipe qui le portait ; la vérification elle-même ne supprime jamais rien.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien
+
+### TBY-INT-004
+
+- **Quoi :** Une vérification du store est déjà en cours.
+- **Cause probable :** La vérification `<task>` parcourt le store ; en lancer deux à la fois diviserait leur débit par deux sans rien apprendre de plus.
+- **Action corrective :** Suivez la vérification en cours sur l'écran des tâches, ou attendez sa fin pour en lancer une nouvelle.
+- **Remédiable hors-ligne :** oui · **Bloque :** la requête
+
+### TBY-INT-005
+
+- **Quoi :** `<path>` ne peut pas être lu comme un manifest.
+- **Cause probable :** `<detail>`
+- **Action corrective :** Re-synchronisez la recipe qui l'atteint, ou restaurez le store depuis une copie saine ; ce que ce manifest référence n'a pas pu être contrôlé.
+- **Remédiable hors-ligne :** selon : re-télécharger demande une source ; restaurer une copie non · **Bloque :** rien — le rapport le constate
+
+### TBY-INT-006
+
+- **Quoi :** La vérification du store a été annulée.
+- **Cause probable :** La vérification `<task>` a été arrêtée avant d'atteindre un verdict : elle ne dit rien du store.
+- **Action corrective :** Lancez une nouvelle vérification quand vous voulez une réponse. Rien n'a été modifié : une vérification ne fait que lire.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien
 
 ## Export et import OCI image layout (TBY-LAY)
 

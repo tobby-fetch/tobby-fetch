@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
 	"github.com/tobby-fetch/tobby-fetch/internal/buildinfo"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 )
@@ -104,6 +105,17 @@ type Recipe struct {
 	Digest      string       `json:"digest"`
 	ResolvedAt  time.Time    `json:"resolvedAt"`
 	Ingredients []Ingredient `json:"ingredients"`
+	// Assurance is the reduced-assurance marker of a recipe the source
+	// side admitted under a relaxed trust scope (FR-037, R-22); absent
+	// for a recipe verified against a trust root. Re-read and
+	// re-displayed by the destination as a claim (RecipeVerdict
+	// .SourceAssurance), never trusted: the destination's own verdict
+	// decides its own marker.
+	//
+	// Omitted when nil, so a medium that carries no reduced-assurance
+	// content stays readable by a build that predates the field — the
+	// strict reader refuses unknown fields.
+	Assurance *assurance.Marker `json:"assurance,omitempty"`
 }
 
 // Ingredient is one pinned ingredient of a delivered recipe.
@@ -217,6 +229,10 @@ func recipesOf(records []store.RecipeRecord) []Recipe {
 			ArtifactRepo: r.ArtifactRepo, ArtifactTag: r.ArtifactTag,
 			Digest: r.Digest, ResolvedAt: r.ResolvedAt,
 			Ingredients: make([]Ingredient, 0, len(r.Ingredients)),
+			// FR-037: what this zone admitted under a relaxed scope is
+			// declared per recipe, for the destination to re-display. A
+			// claim only — the destination decides its own marker.
+			Assurance: assurance.ForAdmission(r.Verified, r.TrustScope),
 		}
 		for _, ing := range r.Ingredients {
 			rec.Ingredients = append(rec.Ingredients, Ingredient{

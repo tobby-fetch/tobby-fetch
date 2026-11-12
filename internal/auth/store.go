@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,6 +45,8 @@ type Store struct {
 	// verified is the short-lived cache of successful password checks
 	// (v0.4.2 hardening; see VerifyPassword). Guarded by mu.
 	verified []verifiedCred
+	// defaultLifetime is auth.tokens.defaultLifetime (R-14). Guarded by mu.
+	defaultLifetime time.Duration
 }
 
 // Success caching for password verification.
@@ -104,6 +107,21 @@ var ErrNotFound = errors.New("not found")
 
 // ErrExists reports a duplicate account or token name.
 var ErrExists = errors.New("already exists")
+
+// ErrReservedName refuses a local account or token name holding ":".
+// Federated identities are keyed "oidc:<sub>" and "saml:<NameID>"; a
+// local principal named like one would share its name in the audit
+// trail and in every surface that shows who acted (FR-094), so the
+// separator is reserved to them.
+var ErrReservedName = errors.New(`":" is reserved for federated identities ("oidc:…", "saml:…")`)
+
+// CheckLocalName reports whether name may name a local account or token.
+func CheckLocalName(name string) error {
+	if strings.ContainsRune(name, ':') {
+		return fmt.Errorf("auth: %q: %w", name, ErrReservedName)
+	}
+	return nil
+}
 
 // ErrLastAdmin refuses a removal or a demotion that would leave the
 // instance with no administrator. The invariant is enforced here, under
@@ -205,6 +223,9 @@ func (s *Store) adminsLocked(except string) int {
 func (s *Store) AddAccount(name string, role Role, password string, now time.Time) error {
 	if name == "" {
 		return errors.New("auth: account name is required")
+	}
+	if err := CheckLocalName(name); err != nil {
+		return err
 	}
 	hash, err := hashPassword(password)
 	if err != nil {
@@ -402,11 +423,47 @@ var burnHash = func() string {
 // tokenPrefix marks Tobby API tokens; the part after it is the secret.
 const tokenPrefix = "tby_"
 
-// CreateToken mints a static token (FR-072). The clear secret is returned
-// exactly once; only its SHA-256 is stored.
+// ErrExpiryPast refuses a token expiry that is not in the future: such a
+// token could never authorize anything, and creating it is a mistake the
+// caller must hear about (R-14).
+var ErrExpiryPast = errors.New("token expiry is not in the future")
+
+// SetDefaultTokenLifetime sets auth.tokens.defaultLifetime (FR-072
+// amendment, R-14): tokens created without an explicit expiry get one
+// that far in the future. Zero keeps the long-lived FR-072 token.
+func (s *Store) SetDefaultTokenLifetime(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.defaultLifetime = d
+}
+
+// DefaultTokenLifetime reports auth.tokens.defaultLifetime.
+func (s *Store) DefaultTokenLifetime() time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.defaultLifetime
+}
+
+// CreateToken mints a static token (FR-072) with the default lifetime, if
+// one is configured. The clear secret is returned exactly once; only its
+// SHA-256 is stored.
 func (s *Store) CreateToken(name string, role Role, now time.Time) (string, Token, error) {
+	return s.CreateTokenExpiring(name, role, now, time.Time{})
+}
+
+// CreateTokenExpiring mints a static token that stops authorizing at
+// expires (R-14). A zero expires applies auth.tokens.defaultLifetime —
+// or no expiry when none is configured; an expiry that is not in the
+// future is refused with ErrExpiryPast.
+func (s *Store) CreateTokenExpiring(name string, role Role, now, expires time.Time) (string, Token, error) {
 	if name == "" {
 		return "", Token{}, errors.New("auth: token name is required")
+	}
+	if err := CheckLocalName(name); err != nil {
+		return "", Token{}, err
+	}
+	if !expires.IsZero() && !expires.After(now) {
+		return "", Token{}, fmt.Errorf("auth: token %q: %w", name, ErrExpiryPast)
 	}
 	var raw [32]byte
 	if _, err := rand.Read(raw[:]); err != nil {
@@ -422,7 +479,15 @@ func (s *Store) CreateToken(name string, role Role, now time.Time) (string, Toke
 			return "", Token{}, fmt.Errorf("auth: token %q: %w", name, ErrExists)
 		}
 	}
+	if expires.IsZero() && s.defaultLifetime > 0 {
+		expires = now.Add(s.defaultLifetime)
+	}
 	tok := Token{Name: name, Role: role, Hash: hex.EncodeToString(sum[:]), Created: now.UTC()}
+	if !expires.IsZero() {
+		// Second precision: the expiry is shown to people and compared
+		// against clocks, and sub-second digits are noise in both.
+		tok.Expires = expires.UTC().Truncate(time.Second)
+	}
 	s.data.Tokens = append(s.data.Tokens, tok)
 	if err := s.save(); err != nil {
 		return "", Token{}, err
@@ -454,19 +519,57 @@ func (s *Store) Tokens() []Token {
 	return out
 }
 
-// VerifyToken checks a presented secret against the non-revoked tokens.
-func (s *Store) VerifyToken(secret string) (Token, bool) {
+// TokenState is the verdict on a presented token secret. The refusals are
+// told apart because their corrective actions differ (R-14): an unknown
+// secret is a typo or a forgery, a revoked token was withdrawn on
+// purpose, an expired one only needs replacing — TBY-AUTH-013.
+type TokenState int
+
+const (
+	// TokenValid authorizes the request.
+	TokenValid TokenState = iota
+	// TokenUnknown matches no token of this instance.
+	TokenUnknown
+	// TokenRevoked matches a revoked token (FR-072).
+	TokenRevoked
+	// TokenExpired matches a token past its expiry (R-14).
+	TokenExpired
+)
+
+// Expired reports whether t is past its expiry at now. A token without
+// an expiry never expires; one is refused from its expiry instant on.
+func (t *Token) Expired(now time.Time) bool {
+	return !t.Expires.IsZero() && !now.Before(t.Expires)
+}
+
+// VerifyToken checks a presented secret. Every token is compared, revoked
+// and expired included, in constant time — the verdict then says which
+// refusal applies, so a revoked or expired token is refused AND named in
+// the audit trail (FR-072 amendment: every refusal of an expired or
+// revoked token is an FR-094 event). The token is returned with every
+// state but TokenUnknown.
+func (s *Store) VerifyToken(secret string, now time.Time) (Token, TokenState) {
 	sum := sha256.Sum256([]byte(secret))
 	want := hex.EncodeToString(sum[:])
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, t := range s.data.Tokens {
-		if t.Revoked {
-			continue
-		}
-		if subtle.ConstantTimeCompare([]byte(t.Hash), []byte(want)) == 1 {
-			return t, true
+	found := -1
+	for i := range s.data.Tokens {
+		// No early exit: the scan time must not depend on where (or
+		// whether) the secret matches.
+		if subtle.ConstantTimeCompare([]byte(s.data.Tokens[i].Hash), []byte(want)) == 1 {
+			found = i
 		}
 	}
-	return Token{}, false
+	if found < 0 {
+		return Token{}, TokenUnknown
+	}
+	t := s.data.Tokens[found]
+	switch {
+	case t.Revoked:
+		return t, TokenRevoked
+	case t.Expired(now):
+		return t, TokenExpired
+	}
+	return t, TokenValid
 }

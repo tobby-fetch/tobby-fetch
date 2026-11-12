@@ -1,0 +1,13 @@
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Intel Xeon E3-1230 V2 8 threads, 32 GB RAM, Ubuntu 24.04.5 LTS (kernel 6.8.0-146), Incus 7.6 (Zabbly stable; distro 6.0.0 lacks OCI), oras 1.2.3; ref milestone-6 @ 4d8ad1b; node created 2026-11-12T12:06Z, destroyed 2026-11-12T13:08Z (verified HTTP 404)
+ok   scenario m1 started 2026-11-12T12:19:18Z
+ok   built tobby for linux/amd64
+ok   instances launched (connected + air-gapped)
+ok   block-device medium created (/dev/loop0) and attached to the connected node
+ok   medium formatted (ext4) and mounted on the connected node
+ok   connected instance ready (store on the medium)
+ok   embedded registry round-trip on the connected node (sha256:002e1ad9c4b7191c214eacf19e1362a584429cb2c7fe922ad7e170d54f7378a8)
+ok   medium unmounted and detached (transport begins)
+ok   medium re-attached and mounted on the air-gapped node
+ok   egress canary failed as required (air gap proven by construction)
+ok   media round-trip: content pushed in the connected zone serves across the air gap
+ok   scenario m1 complete — report: crucible-report-m1.txt

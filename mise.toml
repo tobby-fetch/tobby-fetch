@@ -1,7 +1,7 @@
 # Tool versions for Tobby (portable across machines / CI via mise).
 # Matches the versions the project is developed and built with.
 [tools]
-go = "1.27.3"
+go = "1.27.4"
 "aqua:golangci/golangci-lint" = "2.15.0"
 node = "26.13.0"
 pnpm = "12.18.0"
@@ -49,7 +49,7 @@ run = "go run ./tools/helpsync -check"
 
 [tasks.test]
 description = "Unit and integration tests (race detector, anti-flaky double run)"
-run = "go test -race -count=2 ./..."
+run = "go test -race -count=2 -timeout 45m ./..."
 
 # Browser non-regression (R-38): the scenarios that lock the bugs living in
 # an attribute the client interprets. Behind the `browser` build tag so it
@@ -59,6 +59,15 @@ run = "go test -race -count=2 ./..."
 [tasks.test-browser]
 description = "Browser scenarios (R-38, chromedp — uses the Chrome already installed)"
 run = "go test -tags browser -count=2 -timeout 20m ./test/browser/..."
+
+# Identity-provider fixture (milestone 6): a real Keycloak in a container,
+# for the OIDC and SAML tests. Needs docker; the image is pulled by the
+# digest pinned in test/keycloak/IMAGE and nothing else is downloaded.
+# TOBBY_KEYCLOAK_URL attaches to a Keycloak that is already running.
+#   mise run test-keycloak
+[tasks.test-keycloak]
+description = "Keycloak fixture tests (OIDC/SAML IdP in docker, image pinned by digest)"
+run = "go test -count=1 -timeout 15m -v ./test/keycloak/..."
 
 [tasks.lint]
 description = "Strict lint (golangci-lint, zero suppressions)"
@@ -73,6 +82,6 @@ run = "sh tools/check-coverage.sh"
 # call path, not noise. The version is pinned (sumdb-verified by `go run`)
 # and tracked by renovate — same policy as every other pinned tool.
 [tasks.vuln]
-description = "Reachable known vulnerabilities (govulncheck, stdlib included)"
-# renovate: datasource=go depName=golang.org/x/vuln
-run = "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./..."
+description = "Reachable known vulnerabilities (govulncheck, stdlib included, reviewed allow-list)"
+# The pinned version lives in tools/govulncheck.sh (renovate hint there).
+run = "sh tools/govulncheck.sh"

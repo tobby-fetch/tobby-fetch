@@ -71,8 +71,14 @@ func fixtures() []commandFixture {
 		{path: "tobby media verify", args: func(t *testing.T) []string {
 			return []string{"--storage-root", tmp(t), "--zone", "zone-a"}
 		}},
+		{path: "tobby media slip", args: func(t *testing.T) []string {
+			return []string{"--storage-root", tmp(t), "--zone", "zone-a"}
+		}},
 		{path: "tobby media import", args: func(t *testing.T) []string {
 			return []string{"--storage-root", tmp(t), "--zone", "zone-a"}
+		}},
+		{path: "tobby store verify", args: func(t *testing.T) []string {
+			return []string{"--storage-root", tmp(t)}
 		}},
 		{path: "tobby recipe push", args: func(t *testing.T) []string {
 			file := filepath.Join(tmp(t), "recipe.yaml")

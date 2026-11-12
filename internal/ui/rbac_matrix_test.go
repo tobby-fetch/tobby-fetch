@@ -34,6 +34,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -41,6 +43,8 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/api"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -84,6 +88,15 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "POST /login", Floor: rolePublic, Why: "credential submission", Method: "POST", Path: "/login", Form: "username=ghost&password=ghost"},
 	{Pattern: "POST /lang", Floor: rolePublic, Why: "the login page offers the language switcher (FR-063)", Method: "POST", Path: "/lang", Form: "lang=fr&back=%2F"},
 	{Pattern: "POST /theme", Floor: rolePublic, Why: "presentation preference, offered pre-login like the language", Method: "POST", Path: "/theme", Form: "theme=light&back=%2F"},
+	// Federated sign-in (FR-070, FR-071), mounted under the reserved
+	// "/auth/" prefix by MountFederation when a method is enabled: public,
+	// because they are how one signs in.
+	{Pattern: "GET /auth/oidc/login", Floor: rolePublic, Why: "starts an OIDC sign-in", Method: "GET", Path: "/auth/oidc/login"},
+	{Pattern: "GET /auth/oidc/callback", Floor: rolePublic, Why: "the OIDC redirect URI", Method: "GET", Path: "/auth/oidc/callback?state=x&code=y"},
+	{Pattern: "GET /auth/saml/login", Floor: rolePublic, Why: "starts a SAML sign-in", Method: "GET", Path: "/auth/saml/login"},
+	{Pattern: "POST /auth/saml/acs", Floor: rolePublic, Why: "the SAML assertion consumer service (cross-site POST from the IdP)", Method: "POST", Path: "/auth/saml/acs", Form: "SAMLResponse=x&RelayState=y"},
+	{Pattern: "GET /auth/saml/finish", Floor: rolePublic, Why: "binds a verified assertion to the browser that started the sign-in", Method: "GET", Path: "/auth/saml/finish?relay=y"},
+	{Pattern: "GET /auth/saml/metadata", Floor: rolePublic, Why: "the SP descriptor, public material for IdP onboarding", Method: "GET", Path: "/auth/saml/metadata"},
 
 	{Pattern: "POST /logout", Floor: auth.RoleViewer, Method: "POST", Path: "/logout"},
 	{Pattern: "GET /{$}", Floor: auth.RoleViewer, Method: "GET", Path: "/"},
@@ -106,6 +119,10 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "POST /recipes/plan", Floor: auth.RoleOperator, Why: "a plan mutates nothing, but it makes this instance reach out to every registry the submitted Retriever names", Method: "POST", Path: "/recipes/plan", Form: "retriever=&document="},
 	{Pattern: "GET /recipes/{recipe}/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/recipes/no-such-recipe/mapping"},
 	{Pattern: "GET /media", Floor: auth.RoleViewer, Why: "the medium's inventory summary is a listing like any other (R-02)", Method: "GET", Path: "/media"},
+	{Pattern: "GET /media/slip", Floor: auth.RoleViewer, Why: "the transfer slip (R-07) restates what the Media screen shows as a printable document: a read of records the instance already holds, hashing nothing", Method: "GET", Path: "/media/slip"},
+	{Pattern: "GET /integrity", Floor: auth.RoleViewer, Why: "the last store verification report (FR-057): reading, and pollable while one runs", Method: "GET", Path: "/integrity"},
+	{Pattern: "POST /integrity/verify", Floor: auth.RoleOperator, Why: "re-hashing the whole store is work, not a read (FR-057): disk I/O for minutes, holding the serial task worker", Method: "POST", Path: "/integrity/verify"},
+	{Pattern: "POST /integrity/cancel", Floor: auth.RoleOperator, Why: "stopping a store verification is as much an operator's act as starting one (FR-057)", Method: "POST", Path: "/integrity/cancel"},
 	{Pattern: "POST /media/verify", Floor: auth.RoleOperator, Why: "re-hashing a whole medium is work, not a read (FR-054); the two waivers inside it need admin, enforced in the handler", Method: "POST", Path: "/media/verify"},
 	{Pattern: "POST /media/import", Floor: auth.RoleOperator, Why: "pushing a transported medium into the zone registry (FR-052), audited (FR-094); the waivers need admin, enforced in the handler", Method: "POST", Path: "/media/import"},
 	{Pattern: "GET /account", Floor: auth.RoleViewer, Why: "self-service: every authenticated role manages its own account (R-34)", Method: "GET", Path: "/account"},
@@ -163,6 +180,10 @@ var apiMatrix = []rbacRoute{
 	{Pattern: "POST /api/v1/recipes/publish", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/recipes/publish", Body: `{"reference":"","document":""}`},
 	{Pattern: "GET /api/v1/media/verification", Floor: auth.RoleViewer, Why: "the serving gate and the verification in progress (FR-054), mirror of what the Media screen polls: reading, and pollable because it hashes nothing", Method: "GET", Path: "/api/v1/media/verification"},
 	{Pattern: "GET /api/v1/media", Floor: auth.RoleViewer, Why: "the medium's identity and the zone's last import (FR-052, R-28): reading, like every other inventory view", Method: "GET", Path: "/api/v1/media"},
+	{Pattern: "GET /api/v1/media/slip", Floor: auth.RoleViewer, Why: "the transfer slip (R-07), mirror of GET /media/slip: reading, and it hashes nothing", Method: "GET", Path: "/api/v1/media/slip"},
+	{Pattern: "GET /api/v1/store/verification", Floor: auth.RoleViewer, Why: "the last store verification report (FR-057), mirror of what the Store integrity screen polls: reading", Method: "GET", Path: "/api/v1/store/verification"},
+	{Pattern: "POST /api/v1/store/verify", Floor: auth.RoleOperator, Why: "re-hashing the whole store is work, not a read (FR-057), mirror of POST /integrity/verify", Method: "POST", Path: "/api/v1/store/verify"},
+	{Pattern: "POST /api/v1/store/verify/cancel", Floor: auth.RoleOperator, Why: "mirror of POST /integrity/cancel", Method: "POST", Path: "/api/v1/store/verify/cancel"},
 	{Pattern: "POST /api/v1/media/verify", Floor: auth.RoleOperator, Why: "re-hashing a whole medium is work, not a read (FR-054); the FR-054 waivers inside it need admin, enforced in the handler", Method: "POST", Path: "/api/v1/media/verify", Body: `{}`},
 	{Pattern: "POST /api/v1/media/import", Floor: auth.RoleOperator, Why: "pushing a transported medium into the zone registry (FR-052), audited (FR-094); the waivers need admin, enforced in the handler", Method: "POST", Path: "/api/v1/media/import", Body: `{}`},
 	{Pattern: "GET /api/v1/network", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/network"},
@@ -258,9 +279,11 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 		Version: "0.4.0-test", Mode: "mirror", Store: st, Queue: queue, Interop: svc,
 	})
 	u.Now = func() time.Time { return t0 }
+	u.federation = rbacFederation(t)
 
 	rec := &recordingRouter{mux: http.NewServeMux()}
 	u.Mount(rec)
+	u.MountFederation(rec)
 
 	restAPI := api.New(authn, slog.New(slog.DiscardHandler))
 	api.RegisterContent(restAPI, st, nil)
@@ -285,6 +308,8 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	// matrix probes the gate, and every row is decided before the
 	// handler runs.
 	api.RegisterMedia(restAPI, &api.MediaOptions{})
+	// FR-057: registered with no service — the gate is what is probed.
+	api.RegisterIntegrity(restAPI, &api.IntegrityOptions{})
 	api.RegisterOpenAPI(restAPI)
 	rec.mux.Handle("/api/v1/", restAPI.Handler())
 
@@ -542,3 +567,22 @@ func (c rbacCatalog) Tags(ctx context.Context, repo string) ([]string, error) {
 }
 
 func (c rbacCatalog) Provenance(string) string { return fileserve.FromSeed }
+
+// rbacFederation enables OIDC against an issuer that does not exist: the
+// matrix probes the gate of the federated routes, which is "none".
+func rbacFederation(t *testing.T) *federation.Service {
+	t.Helper()
+	secret := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(secret, []byte("s"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fed, err := federation.New(&federation.Options{
+		OIDC: config.OIDC{Enabled: true, Issuer: "https://idp.invalid", ClientID: "tobby", ClientSecretFile: secret,
+			RedirectURL: "https://tobby.test/auth/oidc/callback", Roles: config.RoleMapping{Viewer: []string{"v"}}},
+		Client: &http.Client{Timeout: time.Second},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fed
+}

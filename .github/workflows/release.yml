@@ -43,11 +43,45 @@
 # on the release page and stop reading it, which is exactly how the scoop
 # job's red — the one that means something — gets missed. Winget hands off
 # through a warning annotation and a job summary instead.
+#
+# Recipe-ready artifacts (R-25). Besides the image and the chart, every
+# release publishes the Linux and Windows binaries as one FileSet
+# (RECIPE-SPEC §7.4) — a multi-platform image index at
+# ghcr.io/tobby-fetch/binaries/tobby:vX.Y.Z whose children each hold the
+# release binary, byte-for-byte — signed keyless, with each binary's
+# CycloneDX SBOM attached as a signed cosign attestation and SLSA provenance
+# from the trusted container builder. A site references image, chart and
+# FileSet from a recipe (examples/tobby.yaml) and signs that recipe with its
+# OWN qualification chain: these signatures let the site check what it
+# admits, they never stand in for the site's (ROADMAP invariant 1). Nothing
+# here lets a running Tobby look for a newer one (NFR-019).
+#
+# Dry run. `workflow_dispatch` runs the whole chain as a rehearsal and can
+# do nothing else — there is no input that turns it into a release. Every
+# OCI name is computed once, by the build job: under a dispatch they all
+# move to ghcr.io/<owner>/dry-run/…, and each publishing job re-checks that
+# before it pushes. A rehearsal creates no GitHub release, uploads no
+# release asset, pushes nothing into the Homebrew tap and attaches no
+# winget or Scoop manifest; those files are kept as workflow artifacts
+# instead. What it does still do, on purpose, is sign keyless — that is
+# the path being rehearsed — so it leaves Rekor entries for the dry-run
+# digests, under an identity on refs/heads/…, never refs/tags/…. Delete
+# the dry-run/* packages once the rehearsal is read. How to launch one:
+# docs/release-verification.md, "Rehearsing a release".
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          Version the rehearsal builds as (the tag about to be cut, e.g.
+          v0.6.0). A dispatch is ALWAYS a dry run: it publishes under
+          ghcr.io/<owner>/dry-run/ only and creates no release.
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -61,6 +95,8 @@ env:
   APKO_VERSION: v1.4.17
   # renovate: datasource=github-releases depName=goreleaser/nfpm
   NFPM_VERSION: v2.48.0
+  # renovate: datasource=github-releases depName=google/go-containerregistry
+  CRANE_VERSION: v0.22.1
 
 jobs:
   build:
@@ -72,21 +108,33 @@ jobs:
       commit: ${{ steps.meta.outputs.commit }}
       date: ${{ steps.meta.outputs.date }}
       source_date_epoch: ${{ steps.meta.outputs.source_date_epoch }}
+      dry_run: ${{ steps.meta.outputs.dry_run }}
+      image: ${{ steps.meta.outputs.image }}
+      charts: ${{ steps.meta.outputs.charts }}
+      binaries: ${{ steps.meta.outputs.binaries }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Release metadata (tag, commit, SOURCE_DATE_EPOCH)
+      # The one place that decides whether this run is a release or a
+      # rehearsal, and therefore every name the run may publish under.
+      # The dispatch input is validated here, before it becomes an output
+      # that later steps interpolate.
+      - name: Release metadata (tag, commit, SOURCE_DATE_EPOCH, OCI names)
         id: meta
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        # tools/release-meta.sh: only a push of a v* tag publishes under the
+        # real names; a version holding any control character (a multi-line
+        # input that would forge extra $GITHUB_OUTPUT lines) is refused
+        # before anything is written. Locked by tools/release-meta-test.sh.
         run: |
-          sde="$(git log -1 --format=%ct)"
-          {
-            echo "version=${GITHUB_REF_NAME}"
-            echo "commit=$(git rev-parse HEAD)"
-            echo "source_date_epoch=${sde}"
-            echo "date=$(date -u -d "@${sde}" +%Y-%m-%dT%H:%M:%SZ)"
-          } >> "$GITHUB_OUTPUT"
+          set -eu
+          out="$(sh tools/release-meta.sh "${GITHUB_EVENT_NAME}" "${GITHUB_REF}" "${GITHUB_REF_NAME}" \
+            "${INPUT_VERSION}" "${GITHUB_REPOSITORY_OWNER}" "${GITHUB_REPOSITORY}" \
+            "$(git rev-parse HEAD)" "$(git log -1 --format=%ct)")"
+          printf '%s\n' "${out}" >> "$GITHUB_OUTPUT"
       - name: Build the four release targets
         env:
           SOURCE_DATE_EPOCH: ${{ steps.meta.outputs.source_date_epoch }}
@@ -271,19 +319,39 @@ jobs:
             --source-dir . \
             --out-dir "${RUNNER_TEMP}/packages" \
             --runner docker
+      - name: A dry run publishes under dry-run/ only
+        env:
+          DRY_RUN: ${{ needs.build.outputs.dry_run }}
+          TARGET: ${{ needs.build.outputs.image }}
+        run: sh tools/check-publish-target.sh "${DRY_RUN}" "${TARGET}"
       - name: Log in to ghcr.io
         run: apko login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
       - name: Assemble and publish the multi-arch image (apko, native SBOM)
         id: publish
         env:
           SOURCE_DATE_EPOCH: ${{ needs.build.outputs.source_date_epoch }}
+          IMAGE: ${{ needs.build.outputs.image }}
         run: |
-          image="ghcr.io/${{ github.repository }}"
+          image="${IMAGE}"
           mkdir -p image-sboms
-          ref="$(apko publish apko.yaml "${image}:${{ needs.build.outputs.version }}" \
-            --repository-append "${RUNNER_TEMP}/packages" \
-            --keyring-append melange.rsa.pub \
-            --sbom-path image-sboms)"
+          # Same window as the binaries FileSet: on a package that does not
+          # exist yet, ghcr.io creates it with the first manifest and may
+          # refuse the next ones (DENIED) for a moment. apko builds
+          # reproducibly (SOURCE_DATE_EPOCH), so a retry pushes the same
+          # digests.
+          ref=""
+          for attempt in 1 2 3 4 5; do
+            if ref="$(apko publish apko.yaml "${image}:${{ needs.build.outputs.version }}" \
+              --repository-append "${RUNNER_TEMP}/packages" \
+              --keyring-append melange.rsa.pub \
+              --sbom-path image-sboms)"; then
+              break
+            fi
+            ref=""
+            echo "::warning::apko publish attempt ${attempt} failed; retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          [ -n "$ref" ] || { echo "::error::could not publish ${image}"; exit 1; }
           echo "published: ${ref}"
           {
             echo "image=${image}"
@@ -314,6 +382,48 @@ jobs:
         with:
           scan-type: image
           image-ref: "${{ needs.image.outputs.image }}@${{ needs.image.outputs.digest }}"
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+      # B-037: the image scan above reads the apk database, and Trivy does
+      # not look inside the files an apk package installed — so it never
+      # saw the Go dependencies of the two binaries the image is made of,
+      # Tobby and the pinned Trivy it embeds. Those binaries are taken out
+      # of the published image, for both architectures, and scanned as a
+      # root filesystem, where Trivy reads the module list each Go binary
+      # carries. Same threshold, same no-ignore rule as the gate above.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Install crane (version pinned, sumdb-verified)
+        env:
+          # GOTOOLCHAIN rationale: see the nfpm step in the build job.
+          GOTOOLCHAIN: auto
+        run: |
+          go install "github.com/google/go-containerregistry/cmd/crane@${CRANE_VERSION}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Extract the embedded binaries from the published image
+        env:
+          IMAGE_REF: "${{ needs.image.outputs.image }}@${{ needs.image.outputs.digest }}"
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          printf '%s' "${REGISTRY_TOKEN}" | crane auth login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for platform in linux/amd64 linux/arm64; do
+            dir="${RUNNER_TEMP}/binaries-rootfs/${platform#linux/}"
+            mkdir -p "${dir}"
+            crane export --platform "${platform}" "${IMAGE_REF}" - |
+              tar -x -C "${dir}" --wildcards '*usr/bin/tobby' '*usr/libexec/tobby/trivy'
+            # An empty extraction would scan nothing and pass: refuse it.
+            test -x "${dir}/usr/bin/tobby"
+            test -x "${dir}/usr/libexec/tobby/trivy"
+          done
+      - name: Scan the embedded Go binaries — critical and high block the release
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: rootfs
+          scan-ref: "${{ runner.temp }}/binaries-rootfs"
           scanners: vuln
           severity: CRITICAL,HIGH
           exit-code: "1"
@@ -352,7 +462,7 @@ jobs:
       digest: ${{ steps.push.outputs.digest }}
     env:
       VERSION: ${{ needs.build.outputs.version }}
-      CHARTS: ghcr.io/${{ github.repository_owner }}/charts
+      CHARTS: ${{ needs.build.outputs.charts }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # B-035: the chart's default image tag is "v" + appVersion. A tag cut
@@ -360,6 +470,10 @@ jobs:
       # previous release — refuse before anything is pushed.
       - name: The chart deploys the release being tagged
         run: sh tools/check-chart-version.sh "${VERSION}"
+      - name: A dry run publishes under dry-run/ only
+        env:
+          DRY_RUN: ${{ needs.build.outputs.dry_run }}
+        run: sh tools/check-publish-target.sh "${DRY_RUN}" "${CHARTS}/tobby"
       - name: Install helm (version pinned, checksummed — ADR-0011)
         env:
           HELM_VERSION: "4.3.1"
@@ -416,10 +530,151 @@ jobs:
     secrets:
       registry-password: ${{ secrets.GITHUB_TOKEN }}
 
+  # The Linux and Windows binaries as a recipe-ready FileSet (R-25,
+  # RECIPE-SPEC §7.4). FileSet rather than OCIArtifact because the content
+  # IS files, one per platform: a FileSet is a plain multi-platform image,
+  # so a recipe's `platforms` selects the children a zone runs, the
+  # extraction rules are the spec's own, and it mounts as a Kubernetes
+  # image volume — an OCIArtifact would need an artifact type of ours and
+  # has no platform selection at all. darwin stays a release asset only:
+  # macOS is a workstation tier, not a zone target.
+  #
+  # Built after the reproducibility gate, from the very files that gate
+  # vouched for: tools/release-fileset.sh assembles the index in a registry
+  # that exists only inside this job, reads every child back against
+  # SHA256SUMS, and only then is the finished index copied — by digest, no
+  # scratch tag — to its public name. The image is not republished here:
+  # it is the one the image job built and scanned.
+  #
+  # Attached to it, both through cosign and the job's OIDC identity like the
+  # image: a keyless signature on the index, and on each child the CycloneDX
+  # SBOM of the binary it holds, as a signed attestation (predicate type
+  # https://cyclonedx.org/bom). An attestation rather than `cosign attach
+  # sbom`, which is deprecated and signs nothing. SLSA provenance comes from
+  # the trusted builder in the next job.
+  binaries-oci:
+    name: Binaries as a FileSet (OCI, cosign keyless)
+    runs-on: ubuntu-latest
+    needs: [build, verify-reproducibility, sbom]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # Sigstore keyless signing and attestations
+    outputs:
+      ref: ${{ steps.push.outputs.ref }}
+      digest: ${{ steps.push.outputs.digest }}
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      BINARIES: ${{ needs.build.outputs.binaries }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: binaries
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sboms
+          path: sboms
+      - name: Install crane (version pinned, sumdb-verified)
+        env:
+          # GOTOOLCHAIN rationale: see the nfpm step in the build job.
+          GOTOOLCHAIN: auto
+        run: |
+          go install "github.com/google/go-containerregistry/cmd/crane@${CRANE_VERSION}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      - name: A dry run publishes under dry-run/ only
+        env:
+          DRY_RUN: ${{ needs.build.outputs.dry_run }}
+        run: sh tools/check-publish-target.sh "${DRY_RUN}" "${BINARIES}"
+      - name: Assemble the FileSet locally, then copy it to ghcr.io by digest
+        id: push
+        env:
+          SOURCE_DATE_EPOCH: ${{ needs.build.outputs.source_date_epoch }}
+          COMMIT: ${{ needs.build.outputs.commit }}
+          DATE: ${{ needs.build.outputs.date }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          # A registry that lives and dies with this job: the scratch tags
+          # the assembly needs never reach ghcr.io.
+          crane registry serve --address 127.0.0.1:5000 > "${RUNNER_TEMP}/registry.log" 2>&1 &
+          for _ in $(seq 1 50); do
+            curl -fsS -o /dev/null http://127.0.0.1:5000/v2/ && break
+            sleep 0.2
+          done
+          digest="$(sh tools/release-fileset.sh "${VERSION}" "${COMMIT}" "${DATE}" \
+            dist 127.0.0.1:5000/tobby | tail -n 1)"
+          printf '%s\n' "$digest" | grep -Eqx 'sha256:[0-9a-f]{64}' \
+            || { echo "::error::no digest from tools/release-fileset.sh"; exit 1; }
+          printf '%s\n' "${REGISTRY_TOKEN}" |
+            crane auth login ghcr.io -u "${{ github.actor }}" --password-stdin
+          # The first manifest written creates the package; ghcr.io may
+          # refuse the children pushed alongside it (DENIED) until the
+          # token's grant on the new package has propagated. The copy is
+          # idempotent by digest, so a bounded retry rides that window out.
+          copied=false
+          for attempt in 1 2 3 4 5; do
+            if crane copy "127.0.0.1:5000/tobby@${digest}" "${BINARIES}:${VERSION}"; then
+              copied=true
+              break
+            fi
+            echo "::warning::crane copy attempt ${attempt} failed; retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          [ "$copied" = true ] || { echo "::error::could not publish ${BINARIES}:${VERSION}"; exit 1; }
+          published="$(crane digest "${BINARIES}:${VERSION}")"
+          [ "$published" = "$digest" ] \
+            || { echo "::error::ghcr.io serves ${published}, the job built ${digest}"; exit 1; }
+          echo "published: ${BINARIES}:${VERSION}@${digest}"
+          {
+            echo "ref=${BINARIES}"
+            echo "digest=${digest}"
+          } >> "$GITHUB_OUTPUT"
+      - name: Sign the index and attest each binary's SBOM (cosign keyless)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -eu
+          cosign login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
+          cosign sign --yes "${BINARIES}@${DIGEST}"
+          for target in linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+            os="${target%/*}"; arch="${target#*/}"
+            case "$os" in windows) ext=".exe" ;; *) ext="" ;; esac
+            child="$(crane digest --platform "$target" "${BINARIES}@${DIGEST}")"
+            cosign attest --yes --type cyclonedx \
+              --predicate "sboms/tobby-${os}-${arch}${ext}.cdx.json" \
+              "${BINARIES}@${child}"
+            echo "${target}: ${child} — SBOM attested"
+          done
+
+  # SLSA Build L3 provenance for the FileSet index, from the same trusted
+  # container builder as the image's. The binaries inside are also subjects
+  # of tobby.intoto.jsonl (the provenance job below), so either route
+  # verifies them. MUST be referenced by tag (see header note).
+  binaries-provenance:
+    name: SLSA provenance (binaries FileSet)
+    needs: [binaries-oci]
+    permissions:
+      actions: read
+      id-token: write
+      packages: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+    with:
+      image: ${{ needs.binaries-oci.outputs.ref }}
+      digest: ${{ needs.binaries-oci.outputs.digest }}
+      registry-username: ${{ github.actor }}
+    secrets:
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
+
   release:
     name: Create GitHub release
     runs-on: ubuntu-latest
-    needs: [build, verify-reproducibility, sbom, image, image-scan, chart]
+    needs: [build, verify-reproducibility, sbom, image, image-scan, chart, binaries-oci]
     permissions:
       contents: write
     env:
@@ -429,6 +684,8 @@ jobs:
       DIGEST: ${{ needs.image.outputs.digest }}
       CHART: ${{ needs.chart.outputs.ref }}
       CHART_DIGEST: ${{ needs.chart.outputs.digest }}
+      BINARIES: ${{ needs.binaries-oci.outputs.ref }}
+      BINARIES_DIGEST: ${{ needs.binaries-oci.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -520,6 +777,32 @@ jobs:
             --namespace tobby --create-namespace --set config.mode=passthrough
           ```
 
+          ### Binaries as a FileSet (recipe-ready)
+
+          `@BINARIES@:@VERSION@` — digest `@BINARIES_DIGEST@`. One image
+          index, four children (linux and windows, amd64 and arm64), each
+          holding the release binary of the same name, byte-for-byte. Pin it
+          in a recipe as a `FileSet` beside the image and the chart
+          ([examples/tobby.yaml](https://github.com/tobby-fetch/tobby-fetch/blob/@VERSION@/examples/tobby.yaml)),
+          and sign that recipe with your own chain: these signatures let you
+          check what you admit, they do not replace your site's.
+
+          ```bash
+          cosign verify @BINARIES@@@BINARIES_DIGEST@ \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity https://github.com/tobby-fetch/tobby-fetch/.github/workflows/release.yml@refs/tags/@VERSION@
+
+          slsa-verifier verify-image @BINARIES@@@BINARIES_DIGEST@ \
+            --source-uri github.com/tobby-fetch/tobby-fetch \
+            --source-tag @VERSION@
+
+          # the CycloneDX SBOM of one binary, attested on its child manifest
+          cosign verify-attestation --type cyclonedx \
+            "@BINARIES@@$(crane digest --platform windows/amd64 @BINARIES@@@BINARIES_DIGEST@)" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity https://github.com/tobby-fetch/tobby-fetch/.github/workflows/release.yml@refs/tags/@VERSION@
+          ```
+
           ### Independent rebuild (air-gapped verification)
 
           The binaries and Linux packages are bit-reproducible. Rebuild
@@ -544,15 +827,40 @@ jobs:
               -e "s|@IMAGE@|${IMAGE}|g" \
               -e "s|@CHART_DIGEST@|${CHART_DIGEST}|g" \
               -e "s|@CHART@|${CHART}|g" \
+              -e "s|@BINARIES_DIGEST@|${BINARIES_DIGEST}|g" \
+              -e "s|@BINARIES@|${BINARIES}|g" \
               -e "s|@DIGEST@|${DIGEST}|g" \
               notes-template.md > notes.md
+          ! grep -nE '@[A-Z_]+@' notes.md \
+            || { echo "::error::a placeholder survived in the release notes"; exit 1; }
       - name: Create the release with binaries, checksums, and SBOMs
+        if: needs.build.outputs.dry_run == 'false' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         run: >
           gh release create "${VERSION}"
           --verify-tag
           --title "tobby ${VERSION}"
           --notes-file notes.md
           dist/* sboms/* image-sboms/*
+      # Rehearsal: the notes and the full asset set a release would carry
+      # are kept as one workflow artifact, and the notes shown in the run
+      # summary. No release, no tag, no asset.
+      - name: "Dry run: show the notes the release would carry"
+        if: needs.build.outputs.dry_run == 'true'
+        run: |
+          {
+            echo "## DRY RUN — release notes ${VERSION} would carry"
+            echo
+            cat notes.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p dry-run-release
+          cp notes.md dist/* sboms/* image-sboms/* dry-run-release/
+      - name: "Dry run: keep the would-be release as a workflow artifact"
+        if: needs.build.outputs.dry_run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dry-run-release
+          path: dry-run-release/
+          if-no-files-found: error
 
   # Homebrew tap: bump the published formula in the same breath as the
   # release, so `brew install` never serves a version behind. Needs the one
@@ -605,7 +913,17 @@ jobs:
           pathlib.Path("rendered-tobby.rb").write_text(s)
           PY
           grep -q "version \"${VERSION#v}\"" rendered-tobby.rb || { echo "::error::version substitution did not apply"; exit 1; }
+      # Rehearsal: the rendered formula is the whole result; the tap is not
+      # cloned, let alone pushed to.
+      - name: "Dry run: keep the rendered formula, push nothing"
+        if: needs.build.outputs.dry_run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dry-run-homebrew
+          path: rendered-tobby.rb
+          if-no-files-found: error
       - name: Push the bump into the tap
+        if: needs.build.outputs.dry_run == 'false' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
           TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
@@ -711,12 +1029,20 @@ jobs:
             rendered-winget/tobby-fetch.tobby.installer.yaml \
             || { echo "::error::the arm64 checksum is not the one this run built"; exit 1; }
       - name: Attach the rendered manifests to the release
+        if: needs.build.outputs.dry_run == 'false' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         run: >
           gh release upload "${VERSION}"
           rendered-winget/tobby-fetch.tobby.yaml
           rendered-winget/tobby-fetch.tobby.installer.yaml
           rendered-winget/tobby-fetch.tobby.locale.en-US.yaml
           --clobber
+      - name: "Dry run: keep the rendered manifests, attach nothing"
+        if: needs.build.outputs.dry_run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dry-run-winget
+          path: rendered-winget/
+          if-no-files-found: error
       # This step does NOT fail, and the difference from the homebrew job
       # above is the whole reasoning. Homebrew fails when HOMEBREW_TAP_TOKEN
       # is absent because something the workflow was supposed to do could not
@@ -735,6 +1061,7 @@ jobs:
       # is a warning annotation and a job summary the releaser actually
       # reads, and the release stays green.
       - name: Announce the human step (the community index is not ours to write to)
+        if: needs.build.outputs.dry_run == 'false' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         run: |
           echo "::warning::winget manifests for ${VERSION} are attached to the release; submitting them to microsoft/winget-pkgs is a human step."
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
@@ -836,14 +1163,24 @@ jobs:
           grep -q "\"hash\": \"$(awk '$2 ~ /tobby-windows-arm64\.exe$/ {print $1}' dist/SHA256SUMS)\"" "$f" \
             || { echo "::error::the arm64 checksum is not the one this run built"; exit 1; }
       - name: Attach the rendered manifest to the release
+        if: needs.build.outputs.dry_run == 'false' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         run: >
           gh release upload "${VERSION}"
           rendered-scoop/tobby.json
           --clobber
+      - name: "Dry run: keep the rendered manifest, attach nothing"
+        if: needs.build.outputs.dry_run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dry-run-scoop
+          path: rendered-scoop/
+          if-no-files-found: error
       # Both branches below fail, for two different reasons, and both say so
       # out loud. The token is read only to tell those reasons apart — it is
       # never used to write anything, here or anywhere else in this file.
+      # A rehearsal skips the hand-off: there is no release to hand off from.
       - name: Hand off to the bucket, or fail loudly if it was left behind
+        if: needs.build.outputs.dry_run == 'false' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
           TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
         run: |
@@ -890,7 +1227,9 @@ jobs:
           exit 1
 
   # SLSA Build L3 provenance for the binaries, uploaded to the release by
-  # the isolated trusted builder itself (not by this workflow).
+  # the isolated trusted builder itself (not by this workflow). A rehearsal
+  # generates it all the same and leaves it as a workflow artifact of the
+  # generator, since there is no release to upload it to.
   # MUST be referenced by tag (slsa-verifier requirement — see header note).
   provenance:
     name: SLSA provenance (binaries)
@@ -903,5 +1242,5 @@ jobs:
     with:
       base64-subjects: ${{ needs.build.outputs.hashes }}
       provenance-name: tobby.intoto.jsonl
-      upload-assets: true
-      upload-tag-name: ${{ github.ref_name }}
+      upload-assets: ${{ needs.build.outputs.dry_run == 'false' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+      upload-tag-name: ${{ needs.build.outputs.version }}
