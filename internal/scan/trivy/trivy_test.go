@@ -908,3 +908,106 @@ func TestChannelBinaryIsRehashedBeforeReuse(t *testing.T) {
 		t.Errorf("the unpacked binary is not the delivered one again (err %v)", err)
 	}
 }
+
+// TestChannelBinaryTamperedBetweenSynchronizations replays, on the adapter,
+// the two orders in which a synchronization can meet a channel-delivered
+// binary changed on disk (crucible m6/a-scanning, step 5):
+//
+//   - no refresh before the next scan — a run that does not record the
+//     tobby-system recipe: the scan refuses with TBY-SCN-002, the changed
+//     file is not executed, and the next refresh unpacks the delivery
+//     again;
+//   - a refresh first — a run that records tobby-system before the other
+//     recipes, the bootstrap order (the engine's refreshAfter): the
+//     refresh unpacks the verified delivery over the changed file before
+//     anything executes it, so the scans that follow succeed, and a digest
+//     already scanned is answered from the cache — the very report the
+//     genuine binary produced before the tamper.
+//
+// In neither order does the changed file run (the canary marker).
+func TestChannelBinaryTamperedBetweenSynchronizations(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a host that executes extensionless files and shell scripts")
+	}
+	f := newFixture(t, fakeConf{})
+	raw, err := os.ReadFile(f.bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := "tobby/ghcr.io/aquasecurity/trivy"
+	layer := tarOf(t, true, map[string][]byte{"usr/local/bin/trivy": raw})
+	child := f.st.manifest(repo, PinnedVersion, ociManifestType, imageManifest(f.st, layer))
+	f.st.record(store.IngredientRecord{Name: "trivy", Kind: "FileSet", Repo: repo, Tag: PinnedVersion, Digest: child})
+	o := f.opts
+	o.Path, o.Digest, o.GOOS, o.GOARCH = "", "", "linux", "amd64"
+	unpacked := filepath.Join(o.WorkDir, "bin", strings.TrimPrefix(child, "sha256:"), "trivy")
+	if err := os.MkdirAll(filepath.Dir(unpacked), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configure(t, unpacked, fakeConf{Log: f.calls.path})
+	clock := f.now
+	o.Now = func() time.Time { return clock }
+	s := New(&o)
+	if st := s.Refresh(context.Background()); !st.Available {
+		t.Fatalf("first refresh: %+v %v", st, s.Cause())
+	}
+	target := scan.Target{Digest: f.image, Repository: appRepo, Kind: "ContainerImage"}
+	first, err := s.Scan(context.Background(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	marker := filepath.Join(t.TempDir(), "EXECUTED")
+	tamper := func() {
+		t.Helper()
+		evil := "#!/bin/sh\n: > " + marker + "\necho '{\"Version\":\"" + PinnedVersion + "\"}'\n"
+		if err := os.WriteFile(unpacked, []byte(evil), 0o700); err != nil { //nolint:gosec // G306: a test executable
+			t.Fatal(err)
+		}
+	}
+	restored := func(when string) {
+		t.Helper()
+		if _, err := os.Stat(marker); err == nil {
+			t.Fatalf("%s: the changed binary was executed", when)
+		}
+		if got, err := os.ReadFile(unpacked); err != nil || !bytes.Equal(got, raw) { //nolint:gosec // G304: the test's own temporary directory
+			t.Fatalf("%s: the unpacked binary is not the delivered one again (err %v)", when, err)
+		}
+	}
+
+	// No refresh between the tamper and the scan.
+	tamper()
+	clock = clock.Add(time.Minute)
+	if _, err := s.Scan(context.Background(), target); codeOf(err) != taxonomy.CodeScannerUnverified {
+		t.Fatalf("scan after the tamper: %v; want %s", err, taxonomy.CodeScannerUnverified)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("the changed binary was executed by the scan")
+	}
+	if st := s.Status(context.Background()); st.Available || st.Reason != taxonomy.CodeScannerUnverified {
+		t.Fatalf("status after the refused scan = %+v", st)
+	}
+	if st := s.Refresh(context.Background()); !st.Available {
+		t.Fatalf("the next refresh did not restore the scanner: %+v %v", st, s.Cause())
+	}
+	restored("after the refused scan and a refresh")
+
+	// A refresh first: the tamper is repaired before anything runs, and
+	// the scan is the cached report of the genuine binary.
+	tamper()
+	clock = clock.Add(time.Minute)
+	if st := s.Refresh(context.Background()); !st.Available {
+		t.Fatalf("refresh over a changed binary: %+v %v", st, s.Cause())
+	}
+	restored("after a refresh over the changed binary")
+	again, err := s.Scan(context.Background(), target)
+	if err != nil {
+		t.Fatalf("scan after the repairing refresh: %v", err)
+	}
+	if !again.ScannedAt.Equal(first.ScannedAt) {
+		t.Errorf("scanned at %v; want the cached report of %v", again.ScannedAt, first.ScannedAt)
+	}
+	if n := f.calls.images(t); n != 1 {
+		t.Errorf("image scans = %d; want 1 (the later ones are cached)", n)
+	}
+}

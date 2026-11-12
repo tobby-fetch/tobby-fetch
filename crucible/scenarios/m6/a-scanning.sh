@@ -20,9 +20,14 @@
 #      arms the scanner in the same run; the vulnerable recipe is withheld
 #      whole (R-19 grain), named with TBY-SCN-005 and its CVE, absent from
 #      the media manifest, audited; the clean one is written.
-#   4. The channel-delivered binary is tampered with on disk: it is not
-#      executed (TBY-SCN-002), the item is refused under block, and the
-#      next refresh restores it from the verified delivery.
+#   4. The channel-delivered binary is replaced on disk by a canary that
+#      leaves a marker if anything runs it. A run that does not redeliver
+#      the scanner (tobby-system not in it) refuses to execute it
+#      (TBY-SCN-002) and the item is refused under block; the next run
+#      that records tobby-system restores it from the verified delivery.
+#      Tampered again, a run that records tobby-system first lays the
+#      verified delivery over the canary before any scan (B-045). The
+#      canary never runs.
 #   5. R-13: a database beyond scan.maxDbAge under the block action refuses
 #      with TBY-SCN-004; the stale gauge says 1.
 #   6. Mirror, advisory, on the real medium: the vulnerable image is
@@ -330,21 +335,82 @@ inc exec tbc-m6a-connected -- grep -q '"action":"scan.block"' /var/log/tobby.log
 check "mirror/block: vulnerable withheld whole (TBY-SCN-005, $KNOWN_CVE), not on the manifest, audited; clean written"
 
 # -- 5. The unpacked binary is tampered with ---------------------------------
+# Every run that records tobby-system refreshes the scanner (the engine's
+# refreshAfter) BEFORE the recipes after it are scanned, and a refresh that
+# meets a changed unpack lays the verified delivery over it before anything
+# runs it (B-045): such a run scans with the genuine binary — a digest
+# already scanned is even answered from the cache, the report of step 4 —
+# and cannot show the refusal. The refusal is what a run that does NOT
+# redeliver the scanner meets, so the Retriever is narrowed to the two
+# images for it. Both orders are played; the tamper is a canary that
+# answers the version probe like Trivy and leaves a marker if it runs.
 BIN=$(inc exec tbc-m6a-connected -- sh -c 'ls /var/lib/tobby-state/scanner/bin/*/trivy | head -1')
-BEFORE=$(inc exec tbc-m6a-connected -- sha256sum "$BIN" | cut -d' ' -f1)
-inc exec tbc-m6a-connected -- sh -c "printf X >>'$BIN'"
-AFTER=$(inc exec tbc-m6a-connected -- sha256sum "$BIN" | cut -d' ' -f1)
-[ "$BEFORE" != "$AFTER" ] || fail "staging: the tamper did not change the binary"
+CANARY=/tmp/tbc-m6a-tampered-binary-ran
+on_disk() { inc exec tbc-m6a-connected -- sha256sum "$BIN" | cut -d' ' -f1; }
+note() { printf 'info %s\n' "$*" | tee -a "$REPORT"; }
+evidence() { # <label> <task json>: what a verdict on step 5 must be read against
+    note "$1: task $(echo "$2" | jq -r '.task.id'); clean scan $(item "$2" "clean@1.0.0/app" \
+        '"verdict=\(.scan.evaluation.verdict) scanned_at=\(.scan.scanned_at // "-") scanner=\(.scan.scanner.digest // "-") db=\(.scan.database.digest // "-") reasons=\([.scan.evaluation.reasons[]?.code] | join(","))"')"
+    note "$1: $BIN on disk sha256:$(on_disk) (pinned sha256:$T_BIN_SHA); canary $(inc exec tbc-m6a-connected -- sh -c "test -e $CANARY && echo RAN || echo absent")"
+    note "$1: last located: $(inc exec tbc-m6a-connected -- sh -c 'grep "vulnerability scanner located" /var/log/tobby.log | tail -1' |
+        jq -r '"path=\(.path) digest=\(.digest) origin=\(.origin) at=\(.time)"' 2>/dev/null)"
+}
+tamper() {
+    inc exec tbc-m6a-connected -- sh -c "rm -f $CANARY; printf '#!/bin/sh\n: >$CANARY\necho \047{\"Version\":\"$TRIVY_VERSION\"}\047\n' >'$BIN'"
+    [ "$(on_disk)" != "$T_BIN_SHA" ] || fail "staging: the tamper did not change the binary"
+}
+never_ran() { # <when>
+    if inc exec tbc-m6a-connected -- test -e "$CANARY"; then fail "FR-031: the tampered binary was executed ($1)"; fi
+}
+[ "$(on_disk)" = "$T_BIN_SHA" ] || fail "staging: the unpacked scanner $BIN is not the pinned executable"
+[ "$(item "$T" "clean@1.0.0/app" '.scan.scanner.digest')" = "sha256:$T_BIN_SHA" ] ||
+    fail "staging: step 4 did not scan with the pinned executable: $(item "$T" "clean@1.0.0/app" '.scan.scanner')"
+evidence "before the tamper" "$T"
+
+cat >"$WORK/retriever-images.yaml" <<EOF
+apiVersion: recipe.tobby.dev/v1alpha1
+kind: Retriever
+metadata:
+  name: $ZONE
+spec:
+  cookbook: $S/cookbook
+  recipes:
+    - name: vulnerable
+      version: "1.0.0"
+    - name: clean
+      version: "1.0.0"
+EOF
+tamper
+inc file push "$WORK/retriever-images.yaml" tbc-m6a-connected/etc/tobby/retriever.yaml >/dev/null
 T=$(sync_json tbc-m6a-connected)
+evidence "tampered, run without tobby-system" "$T"
+echo "$T" | jq -e '[.task.items[].name] | any(startswith("tobby-system@")) | not' >/dev/null ||
+    fail "staging: the narrowed run still recorded tobby-system"
+never_ran "run without tobby-system"
 [ "$(item "$T" "clean@1.0.0/app" '.scan.evaluation.verdict')" = "not-scanned" ] ||
-    fail "FR-031: a tampered binary still produced a scan"
+    fail "FR-031: a tampered binary still produced a scan: $(item "$T" "clean@1.0.0/app" '.scan')"
 item "$T" "clean@1.0.0/app" '.scan.evaluation.reasons[].code' | grep -qx "TBY-SCN-002" ||
     fail "FR-031: the refusal to execute is not reported as TBY-SCN-002"
 [ "$(item "$T" "clean@1.0.0/recipe" '.status')" = "failed" ] || fail "FR-031: under block, an unscanned item crossed"
+inc exec tbc-m6a-connected -- grep -q "scanner binary changed since it was verified: it is not executed" /var/log/tobby.log ||
+    fail "FR-031: the refusal to execute is not logged"
+
+inc file push "$WORK/retriever.yaml" tbc-m6a-connected/etc/tobby/retriever.yaml >/dev/null
 T=$(sync_json tbc-m6a-connected)
+evidence "run with tobby-system after the refusal" "$T"
+never_ran "restoring run"
+[ "$(on_disk)" = "$T_BIN_SHA" ] || fail "the verified delivery was not unpacked again over the tampered binary"
 [ "$(item "$T" "clean@1.0.0/app" '.scan.evaluation.verdict')" = "pass" ] ||
     fail "the verified delivery did not restore the scanner after the tamper"
-check "tampered binary never executed (TBY-SCN-002, item refused under block); restored from the delivery next cycle"
+
+tamper
+T=$(sync_json tbc-m6a-connected)
+evidence "tampered, run with tobby-system first" "$T"
+never_ran "run with tobby-system first"
+[ "$(on_disk)" = "$T_BIN_SHA" ] || fail "B-045: the refresh after tobby-system did not unpack the delivery over the tampered binary"
+[ "$(item "$T" "clean@1.0.0/app" '.scan.scanner.digest')" = "sha256:$T_BIN_SHA" ] ||
+    fail "the scan after the repairing refresh is not the pinned executable's"
+check "tampered binary never executed: refused without a redelivery (TBY-SCN-002, item refused under block), restored by the next tobby-system refresh, and repaired before any scan when tobby-system comes first"
 
 # -- 6. R-13: a stale database under the block action ------------------------
 config tbc-m6a-connected mirror /var/lib/scratch "$S" "  mode: block
