@@ -42,18 +42,18 @@ default — the state also spools resumable downloads, see
 ### With Helm
 
 ```sh
-helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.5.2 \
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
   --namespace tobby --create-namespace \
   --set config.mode=passthrough
 ```
 
-The chart version **is** the Tobby version: chart `0.5.2` deploys the
-`v0.5.2` image, and nothing else. Pin `--version` — without it Helm takes
+The chart version **is** the Tobby version: chart `0.6.0` deploys the
+`v0.6.0` image, and nothing else. Pin `--version` — without it Helm takes
 the newest chart, which is an upgrade you did not choose. Each published
 chart is signed keylessly by the release workflow, like the image:
 
 ```sh
-cosign verify ghcr.io/tobby-fetch/charts/tobby:0.5.2 \
+cosign verify ghcr.io/tobby-fetch/charts/tobby:0.6.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
 ```
@@ -84,7 +84,7 @@ kubectl -n tobby create secret docker-registry tobby-registry-credentials \
   --docker-username=tobby \
   --docker-password="$(cat ./token)"
 
-helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.5.2 \
+helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
   --namespace tobby --reuse-values \
   --set registryCredentials.enabled=true \
   --set registryCredentials.existingSecret=tobby-registry-credentials
@@ -136,9 +136,9 @@ verify (`SHA256SUMS` or SLSA provenance), copy the file across, install
 with no network:
 
 ```sh
-dpkg -i tobby_0.5.2_linux_amd64.deb                    # Debian/Ubuntu
-rpm -i tobby_0.5.2_linux_amd64.rpm                     # RHEL/SUSE/Fedora
-apk add --allow-untrusted tobby_0.5.2_linux_amd64.apk  # Alpine
+dpkg -i tobby_0.6.0_linux_amd64.deb                    # Debian/Ubuntu
+rpm -i tobby_0.6.0_linux_amd64.rpm                     # RHEL/SUSE/Fedora
+apk add --allow-untrusted tobby_0.6.0_linux_amd64.apk  # Alpine
 ```
 
 The packages deliberately carry no package-manager signature: trust
@@ -191,7 +191,7 @@ docker run -d --name tobby --read-only \
   -v /srv/tobby/store:/var/lib/tobby/store \
   -v /srv/tobby/state:/var/lib/tobby/state \
   -v /srv/tobby/config.yaml:/etc/tobby/config.yaml:ro \
-  ghcr.io/tobby-fetch/tobby-fetch:v0.5.2 \
+  ghcr.io/tobby-fetch/tobby-fetch:v0.6.0 \
   serve --config /etc/tobby/config.yaml
 ```
 

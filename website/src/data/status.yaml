@@ -8,8 +8,8 @@
 # milestone: the milestone that delivers (or completes) the feature;
 #            omitted when the feature is fully available.
 # security: true marks rows shown on the security one-pager.
-updated: "2026-11-09"
-version: "v0.5.2"
+updated: "2026-11-12"
+version: "v0.6.0"
 features:
   # ── Milestone 1 — Foundations (delivered, v0.1.x) ──────────────────────
   - id: "1.1"
@@ -29,12 +29,11 @@ features:
   - id: "R-12"
     en: Security audit log
     fr: Journal d'audit de sécurité
-    status: partial
-    milestone: 6
+    status: available
     security: true
     note:
-      en: Foundation, authentication, token and media-override events shipped; scan events at milestone 6.
-      fr: Socle et événements authentification/tokens livrés ; overrides média au jalon 5, scan au jalon 6.
+      en: Foundation, authentication, token and media-override events, then scan refusals, session and token expiry, local sign-in under federation and store verification with v0.6.0.
+      fr: Socle, événements authentification/tokens et overrides média, puis refus de scan, expiration des sessions et tokens, connexion locale sous fédération et vérification du store en v0.6.0.
   - id: "1.3"
     en: Embedded OCI registry with canonical relocation layout
     fr: Registry OCI embarquée et rangement canonique
@@ -185,7 +184,7 @@ features:
     fr: Déploiement de référence (chart Helm durci et manifests bruts)
     status: available
 
-  # ── Milestone 5 — Mirror & air-gap (upcoming, v0.5.x) ──────────────────
+  # ── Milestone 5 — Mirror & air-gap (delivered, v0.5.x) ─────────────────
   - id: "5.1"
     en: Mirror synchronization onto a transportable store
     fr: Synchronisation miroir sur store transportable
@@ -269,21 +268,22 @@ features:
         retard sur une release, chaque version étant relue dans un index
         maintenu par d'autres.
 
+  # ── Milestone 6 — Hardened controls & enterprise identity (delivered, v0.6.x)
   - id: "6.1"
     en: Vulnerability scanning with policy (Trivy, blocking or advisory)
     fr: Analyse de vulnérabilités avec politique (Trivy, bloquante ou consultative)
     status: available
     note:
-      en: Implemented on the milestone-6 branch; ships with v0.6.0.
-      fr: Implémenté sur la branche du jalon 6 ; livré avec la v0.6.0.
+      en: Delivered in v0.6.0.
+      fr: Livré en v0.6.0.
     security: true
   - id: "R-13"
     en: Guaranteed freshness of the vulnerability database
     fr: Fraîcheur garantie de la base de vulnérabilités
     status: available
     note:
-      en: Implemented on the milestone-6 branch; ships with v0.6.0.
-      fr: Implémenté sur la branche du jalon 6 ; livré avec la v0.6.0.
+      en: Delivered in v0.6.0.
+      fr: Livré en v0.6.0.
     security: true
   - id: "R-14"
     en: Authentication hardening (rate limiting, session and token expiry)
@@ -298,16 +298,16 @@ features:
     fr: Base de vulnérabilités hors-ligne, transportée par Tobby lui-même
     status: available
     note:
-      en: Implemented on the milestone-6 branch; ships with v0.6.0.
-      fr: Implémenté sur la branche du jalon 6 ; livré avec la v0.6.0.
+      en: Delivered in v0.6.0.
+      fr: Livré en v0.6.0.
     security: true
   - id: "R-25"
     en: Tobby updates through its own channel, across the air gap
     fr: Mise à jour de Tobby par son propre canal, à travers l'air-gap
     status: available
     note:
-      en: Implemented on the milestone-6 branch; ships with v0.6.0 — the first release published recipe-ready.
-      fr: Implémenté sur la branche du jalon 6 ; livré avec la v0.6.0 — la première release publiée prête pour une recipe.
+      en: Delivered in v0.6.0 — the first release published recipe-ready.
+      fr: Livré en v0.6.0 — la première release publiée prête pour une recipe.
     security: true
   - id: "R-22"
     en: Reduced-trust content stays visibly marked everywhere

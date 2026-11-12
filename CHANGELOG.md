@@ -8,6 +8,15 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-12
+
+Milestone 6: hardened controls and enterprise identity. Every container
+image is scanned for vulnerabilities under an advisory or blocking policy,
+judged by its content rather than its declared kind; people sign in through
+OpenID Connect or SAML 2.0; a store can be verified on demand; content
+admitted under a relaxed trust scope stays marked; a medium prints as a
+transfer slip; and Tobby updates through its own channel.
+
 ### Added
 
 - **The transfer slip** (R-07): the Media screen as a printable,
@@ -115,9 +124,10 @@ starting with `v0.1.0`.
   amendment). UI sessions end after `auth.session.idleTimeout` (default
   30m) without user activity, on top of `auth.sessionTTL`: the page's own
   background polls do not count, so a tab left open still expires, and
-  the sign-in page explains it with TBY-AUTH-005 and returns to the page. Tokens take an optional expiry at
-  creation (lifetime in days on the screen, `expires` in the API), and
-  `auth.tokens.defaultLifetime` gives one to tokens created without; an
+  the sign-in page explains it with TBY-AUTH-005 and returns to the page.
+  Tokens take an optional expiry at creation (lifetime in days on the
+  screen, `expires` in the API), and `auth.tokens.defaultLifetime` gives
+  one to tokens created without; an
   expired token is refused with TBY-AUTH-013. New audit events
   `session.expire` and `token.expire`; a revoked token's refusal is now
   recorded under its name.
@@ -203,7 +213,6 @@ starting with `v0.1.0`.
   happen to carry the same name; the account screen of a federated
   identity offers no password form (TBY-AUTH-010 on the API mirror).
 
-
 ### Fixed
 
 - **A Tobby serving as a zone registry refused a sparse index** (B-036).
@@ -220,7 +229,6 @@ starting with `v0.1.0`.
   isolated zone* no longer ask for every platform of the binaries
   FileSet, except for a third-party zone registry that refuses sparse
   indexes.
-
 - **A tab left open on a task page could expire without saying so**
   (B-038). Its two pollers race: the first to find the session dead
   clears the cookie, the second then presents none and redirected to a
@@ -229,14 +237,12 @@ starting with `v0.1.0`.
   too. The Store integrity screen's poll gains the background marker, so
   it no longer renews the session, and the template check covers every
   page.
-
 - **A store verification no longer stalls content writes** (B-041). It
   held the shared side of the content lock for its whole walk; a removal
   asked for meanwhile queued on the exclusive side, and Go's
   writer-preferring lock then blocked every later write — a passthrough
   promotion, a synchronization — until the walk ended. The verification
   now holds a lock of its own that only removals wait on.
-
 - **`tobby store verify` and the media commands no longer delete upload
   sessions** (B-042). Every store opening started the registry library's
   upload purger, which removes upload sessions older than a week after a
@@ -244,7 +250,6 @@ starting with `v0.1.0`.
   byte-identical could delete files from the store or the medium. Those
   commands now open the store for inspection, without the purger; `tobby
   serve` keeps it.
-
 - **A sparse index no longer keeps someone else's blob alive** (B-043).
   Since the embedded registry accepts partial indexes (B-036), any client
   could push an index naming, as a child, the digest of a blob it never
@@ -253,7 +258,6 @@ starting with `v0.1.0`.
   its repository and was no longer reported as orphaned by the store
   verification. Only children the repository actually holds are marked
   now.
-
 - **The store verification sees a lost platform** (R-31, B-044). An
   absent child of an index was always read as a platform the recipe had
   not selected (FR-022), so a platform lost from the store passed as
@@ -1444,7 +1448,8 @@ import, track, browse, pull) behind authentication that is on by default.
 - Release chain groundwork for SLSA Build L3 provenance and signed
   artifacts.
 
-[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.4.2...v0.5.0

@@ -44,19 +44,19 @@ accueille aussi les spools de téléchargements reprenables, voir
 ### Avec Helm
 
 ```sh
-helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.5.2 \
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
   --namespace tobby --create-namespace \
   --set config.mode=passthrough
 ```
 
-La version du chart **est** la version de Tobby : le chart `0.5.2`
-déploie l'image `v0.5.2`, et rien d'autre. Épinglez `--version` — sans
+La version du chart **est** la version de Tobby : le chart `0.6.0`
+déploie l'image `v0.6.0`, et rien d'autre. Épinglez `--version` — sans
 elle, Helm prend le chart le plus récent, c'est-à-dire une mise à jour que
 vous n'avez pas choisie. Chaque chart publié est signé sans clé par le
 workflow de release, comme l'image :
 
 ```sh
-cosign verify ghcr.io/tobby-fetch/charts/tobby:0.5.2 \
+cosign verify ghcr.io/tobby-fetch/charts/tobby:0.6.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
 ```
@@ -87,7 +87,7 @@ kubectl -n tobby create secret docker-registry tobby-registry-credentials \
   --docker-username=tobby \
   --docker-password="$(cat ./token)"
 
-helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.5.2 \
+helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
   --namespace tobby --reuse-values \
   --set registryCredentials.enabled=true \
   --set registryCredentials.existingSecret=tobby-registry-credentials
@@ -140,9 +140,9 @@ hors-ligne, sans dépôt : vérifiez (`SHA256SUMS` ou provenance SLSA),
 copiez le fichier, installez sans réseau :
 
 ```sh
-dpkg -i tobby_0.5.2_linux_amd64.deb                    # Debian/Ubuntu
-rpm -i tobby_0.5.2_linux_amd64.rpm                     # RHEL/SUSE/Fedora
-apk add --allow-untrusted tobby_0.5.2_linux_amd64.apk  # Alpine
+dpkg -i tobby_0.6.0_linux_amd64.deb                    # Debian/Ubuntu
+rpm -i tobby_0.6.0_linux_amd64.rpm                     # RHEL/SUSE/Fedora
+apk add --allow-untrusted tobby_0.6.0_linux_amd64.apk  # Alpine
 ```
 
 Les paquets ne portent délibérément aucune signature de gestionnaire de
@@ -198,7 +198,7 @@ docker run -d --name tobby --read-only \
   -v /srv/tobby/store:/var/lib/tobby/store \
   -v /srv/tobby/state:/var/lib/tobby/state \
   -v /srv/tobby/config.yaml:/etc/tobby/config.yaml:ro \
-  ghcr.io/tobby-fetch/tobby-fetch:v0.5.2 \
+  ghcr.io/tobby-fetch/tobby-fetch:v0.6.0 \
   serve --config /etc/tobby/config.yaml
 ```
 
