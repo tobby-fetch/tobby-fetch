@@ -528,6 +528,12 @@ func TestChannelDeliveredBinary(t *testing.T) {
 		{"windows", "amd64", "trivy.exe"},
 	} {
 		t.Run(plat.goos, func(t *testing.T) {
+			if runtime.GOOS == "windows" && plat.goos != "windows" {
+				// The fake runs unpacked under the name "trivy": a Windows
+				// host executes only a ".exe". The target-OS logic is
+				// host-independent and covered on the other runners.
+				t.Skip("a Windows host cannot execute the extensionless fake")
+			}
 			f := newFixture(t, fakeConf{})
 			raw, err := os.ReadFile(f.bin)
 			if err != nil {
@@ -859,6 +865,12 @@ func TestOnlyTheVerifiedSystemRecipeDelivers(t *testing.T) {
 // again from the store (FR-031: the digest is verified before every
 // execution).
 func TestChannelBinaryIsRehashedBeforeReuse(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// It unpacks a linux binary named "trivy" and swaps in a shell
+		// script: neither runs on a Windows host. The rehash itself is
+		// OS-independent and covered on the other runners.
+		t.Skip("needs a host that executes extensionless files and shell scripts")
+	}
 	f := newFixture(t, fakeConf{})
 	raw, err := os.ReadFile(f.bin)
 	if err != nil {
