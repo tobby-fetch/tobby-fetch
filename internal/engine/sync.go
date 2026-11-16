@@ -605,7 +605,10 @@ func (e *Engine) verifyRecipe(ctx context.Context, f *FetchedRecipe, d Decision)
 		}
 		return false, d.Scope, refused(ctx, src, f.NominalRepo, f.ManifestDigest, d, err)
 	}
-	if d.AllowUnsigned {
+	// B-068: with no key to try, allowUnsigned admits only a recipe that
+	// carries no signature at all — the verdict a present signature gets
+	// when keys apply and none verifies it.
+	if d.AllowUnsigned && media.Unsigned(ctx, src, f.NominalRepo, f.ManifestDigest) {
 		return false, d.Scope, nil
 	}
 	return false, d.Scope, noKeyRefusal(ctx, src, f.NominalRepo, f.ManifestDigest, f.NominalRepo+":"+f.Tag, d)

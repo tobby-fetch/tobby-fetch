@@ -116,6 +116,20 @@ s'applique pas ici, `TBY-SIG-001` dit lequel : le nom et l'empreinte du root
 de sorte que la correction — élargir ce périmètre, ou re-signer avec une clé
 qui s'applique — se lit dans le refus lui-même.
 
+**`allowUnsigned` admet les recipes non signées, pas les recipes
+invérifiables.** Dans un tel périmètre, une recipe qui ne porte aucune
+signature est admise, avec le marqueur d'assurance réduite. Une recipe qui
+porte une signature qu'aucun root applicable ne vérifie est refusée avec
+`TBY-SIG-001`, exactement comme hors du périmètre — y compris quand aucun
+root ne s'applique au périmètre parce que tous les roots configurés sont
+réservés ailleurs ; le refus nomme alors le root réservé qui la vérifie.
+Avant la v1.0.0-rc.1, une telle recipe était admise comme non signée
+quand le périmètre n'avait aucune clé à essayer (B-068) : le verdict d'un
+périmètre sur une même recipe signée dépendait de la présence de roots
+configurés pour d'autres périmètres. La même règle s'applique à la
+synchronisation, au plan, à la revérification avant poussée, à
+`media verify` et à `store verify`.
+
 :::caution[Changé en v1.0.0-rc.1 — rupture]
 Jusqu'à la v0.6.x, le défaut strict vérifiait contre **tous** les roots
 configurés, listés ou non par un périmètre : une clé listée par un périmètre

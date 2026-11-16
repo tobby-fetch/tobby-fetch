@@ -925,6 +925,20 @@ remet quand même ses recipes intactes.
 - **Action corrective :** recopiez le store depuis l'instance source.
 - **Corrigeable hors ligne :** oui · **Bloque :** la recipe qui atteint ce blob, sans dérogation (classe vérification, code 4)
 
+### TBY-MED-016
+
+- **Quoi :** le graphe de recipes du support ne correspond pas à la recipe
+  signée.
+- **Cause probable :** la comptabilité du support (`meta/recipes.json`,
+  recopiée dans `meta/media.json`) liste un ingrédient, un digest ou un
+  emplacement que le document de recipe signé n'épingle pas, ou l'artefact
+  porte le document d'une autre recipe. La comptabilité n'est pas signée ;
+  seul le document signé décide de ce qu'est une livraison.
+- **Action corrective :** n'importez pas cette livraison. Reproduisez le
+  support depuis l'instance source, et cherchez comment la comptabilité a
+  changé si personne n'a assemblé le support à la main.
+- **Corrigeable hors ligne :** oui · **Bloque :** cette recipe entière, sans dérogation (classe vérification, code 4)
+
 ### TBY-MED-020
 
 - **Quoi :** un fichier du support n'est pas couvert par l'inventaire.

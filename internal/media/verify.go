@@ -94,6 +94,26 @@ func NoKeyDetail(d TrustDecision) string {
 	return "none — no trust root is configured"
 }
 
+// Unsigned reports whether repo@manifestDigest carries no signature at
+// all, in either published layout: the one thing an allowUnsigned scope
+// admits when no trust root applies to it (Keys nil, every root reserved
+// elsewhere or none configured). A signature that is present and that no
+// applicable root verifies is not "unsigned": it is refused, exactly as
+// it is when keys apply (B-068) — otherwise a scope's verdict on a signed
+// recipe would depend on whether the instance happens to hold roots for
+// other scopes. A lookup that fails is not "unsigned" either: it fails
+// closed.
+func Unsigned(ctx context.Context, src sigverify.Manifests, repo, manifestDigest string) bool {
+	return sigverify.Inspect(ctx, src, repo, manifestDigest, nil).State == sigverify.StateNone
+}
+
+// SignedNoKeyDetail is the "fingerprints" detail of a TBY-SIG-001 raised
+// inside an allowUnsigned scope with no key to try, on a subject that
+// carries a signature (Unsigned is false).
+func SignedNoKeyDetail(d TrustDecision) string {
+	return NoKeyDetail(d) + "; the subject carries a signature, and allowUnsigned admits only a subject that carries none"
+}
+
 // SignatureElsewhere names the excluded trust root that verifies the
 // subject's signature, for the refusal message only: it returns the
 // "reserved" (root name and key fingerprint) and "reservedto" (the scopes
@@ -488,7 +508,7 @@ func verifyRecipes(ctx context.Context, src Reader, c *checker, m *Manifest, opt
 			SourceAssurance: r.Assurance,
 		}
 		w := &walk{c: c, recipe: id, seen: map[string]bool{}, served: newServed()}
-		w.delivery(r)
+		signed := w.delivery(r)
 		v.Files, v.Bytes = w.files, w.bytes
 		if w.reason != nil {
 			v.Reason = w.reason
@@ -509,7 +529,7 @@ func verifyRecipes(ctx context.Context, src Reader, c *checker, m *Manifest, opt
 			// trust.requireIngredientSignatures — the rule the import's
 			// promotion applies again before any push (B-062, R-19).
 			var refusal *Reason
-			v.Ingredients, refusal = checkIngredients(ctx, src, r, opts.Trust)
+			v.Ingredients, refusal = checkIngredients(ctx, src, id, signed, opts.Trust)
 			if refusal != nil {
 				v.Pushable, v.Reason = false, refusal
 			}
@@ -553,12 +573,15 @@ func decide(ctx context.Context, src Reader, r *Recipe, v *RecipeVerdict, trust 
 		v.Reason = &Reason{Code: taxonomy.CodeSignature, Params: params}
 	}
 	if d.Keys == nil {
-		if d.AllowUnsigned {
+		switch {
+		case !d.AllowUnsigned:
+			refuse(NoKeyDetail(d))
+		case !Unsigned(ctx, sigSrc, r.ArtifactRepo, r.Digest):
+			refuse(SignedNoKeyDetail(d))
+		default:
 			v.Pushable, v.Unsigned = true, true
 			v.Assurance = assurance.ForUnsigned(d.Scope)
-			return
 		}
-		refuse(NoKeyDetail(d))
 		return
 	}
 	fingerprint, err := sigverify.Verify(ctx, sigSrc, r.ArtifactRepo, r.Digest, d.Keys)
@@ -932,14 +955,29 @@ type walk struct {
 // artifact, its signature artifacts, its ingredients, the ingredients' own
 // signature artifacts (B-062: copied along so a consumer in the zone can
 // verify an upstream-signed image), and everything those reach.
-func (w *walk) delivery(r *Recipe) {
+//
+// The ingredients are the ones the recipe document inside the artifact
+// pins, read once the artifact has checked out, and the medium's
+// bookkeeping must agree with them (B-066): an ingredient only the
+// unsigned recipe graph names is never walked, never checked for a
+// signature, and never served. It returns that list.
+func (w *walk) delivery(r *Recipe) []signedIngredient {
 	w.root(r.ArtifactRepo, r.Digest, r.ArtifactTag)
 	w.signatures(r.ArtifactRepo, r.Digest)
-	for i := range r.Ingredients {
-		ing := &r.Ingredients[i]
+	if w.reason != nil {
+		return nil
+	}
+	signed, reason := w.signedIngredients(r)
+	if reason != nil {
+		w.fail(reason)
+		return nil
+	}
+	for i := range signed {
+		ing := &signed[i]
 		w.root(ing.Repo, ing.Digest, ing.Tag)
 		w.signatures(ing.Repo, ing.Digest)
 	}
+	return signed
 }
 
 // root walks one required manifest root and its tag references.

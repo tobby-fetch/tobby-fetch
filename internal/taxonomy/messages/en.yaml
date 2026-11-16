@@ -259,6 +259,10 @@
 "TBY-MED-015.cause": "{{.path}} is addressed as {{.expected}} but its bytes hash to {{.actual}} — the content-addressed store disagrees with itself."
 "TBY-MED-015.action": "Re-copy the store from the source instance. The recipe reaching this blob is blocked whole and has no override."
 
+"TBY-MED-016.what": "The medium's recipe graph does not match the signed recipe."
+"TBY-MED-016.cause": "For {{.recipe}}, the medium's own bookkeeping lists ingredients the signed recipe document does not pin: {{.detail}}. The bookkeeping is not signed; the recipe document is."
+"TBY-MED-016.action": "Do not import this delivery: the bookkeeping was altered, or the medium was assembled by hand. Re-produce the medium from the source instance. The recipe is blocked whole and has no override."
+
 "TBY-MED-020.what": "A file on the medium is not covered by the inventory."
 "TBY-MED-020.cause": "{{.path}} lies under manifest coverage but the manifest does not list it — it was added after the manifest was written."
 "TBY-MED-020.action": "Nothing to do to proceed: extraneous content is never pushed. Investigate how it got onto the medium if you did not put it there."

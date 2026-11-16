@@ -191,8 +191,15 @@ func refused(ctx context.Context, src sigverify.Manifests, repo, manifestDigest 
 // allowUnsigned relaxation: either no trust root is configured, or every
 // configured root is reserved to a scope (B-057) — then the message says
 // so, and names the reserved root that verifies the signature, if any.
+//
+// Inside an allowUnsigned scope it is reached only by a subject that
+// carries a signature (B-068), and the detail says so.
 func noKeyRefusal(ctx context.Context, src sigverify.Manifests, repo, manifestDigest, subject string, d Decision) error {
-	params := taxonomy.Params{"recipe": subject, "fingerprints": media.NoKeyDetail(d), "scope": d.Scope}
+	detail := media.NoKeyDetail(d)
+	if d.AllowUnsigned {
+		detail = media.SignedNoKeyDetail(d)
+	}
+	params := taxonomy.Params{"recipe": subject, "fingerprints": detail, "scope": d.Scope}
 	if reserved, reservedTo := media.SignatureElsewhere(ctx, src, repo, manifestDigest, d); reserved != "" {
 		params["reserved"], params["reservedto"] = reserved, reservedTo
 	}

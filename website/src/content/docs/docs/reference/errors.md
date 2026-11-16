@@ -867,6 +867,20 @@ a partially damaged medium still hands over its intact recipes.
 - **Corrective action:** re-copy the store from the source instance.
 - **Fixable offline:** yes · **Blocks:** the recipe reaching that blob, no override (verification class, exit 4)
 
+### TBY-MED-016
+
+- **What happened:** the medium's recipe graph does not match the signed
+  recipe.
+- **Probable cause:** the medium's bookkeeping (`meta/recipes.json`, copied
+  into `meta/media.json`) lists an ingredient, a digest or a location that
+  the signed recipe document does not pin, or the artifact carries the
+  document of another recipe. The bookkeeping is not signed; only the
+  signed document decides what a delivery is.
+- **Corrective action:** do not import this delivery. Re-produce the medium
+  from the source instance, and investigate how the bookkeeping changed if
+  nobody assembled the medium by hand.
+- **Fixable offline:** yes · **Blocks:** that recipe whole, no override (verification class, exit 4)
+
 ### TBY-MED-020
 
 - **What happened:** a file on the medium is not covered by the inventory.

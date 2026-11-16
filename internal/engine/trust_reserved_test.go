@@ -254,3 +254,80 @@ func fpOf(t *testing.T, kp interface{ Fingerprint() (string, error) }) string {
 	}
 	return fp
 }
+
+// labWithoutKeys is a policy whose only root is reserved to the emergency
+// scope, plus an allowUnsigned "lab" scope listing no root and covering
+// the cookbook at addr: inside "lab" no key applies at all (B-068).
+func labWithoutKeys(t *testing.T, addr string, emergency interface {
+	PublicPEM() ([]byte, error)
+}) *TrustPolicy {
+	t.Helper()
+	pem, err := emergency.PublicPEM()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tp, err := LoadTrust(config.Trust{
+		Roots: []config.TrustRoot{{Name: rootName(1), Key: string(pem)}},
+		Scopes: append(emergencyScopes(), config.TrustScope{
+			Name: "lab", Repositories: []string{strings.ReplaceAll(addr, ":", "_") + "/cookbook/*"}, AllowUnsigned: true,
+		}),
+	}, t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tp
+}
+
+// TestAllowUnsignedWithoutKeysRefusesASignedRecipe is the sync (and plan:
+// same verifyRecipe) face of B-068: inside an allowUnsigned scope no root
+// applies to, a recipe carrying a signature no applicable root verifies
+// is refused in TBY-SIG-001 — as it is where keys apply — naming the
+// reserved root that verifies it. It used to be admitted as unsigned.
+// A recipe that carries no signature at all is still admitted.
+func TestAllowUnsignedWithoutKeysRefusesASignedRecipe(t *testing.T) {
+	src, imgDig := seedTrustCookbook(t)
+	emergency := newKeyPair(t)
+	dig := publishRecipe(t, src.st, "cookbook/app", "1.0.0", trustRecipeYAML(t, src, "app", imgDig))
+	signManifest(t, src.st, "cookbook/app", dig, emergency)
+	publishRecipe(t, src.st, "cookbook/bare", "1.0.0", trustRecipeYAML(t, src, "bare", imgDig))
+	retr := retrieverFile(t, testZone, src.addr+"/cookbook", []spec.RecipeSelector{
+		{Name: "app", Version: "1.0.0"},
+		{Name: "bare", Version: "1.0.0"},
+	})
+
+	task, err := runSync(t, New(openStore(t), newRemotes(t, nil), labWithoutKeys(t, src.addr, emergency), retr, "", syncCfg()))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	it := itemByName(t, task, "app@1.0.0")
+	if it.Status != tasks.StatusFailed || it.Error == nil || it.Error.Code != taxonomy.CodeSignature {
+		t.Fatalf("app item = %s / %+v, want failed TBY-SIG-001: a signed recipe was admitted as unsigned (B-068)", it.Status, it.Error)
+	}
+	assertReservedNamed(t, it.Error.Params, fpOf(t, emergency))
+	if bare := itemByName(t, task, "bare@1.0.0/recipe"); bare.Status != tasks.StatusDone {
+		t.Errorf("bare item = %s / %+v, want the unsigned recipe admitted by the lab scope", bare.Status, bare.Error)
+	}
+}
+
+// TestAllowUnsignedWithoutKeysRefusesOnPromotion is the pre-push
+// re-verification face of B-068.
+func TestAllowUnsignedWithoutKeysRefusesOnPromotion(t *testing.T) {
+	env := newHappyEnv(t)
+	if _, err := runSync(t, env.eng); err != nil {
+		t.Fatalf("first cycle: %v", err)
+	}
+	emergency := newKeyPair(t)
+	localCookbook := env.hostRepo + "/cookbook/wordpress"
+	signManifest(t, env.dst, localCookbook, env.manDig, emergency)
+	env.eng.trust = labWithoutKeys(t, env.src.addr, emergency)
+
+	err := env.eng.verifyStored(context.Background(), localCookbook, env.src.addr+"/cookbook/wordpress", env.manDig, "wordpress@6.8.2")
+	if err == nil {
+		t.Fatal("verifyStored admitted a signed recipe as unsigned inside a scope no root applies to (B-068)")
+	}
+	te := env.eng.mapError(err, "wordpress@6.8.2")
+	if te.Code() != taxonomy.CodeSignature {
+		t.Fatalf("code = %s, want %s", te.Code(), taxonomy.CodeSignature)
+	}
+	assertReservedNamed(t, te.ParamsMap(), fpOf(t, emergency))
+}

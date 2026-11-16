@@ -138,6 +138,7 @@ each blocked recipe and the file at fault.
 | "older than the last one imported" | [`TBY-MED-007`](../errors/#tby-med-007) | Check you plugged in the current medium. An administrator may waive it, for example to restore an older delivery on purpose. |
 | A file is missing, the wrong size, or does not match its digest | [`TBY-MED-010`](../errors/#tby-med-010), [`TBY-MED-011`](../errors/#tby-med-011), [`TBY-MED-012`](../errors/#tby-med-012), [`TBY-MED-015`](../errors/#tby-med-015) | Re-copy the store from the source. The recipe reaching the file is blocked; no override exists. |
 | A file or a manifest is not covered, or not readable | [`TBY-MED-013`](../errors/#tby-med-013), [`TBY-MED-014`](../errors/#tby-med-014), [`TBY-MED-005`](../errors/#tby-med-005) | The inventory does not match the content: re-copy from the source. |
+| The medium's recipe graph lists an ingredient the signed recipe does not pin | [`TBY-MED-016`](../errors/#tby-med-016) | The bookkeeping was altered: do not import; re-produce the medium from the source. No override exists. |
 | A file the recipes do not reach | [`TBY-MED-020`](../errors/#tby-med-020), [`TBY-MED-021`](../errors/#tby-med-021), [`TBY-MED-022`](../errors/#tby-med-022) | Reported, never pushed. Usually leftovers of an earlier delivery: [start from a clean medium](../../air-gap/manage-media/). |
 
 ## The store looks damaged

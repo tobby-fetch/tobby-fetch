@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -52,15 +51,22 @@ type IngredientVerdict struct {
 // (Trust.DecideIngredient). The inspection is always returned, for the
 // record. The refusal is non-nil only when d requires a signature and
 // none verifies: TBY-SIG-001, naming subject (IngredientSubject) and the
-// fingerprints tried.
+// fingerprints tried — and, like a recipe refusal (B-057), the reserved
+// root the signature does verify against, when one does.
 func CheckIngredientSignature(ctx context.Context, src sigverify.Manifests, repo, digest, subject string, d TrustDecision) (sigverify.Inspection, *Reason) {
 	in := sigverify.Inspect(ctx, src, repo, digest, d.Keys)
 	if !d.RequireSignature || in.Verified() {
 		return in, nil
 	}
-	return in, &Reason{Code: taxonomy.CodeSignature, Params: map[string]string{
+	params := map[string]string{
 		"recipe": subject, "fingerprints": ingredientFingerprints(in, d), "scope": d.Scope,
-	}}
+	}
+	if in.State != sigverify.StateNone {
+		if reserved, reservedTo := SignatureElsewhere(ctx, src, repo, digest, d); reserved != "" {
+			params["reserved"], params["reservedto"] = reserved, reservedTo
+		}
+	}
+	return in, &Reason{Code: taxonomy.CodeSignature, Params: params}
 }
 
 // IngredientSubject names an ingredient in a refusal: which one, of which
@@ -74,7 +80,9 @@ func IngredientSubject(name, recipe, repo, digest string) string {
 func ingredientFingerprints(in sigverify.Inspection, d TrustDecision) string {
 	switch {
 	case d.Keys == nil:
-		return "none — no trust root is configured"
+		// B-068: roots may well be configured, every one reserved to
+		// another scope — say which.
+		return NoKeyDetail(d)
 	case in.State == sigverify.StateNone:
 		return "no signature artifact found"
 	case len(in.Tried) > 0:
@@ -84,26 +92,26 @@ func ingredientFingerprints(in sigverify.Inspection, d TrustDecision) string {
 }
 
 // checkIngredients applies CheckIngredientSignature to every ingredient of
-// a delivery whose recipe has just verified, reading the medium. It
-// returns the verdicts and the first refusal, in manifest order.
-func checkIngredients(ctx context.Context, src Reader, r *Recipe, trust Trust) ([]IngredientVerdict, *Reason) {
-	if len(r.Ingredients) == 0 {
+// a delivery whose recipe has just verified, reading the medium. The list
+// is the one the signed recipe document pins (B-066), each decided on its
+// canonical nominal repository. It returns the verdicts and the first
+// refusal, in document order.
+func checkIngredients(ctx context.Context, src Reader, id string, signed []signedIngredient, trust Trust) ([]IngredientVerdict, *Reason) {
+	if len(signed) == 0 {
 		return nil, nil
 	}
-	id := r.Name + "@" + r.Version
-	out := make([]IngredientVerdict, 0, len(r.Ingredients))
+	out := make([]IngredientVerdict, 0, len(signed))
 	var first *Reason
-	for i := range r.Ingredients {
-		ing := &r.Ingredients[i]
-		nominal := ingredientNominal(r, ing.Repo)
+	for i := range signed {
+		ing := &signed[i]
 		var d TrustDecision
 		if trust != nil {
-			d = trust.DecideIngredient(nominal)
+			d = trust.DecideIngredient(ing.Nominal)
 		}
 		in, refusal := CheckIngredientSignature(ctx, &manifestSource{src: src, repo: ing.Repo},
-			ing.Repo, ing.Digest, IngredientSubject(ing.Name, id, nominal, ing.Digest), d)
+			ing.Repo, ing.Digest, IngredientSubject(ing.Name, id, ing.Nominal, ing.Digest), d)
 		out = append(out, IngredientVerdict{
-			Name: ing.Name, Repo: nominal, Digest: ing.Digest,
+			Name: ing.Name, Repo: ing.Nominal, Digest: ing.Digest,
 			Signature: in, TrustScope: d.Scope, Required: d.RequireSignature,
 		})
 		if refusal != nil && first == nil {
@@ -111,32 +119,4 @@ func checkIngredients(ctx context.Context, src Reader, r *Recipe, trust Trust) (
 		}
 	}
 	return out, first
-}
-
-// ingredientNominal recovers an ingredient's canonical nominal repository
-// from where it sits on the medium.
-//
-// The medium places every ingredient under the producing instance's base
-// prefix (FR-035), and that prefix is written down nowhere — but the
-// recipe artifact sits under the same one, beside its nominal cookbook
-// repository, so the prefix is the difference between the two. Stripping
-// it gives exactly relocate.Path of the ingredient's nominal reference:
-// the repository the promotion decides on for the same ingredient. A
-// medium on which the two do not line up keeps the path as it is, which
-// matches no scope written for the nominal form and gets the strict
-// default — and the promotion, deciding on the signed recipe's own
-// references, applies the same rule again before any push.
-func ingredientNominal(r *Recipe, repo string) string {
-	cookbook, err := relocate.Path(r.CookbookRepo)
-	if err != nil || !strings.HasSuffix(r.ArtifactRepo, cookbook) {
-		return repo
-	}
-	prefix := strings.TrimSuffix(r.ArtifactRepo, cookbook)
-	switch {
-	case prefix == "":
-		return repo
-	case strings.HasSuffix(prefix, "/") && strings.HasPrefix(repo, prefix):
-		return strings.TrimPrefix(repo, prefix)
-	}
-	return repo
 }

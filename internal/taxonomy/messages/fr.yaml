@@ -259,6 +259,10 @@
 "TBY-MED-015.cause": "{{.path}} est adressé comme {{.expected}} mais ses octets ont pour empreinte {{.actual}} — le stockage adressé par contenu se contredit."
 "TBY-MED-015.action": "Recopiez le store depuis l'instance source. La recipe qui atteint ce blob est bloquée entière, sans dérogation."
 
+"TBY-MED-016.what": "Le graphe de recipes du support ne correspond pas à la recipe signée."
+"TBY-MED-016.cause": "Pour {{.recipe}}, la comptabilité propre du support liste des ingrédients que le document de recipe signé n'épingle pas : {{.detail}}. La comptabilité n'est pas signée ; le document de recipe l'est."
+"TBY-MED-016.action": "N'importez pas cette livraison : la comptabilité a été modifiée, ou le support a été assemblé à la main. Reproduisez le support depuis l'instance source. La recipe est bloquée entière, sans dérogation."
+
 "TBY-MED-020.what": "Un fichier du support n'est pas couvert par l'inventaire."
 "TBY-MED-020.cause": "{{.path}} se trouve sous la couverture du manifeste mais celui-ci ne le liste pas — il a été ajouté après l'écriture du manifeste."
 "TBY-MED-020.action": "Rien à faire pour continuer : le contenu surnuméraire n'est jamais poussé. Cherchez comment il est arrivé sur le support si ce n'est pas vous qui l'y avez mis."

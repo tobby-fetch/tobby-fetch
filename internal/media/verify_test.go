@@ -538,14 +538,7 @@ func TestSparseIndexChildIsNotMissingContent(t *testing.T) {
 	absent := "sha256:1111111111111111111111111111111111111111111111111111111111111111"
 	indexDigest := f.putIndex(repo, "1.0", []string{present, absent})
 
-	artifactRepo := "registry.example.com/cookbook/multi"
-	artifactDigest := f.putImage(artifactRepo, "1.0.0", []byte("recipe document"))
-	f.sign(artifactRepo, artifactDigest)
-	rec := f.addRecipe("multi-app", "1.0.0", true)
-	rec.Ingredients = append(rec.Ingredients, storeIngredient(repo, "1.0", indexDigest))
-	if err := f.st.PutRecipeRecord(&rec); err != nil {
-		t.Fatal(err)
-	}
+	f.addRecipeWith("multi-app", "1.0.0", true, storeIngredient("multi", repo, "1.0", indexDigest))
 	f.write(time.Now().UTC())
 
 	rep := f.verify(media.VerifyOptions{Zone: zoneA})

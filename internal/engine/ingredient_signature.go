@@ -50,14 +50,10 @@ func (m MediaTrust) DecideIngredient(nominalRepo string) media.TrustDecision {
 	if m.Policy == nil {
 		return media.TrustDecision{}
 	}
-	return mediaDecision(m.Policy.DecideIngredient(nominalRepo))
-}
-
-func mediaDecision(d Decision) media.TrustDecision {
-	return media.TrustDecision{
-		AllowUnsigned: d.AllowUnsigned, Scope: d.Scope, Keys: d.Keys,
-		RequireSignature: d.RequireSignature,
-	}
+	// Decision is media.TrustDecision: the verdict crosses whole,
+	// Excluded included, so an ingredient refusal can name the reserved
+	// root its signature verifies against (B-057, B-068).
+	return m.Policy.DecideIngredient(nominalRepo)
 }
 
 // ingredientSignature checks one ingredient's own signature in the local
@@ -66,14 +62,14 @@ func mediaDecision(d Decision) media.TrustDecision {
 // when the requirement applies and nothing verifies.
 //
 // Trust scopes match the CANONICAL nominal repository, as for the recipe
-// (decideStored, ADR-0013); media verification derives the same path from
-// the medium (media.ingredientNominal).
+// (decideStored, ADR-0013); media verification decides on the same path,
+// read from the signed recipe document it verified (B-066).
 func (e *Engine) ingredientSignature(ctx context.Context, logger *slog.Logger, localRepo string, ing *spec.Ingredient, rid string) (sigverify.Inspection, *taxonomy.Error) {
 	nominal, err := relocate.Path(ing.Ref)
 	if err != nil {
 		nominal = ing.Ref
 	}
-	d := mediaDecision(e.trust.DecideIngredient(nominal))
+	d := e.trust.DecideIngredient(nominal)
 	in, refusal := media.CheckIngredientSignature(ctx, &storeManifests{src: e.store, repo: localRepo},
 		localRepo, ing.Digest, media.IngredientSubject(ing.Name, rid, nominal, ing.Digest), d)
 
