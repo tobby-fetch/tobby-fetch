@@ -77,6 +77,38 @@ run = "golangci-lint run"
 description = "Per-package coverage floor (NFR-016, >= 70% per internal package)"
 run = "sh tools/check-coverage.sh"
 
+# Release-criterion gates (DEVELOPMENT-PLAN §3). The same commands CI runs.
+#
+# Statement coverage >= 70 % on the core packages named in
+# tools/coverage-core.txt, from one coverage profile.
+#   mise run coverage-core
+[tasks.coverage-core]
+description = "Coverage floor (>= 70%) on the core packages of tools/coverage-core.txt"
+run = "sh tools/check-coverage-core.sh"
+
+# No missing or orphaned message key, no placeholder drift, EN and FR.
+#   mise run i18n-check
+[tasks.i18n-check]
+description = "i18n completeness: missing/orphaned keys and placeholder drift (EN, FR)"
+run = "go run ./tools/i18ncheck"
+
+# The pinned OCI distribution-spec conformance suite against a real instance
+# (needs git, jq, curl, network for the first fetch).
+#   mise run conformance
+[tasks.conformance]
+description = "OCI distribution-spec conformance against a real tobby serve"
+run = "sh test/conformance/run.sh"
+
+# Reference-scenario performance bench (plan §2.7): a large multi-arch image
+# imported cold and warm, a chart with vendored dependencies. Prints RESULT
+# lines; compare runs of the same machine. Knobs: TOBBY_BENCH_LAYER_MIB,
+# TOBBY_BENCH_REPS, TOBBY_BENCH_CHART_DEPS.
+#   mise run bench
+[tasks.bench]
+description = "Reference-scenario performance bench (multi-arch image, vendored chart)"
+env = { TOBBY_BENCH = "1" }
+run = "go test -run TestReferenceScenarios -v -timeout 30m ./internal/importer/"
+
 # Known-vulnerability gate (ADR-0011): govulncheck reports only the
 # vulnerable SYMBOLS the binary actually reaches, so a finding here is a
 # call path, not noise. The version is pinned (sumdb-verified by `go run`)

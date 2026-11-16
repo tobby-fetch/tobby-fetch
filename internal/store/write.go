@@ -139,5 +139,11 @@ func (s *Store) PutManifest(ctx context.Context, name, mediaType string, payload
 			return "", fmt.Errorf("store: tagging %s:%s: %w", name, tag, err)
 		}
 	}
+	// The referrers index (referrers.go) is a cache: a failure to update
+	// it must not fail a write that succeeded; it is dropped and rebuilt
+	// from the repository on next use.
+	if err := s.noteReferrer(ctx, name, mediaType, dgst, payload); err != nil {
+		s.dropReferrerIndex(name)
+	}
 	return dgst, nil
 }
