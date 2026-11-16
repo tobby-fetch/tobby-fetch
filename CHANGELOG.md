@@ -8,6 +8,8 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - 2026-11-16
+
 Toward `v1.0.0-rc.1` — milestone 7: finishing, documentation and
 acceptance. The release candidate brings the consumption aids (mapping
 table exports, a generated K3s/RKE2 `registries.yaml`), a redacted
@@ -1982,7 +1984,8 @@ import, track, browse, pull) behind authentication that is on by default.
 - Release chain groundwork for SLSA Build L3 provenance and signed
   artifacts.
 
-[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v1.0.0-rc.1...HEAD
+[1.0.0-rc.1]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.6.0...v1.0.0-rc.1
 [0.6.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.0...v0.5.1

@@ -44,7 +44,7 @@ accueille aussi les spools de téléchargements reprenables, voir
 ### Avec Helm
 
 ```sh
-helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0-rc.1 \
   --namespace tobby --create-namespace \
   --set config.mode=passthrough
 ```
@@ -56,7 +56,7 @@ vous n'avez pas choisie. Chaque chart publié est signé sans clé par le
 workflow de release, comme l'image :
 
 ```sh
-cosign verify ghcr.io/tobby-fetch/charts/tobby:0.6.0 \
+cosign verify ghcr.io/tobby-fetch/charts/tobby:1.0.0-rc.1 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
 ```
@@ -87,7 +87,7 @@ kubectl -n tobby create secret docker-registry tobby-registry-credentials \
   --docker-username=tobby \
   --docker-password="$(cat ./token)"
 
-helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
+helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0-rc.1 \
   --namespace tobby --reuse-values \
   --set registryCredentials.enabled=true \
   --set registryCredentials.existingSecret=tobby-registry-credentials

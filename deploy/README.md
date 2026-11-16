@@ -57,7 +57,7 @@ Every release publishes this chart as an OCI artifact, signed with cosign
 like the image:
 
 ```sh
-helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0-rc.1 \
   --namespace tobby --create-namespace \
   --set config.mode=passthrough
 ```
@@ -66,7 +66,7 @@ The chart version is the Tobby version — chart `0.6.0` deploys image
 `v0.6.0` — so pin `--version`. Verify before installing:
 
 ```sh
-cosign verify ghcr.io/tobby-fetch/charts/tobby:0.6.0 \
+cosign verify ghcr.io/tobby-fetch/charts/tobby:1.0.0-rc.1 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
 ```
@@ -102,7 +102,7 @@ kubectl -n tobby create secret docker-registry tobby-registry-credentials \
   --docker-username=tobby \
   --docker-password="$(cat ./token)"
 
-helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
+helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0-rc.1 \
   --namespace tobby --reuse-values \
   --set registryCredentials.enabled=true \
   --set registryCredentials.existingSecret=tobby-registry-credentials
@@ -153,7 +153,7 @@ value to change instead:
 Reviewing what you are about to install:
 
 ```sh
-helm template tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 --set config.mode=passthrough
+helm template tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0-rc.1 --set config.mode=passthrough
 ```
 
 ---

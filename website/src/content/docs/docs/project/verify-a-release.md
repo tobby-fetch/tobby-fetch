@@ -131,8 +131,8 @@ cosign verify ghcr.io/tobby-fetch/charts/tobby@sha256:... \
   --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
 
 # the version you install must resolve to the digest you verified
-helm show chart oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0
-helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
+helm show chart oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0-rc.1
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0-rc.1 \
   --namespace tobby --create-namespace
 ```
 
