@@ -425,9 +425,9 @@
 "TBY-STA-001.cause": "Il a été écrit par une autre version de Tobby, ou ce n'est pas un répertoire d'état de Tobby."
 "TBY-STA-001.action": "Démarrez la version qui l'a écrit, ou restaurez le répertoire d'état depuis une sauvegarde faite avec cette version. L'organisation documentée est le contrat de sauvegarde."
 
-"TBY-STA-002.what": "L'instance refuse de démarrer : {{.path}} est lisible par d'autres utilisateurs (mode {{.mode}})."
+"TBY-STA-002.what": "L'instance refuse de démarrer : {{.path}} est lisible par tous les utilisateurs de l'hôte (mode {{.mode}})."
 "TBY-STA-002.cause": "C'est une entrée secrète du répertoire d'état — empreintes de mots de passe ou de jetons, clé privée — que Tobby crée pour son seul propriétaire. Un mode plus large vient en général d'une restauration qui n'a pas conservé les droits."
-"TBY-STA-002.action": "Restreignez-la au propriétaire (chmod 600 sous Unix ; accès propriétaire seul sous Windows), vérifiez qui a pu la lire entre-temps, puis redémarrez."
+"TBY-STA-002.action": "Retirez l'accès des autres utilisateurs (chmod o-rwx sous Unix ; sous Windows, retirez Tout le monde et Utilisateurs de sa liste d'accès), vérifiez qui a pu la lire entre-temps, puis redémarrez. L'accès de groupe accordé par le volume (fsGroup Kubernetes) est toléré."
 
 "TBY-STA-003.what": "Le répertoire d'état ne contient pas {{.entry}}."
 "TBY-STA-003.cause": "Une entrée d'identité manque — en général après une restauration incomplète. L'instance démarre sans elle, et se comporte comme une instance neuve pour ce qu'elle contenait."

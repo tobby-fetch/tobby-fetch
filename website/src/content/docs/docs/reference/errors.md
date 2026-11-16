@@ -1119,9 +1119,9 @@ FR-097: the normative state directory — the backup target of an instance besid
 
 ### TBY-STA-002
 
-- **What happened:** The instance refuses to start: `<path>` is readable by other users (mode `<mode>`).
+- **What happened:** The instance refuses to start: `<path>` is readable by every user of the host (mode `<mode>`).
 - **Probable cause:** It is a secret entry of the state directory — password or token hashes, a private key — which Tobby creates for its owner only. A broader mode usually comes from a restore that did not keep permissions.
-- **Corrective action:** Restrict it to the owner (chmod 600 on Unix; owner-only access on Windows), check who could read it meanwhile, then restart.
+- **Corrective action:** Remove the access of other users (chmod o-rwx on Unix; on Windows, remove Everyone and Users from its access list), check who could read it meanwhile, then restart. Group access granted by the volume (Kubernetes fsGroup) is tolerated.
 - **Fixable offline:** yes · **Blocks:** the start of the instance · **Status:** reserved — emitted from milestone 7
 
 ### TBY-STA-003

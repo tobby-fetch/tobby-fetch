@@ -503,7 +503,9 @@ const (
 	// emitter lands with R-27 (track B).
 	CodeStateLayoutUnknown Code = "TBY-STA-001"
 	// CodeStatePermissions refuses to start on a state directory whose
-	// secret entry is readable by others (FR-097, NFR-020). Reserved:
+	// secret entry is readable by every user of the host (FR-097,
+	// NFR-020); group access, which a volume's fsGroup grants, is
+	// tolerated. Reserved:
 	// emitter lands with R-27 (track B).
 	CodeStatePermissions Code = "TBY-STA-002"
 	// CodeStateIdentityMissing reports an identity entry of the state

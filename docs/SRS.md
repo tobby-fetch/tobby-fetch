@@ -1440,9 +1440,13 @@ is the **single backup target** of an instance besides the store; the store
   tokens, same certificate fingerprint, same import record, same overrides.
   At startup Tobby SHALL check the layout version and the permissions of
   secret entries, and refuse to start, naming the entry, when a secret
-  entry is readable by others or the layout version is unknown; a
-  discardable entry missing is recreated silently, an identity entry missing
-  is reported.
+  entry is readable by every user of the host — any permission for
+  "other" on Unix, an ACL granting a broad principal (Everyone, Users) on
+  Windows — or when the layout version is unknown. Group permissions are
+  tolerated: a volume's group ownership (Kubernetes `fsGroup`, as in the
+  reference chart) grants them to the instance's own group. A discardable
+  entry missing is recreated silently, an identity entry missing is
+  reported.
 - **Inventory.** `tobby state inspect` lists the entries present with their
   class (identity, secret, discardable), size and mode — never their
   content — and is the input the diagnostic bundle (FR-095) records.

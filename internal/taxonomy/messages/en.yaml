@@ -425,9 +425,9 @@
 "TBY-STA-001.cause": "It was written by another version of Tobby, or it is not a Tobby state directory."
 "TBY-STA-001.action": "Start the version that wrote it, or restore the state directory from a backup made with this version. The documented layout is the backup contract."
 
-"TBY-STA-002.what": "The instance refuses to start: {{.path}} is readable by other users (mode {{.mode}})."
+"TBY-STA-002.what": "The instance refuses to start: {{.path}} is readable by every user of the host (mode {{.mode}})."
 "TBY-STA-002.cause": "It is a secret entry of the state directory — password or token hashes, a private key — which Tobby creates for its owner only. A broader mode usually comes from a restore that did not keep permissions."
-"TBY-STA-002.action": "Restrict it to the owner (chmod 600 on Unix; owner-only access on Windows), check who could read it meanwhile, then restart."
+"TBY-STA-002.action": "Remove the access of other users (chmod o-rwx on Unix; on Windows, remove Everyone and Users from its access list), check who could read it meanwhile, then restart. Group access granted by the volume (Kubernetes fsGroup) is tolerated."
 
 "TBY-STA-003.what": "The state directory holds no {{.entry}}."
 "TBY-STA-003.cause": "An identity entry is missing — typically after an incomplete restore. The instance starts without it, and behaves as a new instance for what it held."

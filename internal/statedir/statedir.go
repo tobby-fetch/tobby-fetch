@@ -67,8 +67,9 @@ type Entry struct {
 	// Class says whether a backup keeps it.
 	Class Class `json:"class"`
 	// Secret entries hold credential material (hashes included) or a
-	// private key: mode 0600, owner-only ACL on Windows (NFR-020), and a
-	// broader mode refuses the start (TBY-STA-002).
+	// private key: created mode 0600, owner-only ACL on Windows (NFR-020);
+	// access for every user of the host refuses the start (TBY-STA-002),
+	// group access granted by the volume (fsGroup) is tolerated.
 	Secret bool `json:"secret"`
 	// Purpose says what it holds, and the requirement it serves.
 	Purpose string `json:"purpose"`

@@ -1189,9 +1189,9 @@ FR-097 : le répertoire d'état normé — la cible de sauvegarde d'une instance
 
 ### TBY-STA-002
 
-- **Quoi :** L'instance refuse de démarrer : `<path>` est lisible par d'autres utilisateurs (mode `<mode>`).
+- **Quoi :** L'instance refuse de démarrer : `<path>` est lisible par tous les utilisateurs de l'hôte (mode `<mode>`).
 - **Cause probable :** C'est une entrée secrète du répertoire d'état — empreintes de mots de passe ou de jetons, clé privée — que Tobby crée pour son seul propriétaire. Un mode plus large vient en général d'une restauration qui n'a pas conservé les droits.
-- **Action corrective :** Restreignez-la au propriétaire (chmod 600 sous Unix ; accès propriétaire seul sous Windows), vérifiez qui a pu la lire entre-temps, puis redémarrez.
+- **Action corrective :** Retirez l'accès des autres utilisateurs (chmod o-rwx sous Unix ; sous Windows, retirez Tout le monde et Utilisateurs de sa liste d'accès), vérifiez qui a pu la lire entre-temps, puis redémarrez. L'accès de groupe accordé par le volume (fsGroup Kubernetes) est toléré.
 - **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance · **Statut :** réservé — émis à partir du jalon 7
 
 ### TBY-STA-003
