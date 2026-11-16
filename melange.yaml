@@ -3,7 +3,7 @@
 # The version below is a placeholder: the release workflow sets the real
 # version with `melange bump melange.yaml <version>` in its workspace before
 # building — nothing is committed. The workflow also stamps .release-meta/
-# (commit, date, source-date-epoch) into the source tree so the binary is
+# (version, commit, date, source-date-epoch) into the source tree so the binary is
 # built with tools/release-build.sh, the exact code path used for the
 # release binaries: the apk payload is bit-identical to tobby-linux-<arch>.
 package:
@@ -43,7 +43,8 @@ pipeline:
       DATE="$(cat .release-meta/date)"
       SOURCE_DATE_EPOCH="$(cat .release-meta/source-date-epoch)"
       export SOURCE_DATE_EPOCH
-      sh tools/release-build.sh "v${{package.version}}" "$COMMIT" "$DATE" dist
+      VERSION="$(cat .release-meta/version)"
+      sh tools/release-build.sh "$VERSION" "$COMMIT" "$DATE" dist
       case "${{build.arch}}" in
         x86_64)  goarch=amd64 ;;
         aarch64) goarch=arm64 ;;

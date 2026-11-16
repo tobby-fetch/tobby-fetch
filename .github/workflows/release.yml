@@ -350,7 +350,15 @@ jobs:
           echo "${{ needs.build.outputs.date }}" > .release-meta/date
           echo "${{ needs.build.outputs.source_date_epoch }}" > .release-meta/source-date-epoch
           version="${{ needs.build.outputs.version }}"
-          melange bump melange.yaml "${version#v}"
+          # The binary is stamped with the release version as is; the apk
+          # takes it in apk form, where a pre-release is "_rc1", not "-rc.1"
+          # (melange refuses the SemVer spelling).
+          echo "${version}" > .release-meta/version
+          apkver="$(printf '%s' "${version#v}" | sed -E 's/-(alpha|beta|rc)\.?([0-9]+)$/_\1\2/')"
+          case "${apkver}" in
+            *-*) echo "::error::no apk spelling for ${version}"; exit 1 ;;
+          esac
+          melange bump melange.yaml "${apkver}"
       - name: Build the signed tobby apk (melange, amd64 + arm64)
         env:
           SOURCE_DATE_EPOCH: ${{ needs.build.outputs.source_date_epoch }}
