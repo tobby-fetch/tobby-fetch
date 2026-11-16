@@ -34,7 +34,7 @@ field() {
 
 version="$(field version)"
 app="$(field appVersion)"
-released="$(sed -n 's/^## \[\([0-9][0-9.]*\)\].*/\1/p' "$changelog" | head -n 1)"
+released="$(sed -n 's/^## \[\([0-9][0-9A-Za-z.-]*\)\].*/\1/p' "$changelog" | head -n 1)"
 
 fail=0
 if [ -z "$version" ] || [ -z "$app" ]; then
@@ -56,7 +56,7 @@ fi
 # And the install documentation, which pins the chart version in copyable
 # commands: a page that tells people to install a chart that was never
 # published, or an old one, is the same defect in prose.
-stale="$(grep -rnoE 'charts/tobby( --version |:)[0-9]+\.[0-9]+\.[0-9]+' \
+stale="$(grep -rnoE 'charts/tobby( --version |:)[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?' \
     deploy/README.md website/src/content/docs 2>/dev/null |
     grep -vE "( --version |:)${app}\$" || true)"
 if [ -n "$stale" ]; then
