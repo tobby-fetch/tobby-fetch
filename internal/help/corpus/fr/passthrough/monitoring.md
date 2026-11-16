@@ -25,9 +25,11 @@ sans clé comme le sont les SBOM :
 cosign verify-blob --new-bundle-format \
   --bundle metrics-reference.json.bundle \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/' \
+  --certificate-identity https://github.com/tobby-fetch/tobby-fetch/.github/workflows/release.yml@refs/tags/v1.0.0 \
   metrics-reference.json
 ```
+
+Remplacez `v1.0.0` par la version vérifiée : l'identité est épinglée sur le tag de la version, car une répétition du workflow de release signe des fichiers identiques depuis une branche du même dépôt.
 
 Le référentiel est **généré à partir du registre en marche** (`go run
 ./tools/metricsref`), et un test échoue si une famille existe que le référentiel

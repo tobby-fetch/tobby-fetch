@@ -138,8 +138,8 @@ cosign verify ghcr.io/tobby-fetch/charts/tobby@sha256:... \
   --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
 
 # the version you install must resolve to the digest you verified
-helm show chart oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0
-helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0 \
+helm show chart oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
   --namespace tobby --create-namespace
 ```
 
@@ -160,7 +160,7 @@ de version indiquent le digest de l'index :
 # the index: signed, with SLSA provenance from the trusted container builder
 cosign verify ghcr.io/tobby-fetch/binaries/tobby@sha256:... \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
+  --certificate-identity https://github.com/tobby-fetch/tobby-fetch/.github/workflows/release.yml@refs/tags/v1.0.0
 slsa-verifier verify-image ghcr.io/tobby-fetch/binaries/tobby@sha256:... \
   --source-uri github.com/tobby-fetch/tobby-fetch \
   --source-tag v1.0.0
@@ -169,7 +169,7 @@ slsa-verifier verify-image ghcr.io/tobby-fetch/binaries/tobby@sha256:... \
 child=$(crane digest --platform linux/amd64 ghcr.io/tobby-fetch/binaries/tobby@sha256:...)
 cosign verify-attestation --type cyclonedx ghcr.io/tobby-fetch/binaries/tobby@$child \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
+  --certificate-identity https://github.com/tobby-fetch/tobby-fetch/.github/workflows/release.yml@refs/tags/v1.0.0
 ```
 
 Les binaires qu'il contient sont ceux listés dans `SHA256SUMS` et couverts par
@@ -188,9 +188,11 @@ cosign verify-blob \
   --new-bundle-format \
   --bundle tobby-linux-amd64.cdx.json.bundle \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/' \
+  --certificate-identity https://github.com/tobby-fetch/tobby-fetch/.github/workflows/release.yml@refs/tags/v1.0.0 \
   tobby-linux-amd64.cdx.json
 ```
+
+Remplacez `v1.0.0` par la version vérifiée : l'identité est épinglée sur le tag de la version, car une répétition du workflow de release signe des fichiers identiques depuis une branche du même dépôt.
 
 Sortie attendue : `Verified OK`. Les SBOM propres à l'image sont générés
 nativement par apko à la construction (SPDX) et joints à la version. Une fois
