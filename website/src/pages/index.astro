@@ -21,7 +21,10 @@ const status = parse(statusRaw) as {
   version: string;
   features: { id: string; status: string; milestone?: number }[];
 };
-const releaseLine = status.version.replace(/^v/, "").split(".").slice(0, 2).join(".");
+const bare = status.version.replace(/^v/, "");
+// A pre-release is named in full: "v1.0 released" is not what a release
+// candidate is.
+const releaseLine = bare.includes("-") ? bare : bare.split(".").slice(0, 2).join(".");
 const delivered = Math.max(
   ...status.features
     .filter((f) => f.status === "available")

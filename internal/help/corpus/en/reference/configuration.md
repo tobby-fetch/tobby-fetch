@@ -129,6 +129,15 @@ Value syntax in the environment:
 | `registries.allowlist` | list of host patterns | *(absent = unrestricted)* | *(file only)* | Bounds which registries the instance may contact at all, evaluated on the host actually reached. Absent and `[]` are different statements: absent means no restriction (reported as undeclared), `[]` means nothing is allowed. Globs: `*` within a DNS label, `**` across labels. |
 | `registries.credentialsFile` | path | *(none)* | *(file only)* | A `kubernetes.io/dockerconfigjson` payload; credentials are looked up by the effective host contacted, whichever direction the bytes travel. Must sit outside the transportable store. |
 
+### Consumption aids
+
+Configuration file only. See [consumption aids](../../passthrough/consumption-aids/).
+
+| Key | Type | Default | Purpose |
+|---|---|---|---|
+| `consumption.registry` | bare host | *(none: `destination.registry`)* | The address the zone's clients pull from, when it is not `destination.registry`: an instance serving its own `/v2/` to the zone (UC3), or a zone registry reached under another name. A bare host or `host:port`, never a URL. |
+| `consumption.caFile` | absolute path | *(none)* | Path, **on the cluster nodes**, of the CA certificate that signs that registry. Written as-is into the snippet's `configs.<host>.tls.ca_file`; never read by Tobby. |
+
 ### Content flow
 
 | Key | Type | Default | Env | Purpose |
@@ -157,7 +166,8 @@ bypass. The full model is on
 | Key | Type | Purpose |
 |---|---|---|
 | `trust.roots[]` | list | Trusted public keys (cosign, key-based). Each root has a `name` and exactly one of `key` (inline PEM), `keyFile`, `keyURL` (`https://` only, fetched and cached at configuration time — never at verification time). Multiple roots enable rotation by overlap. |
-| `trust.scopes[]` | list | Declared relaxation perimeters, evaluated in order, first match wins. Each scope has a `name`, `repositories` glob patterns on the recipe's **canonical nominal** cookbook path (`*` within a segment, `**` across; a port's `:` is written `_`), and must change something: `allowUnsigned: true` and/or a `roots` restriction. Relaxed scopes are reported on every surface, never silent. |
+| `trust.scopes[]` | list | Declared relaxation perimeters, evaluated in order, first match wins. Each scope has a `name`, `repositories` glob patterns on the recipe's **canonical nominal** cookbook path (`*` within a segment, `**` across; a port's `:` is written `_`), and must change something: `allowUnsigned: true` and/or a `roots` restriction. A root listed by a scope's `roots` is **reserved** to the scopes listing it: it verifies nowhere else. Outside every scope, and in a scope without `roots`, recipes verify against the default set — the roots no scope lists (since v1.0.0-rc.1, B-057). Relaxed scopes are reported on every surface, never silent. |
+| `trust.requireIngredientSignatures` | bool (default `false`) | Opt-in hardening of ingredients' **own** signatures. Off, an ingredient's signature is copied along, verified for information against the applicable roots and recorded (verified by / present, not verifiable / none) — it never blocks: the recipe signature pins every ingredient digest. On, every ingredient must carry a signature the applicable roots verify (same scope resolution as a recipe, on the ingredient's canonical nominal path), or its recipe is blocked whole with `TBY-SIG-001` — identically at synchronization, before every push, in `media verify` and in the media import. An ingredient inside an `allowUnsigned` scope is not required to carry one. Always shown by `tobby config dump`; the posture is logged at startup. |
 
 ### Vulnerability scanning
 
@@ -175,7 +185,11 @@ refine the instance level; the model is on
 |---|---|---|---|---|
 | `scan.mode` | string | `warn` | `TOBBY_SCAN_MODE` | `warn` (advisory) or `block`: a violating item is then refused — never pushed, never written on a medium — and so is an item that could not be scanned. A threshold posed by the Retriever or a recipe makes the policy blocking for its perimeter even under `warn`. |
 | `scan.threshold` | number | `7.0` | `TOBBY_SCAN_THRESHOLD` | CVSS base score from which a finding violates the policy, inclusive, a finite number from `0` to `10` (`NaN` and infinities are refused, in the file as in the variable). A finding without a CVSS score sits at the lower bound of its severity band (`LOW` 0.1, `MEDIUM` 4.0, `HIGH` 7.0, `CRITICAL` 9.0); an `UNKNOWN` one is reported as unscored, never compared. |
-| `scan.exceptions[]` | list | none | — | CVE identifiers tolerated beyond the threshold: `id`, optional `justification`, optional `expires` (RFC 3339). Added to the Retriever's own list. An expired exception no longer applies and is reported as expired. Configuration file only. |
+| `scan.exceptions[]` | list | none | — | CVE identifiers tolerated beyond the threshold, added to the Retriever's own list. Configuration file only. Each entry: `id` (`CVE-<year>-<number>`); `justification`, **required**; `expires` (RFC 3339), **required** — past it the exception no longer applies, the item it covered is refused again under a blocking policy, and that is reported, audited (`scan.exception_expired`) and counted; `scope`, optional (below). An entry without `expires` or `justification` refuses the start, naming the entry (since v1.0.0-rc.1, R-15). The same `id` may be listed for several scopes, not twice for one. |
+| `scan.exceptions[].scope.digest` | string | none | — | Narrows the exception to one manifest digest, `sha256:<64 hex>`. |
+| `scan.exceptions[].scope.repository` | string | none | — | Narrows it to the ingredients whose nominal repository, in canonical form (`docker.io` for Docker Hub aliases, a port written `host_5000`, no scheme, tag or digest), matches this pattern — the glob grammar of `trust.scopes` (`*` within a segment, `**` across). |
+| `scan.exceptions[].scope.recipe` | string | none | — | Narrows it to one recipe, by `name` or `name@version`. The criteria present combine with AND; no scope applies the exception to every item. An exception whose scope excludes an item is reported beside the finding (`TBY-SCN-026`). |
+| `scan.vex[]` | list | none | — | Local [OpenVEX](https://openvex.dev) v0.2.0 documents whose `not_affected` statements carrying a `justification` become exceptions scoped by their products ([how](../../security/vulnerability-scanning/#openvex-documents)). Each entry: `path`, an absolute local path — never a URL, never fetched; `expires` (RFC 3339), **required**, the expiry of every exception the document yields. A document that cannot be read or validated refuses the start (`TBY-SCN-027`). Configuration file only. |
 | `scan.maxDbAge` | duration | `168h` | `TOBBY_SCAN_MAX_DB_AGE` | Maximum age of the vulnerability database, measured from the build timestamp it records (R-13). Must be positive. |
 | `scan.maxDbAgeAction` | string | `warn` | `TOBBY_SCAN_MAX_DB_AGE_ACTION` | Beyond `maxDbAge`: `warn` reports staleness on the report, the UI and the metrics; `block` refuses items scanned with a stale database (`TBY-SCN-004`), whatever `scan.mode` says. |
 | `scan.timeout` | duration | `10m` | `TOBBY_SCAN_TIMEOUT` | Bound of one scan, the scanner process included. A timed-out item is reported not scanned. |
@@ -206,11 +220,26 @@ listed here are served under `/files/<name>/`.
 | `files.filesets[].platform` | e.g. `linux/amd64` | Selects the platform manifest of a multi-platform FileSet; an ambiguous index without it is refused. |
 | `files.filesets[].anonymous` | bool | Opts this FileSet into unauthenticated reads (bare-host bootstrap) — reported, never silent. |
 
+### Hardening
+
+Configuration file only. Two switches, both off by default, that **remove a
+way in** (SRS FR-098). They are hardening, not relaxation: setting them asks
+for no acknowledgement, but each is reported like every security setting —
+in the startup log, in `tobby config dump` (both keys always shown, `false`
+included), on the screens whose action it disables, and in the
+`tobby_hardening_enabled` metric. See the
+[security model](../../security/model/#hardening-switches).
+
+| Key | Type | Default | Purpose |
+|---|---|---|---|
+| `hardening.disableUnitImport` | bool | `false` | Refuses unit imports (the `/import` screen, `POST /api/v1/import` and its inspection) and FileSet packing on every surface — the `/filesets` form, `POST /api/v1/filesets/pack` **and** [`tobby fileset pack`](../../reference/cli/#tobby-fileset-pack), which reads the same configuration file (`--config`, or the default path when it exists) — and the OCI image layout import: the `/admin/oci-layout` form, `POST /api/v1/oci-layout/import` and [`tobby import`](../../reference/cli/#tobby-import), which reads it too. Each refusal answers [TBY-POL-005](../../reference/errors/#tby-pol-005) naming the setting and is audited as `hardening.refused`. A unit-import or layout-import task queued before the switch was set refuses too when it resumes. Recipe synchronizations and media imports are unaffected. |
+| `hardening.disableRegistryPush` | bool | `false` | Makes the embedded registry read-only for **every client and every role, administrators included**: every `/v2/` write — blob upload, chunk, commit, cross-repository mount, manifest put, deletion — answers the OCI `DENIED` error carrying [TBY-POL-006](../../reference/errors/#tby-pol-006), audited as `hardening.refused`. Pulls are unaffected, and so are recipe synchronizations, which write the store directly. Seeding this instance by push (UC3) — including another Tobby promoting into it — becomes impossible, by design. |
+
 ### UI, logging, shutdown
 
 | Key | Type | Default | Env | Purpose |
 |---|---|---|---|---|
-| `ui.themeOverride` | path | *(none)* | `TOBBY_UI_THEME_OVERRIDE` | Operator stylesheet served after the embedded design tokens: rebranding without rebuild. The default tokens pass WCAG AA; overrides carry that responsibility. |
+| `ui.themeOverride` | path | *(none)* | `TOBBY_UI_THEME_OVERRIDE` | Operator stylesheet served after the embedded design tokens: rebranding without rebuild. The default tokens pass WCAG AA; overrides carry that responsibility. The overridable tokens are listed in [Theming](../theming/). |
 | `ui.showUpcoming` | bool | `false` | `TOBBY_UI_SHOW_UPCOMING` | Renders future-milestone navigation entries as inert, labeled placeholders (demo mode). Production navigation shows only what works. |
 | `logging.media.file` | store-relative path | `_tobby/logs/operations.log` | *(file only)* | Where the operation log is written **on the transport medium** (mirror mode only): the return audit channel, so whoever receives the medium can read what was done with it. The path must lie outside the media manifest's coverage — under `_tobby/` — and the instance refuses to start otherwise: a log inside coverage invalidates, line by line, the inventory the destination verifies. |
 | `logging.media.maxSize` | size | `10MiB` | *(file only)* | Size-based rotation threshold of that log. |
@@ -221,6 +250,14 @@ listed here are served under `/files/<name>/`.
 
 There is no configuration key for the UI language: the CLI follows the host
 locale, the web UI negotiates its language per user.
+
+### Operations
+
+| Key | Type | Default | Env | Purpose |
+|---|---|---|---|---|
+| `diagnostics.logRecords` | int | `2000` | *(file only)* | Size of the in-memory window of recent log records the [diagnostic bundle](../../passthrough/diagnostics/) carries. 1 to 100000. A window, never an archive: it is lost when the process ends. |
+| `diagnostics.tasks` | int | `20` | *(file only)* | How many of the most recent task reports the bundle carries. 1 to 500. |
+| `clock.skewTolerance` | duration | `1h` | *(file only)* | How far the local clock may be earlier than the build time of the binary or the resolution time of a medium before it is [found implausible](../../air-gap/clock-check/). 0 to `7d`. The check itself cannot be switched off: it warns and records, it changes no verdict. |
 
 ## Checking the effective configuration
 

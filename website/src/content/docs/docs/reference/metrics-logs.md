@@ -3,25 +3,22 @@ title: Metrics and logs
 description: The metrics the instance exposes today, the JSON log schema and its stable correlation keys, and what to alert on.
 sidebar:
   order: 5
-  badge:
-    text: Partial
-    variant: caution
 ---
 
 One listener, two observation surfaces: `/metrics` (OpenMetrics) and the
-structured JSON logs on stdout. This page lists what the current v0.5.x
-series actually exposes, extracted from `internal/metrics` and
-`internal/logging`.
+structured JSON logs on stdout. This page lists what this release actually
+exposes, extracted from `internal/metrics` and `internal/logging`.
 
 ## Metrics
 
-:::caution[Not contractual yet]
-The metric list below is real and accurate for the current series, but it
-is **not a stability contract** before the supervision kit ships (R-11,
-milestone 7) — names and labels may still change between minor versions.
-The log schema's stable keys and the audit schema are contractual today;
-the metrics are not yet. Track it on the
-[project status](../../discover/status/) page.
+:::note[A contract since version 1.0]
+The `tobby_*` families below are versioned, like the REST API: renaming or
+removing one is a breaking change, adding one is not. The reference
+`metrics-reference.json` — every family, its type, labels and their closed
+value sets, unit, the requirement it serves and when it is present — is
+**generated from the running registry** and published, signed, with every
+release; a test fails when it and the endpoint disagree. See
+[Supervise an instance](../../passthrough/monitoring/).
 :::
 
 `GET /metrics` serves the OpenMetrics exposition (content negotiation on
@@ -50,9 +47,21 @@ Domain metrics registered today:
 | `tobby_scan_db_present` | gauge | — | `1` when a vulnerability database is present, `0` in the absent-database degraded mode. |
 | `tobby_scan_db_age_seconds` | gauge | — | Database age from the build timestamp it records (R-13). Exposed **only while a database is present**: `tobby_scan_db_present` tells "absent" from "fresh". |
 | `tobby_scan_db_stale` | gauge | — | `1` while the age exceeds `scan.maxDbAge`; exposed with the age. |
+| `tobby_sync_runs_total` | counter | `outcome` = `success` \| `failure` | Synchronization runs (a mirror trigger or a passthrough cycle). A run fails when it errored or left an item failed. Both series exist from the first scrape. |
+| `tobby_sync_duration_seconds` | histogram | `outcome` = `success` \| `failure` | Duration of synchronization runs, in seconds. |
+| `tobby_sync_last_success_timestamp_seconds` | gauge | — | End of the last successful run, Unix seconds. **Absent until one has succeeded** since the process started. |
+| `tobby_sync_ingredients` | gauge | `status` = `new` \| `outdated` \| `up_to_date` | Ingredients of the last run by status (FR-026). Absent until a run has completed. |
+| `tobby_sync_parallelism` | gauge | — | The configured `sync.parallelism`, to compare with `tobby_sync_transfers_inflight`. |
+| `tobby_server_certificate_expiry_timestamp_seconds` | gauge | — | `NotAfter` of the certificate the listener presents (FR-082), self-signed fallback included. Read at each scrape, so a replacement is followed; absent while the listener serves plain HTTP. |
+| `tobby_clock_implausible` | gauge | `anchor` = `build` \| `medium` | `1` while the local clock is found earlier than the anchor beyond `clock.skewTolerance`, `0` otherwise (FR-096). `build` is checked at start, then every five minutes; `medium` is judged against the latest resolution time among the media opened since the start (a blocked one excluded), and is absent until one has been opened. |
+| `tobby_diagnostics_bundles_total` | counter | `outcome` = `written` \| `refused` \| `failed` | [Diagnostic bundles](../../passthrough/diagnostics/): written, refused by the redaction check (`TBY-DIA-002`), or failed (`TBY-DIA-001`). All three exist from the first scrape. |
+| `tobby_scan_exceptions` | gauge | `state` = `active` \| `expired`, `source` = `instance` \| `retriever` \| `vex` | Vulnerability exceptions in configuration (R-15): the instance's `scan.exceptions`, those born of the `scan.vex` OpenVEX documents, and those of the last served Retriever (none counted before the first run). An unbounded Retriever exception counts as `active` — it applies. Computed at every scrape from the configuration and the clock, so an expiry that passes on a running instance moves a series from `active` to `expired` without a restart. All six series exist from the first scrape. |
+| `tobby_scan_reblocked_items_total` | counter | — | Items refused by a blocking policy because an exception that matched one of their violating findings has expired (R-15) — each also a `scan.exception_expired` audit record. At zero from the first scrape. |
 | `tobby_integrity_verifications_total` | counter | `verdict` = `clean` \| `defects` | Completed on-demand store verifications ([`tobby store verify`](../cli/#tobby-store-verify), the Store integrity screen, `POST /api/v1/store/verify`). Orphaned content alone never makes a verdict `defects`. Both verdicts exist from the first scrape, at zero. |
 | `tobby_integrity_last_verification_timestamp_seconds` | gauge | — | End time of the last completed verification, in Unix seconds. **Absent until one has completed**: a value of `0` would read as 1970, a number where the truth is "never verified" — alert on absence, or on age. |
 | `tobby_assurance_reduced_recipes` | gauge | `scope` | Recipes currently held under [reduced assurance](../../security/reduced-assurance/), by the declared trust scope that admitted them. Computed at every scrape from the recipe graph, never counted by events. Every scope that allows unsigned recipes is present from the first scrape, at zero while it holds nothing, so clearing the last one is as visible as admitting the first. |
+| `tobby_store_unmanaged_repositories` | gauge | `class` = `unit-import` \| `seed` | Repositories of the store **not managed by a recipe** (FR-098), by provenance class: `unit-import` counts unit imports and FileSets packed on this instance, `seed` content pushed through `/v2/` (and repositories a store written before v1.0 never classified). Recipe-managed content — reduced assurance included, counted by `tobby_assurance_reduced_recipes` — is the managed side and is not counted. Read from the store at scrape time (at most every 10 seconds), never counted by events; both classes exist from the first scrape, at zero when the store holds none, and the family is absent from a scrape that could not read the store. |
+| `tobby_hardening_enabled` | gauge | `setting` = `disableUnitImport` \| `disableRegistryPush` | `1` for each [hardening switch](../configuration/#hardening) set, `0` otherwise. Both settings, always: "off" is a value an alert can read, never an absence. |
 | `tobby_auth_attempts_total` | counter | `method` = `basic` \| `token` \| `oidc` \| `saml`, `outcome` = `success` \| `failure` \| `expired` | Credential checks on the machine surfaces and sign-ins on the UI (R-14). `expired` is a token refused past its expiry. Every series exists from the first scrape. |
 | `tobby_auth_sessions_expired_total` | counter | `reason` = `idle` \| `lifetime` | UI sessions ended by `auth.session.idleTimeout` or `auth.sessionTTL` (R-14), each also a `session.expire` audit record. |
 | `tobby_auth_idp_reachable` | gauge | `method` = `oidc` \| `saml` | `1` while the identity provider answers the background probe, `0` while it does not (R-20). Absent until first probed, and absent for SAML with pinned metadata, which needs no server-to-server call. |
@@ -101,6 +110,7 @@ fixed by the log schema and safe to build extraction rules on:
 | `digest` | The content digest concerned. |
 | `assurance` | Present **only** on records concerning content admitted under a relaxed trust scope, with the value `reduced` ([reduced assurance](../../security/reduced-assurance/)). Filter on its presence to find them. |
 | `assurance_scope` | The declared trust scope behind `assurance`, on the same records and only there. |
+| `provenance` | The [provenance class](../../security/model/#hardening-switches) of the repository a record concerns — `recipe`, `unit-import` or `seed` — on the unit-import record (`unit import recorded`), the push and manifest-deletion records of the embedded registry (`manifest pushed`, `manifest deleted`), the FileSet packing record (`fileset packed`) and the removal record (`repository removed`). |
 
 Other fields are contextual per message (many notable lines carry a
 `requirement` field naming the SRS requirement they implement) and are not
@@ -114,9 +124,13 @@ record — this is what the task-detail screens and
 Audit events travel in the same stream, with their own versioned
 schema — see [Audit log](../../security/audit-log/).
 
-## What to alert on today
+## What to alert on
 
-With the means of the current series:
+The reference chart ships the rules for the conditions that matter most —
+repeated failures, no recent success, saturation, store occupancy, the
+vulnerability database and scanner, the certificate, the clock — and an
+example dashboard: see [Supervise an instance](../../passthrough/monitoring/).
+The signals behind them, and a few more:
 
 - **`readyz`** — readiness flips to 503 during startup and drain; a
   sustained 503 is an instance that cannot serve.
@@ -138,6 +152,10 @@ With the means of the current series:
 - **`tobby_scan_db_stale == 1`** — the vulnerability database has not
   crossed recently enough; findings published since it was built are
   unknown to the scanner.
+- **`increase(tobby_scan_reblocked_items_total[…]) > 0`** — an exception
+  expired and content it admitted is refused again: renew it deliberately or
+  deal with the finding. **`tobby_scan_exceptions{state="expired"} > 0`**
+  says the same before the next synchronization does.
 - **`tobby_auth_idp_reachable == 0`** — the identity provider is
   unreachable: people sign in with the local break-glass account meanwhile
   (FR-078), which **`increase(tobby_auth_local_logins_under_federation_total[…]) > 0`**
@@ -145,16 +163,17 @@ With the means of the current series:
 - **`rate(tobby_auth_attempts_total{outcome="expired"}[…]) > 0`** — a
   client still presents an expired token: replace it before it is the
   one that matters.
+- **`increase(tobby_sync_runs_total{outcome="failure"}[…])`** and
+  **`time() - tobby_sync_last_success_timestamp_seconds`** — repeated
+  failures, and a last success that is too old. The timestamp is absent
+  until a run has succeeded: that absence is "never since the start".
+- **`tobby_server_certificate_expiry_timestamp_seconds - time()`** — the
+  time left on the listener's certificate.
+- **`tobby_clock_implausible == 1`** — the clock is earlier than a date this
+  instance proves has passed; see [Detect a wrong clock](../../air-gap/clock-check/).
 - **Absence of `tobby_promotion_pushes_total` movement** (neither `pushed`
   nor `skipped` increasing) on a passthrough instance with a configured
   retriever — the reconciliation loop stopped cycling.
 - **`ERROR`-level log records**, and `WARN` records around fileset
   resolution and scheduling skips ("promotion cycle skipped" is
   informational coalescence, not a failure).
-
-:::note[Upcoming — milestone 7]
-The supervision kit (R-11: curated dashboards, alert rules, and the metric
-stability contract) and the redacted diagnostic bundle (R-30) ship with
-milestone 7. Until then, alerting is assembled from the primitives above.
-Track both on the [project status](../../discover/status/) page.
-:::

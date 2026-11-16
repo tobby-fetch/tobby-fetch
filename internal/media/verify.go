@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -57,6 +58,89 @@ type TrustDecision struct {
 	// Keys is the key set to verify against. Nil means no trust root
 	// applies, which — outside a declared scope — blocks the recipe.
 	Keys *sigverify.Keys
+	// RequireSignature is set on an INGREDIENT decision only
+	// (Trust.DecideIngredient): trust.requireIngredientSignatures is on
+	// and no allowUnsigned scope covers the ingredient, so it must carry
+	// a signature Keys verifies or its recipe is blocked (B-062).
+	RequireSignature bool
+	// Excluded lists, in configuration order, the configured trust roots
+	// this decision does NOT apply: the roots reserved to other scopes
+	// and, inside a scope that lists its own roots, the roots of the
+	// default set. They never admit anything here. They are tried only
+	// after a refusal, to tell the operator which root the signature does
+	// verify against (B-057: an actionable refusal) — see
+	// SignatureElsewhere.
+	Excluded []ExcludedRoot
+}
+
+// ExcludedRoot is one configured trust root a decision does not apply.
+type ExcludedRoot struct {
+	// Name is the root's configured name (trust.roots[].name).
+	Name string
+	// Scopes names the declared scopes that list the root, which reserves
+	// it to them. Empty for a root of the default set (no scope lists it).
+	Scopes []string
+	// Keys is the root's key material.
+	Keys *sigverify.Keys
+}
+
+// NoKeyDetail is the "fingerprints" detail of a TBY-SIG-001 raised with no
+// key to try. It must not claim that no trust root is configured when
+// roots are configured but every one is reserved to a scope (B-057).
+func NoKeyDetail(d TrustDecision) string {
+	if len(d.Excluded) > 0 {
+		return "none — every configured trust root is reserved to a trust scope"
+	}
+	return "none — no trust root is configured"
+}
+
+// Unsigned reports whether repo@manifestDigest carries no signature at
+// all, in either published layout: the one thing an allowUnsigned scope
+// admits when no trust root applies to it (Keys nil, every root reserved
+// elsewhere or none configured). A signature that is present and that no
+// applicable root verifies is not "unsigned": it is refused, exactly as
+// it is when keys apply (B-068) — otherwise a scope's verdict on a signed
+// recipe would depend on whether the instance happens to hold roots for
+// other scopes. A lookup that fails is not "unsigned" either: it fails
+// closed.
+func Unsigned(ctx context.Context, src sigverify.Manifests, repo, manifestDigest string) bool {
+	return sigverify.Inspect(ctx, src, repo, manifestDigest, nil).State == sigverify.StateNone
+}
+
+// SignedNoKeyDetail is the "fingerprints" detail of a TBY-SIG-001 raised
+// inside an allowUnsigned scope with no key to try, on a subject that
+// carries a signature (Unsigned is false).
+func SignedNoKeyDetail(d TrustDecision) string {
+	return NoKeyDetail(d) + "; the subject carries a signature, and allowUnsigned admits only a subject that carries none"
+}
+
+// SignatureElsewhere names the excluded trust root that verifies the
+// subject's signature, for the refusal message only: it returns the
+// "reserved" (root name and key fingerprint) and "reservedto" (the scopes
+// the root is reserved to, empty for a root of the default set)
+// parameters of TBY-SIG-001, both empty when no excluded root verifies.
+//
+// It never changes a verdict: the caller has already refused. Any error
+// here — no signature, a transport failure — only means there is nothing
+// more to say.
+func SignatureElsewhere(ctx context.Context, src sigverify.Manifests, repo, manifestDigest string, d TrustDecision) (reserved, reservedTo string) {
+	if len(d.Excluded) == 0 {
+		return "", ""
+	}
+	sets := make([]*sigverify.Keys, 0, len(d.Excluded))
+	for _, r := range d.Excluded {
+		sets = append(sets, r.Keys)
+	}
+	fp, err := sigverify.Verify(ctx, src, repo, manifestDigest, sigverify.Union(sets...))
+	if err != nil {
+		return "", ""
+	}
+	for _, r := range d.Excluded {
+		if r.Keys != nil && slices.Contains(r.Keys.Fingerprints(), fp) {
+			return r.Name + " (" + fp + ")", strings.Join(r.Scopes, ", ")
+		}
+	}
+	return "", ""
 }
 
 // Trust is the destination instance's trust policy.
@@ -71,6 +155,11 @@ type Trust interface {
 	// Decide returns the verdict for a recipe's nominal cookbook
 	// repository, in the canonical form trust scopes match (ADR-0013).
 	Decide(nominalRepo string) TrustDecision
+	// DecideIngredient returns the verdict for an ingredient's own
+	// signature, on the ingredient's canonical nominal repository: the
+	// same scope resolution, plus whether a verifiable signature is
+	// required (CheckIngredientSignature).
+	DecideIngredient(nominalRepo string) TrustDecision
 }
 
 // VerifyOptions parameterizes one verification.
@@ -150,7 +239,7 @@ func Verify(ctx context.Context, src Reader, opts VerifyOptions) (*Report, error
 		return finish(rep), nil
 	}
 
-	rep.Recipes = verifyRecipes(ctx, src, c, m, opts)
+	rep.Recipes, rep.Served = verifyRecipes(ctx, src, c, m, opts)
 	rep.Findings = append(rep.Findings, c.findings(m)...)
 	rep.Checked = Totals{Files: c.files, Bytes: c.bytes}
 	return finish(rep), nil
@@ -218,9 +307,15 @@ func readManifest(root *os.Root) (*Manifest, *Block) {
 		// layout announces itself.
 		return nil, unreadable(err.Error())
 	}
+	// One document, nothing after it (NFR-023): bytes no decoder reads
+	// are bytes no verification vouches for.
+	if _, terr := dec.Token(); !errors.Is(terr, io.EOF) {
+		return nil, unreadable("unexpected data after the manifest document")
+	}
 	if err := validate(&m); err != nil {
 		return nil, unreadable(err.Error())
 	}
+	m.Inventory = withoutFileSetCache(m.Inventory)
 	if m.MediaFormat != ManifestFormat {
 		return nil, &Block{Code: taxonomy.CodeMediaFormatUnsupported, Params: map[string]string{
 			"found": strconv.Itoa(m.MediaFormat), "supported": strconv.Itoa(ManifestFormat),
@@ -232,6 +327,20 @@ func readManifest(root *os.Root) (*Manifest, *Block) {
 		}}
 	}
 	return &m, nil
+}
+
+// withoutFileSetCache drops the inventory entries a v0.6.0 manifest wrote
+// for the FileSet cache (B-060). The destination never serves that tree —
+// it discards it and re-extracts from the verified blobs (FR-054, B-058) —
+// so checking it would only report its rebuild as altered bookkeeping.
+func withoutFileSetCache(inv []File) []File {
+	out := inv[:0:0]
+	for _, e := range inv {
+		if !inFileSetCache(e.Path) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func unreadable(detail string) *Block {
@@ -375,8 +484,13 @@ func logOverride(opts *VerifyOptions, b Block, guard string) {
 
 // verifyRecipes takes the per-recipe decisions (R-19): completeness and
 // checksums first, then the signature, in the order FR-054 fixes.
-func verifyRecipes(ctx context.Context, src Reader, c *checker, m *Manifest, opts VerifyOptions) []RecipeVerdict {
+//
+// The second return is the served set (B-063): the union of what the
+// PUSHABLE recipes reached, every file of it re-hashed by this walk. It is
+// nil when no recipe is pushable.
+func verifyRecipes(ctx context.Context, src Reader, c *checker, m *Manifest, opts VerifyOptions) ([]RecipeVerdict, *Served) {
 	out := make([]RecipeVerdict, 0, len(m.Recipes))
+	var served *Served
 	for i := range m.Recipes {
 		r := &m.Recipes[i]
 		id := r.Name + "@" + r.Version
@@ -393,8 +507,8 @@ func verifyRecipes(ctx context.Context, src Reader, c *checker, m *Manifest, opt
 			// instance's own verdict and never instead of it (FR-037).
 			SourceAssurance: r.Assurance,
 		}
-		w := &walk{c: c, recipe: id, seen: map[string]bool{}}
-		w.delivery(r)
+		w := &walk{c: c, recipe: id, seen: map[string]bool{}, served: newServed()}
+		signed := w.delivery(r)
 		v.Files, v.Bytes = w.files, w.bytes
 		if w.reason != nil {
 			v.Reason = w.reason
@@ -409,9 +523,29 @@ func verifyRecipes(ctx context.Context, src Reader, c *checker, m *Manifest, opt
 			continue
 		}
 		decide(ctx, src, r, &v, opts.Trust)
+		if v.Pushable {
+			// The recipe verified: its ingredients' own signatures are
+			// recorded, and block the delivery whole only under
+			// trust.requireIngredientSignatures — the rule the import's
+			// promotion applies again before any push (B-062, R-19).
+			var refusal *Reason
+			v.Ingredients, refusal = checkIngredients(ctx, src, id, signed, opts.Trust)
+			if refusal != nil {
+				v.Pushable, v.Reason = false, refusal
+			}
+		}
+		if v.Pushable {
+			if served == nil {
+				served = newServed()
+			}
+			served.merge(w.served)
+		}
 		out = append(out, v)
 	}
-	return out
+	if served != nil {
+		served.seal()
+	}
+	return out, served
 }
 
 // decide applies the signature verdict to a recipe whose content already
@@ -430,19 +564,27 @@ func decide(ctx context.Context, src Reader, r *Recipe, v *RecipeVerdict, trust 
 	}
 	v.TrustScope = d.Scope
 
+	sigSrc := &manifestSource{src: src, repo: r.ArtifactRepo}
+	refuse := func(fingerprints string) {
+		params := map[string]string{"recipe": nominal, "fingerprints": fingerprints, "scope": d.Scope}
+		if reserved, reservedTo := SignatureElsewhere(ctx, sigSrc, r.ArtifactRepo, r.Digest, d); reserved != "" {
+			params["reserved"], params["reservedto"] = reserved, reservedTo
+		}
+		v.Reason = &Reason{Code: taxonomy.CodeSignature, Params: params}
+	}
 	if d.Keys == nil {
-		if d.AllowUnsigned {
+		switch {
+		case !d.AllowUnsigned:
+			refuse(NoKeyDetail(d))
+		case !Unsigned(ctx, sigSrc, r.ArtifactRepo, r.Digest):
+			refuse(SignedNoKeyDetail(d))
+		default:
 			v.Pushable, v.Unsigned = true, true
 			v.Assurance = assurance.ForUnsigned(d.Scope)
-			return
 		}
-		v.Reason = &Reason{Code: taxonomy.CodeSignature, Params: map[string]string{
-			"recipe": nominal, "fingerprints": "none — no trust root is configured",
-			"scope": d.Scope,
-		}}
 		return
 	}
-	fingerprint, err := sigverify.Verify(ctx, &manifestSource{src: src, repo: r.ArtifactRepo}, r.ArtifactRepo, r.Digest, d.Keys)
+	fingerprint, err := sigverify.Verify(ctx, sigSrc, r.ArtifactRepo, r.Digest, d.Keys)
 	switch {
 	case err == nil:
 		v.Pushable, v.KeyFingerprint = true, fingerprint
@@ -450,10 +592,7 @@ func decide(ctx context.Context, src Reader, r *Recipe, v *RecipeVerdict, trust 
 		v.Pushable, v.Unsigned = true, true
 		v.Assurance = assurance.ForUnsigned(d.Scope)
 	default:
-		v.Reason = &Reason{Code: taxonomy.CodeSignature, Params: map[string]string{
-			"recipe": nominal, "fingerprints": fingerprintsOf(err),
-			"scope": d.Scope,
-		}}
+		refuse(fingerprintsOf(err))
 	}
 }
 
@@ -620,6 +759,7 @@ func (c *checker) findings(m *Manifest) []Finding {
 		out = append(out, Finding{Code: taxonomy.CodeMediaUncovered, Path: p,
 			Params: map[string]string{"path": p}})
 	}
+	out = append(out, c.fileSetCache()...)
 	sort.Slice(out, func(a, b int) bool {
 		if out[a].Code != out[b].Code {
 			return out[a].Code < out[b].Code
@@ -667,6 +807,134 @@ func (c *checker) uncovered() []string {
 	return out
 }
 
+// fileSetCache reports the FileSet extraction cache a medium carries
+// (A9 of the milestone-7 review). The cache is outside coverage (B-060)
+// and a guarded destination discards it before extracting anything, but
+// "outside coverage" must not mean "unreported": a tree nothing hashes is
+// a channel, in both directions — `tobby media import` leaves it on the
+// medium, and it travels back. So the cache is summarized in one finding
+// (files, bytes: ignored and rebuilt), and anything under it that does not
+// have the shape an extraction leaves — <name>/<digest>/rootfs/…,
+// <name>/<digest>/.complete — is reported as uncovered content, path by
+// path.
+func (c *checker) fileSetCache() []Finding {
+	var (
+		out   []Finding
+		files int
+		bytes int64
+	)
+	err := fs.WalkDir(c.root.FS(), FileSetCache, func(p string, d fs.DirEntry, err error) error {
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return fs.SkipAll
+		case err != nil:
+			return err
+		}
+		if err := c.ctx.Err(); err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if !cacheDirShape(strings.TrimPrefix(p, FileSetCache)) {
+				out = append(out, Finding{Code: taxonomy.CodeMediaUncovered, Path: p,
+					Params: map[string]string{"path": p}})
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !cacheFileShape(strings.TrimPrefix(p, FileSetCache+"/")) {
+			out = append(out, Finding{Code: taxonomy.CodeMediaUncovered, Path: p,
+				Params: map[string]string{"path": p}})
+			return nil
+		}
+		files++
+		if info, ierr := d.Info(); ierr == nil {
+			bytes += info.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		p := FileSetCache + " (not fully readable: " + err.Error() + ")"
+		out = append(out, Finding{Code: taxonomy.CodeMediaUncovered, Path: p,
+			Params: map[string]string{"path": p}})
+	}
+	if files > 0 {
+		out = append(out, Finding{Code: taxonomy.CodeMediaFileSetCache, Path: FileSetCache,
+			Params: map[string]string{
+				"path": FileSetCache, "files": strconv.Itoa(files), "bytes": strconv.FormatInt(bytes, 10),
+			}})
+	}
+	return out
+}
+
+// cacheDirShape accepts the directories an extraction leaves: the cache
+// root, <name>, <name>/<digest>, and anything under <name>/<digest>/rootfs.
+// rel is the path below meta/fileserve, with its leading slash.
+func cacheDirShape(rel string) bool {
+	if rel == "" {
+		return true
+	}
+	parts := strings.Split(strings.TrimPrefix(rel, "/"), "/")
+	switch {
+	case !cacheNameShape(parts[0]):
+		return false
+	case len(parts) == 1:
+		return true
+	case !cacheDigestShape(parts[1]):
+		return false
+	case len(parts) == 2:
+		return true
+	}
+	return parts[2] == "rootfs"
+}
+
+// cacheFileShape accepts the files an extraction leaves: the completion
+// marker of a digest directory, and anything inside its rootfs.
+func cacheFileShape(rel string) bool {
+	parts := strings.Split(rel, "/")
+	if len(parts) < 3 || !cacheNameShape(parts[0]) || !cacheDigestShape(parts[1]) {
+		return false
+	}
+	if len(parts) == 3 {
+		return parts[2] == ".complete"
+	}
+	return parts[2] == "rootfs"
+}
+
+// cacheNameShape is the FileSet server's directory naming (fileserve
+// sanitizeName): lower-case alphanumerics, dots and dashes, or "_" and
+// sixteen hex digits.
+func cacheNameShape(seg string) bool {
+	if h, ok := strings.CutPrefix(seg, "_"); ok {
+		return len(h) == 16 && isLowerHex(h)
+	}
+	if seg == "" || len(seg) > 100 || seg[0] == '.' || seg[0] == '-' {
+		return false
+	}
+	for i := range len(seg) {
+		ch := seg[i]
+		if (ch < 'a' || ch > 'z') && (ch < '0' || ch > '9') && ch != '.' && ch != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// cacheDigestShape is a digest directory: "sha256_" and 64 hex digits.
+func cacheDigestShape(seg string) bool {
+	h, ok := strings.CutPrefix(seg, "sha256_")
+	return ok && len(h) == 64 && isLowerHex(h)
+}
+
+func isLowerHex(s string) bool {
+	for i := range len(s) {
+		ch := s[i]
+		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 // walk is the reachability walk of one recipe: what this delivery reaches
 // on the medium, checked as it is discovered. It stops at the first
 // failure — the recipe is blocked whole either way (R-19), and the report
@@ -678,18 +946,38 @@ type walk struct {
 	reason *Reason
 	files  int
 	bytes  int64
+	// served is what this recipe reached and checked: merged into the
+	// report's served set only if the recipe ends up pushable.
+	served *Served
 }
 
-// delivery walks the four things a delivery is made of: the recipe
-// artifact, its signature artifacts, its ingredients, and everything those
-// reach.
-func (w *walk) delivery(r *Recipe) {
+// delivery walks the five things a delivery is made of: the recipe
+// artifact, its signature artifacts, its ingredients, the ingredients' own
+// signature artifacts (B-062: copied along so a consumer in the zone can
+// verify an upstream-signed image), and everything those reach.
+//
+// The ingredients are the ones the recipe document inside the artifact
+// pins, read once the artifact has checked out, and the medium's
+// bookkeeping must agree with them (B-066): an ingredient only the
+// unsigned recipe graph names is never walked, never checked for a
+// signature, and never served. It returns that list.
+func (w *walk) delivery(r *Recipe) []signedIngredient {
 	w.root(r.ArtifactRepo, r.Digest, r.ArtifactTag)
 	w.signatures(r.ArtifactRepo, r.Digest)
-	for i := range r.Ingredients {
-		ing := &r.Ingredients[i]
-		w.root(ing.Repo, ing.Digest, ing.Tag)
+	if w.reason != nil {
+		return nil
 	}
+	signed, reason := w.signedIngredients(r)
+	if reason != nil {
+		w.fail(reason)
+		return nil
+	}
+	for i := range signed {
+		ing := &signed[i]
+		w.root(ing.Repo, ing.Digest, ing.Tag)
+		w.signatures(ing.Repo, ing.Digest)
+	}
+	return signed
 }
 
 // root walks one required manifest root and its tag references.
@@ -706,6 +994,13 @@ func (w *walk) root(repo, dgst, tag string) {
 		w.optionalTree(tagIndexDir(repo, tag))
 	}
 	w.manifest(repo, dgst, true)
+	if tag != "" && w.reason == nil {
+		// The tag is served only while it names the pinned digest it was
+		// verified at; a tag the medium points elsewhere is not.
+		if d, ok := w.currentDigest(repo, tag); ok && d == dgst {
+			w.served.repo(repo).tags[tag] = d
+		}
+	}
 }
 
 // signatures walks the cosign artifacts that travel with the recipe
@@ -726,6 +1021,9 @@ func (w *walk) signatures(repo, dgst string) {
 		w.optionalTree(tagIndexDir(repo, tag))
 		if d, ok := w.currentDigest(repo, tag); ok {
 			w.manifest(repo, d, true)
+			if w.reason == nil {
+				w.served.repo(repo).tags[tag] = d
+			}
 		}
 	}
 }
@@ -796,6 +1094,7 @@ func (w *walk) manifest(repo, dgst string, required bool) {
 		}})
 		return
 	}
+	w.served.repo(repo).manifests[dgst] = true
 	for i := range doc.Manifests {
 		w.manifest(repo, doc.Manifests[i].Digest, false)
 	}
@@ -822,6 +1121,9 @@ func (w *walk) blob(repo, dgst string) {
 	}
 	w.file(layerLinkPath(repo, h))
 	w.file(blobPath(h))
+	if w.reason == nil {
+		w.served.repo(repo).blobs[dgst] = true
+	}
 }
 
 // file checks one required file and accounts for it.

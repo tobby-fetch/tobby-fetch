@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
+	"github.com/tobby-fetch/tobby-fetch/internal/clock"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
@@ -24,6 +25,8 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/runid"
+	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -389,13 +392,14 @@ func openMedia(ctx context.Context, cfg *config.Config, stderr io.Writer, intent
 	// from the medium, which has none as far as this code is concerned.
 	trustCache := ""
 	if cfg.State.Root != "" {
-		trustCache = filepath.Join(cfg.State.Root, "trust-cache")
+		trustCache = statedir.Path(cfg.State.Root, statedir.TrustCache)
 	}
 	trust, err := engine.LoadTrust(cfg.Trust, trustCache, egress)
 	if err != nil {
 		op.close()
 		return nil, err
 	}
+	logIngredientSignaturePosture(ctx, op.logger, trust)
 	// The remote access is built without substitutions on purpose: an
 	// isolated zone reads nothing upstream (NFR-019), and the media path
 	// never fetches — it pushes what the medium already carries.
@@ -415,6 +419,20 @@ func openMedia(ctx context.Context, cfg *config.Config, stderr io.Writer, intent
 		return nil, err
 	}
 	eng.SetMediaImport(cfg.Zone, imports)
+
+	// FR-096: the clock is judged against the medium's resolution time as
+	// soon as the verification has read the manifest. The warning goes to
+	// the operator on stderr — the report on stdout stays the report — and
+	// the record and the audit event go through the command's logger, which
+	// in an import is teed onto the medium's own log.
+	mon := clock.NewMonitor(time.Duration(cfg.Clock.SkewTolerance))
+	mon.Observe(func(r *clock.Record) {
+		clock.Report(ctx, op.logger, r)
+		if te := r.Error(); te != nil {
+			_, _ = fmt.Fprint(stderr, "warning: ", taxonomy.Text(cliLang(), te))
+		}
+	})
+	eng.SetMediaVerdicts(func(rep *media.Report) { observeMediumClock(mon, rep) })
 
 	if intent == importMedium {
 		dest, dErr := engine.NewDestination(cfg.Destination, cfg.Registries, allowlist, egress)
@@ -495,6 +513,7 @@ func writeReport(cmd *cobra.Command, report *reportFlag, rep *media.Report) erro
 		}
 		_, _ = fmt.Fprintf(out, "  BLOCKED   %s@%s — %s at %s%s\n", v.Name, v.Version, v.Reason.Code, where, assuranceNote(v))
 	}
+	writeIngredientSignatures(out, rep)
 	for i := range rep.Findings {
 		_, _ = fmt.Fprintf(out, "  reported  %s %s (never pushed)\n", rep.Findings[i].Code, rep.Findings[i].Path)
 	}
@@ -517,6 +536,9 @@ func writeImportReport(cmd *cobra.Command, report *reportFlag, task *tasks.Task)
 		if item.Assurance.Reduced() {
 			mark = " [reduced assurance: scope " + item.Assurance.Scope + "]"
 		}
+		if sig := item.Signature; sig != nil && sig.State != sigverify.StateNone {
+			mark += " [ingredient signature: " + sig.String() + "]"
+		}
 		if item.Error == nil {
 			_, _ = fmt.Fprintf(out, "  %-8s %s%s\n", item.Status, item.Name, mark)
 			continue
@@ -538,4 +560,26 @@ func assuranceNote(v *media.RecipeVerdict) string {
 		note += " [source zone declares reduced assurance: scope " + v.SourceAssurance.Scope + "]"
 	}
 	return note
+}
+
+// writeIngredientSignatures lists, under the verdicts, the ingredients
+// whose own signature has something to say (FR-033, B-062): one that is
+// present — verified or not — or one the requirement applied to. An
+// unsigned ingredient on an instance that does not require signatures is
+// the common case, and stays off the screen.
+func writeIngredientSignatures(out io.Writer, rep *media.Report) {
+	for i := range rep.Recipes {
+		v := &rep.Recipes[i]
+		for j := range v.Ingredients {
+			ing := &v.Ingredients[j]
+			if ing.Signature.State == sigverify.StateNone && !ing.Required {
+				continue
+			}
+			required := ""
+			if ing.Required {
+				required = " (required)"
+			}
+			_, _ = fmt.Fprintf(out, "  signature %s@%s/%s: %s%s\n", v.Name, v.Version, ing.Name, ing.Signature, required)
+		}
+	}
 }

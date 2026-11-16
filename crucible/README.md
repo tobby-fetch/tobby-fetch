@@ -47,12 +47,16 @@ crucible/
     ├── m3/run.sh     # milestone-3 recipe engine
     ├── m4/run.sh     # milestone-4 passthrough / promotion
     ├── m5/run.sh     # milestone-5 mirror & air-gap
-    └── m6/           # milestone-6 controls & enterprise identity
-        ├── run.sh    # dispatcher: runs every a-*, b-*, c-* scenario
-        ├── a-*.sh    # track A: scanning, database, self-update
-        ├── b-*.sh    # track B: enterprise identity, auth hardening
-        ├── c-*.sh    # track C: integrity, trust scopes, assurance
-        └── *-lib.sh  # per-track sourced helpers (b-lib.sh, c-lib.sh)
+    ├── m6/           # milestone-6 controls & enterprise identity
+    │   ├── run.sh    # dispatcher: runs every a-*, b-*, c-* scenario
+    │   ├── a-*.sh    # track A: scanning, database, self-update
+    │   ├── b-*.sh    # track B: enterprise identity, auth hardening
+    │   ├── c-*.sh    # track C: integrity, trust scopes, assurance
+    │   └── *-lib.sh  # per-track sourced helpers (b-lib.sh, c-lib.sh)
+    └── m7/           # milestone-7 finishing, documentation & acceptance
+        ├── run.sh    # dispatcher: every a-* … e-*, then z-crown-rke2.sh
+        ├── *.sh      # one scenario per external feature (see below)
+        └── crown/    # the crown's helpers, draft recipes, node files, YAML helper
 ```
 
 Everything lives in the dedicated Incus project `tobby-crucible`; the host's
@@ -257,3 +261,75 @@ pattern all read exactly like the guard under test failing.
   device as a *claim* beside the destination's own verdict — a manifest
   that claims nothing hides nothing — and never written into the
   destination registry (same digests, no marker artifact: RECIPE-SPEC §7.1).
+
+### m7 — finishing, documentation and the crown
+
+Same layout as m6 — one file per external feature, named by track prefix,
+dispatched by `scenarios/m7/run.sh` in name order — with one addition: the
+**crown**, `z-crown-rke2.sh`, sorts last on purpose. Until its track
+writes it, each file is a named skeleton that **fails**, stating in its
+header what it will prove: m7 is not accepted while one is pending, and a
+skeleton that passed would report a check nobody made. Replay the
+completed milestones meanwhile with `./crucible/run.sh m1 m2 m3 m4 m5 m6`.
+
+| Scenario | Track | Proves |
+|---|---|---|
+| `a-consumption-aids.sh` | A (7.1) | mapping table on every surface, `registries.yaml` snippet deterministic and credential-free, a containerd node pulling by nominal reference, `TBY-AID-001`, FileSet badge |
+| `b-diagnostics.sh` | B (R-30) | one-gesture bundle, zero planted secret in any member, documented members only, admin only, no egress |
+| `b-supervision.sh` | B (R-11) | signed OpenAPI and metrics reference, chart alert rules and dashboard, each alert fired by its condition |
+| `b-clock.sh` | B (R-32) | clock before the build date and before a medium's production: warned and audited, never corrected |
+| `b-rebuild.sh` | B (R-27) | state directory, configuration and store restored on a fresh node: same accounts, token, certificate, import record |
+| `c-exceptions.sh` | C (R-15) | mandatory expiry, digest/repository/recipe scopes, visible re-blocking, OpenVEX input |
+| `c-provenance.sh` | C (R-17) | provenance class per repository on every surface, last scan per tag, unmanaged-content metric, provenance log field |
+| `c-emergency-path.sh` | C, E (R-21) | the published emergency procedure followed literally, admitted only under its declared scope |
+| `d-hardening.sh` | C (R-17, 7.3) | both hardening switches on every surface, security headers per route class, CSRF over the wire, bounded inputs, OCI clients unaffected |
+| `e-docs-offline.sh` | E (7.2) | the complete bilingual corpus served offline, no dangling target |
+| `z-crown-rke2.sh` | integration | RKE2 v1.36.5 bootstrapped air-gapped from a bare OS: OS packages and RKE2 artifacts from served FileSets, images through the zone registry via the **generated** `registries.yaml` |
+
+The crown needs an Incus **VM** with its own kernel and at least 4 vCPU and
+8 GiB for the RKE2 server node, hence a KVM host (the Elastic Metal
+acceptance host has it); the scenario launches it with its own limits.
+
+#### The crown, step by step
+
+The scenario that exercises every milestone at once (DEVELOPMENT-PLAN §2.7):
+an RKE2 v1.36.5 cluster bootstrapped fully air-gapped from a bare Rocky
+Linux 9 VM, with everything served by Tobby.
+
+1. Three recipes are cooked from the drafts under `scenarios/m7/crown/recipes/`
+   and signed: `rke2` (the release's 16 images, checked entry for entry
+   against its `rke2-images.linux-amd64.txt`, plus the tarball, checksums
+   and pinned installer as a FileSet), `rocky9-rke2-host` (an rpm repository
+   FileSet: the exact dnf transaction a connected twin of the bare host
+   computes for SELinux policy, container-selinux, rke2-selinux and
+   iptables) and `crown-app` (busybox, referenced by nominal path).
+2. They cross on a real block device; the destination-side instance
+   verifies the medium (which opens `/files/`) and imports it into the zone
+   registry, where every ingredient is checked at its relocated path with
+   its pinned digest.
+3. Feature 7.1 generates the `registries.yaml` snippet and the mapping
+   table; the table is held to what was pushed, digest for digest.
+4. The bare VM — never connected, no resolver — installs its packages with
+   dnf from the served FileSet alone, switches to SELinux enforcing,
+   installs RKE2 by the tarball method with **no image tarball**, and pulls
+   every image through the generated mirror configuration.
+5. Node Ready, every system pod Running or Completed, the nominal-path pod
+   runs, a never-pushed nominal tag fails at the zone. Proof comes from
+   witnesses that are not the product: a capture on the node's own
+   interface (every manifest the cluster runs was requested from the zone
+   registry at its relocated path), containerd's image store (each image
+   under its pinned digest), and leak captures on every way out of the zone
+   (zero packet sourced in it for the whole run).
+
+The RKE2 images are sourced from `registry.rancher.com` (same tags as
+`docker.io/rancher`, different index digests, no pull rate limit) and the
+node runs with `system-default-registry: registry.rancher.com`; busybox is
+the one Docker Hub image, and carries the nominal `docker.io/...` criterion.
+The generated snippet therefore mirrors both hosts to the zone registry.
+
+On top of the baseline it needs KVM (two VMs: 4 vCPU / 8 GiB / 40 GiB for
+the node, 2 vCPU / 2 GiB for its twin) and `tcpdump` on the host. No
+registry credentials are needed; `CRUCIBLE_DOCKER_CONFIG` is used for
+Docker Hub when present. `CRUCIBLE_M7_DEBUG_AIDS=handmade` replaces the generated aids
+with hand-written ones to rehearse the rest of the scenario; such a run
+says DEBUG on every dependent line and always ends with a FAIL.

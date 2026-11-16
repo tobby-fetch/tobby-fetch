@@ -62,8 +62,8 @@ n'est jamais traduit.
 | `5` | `changes-planned` | **Changements prévus** — Une exécution sans effet de bord a trouvé du travail à faire — `tobby sync --dry-run` sur un Retriever porteur de changements. C'est un succès qui a quelque chose à dire, pour qu'une barrière d'intégration puisse s'y brancher sans y voir une compilation cassée. |
 <!-- /generated:exit-codes -->
 
-La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
-`--output json`, mode non interactif — reste en anglais jusqu'au jalon 7.
+La [référence CLI](../../reference/cli/#codes-de-sortie) reprend cette table
+avec chaque commande, le contrat `--output json` et le mode non interactif.
 
 ## Authentification et comptes (TBY-AUTH)
 
@@ -100,10 +100,16 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 ### TBY-AUTH-004
 
 - **Quoi :** le formulaire n'a pas pu être soumis en toute sécurité.
-- **Cause probable :** le jeton anti-falsification est absent ou a expiré —
-  la page est probablement restée ouverte longtemps.
-- **Action corrective :** le formulaire a été rechargé avec un jeton neuf :
-  soumettez-le à nouveau.
+- **Cause probable :** le jeton anti-falsification est absent, erroné ou
+  expiré, ou la requête vient d'une page d'un autre site — la page est
+  probablement restée ouverte longtemps. Toute requête qui modifie l'état
+  et que la session du navigateur authentifie porte le jeton, formulaires
+  de l'interface comme appels d'API (en-tête `X-CSRF-Token` sur l'API), et
+  elle est refusée quand le navigateur indique qu'elle vient d'une autre
+  origine.
+- **Action corrective :** rechargez la page et soumettez à nouveau. Un
+  script ou un outil qui appelle l'API s'authentifie par un jeton
+  (`Authorization: Bearer`), pas par la session du navigateur.
 - **Remédiable hors-ligne :** oui · **Bloque :** la requête soumise seulement
 
 ### TBY-AUTH-005
@@ -484,23 +490,55 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
   résolu. Republier le document identique est un no-op, pas cette erreur.
 - **Remédiable hors-ligne :** non (une nouvelle version signée vient de la chaîne de qualification) · **Bloque :** la publication seulement (classe politique, sortie 3) ; jamais dérogeable
 
+### TBY-POL-005
+
+- **Quoi :** Cette instance n'accepte pas d'import unitaire.
+- **Cause probable :** Elle est durcie par `<setting>` : le contenu n'entre dans son store que par des recipes vérifiées, et un import unitaire ou un empaquetage local serait un contenu qu'aucune recipe ne garantit.
+- **Action corrective :** Livrez ce contenu par une recipe signée. Si l'import unitaire est nécessaire sur cette instance, un administrateur retire `<setting>` de sa configuration et la redémarre.
+- **Où :** l'écran d'import et `POST /api/v1/import` avec son inspection (HTTP 403), l'empaquetage de FileSets à l'écran, par l'API et par `tobby fileset pack` (classe politique, sortie 3) ; chaque refus est un événement d'audit `hardening.refused` qui nomme le réglage
+- **Remédiable hors-ligne :** oui · **Bloque :** l'import ou l'empaquetage ; les synchronisations de recipes ne sont pas concernées
+
+### TBY-POL-006
+
+- **Quoi :** Ce registre est en lecture seule : les push sont refusés.
+- **Cause probable :** L'instance est durcie par `<setting>` : sa registry embarquée sert du contenu et n'en accepte d'aucun client, quel que soit son rôle. Les synchronisations de recipes écrivent toujours dans le store.
+- **Action corrective :** Tirez depuis ce registre, ou poussez vers la registry de la zone. Alimenter cette instance par push exige qu'un administrateur retire `<setting>` et la redémarre.
+- **Où :** toute écriture sur `/v2/` — upload de blob, morceau, validation, montage, push de manifeste, suppression — pour tous les clients et tous les rôles, administrateurs compris, sous la forme de l'erreur OCI `DENIED` (HTTP 403) dont le message commence par le code, que `docker`, `helm`, `oras` et `skopeo` affichent ; chaque refus est un événement d'audit `hardening.refused` qui nomme le réglage
+- **Remédiable hors-ligne :** oui · **Bloque :** le push ; les tirages et les synchronisations de recipes ne sont pas concernés
+
 ## Vérification des signatures et digests (TBY-SIG)
 
 ### TBY-SIG-001
 
 - **Quoi :** la signature de la recipe n'a pas pu être vérifiée.
-- **Cause probable :** aucune clé de confiance configurée ne valide la
-  signature de *\<recipe\>* (les empreintes essayées sont listées). Quand un
-  périmètre de confiance déclaré correspond à la recipe, le message **nomme ce
-  périmètre** (*\<périmètre\>*) et les clés essayées sont celles qu'il
-  autorise : une clé valide ailleurs, mais absente des `roots` du périmètre,
-  ne s'applique pas dedans.
+- **Cause probable :** aucune clé de confiance qui s'applique à
+  *\<recipe\>* ne valide sa signature (les empreintes essayées sont
+  listées). Quand un périmètre de confiance déclaré correspond à la recipe, le
+  message **nomme ce périmètre** (*\<périmètre\>*) et les clés essayées sont
+  celles qu'il autorise : une clé valide ailleurs, mais absente des `roots` du
+  périmètre, ne s'applique pas dedans. Hors de tout périmètre, les clés
+  essayées sont l'**ensemble par défaut** — les clés qu'aucun périmètre ne
+  liste : une clé listée par un périmètre est réservée à ce périmètre et ne
+  vérifie rien en dehors. Quand toutes les clés configurées sont réservées,
+  rien n'est essayé et le message le dit. Quand la signature est valide pour
+  une clé qui ne s'applique pas ici, le message la nomme — nom et empreinte
+  (*\<réservée\>*) et le périmètre auquel elle est réservée
+  (*\<réservée-à\>*).
 - **Action corrective :** vérifiez que les clés de confiance de la zone
   incluent la clé qui a signé cette recipe — ou, quand un périmètre est nommé,
-  que ses `roots` la listent, ou que la recipe relève d'un autre périmètre
-  (voir
+  que ses `roots` la listent, ou que la recipe relève d'un autre périmètre.
+  Quand une clé réservée est nommée, étendez les `repositories` de ce
+  périmètre pour couvrir la recipe, ou faites re-signer la recipe avec une
+  clé qui s'applique là où elle est (voir
   [Signatures, clés de confiance et liste blanche](../../security/content-trust/)).
   Une recipe non vérifiée n'est jamais admise.
+- **Ingrédients :** la signature propre d'un ingrédient ne lève ce code que
+  sur une instance qui règle `trust.requireIngredientSignatures: true`. Le
+  sujet se lit alors *ingredient \<nom\> of \<recipe\> (\<dépôt\>@\<digest\>)*,
+  les empreintes sont celles des clés applicables à l'ingrédient (ou « no
+  signature artifact found »), et la recipe entière est retenue. Sans ce
+  réglage, une signature d'ingrédient non vérifiable est consignée et ne
+  bloque rien.
 - **Remédiable hors-ligne :** oui, quand la bonne clé publique est disponible localement (les clés de confiance sont la configuration de la destination) ; une recipe réellement non signée ou mal signée doit être re-signée en amont · **Bloque :** la recipe concernée (classe vérification, sortie 4) ; jamais dérogeable
 
 ### TBY-SIG-002
@@ -626,6 +664,27 @@ Réservés à l'ouverture du jalon 6 (FR-031, FR-032) : la politique est consult
 - **Cause probable :** C'est une livraison de l'analyseur lui-même. La refuser au nom de la politique qu'elle arme laisserait la zone sans moyen d'armer un analyseur, ni de mettre à jour sa base.
 - **Action corrective :** Rien à faire. Ses vulnérabilités restent rapportées ; la confiance dans ce contenu repose sur la signature de la recipe tobby-system.
 - **Remédiable hors-ligne :** oui · **Bloque :** rien
+
+### TBY-SCN-026
+
+- **Quoi :** La dérogation pour `<id>` ne couvre pas `<reference>`.
+- **Cause probable :** La dérogation est limitée à `<scope>`, et cet élément est hors de cette portée : la vulnérabilité est jugée comme si aucune dérogation n'existait.
+- **Action corrective :** Rien à faire si la portée est la bonne. Si cet élément devait être couvert, élargissez la portée de la dérogation dans la configuration — elle reste bornée par son expiration.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien par lui-même — la vulnérabilité est jugée sans la dérogation
+
+### TBY-SCN-027
+
+- **Quoi :** Le document OpenVEX `<path>` est inutilisable.
+- **Cause probable :** `<detail>`
+- **Action corrective :** Corrigez ou retirez le document listé sous scan.vex, puis redémarrez. Tobby lit les documents OpenVEX et ne les télécharge jamais : le fichier doit être un document local valide.
+- **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance
+
+### TBY-SCN-028
+
+- **Quoi :** La dérogation du Retriever pour `<id>` n'a pas d'expiration.
+- **Cause probable :** Elle s'applique, mais sans limite dans le temps : les dérogations déclarées par une instance doivent porter une expiration, et celles des Retrievers le devront aussi à partir du format v1.
+- **Action corrective :** Demandez au responsable du Retriever de la zone de donner à la dérogation une date expires et une justification.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien — la dérogation s'applique et est signalée sans limite
 
 ## Limites de la destination (TBY-DST)
 
@@ -866,6 +925,20 @@ remet quand même ses recipes intactes.
 - **Action corrective :** recopiez le store depuis l'instance source.
 - **Corrigeable hors ligne :** oui · **Bloque :** la recipe qui atteint ce blob, sans dérogation (classe vérification, code 4)
 
+### TBY-MED-016
+
+- **Quoi :** le graphe de recipes du support ne correspond pas à la recipe
+  signée.
+- **Cause probable :** la comptabilité du support (`meta/recipes.json`,
+  recopiée dans `meta/media.json`) liste un ingrédient, un digest ou un
+  emplacement que le document de recipe signé n'épingle pas, ou l'artefact
+  porte le document d'une autre recipe. La comptabilité n'est pas signée ;
+  seul le document signé décide de ce qu'est une livraison.
+- **Action corrective :** n'importez pas cette livraison. Reproduisez le
+  support depuis l'instance source, et cherchez comment la comptabilité a
+  changé si personne n'a assemblé le support à la main.
+- **Corrigeable hors ligne :** oui · **Bloque :** cette recipe entière, sans dérogation (classe vérification, code 4)
+
 ### TBY-MED-020
 
 - **Quoi :** un fichier du support n'est pas couvert par l'inventaire.
@@ -894,6 +967,21 @@ remet quand même ses recipes intactes.
   manifeste.
 - **Action corrective :** recopiez le store depuis l'instance source si vous
   ne l'avez pas modifié délibérément. Rien n'est poussé depuis ces fichiers.
+- **Corrigeable hors ligne :** oui · **Bloque :** rien (signalé seulement)
+
+### TBY-MED-023
+
+- **Quoi :** le support porte un cache d'extraction de FileSet
+  (`meta/fileserve/`), ignoré et reconstruit.
+- **Cause probable :** l'instance source servait des FileSets depuis ce
+  store. Le cache est hors de la couverture du manifeste, donc rien n'en a été
+  haché ; le constat en donne le nombre de fichiers et la taille. Une
+  destination ne le sert jamais : elle le jette et réextrait depuis les blobs
+  vérifiés. Tout ce qui, dessous, n'a pas la forme d'une extraction est
+  signalé à part en [TBY-MED-020](#tby-med-020).
+- **Action corrective :** rien pour l'import. Si vous n'attendiez pas
+  d'extraction sur ce support, inspectez ou supprimez le répertoire avant
+  qu'il ne reparte — il franchit la coupure sans vérification.
 - **Corrigeable hors ligne :** oui · **Bloque :** rien (signalé seulement)
 
 ### TBY-MED-030
@@ -944,6 +1032,34 @@ remet quand même ses recipes intactes.
   livraison bloquée et le fichier fautif. Recopiez le support depuis
   l'instance source et vérifiez de nouveau. Les livraisons intactes restent
   poussables vers la registry de zone, qui les sert ensuite.
+- **Corrigeable hors ligne :** oui · **Bloque :** la registry embarquée et la
+  surface de fichiers, pour ce support
+
+### TBY-MED-033
+
+- **Quoi :** la requête sort du contenu que la vérification du support a
+  validé.
+- **Cause probable :** une fois la porte ouverte, `/v2/` et `/files/` ne
+  servent, en lecture seule, que ce qu'atteignent les recipes poussables —
+  leurs artefacts, signatures, ingrédients et signatures propres des
+  ingrédients. Le contenu atteint par aucune recipe vérifiée, un tag ajouté
+  ou déplacé après la vérification et toute écriture sont refusés (B-063).
+- **Action corrective :** lisez le rapport sur l'écran Média : le contenu
+  hors de l'ensemble vérifié figure dans ses constats. Livrez-le par une
+  recipe sur un nouveau support, ou poussez-le dans la registry de zone.
+- **Corrigeable hors ligne :** oui · **Bloque :** cette requête seulement
+
+### TBY-MED-034
+
+- **Quoi :** la vérification du support n'a validé aucun contenu : cette
+  instance n'en sert rien.
+- **Cause probable :** le manifeste du support ne liste aucune recipe : rien
+  n'y est atteint par une livraison, rien n'a été recalculé, et le verdict est
+  *poussable* sans rien à pousser. Un tel support ouvrait auparavant la porte
+  et servait tout son store (B-063).
+- **Action corrective :** vérifiez que la synchronisation source a livré ses
+  recipes avant l'écriture du support, puis recopiez-le et vérifiez-le de
+  nouveau.
 - **Corrigeable hors ligne :** oui · **Bloque :** la registry embarquée et la
   surface de fichiers, pour ce support
 
@@ -1094,6 +1210,85 @@ qu'un refus qui nomme l'entrée fautive.
   l'instance.
 - **Corrigeable hors ligne :** oui · **Bloque :** l'empaquetage concerné ; rien n'est écrit
 
+## Aides à la consommation (TBY-AID)
+
+La table de correspondance et l'extrait `registries.yaml` de FR-065 : générés depuis ce que contient le store, pour la registry depuis laquelle la zone tire.
+
+### TBY-AID-001
+
+- **Quoi :** Aucune aide à la consommation ne peut être générée : cette instance ne nomme aucune registry depuis laquelle la zone tire.
+- **Cause probable :** La table de correspondance et l'extrait registries.yaml pointent vers la registry de la zone. Cette instance ne pousse vers aucune destination.registry, et consumption.registry n'est pas renseigné.
+- **Action corrective :** Renseignez destination.registry si cette instance pousse vers la registry de la zone, ou consumption.registry avec l'adresse depuis laquelle les clients de la zone tirent — cette instance elle-même quand elle sert la zone.
+- **Remédiable hors-ligne :** oui · **Bloque :** la génération de l'aide
+
+## Bundle de diagnostic (TBY-DIA)
+
+L'archive locale et expurgée de FR-095. L'expurgation échoue fermée : un bundle qui porterait un secret n'est pas écrit.
+
+### TBY-DIA-001
+
+- **Quoi :** Le bundle de diagnostic n'a pas pu être produit.
+- **Cause probable :** `<detail>`
+- **Action corrective :** Réessayez ; en cas de nouvel échec, collectez les journaux de l'instance par les moyens du déploiement. Rien n'a été écrit ni envoyé : un bundle est uniquement local.
+- **Remédiable hors-ligne :** oui · **Bloque :** le bundle
+
+### TBY-DIA-002
+
+- **Quoi :** Le bundle de diagnostic a été retenu : `<member>` contenait encore un secret.
+- **Cause probable :** Avant de livrer un bundle, Tobby cherche dans chaque membre les valeurs secrètes qu'il connaît. L'une d'elles a été trouvée : le bundle n'a pas été écrit plutôt que de l'être avec elle.
+- **Action corrective :** Signalez ce défaut aux mainteneurs de Tobby avec le nom du membre — jamais avec le bundle. En attendant, collectez les informations à la main.
+- **Remédiable hors-ligne :** oui · **Bloque :** le bundle — jamais livré avec un secret dedans
+
+### TBY-DIA-003
+
+- **Quoi :** Un bundle de diagnostic est déjà en cours de construction sur cette instance.
+- **Cause probable :** Un seul bundle est construit à la fois : chacun garde ses membres en mémoire et y cherche les secrets, et des demandes simultanées multiplieraient ce coût.
+- **Action corrective :** Attendez quelques secondes la fin du bundle en cours, puis redemandez. Rien n'a été écrit ni envoyé.
+- **Remédiable hors-ligne :** oui · **Bloque :** ce bundle seulement — rien n'a été écrit ni envoyé
+
+## Cohérence d'horloge (TBY-CLK)
+
+FR-096 : l'horloge locale confrontée à des repères que l'instance détient sans aucun réseau. Ces codes avertissent et consignent ; ils ne changent aucun verdict.
+
+### TBY-CLK-001
+
+- **Quoi :** L'horloge locale indique `<now>`, une date antérieure à la construction de ce binaire (`<anchor>`).
+- **Cause probable :** L'horloge retarde de `<gap>` sur une date que ce binaire prouve passée. Les expirations, les contrôles de fraîcheur et la validité des certificats sont jugés sur cette horloge.
+- **Action corrective :** Réglez l'horloge de l'hôte (source de temps de la zone, ou à la main depuis une référence de confiance), puis redémarrez. Tobby avertit et consigne ; il ne corrige pas l'horloge.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien — un avertissement, consigné au journal d'audit
+
+### TBY-CLK-002
+
+- **Quoi :** L'horloge locale indique `<now>`, une date antérieure à la production du support `<medium>` (`<anchor>`).
+- **Cause probable :** Le support a été résolu `<gap>` après l'heure que croit avoir cet hôte : l'une des deux horloges est fausse, et les contrôles de fraîcheur et d'expiration en dépendent.
+- **Action corrective :** Vérifiez l'horloge de cet hôte contre une référence de confiance avant de vous fier aux verdicts d'expiration et de fraîcheur. Tobby avertit et consigne ; il ne corrige pas l'horloge.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien — un avertissement, consigné au journal d'audit
+
+## Répertoire d'état de l'instance (TBY-STA)
+
+FR-097 : le répertoire d'état normé — la cible de sauvegarde d'une instance, en plus de son store — vérifié au démarrage.
+
+### TBY-STA-001
+
+- **Quoi :** L'instance refuse de démarrer : le répertoire d'état `<root>` a une organisation inconnue (`<version>`).
+- **Cause probable :** Il a été écrit par une autre version de Tobby, ou ce n'est pas un répertoire d'état de Tobby.
+- **Action corrective :** Démarrez la version qui l'a écrit, ou restaurez le répertoire d'état depuis une sauvegarde faite avec cette version. L'organisation documentée est le contrat de sauvegarde.
+- **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance
+
+### TBY-STA-002
+
+- **Quoi :** L'instance refuse de démarrer : `<path>` est ouvert à tous les utilisateurs de l'hôte (`<mode>`).
+- **Cause probable :** C'est une entrée secrète du répertoire d'état — empreintes de mots de passe ou de jetons, clé privée — lisible par d'autres utilisateurs, ou un répertoire qui en contient une et où d'autres utilisateurs peuvent écrire (donc remplacer le secret), ou une entrée dont la liste d'accès n'a pas pu être lue, que Tobby refuse plutôt que de la supposer restreinte. Tobby les crée pour leur seul propriétaire ; un mode plus large vient en général d'une restauration qui n'a pas conservé les droits.
+- **Action corrective :** Retirez l'accès des autres utilisateurs (chmod o-rwx sous Unix, sur l'entrée et sur les répertoires qui la contiennent, et pas de racine d'état dans un répertoire partagé à sticky bit appartenant à un autre compte ; sous Windows, retirez Tout le monde, Utilisateurs, Utilisateurs authentifiés et les autres principaux larges de sa liste d'accès), vérifiez qui a pu la lire ou la remplacer entre-temps, puis redémarrez. L'accès de groupe accordé par le volume (fsGroup Kubernetes) est toléré.
+- **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance
+
+### TBY-STA-003
+
+- **Quoi :** Le répertoire d'état ne contient pas `<entry>`.
+- **Cause probable :** Une entrée d'identité manque — en général après une restauration incomplète. L'instance démarre sans elle, et se comporte comme une instance neuve pour ce qu'elle contenait.
+- **Action corrective :** Si cette instance a été restaurée, restaurez l'entrée manquante depuis la même sauvegarde et redémarrez ; sinon, rien à faire.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien par lui-même — l'instance démarre sans l'entrée
+
 ## Tâches (TBY-TSK)
 
 ### TBY-TSK-001
@@ -1136,3 +1331,32 @@ qu'un refus qui nomme l'entrée fautive.
 - **Action corrective :** vérifiez votre liaison réseau et réessayez ; la
   page reprend dès que l'instance répond.
 - **Remédiable hors-ligne :** oui · **Bloque :** l'affichage de la session de navigation seulement
+
+### TBY-SRV-004
+
+- **Quoi :** la requête est trop volumineuse.
+- **Cause probable :** son corps dépasse les `<limit>` octets que ce point
+  d'accès accepte ; elle a été refusée avant d'être lue (NFR-023). Chaque
+  point d'accès de l'API a une borne dimensionnée sur son plus grand
+  document légitime ; voir le tableau de
+  [validation des entrées](../../security/input-validation/).
+- **Action corrective :** envoyez un corps plus petit. Un document au-delà
+  de la borne n'est pas de ceux que ce point d'accès traite : vérifiez que
+  le bon fichier a été envoyé.
+- **Remédiable hors-ligne :** oui · **Bloque :** la requête seulement
+
+### TBY-SRV-005
+
+- **Quoi :** le corps de la requête n'est pas d'un type que ce point
+  d'accès accepte.
+- **Cause probable :** il est déclaré `<type>` (ou ne porte aucun
+  `Content-Type`) ; le point d'accès ne décode que `<want>`, c'est-à-dire
+  `application/json` sur tous les points d'accès de l'API qui lisent un
+  document. Une page d'une autre origine ne peut pas envoyer ce type sans
+  une vérification préalable CORS que l'instance n'accorde jamais : c'est
+  pourquoi rien d'autre n'est lu (NFR-012, NFR-023).
+- **Action corrective :** envoyez le corps avec
+  `Content-Type: application/json` (curl :
+  `-H 'Content-Type: application/json'`). La CLI et l'interface le font
+  déjà.
+- **Remédiable hors-ligne :** oui · **Bloque :** la requête seulement

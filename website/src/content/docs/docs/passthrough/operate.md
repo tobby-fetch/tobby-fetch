@@ -3,16 +3,11 @@ title: Operate over time
 description: Probes, task tracking and resume, what to alert on, backup, store growth, upgrades, and graceful shutdown.
 sidebar:
   order: 7
-  badge:
-    text: Partial
-    variant: caution
 ---
 
 A passthrough instance is designed to run unattended for months. This
 page is what that costs you: what to watch, what to back up, what grows,
-and how to upgrade. Some of the tooling that will make parts of this
-easier is still ahead — those parts are badged below rather than
-hidden.
+and how to upgrade.
 
 ## Probes and metrics
 
@@ -75,28 +70,33 @@ and restores pure streaming.
   metrics. In a healthy zone these are zero; any step is either an
   attack or a configuration drift, and both deserve a page.
 - A last-successful-sync age beyond a few multiples of `sync.interval` —
-  a proxy or credential silently broken shows up here first.
+  a proxy or credential silently broken shows up here first
+  (`tobby_sync_last_success_timestamp_seconds`).
+- A listener certificate close to its end (`tobby_server_certificate_expiry_timestamp_seconds`).
 - State-volume usage, since resumable spools live there.
 
-The metric families are listed in
-[metrics and logs](../../reference/metrics-logs/) — with the honest caveat
-that their names are not yet contractual.
+The reference chart ships alert rules for these conditions and an example
+dashboard, and every release publishes the metrics reference they are held
+to: see [Supervise an instance](../monitoring/). When an alert needs someone
+else's eyes, collect a [diagnostic bundle](../diagnostics/) — one redacted
+local archive. The families are listed in
+[metrics and logs](../../reference/metrics-logs/).
 
 ## Backup: the state directory
 
 The state root is **the** backup target. It holds what nothing
-recreates: accounts, tokens, the served TLS pair, the interval override.
-It is small, so back it up like any precious directory — snapshots or
-file copies of `state.root`, taken while the instance is stopped or from
-a filesystem snapshot. The store needs no backup: everything in it can
-be fetched again, and losing it costs bandwidth, not identity. Never
-put the state on the store volume; Tobby refuses the nesting outright.
+recreates: accounts, tokens, the served TLS pair, the import record, the
+interval override. It is small, so back it up like any precious
+directory — snapshots or file copies of `state.root`, taken while the
+instance is stopped or from a filesystem snapshot — together with the
+configuration file and the secret files it references. The store needs no
+backup: everything in it can be fetched again, and losing it costs
+bandwidth, not identity. Never put the state on the store volume; Tobby
+refuses the nesting outright.
 
-:::note[Upcoming — milestone 7]
-A documented restore-and-rebuild procedure (rebuilding a full instance
-from a state backup plus re-synchronization, R-27) is planned for
-milestone 7. Track it on the [project status](../../discover/status/) page.
-:::
+The layout of the state directory is documented and checked at every start,
+`tobby state inspect` lists it, and the rebuild procedure is tested end to end:
+[Back up and rebuild an instance](../backup-rebuild/).
 
 ## Store growth, stated plainly
 
@@ -156,10 +156,41 @@ Exit code `5` means "changes planned", distinct from `0` ("nothing to do"),
 so a pipeline can gate on it without treating a plan with work in it as a
 broken build. See the [CLI reference](../../reference/cli/#tobby-sync).
 
-:::note[Upcoming — milestone 6]
-On-demand integrity verification of the store through the UI and API
-(R-31) ships with milestone 6.
+:::tip[Verify the store on demand]
+A plan reads metadata; to check the bytes, verify the store: every blob
+re-hashed against its digest, manifests checked for completeness, recipe
+signatures against the trust roots configured now, with a timestamped
+report — from the interface, the API or `tobby store verify`
+(R-31, since v0.6.0). See [verify the store's integrity](../verify-store/).
 :::
+
+## What the store holds, and from where
+
+Every repository of the content browser (`/content`) carries its
+**provenance class** (FR-098): `recipe` — managed by recipes verified
+against this instance's trust roots, named on the repository page, with
+the reduced-assurance marker when a relaxed trust scope admitted them —
+`unit-import` — a [one-off import](../one-off-import/), or a FileSet
+packed on this instance (shown as such) — or `seed` — pushed through
+`/v2/` by a standard client. The repository page also shows, per tag, the
+result and the date of its last vulnerability scan with the age of the
+database it was scanned with, when this instance scanned it. The same facts
+are on `GET /api/v1/content` (the `provenance` of each row) and
+`GET /api/v1/content/{repo}` (the `provenance` object, and `lastScan` on
+each tag); the log records that concern a repository — an import, a push,
+a removal — carry a `provenance` field.
+
+`tobby_store_unmanaged_repositories{class}` counts what no recipe manages,
+by class: a zone that should hold recipe content only alerts on it being
+non-zero. To make that a guarantee rather than a watch, set the
+[hardening switches](../../security/model/#hardening-switches):
+`hardening.disableUnitImport` closes unit imports, OCI image layout
+imports and packing on every surface, `hardening.disableRegistryPush` makes `/v2/` read-only for every
+client and role. Both are stated at startup, in `tobby config dump`, on
+the screens they disable and in `tobby_hardening_enabled`; recipe
+synchronizations are unaffected. The last scan of a tag is read from the
+task reports the instance still holds, so `tasks.keepFinished` bounds how
+far back it reaches.
 
 ## Upgrading
 
@@ -182,10 +213,11 @@ formats are carried across versions — lives in
   PVCs carry `helm.sh/resource-policy: keep`, so even `helm uninstall`
   leaves the data behind.
 
-:::note[Upcoming — milestone 6]
-Tobby updating through its own OCI channel (R-25) — the new release
-travelling as verified content, across zones and through the air gap
-like everything else it carries — ships with milestone 6.
+:::tip[Through its own channel]
+Since v0.6.0, Tobby can also be updated through its own OCI channel
+(R-25): each release is published recipe-ready, and travels as verified
+content, across zones and through the air gap, like everything else it
+carries. See [updating Tobby in an isolated zone](../../air-gap/update-tobby/).
 :::
 
 ## Graceful shutdown

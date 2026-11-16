@@ -3,17 +3,12 @@ title: Exploiter dans la durée
 description: Sondes, suivi et reprise des tâches, ce sur quoi alerter, sauvegarde, croissance du store, montées de version et arrêt propre.
 sidebar:
   order: 7
-  badge:
-    text: Partiel
-    variant: caution
 ---
 
 Une instance passthrough est conçue pour tourner sans surveillance
 pendant des mois. Cette page dit ce que cela vous coûte : ce qu'il faut
 surveiller, ce qu'il faut sauvegarder, ce qui grossit, et comment monter
-de version. Une partie de l'outillage qui rendra tout cela plus simple
-est encore devant — ces parties portent un badge ci-dessous plutôt que
-d'être passées sous silence.
+de version.
 
 ## Sondes et métriques
 
@@ -81,32 +76,34 @@ streaming pur.
   configuration, et les deux méritent d'être remontées.
 - Un âge de dernière synchronisation réussie qui dépasse quelques
   multiples de `sync.interval` — un proxy ou un credential cassé en
-  silence se voit d'abord ici.
+  silence se voit d'abord ici (`tobby_sync_last_success_timestamp_seconds`).
+- Un certificat du listener proche de sa fin (`tobby_server_certificate_expiry_timestamp_seconds`).
 - L'occupation du volume d'état, puisque les fichiers de reprise y
   vivent.
 
-Les familles de métriques sont listées dans
-[métriques et journaux](../../reference/metrics-logs/) — avec cette
-réserve honnête : leurs noms ne sont pas encore contractuels.
+Le chart de référence livre des règles d'alerte pour ces conditions et un
+tableau de bord d'exemple, et chaque release publie le référentiel des métriques
+auquel elles sont tenues : voir [Superviser une instance](../monitoring/). Quand
+une alerte demande d'autres yeux, collectez un
+[bundle de diagnostic](../diagnostics/) — une archive locale et expurgée. Les
+familles sont listées dans [métriques et journaux](../../reference/metrics-logs/).
 
 ## Sauvegarde : le répertoire d'état
 
 La racine d'état est **la** cible de sauvegarde. Elle détient ce que rien
-ne recrée : les comptes, les jetons, la paire TLS servie, la dérogation
-d'intervalle. Elle est petite : sauvegardez-la comme tout répertoire
-précieux — snapshots ou copies de fichiers de `state.root`, pris pendant
-que l'instance est arrêtée ou depuis un snapshot du système de fichiers.
-Le store n'a besoin d'aucune sauvegarde : tout ce qu'il contient peut
+ne recrée : les comptes, les jetons, la paire TLS servie, le registre
+d'imports, la dérogation d'intervalle. Elle est petite : sauvegardez-la comme
+tout répertoire précieux — snapshots ou copies de fichiers de `state.root`, pris
+pendant que l'instance est arrêtée ou depuis un snapshot du système de
+fichiers — avec le fichier de configuration et les fichiers secrets qu'il
+référence. Le store n'a besoin d'aucune sauvegarde : tout ce qu'il contient peut
 être récupéré de nouveau, et le perdre coûte de la bande passante, pas de
 l'identité. Ne placez jamais l'état sur le volume du store ; Tobby refuse
 l'imbrication sans discuter.
 
-:::note[À venir — jalon 7]
-Une procédure documentée de restauration et de reconstruction
-(reconstituer une instance complète à partir d'une sauvegarde d'état plus
-une re-synchronisation, R-27) est prévue pour le jalon 7. À suivre sur la
-page [État du projet](../../discover/status/).
-:::
+Le layout du répertoire d'état est documenté et contrôlé à chaque démarrage,
+`tobby state inspect` le liste, et la procédure de reconstruction est testée de
+bout en bout : [Sauvegarder et reconstruire une instance](../backup-rebuild/).
 
 ## La croissance du store, dite sans détour
 
@@ -170,10 +167,43 @@ Le code de sortie `5` signifie « des changements sont prévus », distinct de
 voir un plan chargé comme une compilation cassée. Voir la
 [référence CLI](../../reference/cli/).
 
-:::note[À venir — jalon 6]
-La vérification d'intégrité du store à la demande, depuis l'interface et
-l'API (R-31), arrive avec le jalon 6.
+:::tip[Vérifier le store à la demande]
+Un plan lit des métadonnées ; pour contrôler les octets, vérifiez le store :
+chaque blob re-hashé contre son digest, les manifestes contrôlés pour leur
+complétude, les signatures de recipe contre les trust roots configurés
+maintenant, avec un rapport horodaté — depuis l'interface, l'API ou `tobby store verify`
+(R-31, depuis la v0.6.0). Voir [vérifier l'intégrité du store](../verify-store/).
 :::
+
+## Ce que le store détient, et d'où
+
+Chaque dépôt du navigateur de contenu (`/content`) porte sa **classe de
+provenance** (FR-098) : `recipe` — géré par des recipes vérifiées contre
+les trust roots de cette instance, nommées sur la page du dépôt, avec le
+marqueur d'assurance réduite quand un périmètre de confiance assoupli les a
+admises —, `unit-import` — un [import unitaire](../one-off-import/), ou une
+FileSet empaquetée sur cette instance (affichée comme telle) — ou `seed` —
+poussé par `/v2/` par un client standard. La page du dépôt montre aussi,
+par tag, le résultat et la date de sa dernière analyse de vulnérabilités
+avec l'âge de la base utilisée, quand cette instance l'a analysé. Les mêmes
+faits sont sur `GET /api/v1/content` (la `provenance` de chaque ligne) et
+`GET /api/v1/content/{repo}` (l'objet `provenance`, et `lastScan` sur
+chaque tag) ; les enregistrements de journal qui concernent un dépôt — un
+import, un push, un retrait — portent un champ `provenance`.
+
+`tobby_store_unmanaged_repositories{class}` compte ce qu'aucune recipe ne
+gère, par classe : une zone qui ne devrait détenir que du contenu de
+recipes alerte dès qu'elle n'est pas nulle. Pour en faire une garantie
+plutôt qu'une surveillance, activez les
+[interrupteurs de durcissement](../../security/model/#interrupteurs-de-durcissement) :
+`hardening.disableUnitImport` ferme l'import unitaire, l'import d'OCI image
+layout et l'empaquetage sur toutes les surfaces, `hardening.disableRegistryPush` met `/v2/` en lecture
+seule pour tous les clients et tous les rôles. Les deux sont signalés au
+démarrage, dans `tobby config dump`, sur les écrans qu'ils désactivent et
+dans `tobby_hardening_enabled` ; les synchronisations de recipes ne sont
+pas concernées. La dernière analyse d'un tag est lue dans les rapports de
+tâches que l'instance détient encore : `tasks.keepFinished` borne donc
+jusqu'où elle remonte.
 
 ## Monter de version
 
@@ -199,10 +229,11 @@ politique de compatibilité — ce qui est déjà stable, ce qui se fige en
   `helm.sh/resource-policy: keep`, si bien que même un `helm uninstall`
   laisse les données en place.
 
-:::note[À venir — jalon 6]
-La mise à jour de Tobby par son propre canal OCI (R-25) — la nouvelle
-release voyageant comme du contenu vérifié, entre zones et à travers
-l'air gap comme tout ce qu'il transporte — arrive avec le jalon 6.
+:::tip[Par son propre canal]
+Depuis la v0.6.0, Tobby peut aussi être mis à jour par son propre canal OCI
+(R-25) : chaque release est publiée prête pour une recipe, et voyage comme
+du contenu vérifié, entre zones et à travers l'air gap, comme tout ce qu'il
+transporte. Voir [mettre à jour Tobby en zone isolée](../../air-gap/update-tobby/).
 :::
 
 ## Arrêt propre

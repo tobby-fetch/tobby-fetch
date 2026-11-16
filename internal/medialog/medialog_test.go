@@ -200,3 +200,30 @@ func readLines(t *testing.T, path string) []string {
 	}
 	return out
 }
+
+func TestTailReadsTheLastLinesWithoutWriting(t *testing.T) {
+	root := t.TempDir()
+	w, err := medialog.Open(root, medialog.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range []string{"one", "two", "three", "four"} {
+		if _, err := w.Write([]byte(l + "\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = w.Close()
+	got, err := medialog.Tail(root, medialog.Options{}, 2)
+	if err != nil || string(got) != "three\nfour\n" {
+		t.Fatalf("Tail = %q, %v", got, err)
+	}
+	if got, _ := medialog.Tail(root, medialog.Options{}, 100); string(got) != "one\ntwo\nthree\nfour\n" {
+		t.Errorf("medialog.Tail(100) = %q", got)
+	}
+	if _, err := medialog.Tail(t.TempDir(), medialog.Options{}, 2); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a missing log = %v, want ErrNotExist", err)
+	}
+	if _, err := medialog.Tail(root, medialog.Options{Path: "../escape.log"}, 2); err == nil {
+		t.Error("a path escaping the store was read")
+	}
+}

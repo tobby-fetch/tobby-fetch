@@ -26,9 +26,12 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/blobfetch"
 	"github.com/tobby-fetch/tobby-fetch/internal/buildinfo"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/consume"
+	"github.com/tobby-fetch/tobby-fetch/internal/diag"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check"
@@ -40,9 +43,11 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/metrics"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
+	"github.com/tobby-fetch/tobby-fetch/internal/provenance"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/server"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -76,12 +81,28 @@ func newServeCmd() *cobra.Command {
 // caller sets it.
 var serveHook func(*server.Server)
 
+// stateExpectations says which identity entries of the state directory this
+// configuration depends on (FR-097).
+func stateExpectations(cfg *config.Config) statedir.Expect {
+	return statedir.Expect{
+		Accounts:     !cfg.Auth.Disabled,
+		Certificate:  cfg.Server.TLS.Serves() && cfg.Server.TLS.CertFile == "",
+		ImportRecord: cfg.Zone != "",
+	}
+}
+
 func runServe(ctx context.Context, cfg *config.Config) error {
 	level, err := logging.ParseLevel(cfg.Logging.Level)
 	if err != nil {
 		return err
 	}
 	logger := logging.New(os.Stdout, level)
+	// The bounded window of recent records the diagnostic bundle carries
+	// (FR-095, diagnostics.logRecords): a second sink of the same schema,
+	// in memory only. Everything derived from this logger — the task
+	// loggers, the audit trail — reaches it.
+	window := diag.NewWindow(cfg.Diagnostics.LogRecords)
+	logger = logging.Tee(logger, logging.New(window, level))
 
 	logger.LogAttrs(ctx, slog.LevelInfo, "tobby starting",
 		slog.String("version", buildinfo.Version()),
@@ -109,9 +130,35 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		})
 	}
 
+	// OpenVEX documents (FR-031 amendment 2026-11-16, R-15): read and
+	// validated before anything is opened, so a document that cannot be
+	// used refuses the start (TBY-SCN-027) instead of an instance serving
+	// a policy narrower or wider than declared.
+	vexDocs, err := loadVEX(ctx, cfg, logger)
+	if err != nil {
+		return err
+	}
+
 	// Authentication state (R-01): without the explicit FR-075 opt-out, the
 	// instance refuses to start until a local account exists — no surface is
 	// ever exposed open.
+	// The state directory (FR-097, R-27): layout version and permissions of
+	// the secret entries are checked before anything reads from it, and an
+	// identity entry a restore left behind is reported — the instance still
+	// starts, as what it can be without it.
+	if cfg.State.Root != "" {
+		rep, serr := statedir.Prepare(cfg.State.Root, stateExpectations(cfg), buildinfo.Version())
+		if serr != nil {
+			return serr
+		}
+		for _, missing := range rep.Missing {
+			logger.LogAttrs(ctx, slog.LevelWarn, "state directory entry missing",
+				slog.String("code", string(taxonomy.CodeStateIdentityMissing)),
+				slog.String("entry", missing),
+				slog.String("action", "restore it from the same backup if this instance was restored, then restart"),
+				slog.String("requirement", "FR-097"))
+		}
+	}
 	var accounts *auth.Store
 	if !cfg.Auth.Disabled {
 		if cfg.State.Root == "" {
@@ -126,6 +173,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		}
 	}
 	reg := metrics.New()
+	reg.SetSyncParallelism(cfg.Sync.Parallelism)
 	authMetrics := metrics.RegisterAuth(reg)
 	sessions := auth.NewSessions(time.Duration(cfg.Auth.SessionTTL))
 	authn := &auth.Authenticator{
@@ -156,6 +204,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	})
 	go sweepSessions(ctx, sessions)
 	srv := server.New(cfg.Server.Addr, time.Duration(cfg.Shutdown.GracePeriod), reg, logger)
+	// The one security-header middleware of the listener (NFR-022).
+	srv.SetHeaderPolicy(server.HeaderPolicy{HTML: ui.ContentSecurityPolicy(), SecureCookies: cfg.Server.SecureCookies})
 	if serveHook != nil {
 		serveHook(srv)
 	}
@@ -181,6 +231,16 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			slog.String("fingerprint_sha256", cert.Fingerprint()),
 			slog.String("requirement", "FR-082"))
 	}
+
+	// The certificate's end of life, read at every scrape so a replacement
+	// is followed without a restart (R-11).
+	reg.SetServerCertificate(func() (time.Time, bool) {
+		c, cerr := tlsadmin.Describe(serverCert)
+		if cerr != nil || c == nil {
+			return time.Time{}, false
+		}
+		return c.NotAfter, true
+	})
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -212,6 +272,18 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			slog.String("path", mediaLog.Path()),
 			slog.String("requirement", "FR-053/FR-056"))
 	}
+
+	// Clock plausibility (FR-096, R-32): checked at startup against the
+	// build time of this binary, each time a medium is verified, and again
+	// against both anchors at the pace of the store occupancy sample — a
+	// clock set back while the instance runs is caught too. The verdict is
+	// warned about on every channel and changes no behaviour.
+	clockMon := newClockMonitor(cfg, reg, func() *slog.Logger { return logger })
+	if rec, ok := clockMon.CheckBuild(); ok && !rec.Implausible {
+		logger.LogAttrs(ctx, slog.LevelDebug, "clock plausible against the build time of this binary",
+			slog.Time("now", rec.Now.UTC()), slog.String("requirement", "FR-096"))
+	}
+	go clockMon.Run(ctx, store.OccupancySampleEvery)
 
 	st, err := store.Open(ctx, cfg.Storage.Root, logger)
 	if err != nil {
@@ -263,12 +335,29 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	srv.SetReadyDetail(mediaGate.ReadyDetail)
 
+	// The FileSet server (FR-047) and what decides when it re-resolves
+	// (B-058, fileset_refresh.go). Built here, beside the gate, because
+	// /v2/ below is one of the write paths the refresher listens to.
+	fsrv := fileserve.NewServer(storeBlobs{st: st}, filepath.Join(cfg.Storage.Root, "meta", "fileserve"), fileserve.Limits{}, logger)
+	fileSetRefresh := newFileSetRefresher(ctx, fsrv, st, cfg, mediaGate, logger)
+
 	// The embedded registry serves the standard OCI Distribution API on the
 	// shared listener (FR-040); nested relocated repository names are
 	// first-class (ADR-0013). Reads need viewer, writes need operator
 	// (ADR-0009) — docker/helm/oras authenticate with the same accounts and
 	// tokens as the UI and the API (FR-076).
-	srv.Handle("/v2/", mediaGate.Guard("/v2/", mediagate.RegistryRefusal, authn.Registry(st.APIHandler())))
+	// FR-098 (R-17): the hardening switches, stated at startup and in the
+	// metrics; the registry guard sits inside authentication, so a refused
+	// push names who asked, and records what a client pushed as seeded.
+	//
+	// The FR-054 gate sits inside authentication too (B-067): an open gate
+	// answers /v2/_catalog and tags/list itself, from the verified set, and
+	// mounted outside it handed every verified repository and tag to an
+	// anonymous client — reads need viewer (ADR-0009) — while its
+	// closed-gate refusals reached clients nobody had authenticated.
+	hard := setupHardening(ctx, cfg, st, reg, logger)
+	srv.Handle("/v2/", authn.Registry(mediaGate.Guard("/v2/", mediagate.RegistryRefusal,
+		hardening.Registry(hard, st, logger, fileSetRefresh.Registry(st.APIHandler())))))
 
 	// The persistent task queue lives inside the store (FR-050) and
 	// re-queues interrupted tasks at startup (FR-029). The unit-import
@@ -355,7 +444,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if resumer.Threshold() > 0 {
 		logger.LogAttrs(ctx, slog.LevelInfo, "large transfers are resumable",
 			slog.String("threshold", cfg.Transfer.ResumeThreshold.String()),
-			slog.String("partials", filepath.Join(cfg.State.Root, "partials")),
+			slog.String("partials", statedir.Path(cfg.State.Root, statedir.Partials)),
 			slog.String("requirement", "FR-029"))
 	} else {
 		logger.LogAttrs(ctx, slog.LevelInfo, "large transfers are not resumable",
@@ -366,7 +455,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// The source policy every surface that can start an import runs
 	// under — the runner, the API and the UI. Built here rather than at
 	// each call site: that is what makes forgetting it impossible.
-	importPolicy := importer.WithSourcePolicy(cfg.Registries, allowlist, egress)
+	importPolicy := importer.Options(importer.WithSourcePolicy(cfg.Registries, allowlist, egress),
+		importer.WithUnitImportDisabled(hard.DisableUnitImport))
 	queue.Register(tasks.TypeUnitImport, importer.NewRunner(st, importPolicy, importer.WithResume(resumer)))
 
 	// The recipe engine (milestone 3): substitution-aware remote access
@@ -384,12 +474,13 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	remotes.SetResumer(blobfetch.New(egress, remotes.Keychain(), cfg.State.Root, cfg.Transfer.ResumeThreshold))
 	trustCache := ""
 	if cfg.State.Root != "" {
-		trustCache = filepath.Join(cfg.State.Root, "trust-cache")
+		trustCache = statedir.Path(cfg.State.Root, statedir.TrustCache)
 	}
 	trust, err := engine.LoadTrust(cfg.Trust, trustCache, egress)
 	if err != nil {
 		return err
 	}
+	logIngredientSignaturePosture(ctx, logger, trust)
 	eng := engine.New(st, remotes, trust, cfg.Retriever.Source, cfg.Storage.BasePrefix, cfg.Sync)
 	// The FR-055 pre-flight: the safety margin, and the explicit opt-out
 	// that turns the gate into a report. The opt-out is announced at
@@ -415,7 +506,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// Vulnerability scanning at retrieval (FR-031, FR-032, R-13): the
 	// pinned scanner, its database from the tobby-system delivery, the
 	// policy, the metrics — and the posture stated at startup.
-	scanning := setupScanning(ctx, cfg, st, eng, reg, logger)
+	scanning := setupScanning(ctx, cfg, st, eng, reg, logger, vexDocs, hard)
 	defer scanning.close()
 
 	// The promotion target (milestone 4, FR-013): built from the same
@@ -483,12 +574,20 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
+	if cfg.Zone != "" {
+		if err := imports.Ensure(); err != nil {
+			return err
+		}
+	}
 	eng.SetMediaImport(cfg.Zone, imports)
 	// FR-054: every verification this engine performs reaches the serving
 	// gate, and the gate's own Verify step is this engine. One funnel in
 	// each direction, so no surface can reach a verdict the gate does not
 	// hear, and no screen can open the gate by any other means.
-	eng.SetMediaVerdicts(mediaGate.Observe)
+	eng.SetMediaVerdicts(func(rep *media.Report) {
+		mediaGate.Observe(rep)
+		observeMediumClock(clockMon, rep)
+	})
 
 	// FR-037 (R-22): how many recipes this instance holds under reduced
 	// assurance, per declared scope, read from the recipe graph at every
@@ -539,6 +638,25 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		reg.ObserveIntegrityVerification(string(rep.Verdict), rep.FinishedAt)
 	})
 	integritySvc.Register()
+
+	// The diagnostic bundle (FR-095, R-30) and the state inventory
+	// (FR-097): one service behind the screen, the API and — through the
+	// API — the command line, so their archives and their audit trail are
+	// the same.
+	diagSvc := (&diag.Service{
+		Secrets: diagSecrets(cfg),
+		Sources: (&instanceSources{
+			cfg: cfg, window: window, reg: reg, queue: queue, integrity: integritySvc.Latest,
+		}).sources(),
+		Tasks:   cfg.Diagnostics.Tasks,
+		Logger:  logger,
+		Metrics: reg,
+	})
+	var inspectState func() (*statedir.Inventory, error)
+	if cfg.State.Root != "" {
+		root := cfg.State.Root
+		inspectState = func() (*statedir.Inventory, error) { return statedir.Inspect(root) }
+	}
 	eng.SetDestination(destination)
 	if destination != nil {
 		logger.LogAttrs(ctx, slog.LevelInfo, "promotion destination configured",
@@ -549,15 +667,15 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 
 	// The FileSet HTTP surface (FR-047): explicitly enabled FileSets are
 	// extracted (RECIPE-SPEC §7.4/§14.5) into a store-local cache and
-	// served read-only under /files/. Refreshed after every sync.
-	fsrv := fileserve.NewServer(storeBlobs{st: st}, filepath.Join(cfg.Storage.Root, "meta", "fileserve"), fileserve.Limits{}, logger)
-	refreshFileSets := func(runCtx context.Context) {
-		syncFileSets(runCtx, fsrv, st, cfg, logger)
-	}
-	refreshFileSets(ctx)
+	// served read-only under /files/ — re-resolved after every task that
+	// can bring content into the store, and never before the media gate
+	// opens (B-058).
+	fileSetRefresh.Refresh(ctx)
 	queue.Register(tasks.TypeSync, func(runCtx context.Context, t *tasks.Task, taskLogger *slog.Logger, save func()) error {
+		started := time.Now()
 		err := eng.Runner()(runCtx, t, taskLogger, save)
-		refreshFileSets(runCtx)
+		reg.ObserveSync(syncRunOf(t, err, started, time.Now()))
+		fileSetRefresh.Refresh(runCtx)
 		// A cycle may have delivered a new database or scanner binary
 		// (tobby-system): the banner and the metrics follow at once.
 		scanning.refresh(runCtx)
@@ -568,6 +686,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		occupancy.Refresh(runCtx)
 		return err
 	})
+	fileSetRefresh.wrapTasks(queue, tasks.TypeUnitImport, tasks.TypeMediaImport)
 	queue.Start(ctx)
 
 	// The reconciliation cadence (FR-013). The scheduler exists in
@@ -605,8 +724,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			anonymousNames = append(anonymousNames, f.Name)
 		}
 	}
-	srv.Handle(fileserve.RoutePrefix, mediaGate.Guard(fileserve.RoutePrefix, mediagate.FilesRefusal,
-		filesAuth(authn, anonymous, fsrv.Handler())))
+	// Authentication first, then the FR-054 gate (B-067), as on /v2/: a
+	// FileSet declared anonymous still reaches the gate without
+	// credentials — that is what anonymous means — and the gate's refusal
+	// names the medium by its ID, never by the store's path.
+	srv.Handle(fileserve.RoutePrefix, filesAuth(authn, anonymous,
+		mediaGate.Guard(fileserve.RoutePrefix, mediagate.FilesRefusal, fileSetRefresh.Files(fsrv.Handler()))))
 
 	// The FileSets surface (FR-047 inventory, FR-048 packing), shared by
 	// the screen and the endpoints so the two give one answer (FR-061).
@@ -617,12 +740,15 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	fileSets := &fileserve.Surface{
 		Catalog: storeCatalog{st: st},
 		Packer: fileserve.NewPacker(st, cfg.Storage.BasePrefix, logger,
-			fileserve.WithPackRoots(cfg.Files.PackRoots)),
+			fileserve.WithPackRoots(cfg.Files.PackRoots),
+			fileserve.WithUnitImportDisabled(hard.DisableUnitImport)),
 		Served:      fsrv.Enabled,
 		Declared:    declaredFileSets(cfg),
 		BasePrefix:  cfg.Storage.BasePrefix,
 		PackEnabled: len(cfg.Files.PackRoots) > 0,
+		Packed:      fileSetRefresh.Refresh,
 	}
+	fileSets.UnitImportDisabled = hard.DisableUnitImport // FR-098
 
 	// The versioned REST API (FR-060), strict UI parity (FR-061). Content
 	// browsing reads the store through its accessors (FR-062), never the
@@ -631,9 +757,19 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// behind the API, the UI, and the queue, so the confirmation rule and
 	// the selection rules cannot drift between surfaces (FR-061).
 	interopSvc := interop.New(st, queue, cfg.Storage.BasePrefix, logger)
+	interopSvc.SetUnitImportDisabled(hard.DisableUnitImport) // FR-098, B-071
 	interopSvc.Register()
+	fileSetRefresh.wrapTasks(queue, tasks.TypeLayoutImport)
+	interopSvc.SetAfterReset(fileSetRefresh.AfterReset)
+
+	// The consumption aids (FR-065): one service behind the API, the UI,
+	// so the table and the snippet cannot differ between surfaces.
+	aidSettings := consume.FromConfig(cfg, buildinfo.Version())
+	aids := consume.New(st, &aidSettings)
 
 	restAPI := api.New(authn, logger)
+	scanHistory := &provenance.History{Tasks: queue, Graph: st}
+	restAPI.SetControls(api.Controls{Hardening: hard, Scans: scanHistory})
 	api.RegisterContent(restAPI, st, occupancy)
 	api.RegisterTasks(restAPI, queue, st, time.Duration(cfg.Import.InspectTimeout), importPolicy)
 	api.RegisterAccounts(restAPI, accounts)
@@ -648,6 +784,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Prune:             eng.PrunesByDefault(),
 		Projector:         eng,
 		Occupancy:         occupancy,
+		Aids:              aids,
 	})
 	api.RegisterPublish(restAPI, publisher)
 	api.RegisterPlan(restAPI, &api.PlanOptions{Planner: eng.Planner()})
@@ -656,6 +793,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Scan: scanning.slipState,
 	})
 	api.RegisterIntegrity(restAPI, &api.IntegrityOptions{Verifier: integritySvc})
+	api.RegisterPolicy(restAPI, scanning.policy)
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{
 		Cert:     serverCert,
 		CertFile: cfg.Server.TLS.CertFile,
@@ -664,6 +802,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	})
 	api.RegisterOCILayout(restAPI, interopSvc, queue)
 	api.RegisterFileSets(restAPI, fileSets)
+	api.RegisterOperations(restAPI, &api.OperationsOptions{Diagnostics: diagSvc, Clock: clockMon, State: inspectState})
 	api.RegisterOpenAPI(restAPI)
 	srv.Handle("/api/v1/", restAPI.Handler())
 
@@ -698,8 +837,15 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		MediaZone:          eng,
 		MediaGate:          mediaGate,
 		Integrity:          integritySvc,
+		Diagnostics:        diagSvc,
+		Clock:              clockMon,
+		State:              inspectState,
 		Federation:         fed,
 		Scan:               scanning.uiState,
+		Aids:               aids,
+		Hardening:          hard,
+		ScanHistory:        scanHistory,
+		Policy:             scanning.policy,
 	})
 	webUI.Mount(srv.Mux())
 	webUI.MountFederation(srv.Mux())
@@ -767,6 +913,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// volume refuse to unmount — so an instance that had served a single
 	// FileSet left the operator unable to eject the medium they had just
 	// shut it down to carry away (B-024, NFR-018, FR-050).
+	fileSetRefresh.Close()
 	if err := fsrv.Close(); err != nil {
 		logger.LogAttrs(ctx, slog.LevelWarn, "the fileset cache was not fully released",
 			slog.String("error", err.Error()))
@@ -1010,8 +1157,11 @@ func sweepSessions(ctx context.Context, sessions *auth.Sessions) {
 // waiting for its recipe kept every other FileSet, packed ones included,
 // out of /files/. Found by running the FR-048 flow end to end against a
 // configuration declaring both a packed FileSet and one still to come.
-func syncFileSets(ctx context.Context, fsrv *fileserve.Server, st *store.Store, cfg *config.Config, logger *slog.Logger) {
-	sets, err := resolveFileSets(ctx, st, cfg)
+//
+// scope restricts the resolution to verified content on a guarded
+// destination instance (B-063); nil resolves against the whole store.
+func syncFileSets(ctx context.Context, fsrv *fileserve.Server, st *store.Store, cfg *config.Config, scope fileSetScope, logger *slog.Logger) {
+	sets, err := resolveFileSetsIn(ctx, st, cfg, scope)
 	if err != nil {
 		logger.LogAttrs(ctx, slog.LevelWarn, "fileset resolution failed",
 			slog.Int("resolved", len(sets)),
@@ -1028,15 +1178,27 @@ func syncFileSets(ctx context.Context, fsrv *fileserve.Server, st *store.Store, 
 // pinned version or highest local semver tag, platform selected on an
 // index (FR-047).
 func resolveFileSets(ctx context.Context, st *store.Store, cfg *config.Config) ([]fileserve.FileSet, error) {
+	return resolveFileSetsIn(ctx, st, cfg, nil)
+}
+
+// fileSetScope is the verified content a guarded destination instance may
+// serve (*media.Served, B-063): FileSet resolution looks for its tags and
+// manifests there and nowhere else, so a version added to the medium after
+// its manifest was written — or any tag no pushable recipe reaches — is
+// never "the highest local tag".
+type fileSetScope interface {
+	Tags(repo string) []string
+	Tag(repo, tag string) (string, bool)
+	Manifest(repo, dgst string) bool
+}
+
+// resolveFileSetsIn is resolveFileSets inside a scope; nil is the whole
+// store.
+func resolveFileSetsIn(ctx context.Context, st *store.Store, cfg *config.Config, scope fileSetScope) ([]fileserve.FileSet, error) {
 	var sets []fileserve.FileSet
 	var errs []error
 	for _, f := range cfg.Files.FileSets {
-		repo, err := relocate.PathWithBase(cfg.Storage.BasePrefix, f.Ref)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("fileset %s: %w", f.Name, err))
-			continue
-		}
-		set, err := resolveFileSet(ctx, st, f, repo)
+		set, err := resolveDeclaredFileSet(ctx, st, cfg, f, scope)
 		if err != nil {
 			// A FileSet whose content has not arrived yet is not an
 			// instance failure: it starts serving after the sync lands.
@@ -1048,11 +1210,25 @@ func resolveFileSets(ctx context.Context, st *store.Store, cfg *config.Config) (
 	return sets, errors.Join(errs...)
 }
 
-func resolveFileSet(ctx context.Context, st *store.Store, f config.FileSetServe, repo string) (fileserve.FileSet, error) {
+// resolveDeclaredFileSet resolves one files.filesets entry.
+func resolveDeclaredFileSet(ctx context.Context, st *store.Store, cfg *config.Config, f config.FileSetServe, scope fileSetScope) (fileserve.FileSet, error) {
+	repo, err := relocate.PathWithBase(cfg.Storage.BasePrefix, f.Ref)
+	if err != nil {
+		return fileserve.FileSet{}, err
+	}
+	return resolveFileSet(ctx, st, f, repo, scope)
+}
+
+func resolveFileSet(ctx context.Context, st *store.Store, f config.FileSetServe, repo string, scope fileSetScope) (fileserve.FileSet, error) {
 	tag := f.Version
 	if tag == "" {
-		tags, err := st.Tags(ctx, repo)
-		if err != nil {
+		var (
+			tags []string
+			err  error
+		)
+		if scope != nil {
+			tags = scope.Tags(repo)
+		} else if tags, err = st.Tags(ctx, repo); err != nil {
 			return fileserve.FileSet{}, err
 		}
 		versions := make([]string, 0, len(tags))
@@ -1066,11 +1242,21 @@ func resolveFileSet(ctx context.Context, st *store.Store, f config.FileSetServe,
 			return fileserve.FileSet{}, err
 		}
 	}
-	payload, mediaType, dgst, err := st.RawManifest(ctx, repo, tag)
+	ref := tag
+	if scope != nil {
+		// The tag as the verification found it, never as the medium's tag
+		// file says now.
+		d, ok := scope.Tag(repo, tag)
+		if !ok {
+			return fileserve.FileSet{}, fmt.Errorf("%s:%s is not part of the content the medium's verification cleared (FR-054)", repo, tag)
+		}
+		ref = d
+	}
+	payload, mediaType, dgst, err := st.RawManifest(ctx, repo, ref)
 	if err != nil {
 		return fileserve.FileSet{}, err
 	}
-	dgst, err = selectFileSetManifest(ctx, st, repo, payload, mediaType, dgst, f.Platform)
+	dgst, err = selectFileSetManifest(ctx, st, repo, payload, mediaType, dgst, f.Platform, scope)
 	if err != nil {
 		return fileserve.FileSet{}, err
 	}
@@ -1081,7 +1267,13 @@ func resolveFileSet(ctx context.Context, st *store.Store, f config.FileSetServe,
 // step 1): the configured platform, or the single entry of a
 // single-manifest FileSet; an ambiguous index without a configured
 // platform is refused.
-func selectFileSetManifest(ctx context.Context, st *store.Store, repo string, payload []byte, mediaType, dgst, platform string) (string, error) {
+func selectFileSetManifest(ctx context.Context, st *store.Store, repo string, payload []byte, mediaType, dgst, platform string, scope fileSetScope) (string, error) {
+	present := func(d string) bool {
+		if scope != nil && !scope.Manifest(repo, d) {
+			return false
+		}
+		return st.HasManifest(ctx, repo, d)
+	}
 	if !strings.Contains(mediaType, "index") && !strings.Contains(mediaType, "manifest.list") {
 		return dgst, nil
 	}
@@ -1112,7 +1304,7 @@ func selectFileSetManifest(ctx context.Context, st *store.Store, repo string, pa
 		// "linux/arm64" must find the index child the registry describes
 		// as linux/arm64 variant v8.
 		if importer.MatchesPlatform(platform, m.Platform.OS, m.Platform.Arch, m.Platform.Variant) {
-			if !st.HasManifest(ctx, repo, m.Digest) {
+			if !present(m.Digest) {
 				return "", fmt.Errorf("platform %s of %s is not present locally (sparse index)", platform, repo)
 			}
 			return m.Digest, nil
@@ -1122,7 +1314,7 @@ func selectFileSetManifest(ctx context.Context, st *store.Store, repo string, pa
 		return "", fmt.Errorf("platform %s not found in the index of %s", platform, repo)
 	}
 	if len(candidates) == 1 {
-		if !st.HasManifest(ctx, repo, candidates[0]) {
+		if !present(candidates[0]) {
 			return "", fmt.Errorf("the single platform of %s is not present locally", repo)
 		}
 		return candidates[0], nil
@@ -1156,4 +1348,23 @@ func resumeDisabledReason(cfg *config.Config) string {
 		return "transfer.resumeThreshold is 0"
 	}
 	return "no state.root is configured, and partial downloads never live in the transportable store"
+}
+
+// logIngredientSignaturePosture states at startup how ingredients' own
+// signatures are treated (FR-033, FR-075: a posture is never silent).
+// The default is informational: the signature is copied, verified for
+// the record, and blocks nothing — the recipe signature pins every
+// digest. The opt-in makes it a requirement, on every path.
+func logIngredientSignaturePosture(ctx context.Context, logger *slog.Logger, trust *engine.TrustPolicy) {
+	if trust.RequiresIngredientSignatures() {
+		logger.LogAttrs(ctx, slog.LevelInfo, "ingredient signatures required",
+			slog.String("setting", "trust.requireIngredientSignatures"),
+			slog.String("effect", "an ingredient without a signature the applicable trust roots verify blocks its recipe (TBY-SIG-001), outside allowUnsigned scopes"),
+			slog.String("requirement", "FR-033/FR-075"))
+		return
+	}
+	logger.LogAttrs(ctx, slog.LevelInfo, "ingredient signatures informational",
+		slog.String("setting", "trust.requireIngredientSignatures"),
+		slog.String("effect", "an ingredient's own signature is copied and verified for the record; it never blocks"),
+		slog.String("requirement", "FR-033/FR-075"))
 }

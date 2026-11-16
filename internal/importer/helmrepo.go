@@ -452,6 +452,7 @@ func runChartRepoImport(ctx context.Context, t *tasks.Task, dst Destination, log
 		}
 		save()
 	}
+	recordUnitImport(ctx, dst, t, cr.repo, logger)
 	return nil
 }
 

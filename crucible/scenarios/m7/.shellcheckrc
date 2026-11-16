@@ -1,0 +1,5 @@
+# Scenarios source ../../lib.sh and their track lib through "$DIR/...":
+# resolve those paths from the script's own directory, so `shellcheck -x`
+# follows them and sees the variables the libs use.
+source-path=SCRIPTDIR
+external-sources=true

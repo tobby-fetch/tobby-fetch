@@ -20,6 +20,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity"
 	"github.com/tobby-fetch/tobby-fetch/internal/scan"
+	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
@@ -223,6 +224,12 @@ type Resolution struct {
 	// PushedBytes is what actually crossed for this item. Zero on an
 	// up-to-date item is the FR-028 acceptance criterion, stated per row.
 	PushedBytes int64 `json:"pushed_bytes,omitempty"`
+	// Signature is the verdict on an ingredient's OWN signature (FR-033,
+	// RECIPE-SPEC §12.2): verified by a trust root, present but not
+	// verifiable by this zone's roots, or none. Informational unless
+	// trust.requireIngredientSignatures is on. Set whole, never mutated
+	// in place.
+	Signature *sigverify.Inspection `json:"signature,omitempty"`
 }
 
 // ChartDependency is one row of the FR-024 report.
@@ -278,6 +285,10 @@ type Item struct {
 	// recipe admitted under a relaxed trust scope (FR-037, R-22). Nil is
 	// full assurance. Set whole, never mutated in place, as Scan.
 	Assurance *assurance.Marker `json:"assurance,omitempty"`
+	// Signature is the verdict on an ingredient item's own signature
+	// (FR-033, B-062), as on its Resolution row. Set whole, never mutated
+	// in place, as Scan.
+	Signature *sigverify.Inspection `json:"signature,omitempty"`
 }
 
 // cloneItems deep-copies a task's items, per-blob progress rows

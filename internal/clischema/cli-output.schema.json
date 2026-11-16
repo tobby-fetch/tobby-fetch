@@ -104,6 +104,74 @@
       }
     },
 
+    "tobby diagnostics bundle": {
+      "title": "tobby diagnostics bundle --output json",
+      "type": "object",
+      "required": ["file", "bytes", "source", "members"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string", "description": "Where the archive was written." },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "source": { "enum": ["host", "instance"], "description": "Assembled on this host, or taken from a running instance." },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "size", "digest"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "size": { "type": "integer", "minimum": 0 },
+              "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+            }
+          }
+        },
+        "omitted": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "reason"],
+            "additionalProperties": false,
+            "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }
+          }
+        }
+      }
+    },
+
+    "tobby state inspect": {
+      "title": "tobby state inspect --output json",
+      "type": "object",
+      "required": ["root", "layout", "supported", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "root": { "type": "string" },
+        "layout": { "type": "integer", "description": "The layout version recorded in the directory; 0 when none." },
+        "supported": { "type": "integer", "description": "The layout version this build writes." },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "kind", "secret", "documented", "present", "size"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "kind": { "enum": ["file", "dir"] },
+              "class": { "enum": ["identity", "discardable"] },
+              "secret": { "type": "boolean" },
+              "purpose": { "type": "string" },
+              "documented": { "type": "boolean" },
+              "present": { "type": "boolean" },
+              "size": { "type": "integer", "minimum": 0 },
+              "files": { "type": "integer", "minimum": 0 },
+              "mode": { "type": "string" },
+              "access": { "enum": ["owner", "group", "broad"] },
+              "modified": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
+      }
+    },
+
     "tobby user list": {
       "title": "tobby user list --output json",
       "type": "object",
@@ -144,6 +212,34 @@
         "symlinks": { "type": "integer" },
         "bytes": { "type": "integer" },
         "signed": { "type": "boolean", "const": false, "description": "Always false: Tobby holds no signing key (ADR-0007). Reported rather than omitted — a missing field reads as an oversight." }
+      }
+    },
+
+    "tobby consumption table": {
+      "title": "tobby consumption table --output json",
+      "description": "The source→destination mapping table of the selected recipes (FR-065), as GET /api/v1/mapping serves it with ?format=json.",
+      "type": "object",
+      "required": ["destination", "entries"],
+      "additionalProperties": false,
+      "properties": {
+        "destination": { "type": "string", "description": "The registry host the destination references name." },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["recipe", "recipeVersion", "ingredient", "kind", "source", "destination", "digest"],
+            "additionalProperties": false,
+            "properties": {
+              "recipe": { "type": "string" },
+              "recipeVersion": { "type": "string" },
+              "ingredient": { "type": "string" },
+              "kind": { "type": "string" },
+              "source": { "type": "string", "description": "The reference the recipe names, with its tag (or digest when it has no tag)." },
+              "destination": { "type": "string", "description": "The reference at the destination registry, relocated per FR-035." },
+              "digest": { "type": "string", "pattern": "^[a-z0-9]+:[a-f0-9]+$" }
+            }
+          }
+        }
       }
     },
 
@@ -309,6 +405,223 @@
       }
     },
 
+    "tobby scan exceptions": {
+      "title": "tobby scan exceptions --output json",
+      "description": "The effective scan policy (FR-031 amendment R-15): the GET /api/v1/policy document, and where it was read from.",
+      "type": "object",
+      "required": [
+        "source",
+        "evaluated_at",
+        "mode",
+        "threshold",
+        "blocking",
+        "retriever_known",
+        "exceptions",
+        "vex_documents",
+        "hardening"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "configuration",
+            "instance"
+          ],
+          "description": "configuration: this host's configuration file and its scan.vex documents, read here — the Retriever's exceptions are not known. instance: a running instance's GET /api/v1/policy."
+        },
+        "instance": {
+          "type": "string",
+          "description": "The base URL queried, for source instance."
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "warn",
+            "block"
+          ]
+        },
+        "threshold": {
+          "type": "number"
+        },
+        "blocking": {
+          "type": "boolean"
+        },
+        "retriever_known": {
+          "type": "boolean",
+          "description": "False when the Retriever's exceptions are not listed: always for source configuration, and on an instance that has served no Retriever yet."
+        },
+        "exceptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "origin",
+              "state"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "instance",
+                  "retriever",
+                  "vex"
+                ]
+              },
+              "document": {
+                "type": "string",
+                "description": "The OpenVEX document path, for origin vex."
+              },
+              "justification": {
+                "type": "string"
+              },
+              "scope": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Narrows the exception (R-15); the criteria present combine with AND. Absent: every item of its level.",
+                "properties": {
+                  "digest": {
+                    "type": "string"
+                  },
+                  "repository": {
+                    "type": "string"
+                  },
+                  "recipe": {
+                    "type": "string"
+                  },
+                  "packages": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "expires": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Absent for an unbounded Retriever exception."
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "expired",
+                  "unbounded"
+                ]
+              }
+            }
+          }
+        },
+        "vex_documents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "document_id",
+              "expires",
+              "state",
+              "statements",
+              "admitted",
+              "ignored",
+              "exceptions"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "document_id": {
+                "type": "string"
+              },
+              "expires": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "expired"
+                ]
+              },
+              "statements": {
+                "type": "integer"
+              },
+              "admitted": {
+                "type": "integer"
+              },
+              "ignored": {
+                "type": "integer"
+              },
+              "exceptions": {
+                "type": "integer"
+              },
+              "notes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "statement",
+                    "vulnerability",
+                    "reason"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "statement": {
+                      "type": "integer"
+                    },
+                    "vulnerability": {
+                      "type": "string"
+                    },
+                    "product": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "status",
+                        "impact-statement-only",
+                        "unbounded-product"
+                      ]
+                    },
+                    "detail": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "hardening": {
+          "type": "object",
+          "required": [
+            "disableUnitImport",
+            "disableRegistryPush"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "disableUnitImport": {
+              "type": "boolean"
+            },
+            "disableRegistryPush": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
     "tobby store verify": {
       "oneOf": [{ "$ref": "#/$defs/storeVerifyReport" }, { "$ref": "#/$defs/storeVerifyTrigger" }]
     },

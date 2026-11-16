@@ -198,21 +198,19 @@ a pas de `tobby store reset` en ligne de commande.
 
 <!-- TODO: screenshot: l'écran d'administration du store — ce que le store détient, et la confirmation tapée qu'exige la remise à zéro -->
 
-## Deux choses qui ne sont pas encore là
+## Les horloges, et Tobby lui-même
 
 **La cohérence d'horloge.** Les comparaisons de fraîcheur supposent des
-horloges plausibles. Détecter une horloge implausible au démarrage et à
-l'ouverture d'un support — avertir et consigner à l'audit, jamais corriger
-en silence — est prévu au jalon 7 (R-32). D'ici là, une destination dont
-l'horloge est fausse peut refuser un support frais ou accepter un support
-périmé, et la piste d'audit enregistrera fidèlement la mauvaise heure.
+horloges plausibles. Depuis la v1.0.0-rc.1 (R-32), une horloge implausible —
+antérieure à la compilation du binaire au démarrage, ou à la production d'un
+support à son ouverture — est signalée et consignée à l'audit, jamais
+corrigée en silence : une bannière, un enregistrement de journal, la sortie
+d'erreur de la ligne de commande, une métrique et un événement d'audit
+nomment l'écart. Voir [détecter une horloge fausse](../clock-check/).
 
-**Mettre à jour Tobby lui-même dans la zone.** Au jalon 6, chaque release
-est publiée en artefacts OCI prêts à référencer dans une recipe, si bien que
-les mises à jour de Tobby traversent le flux miroir standard comme
-n'importe quel contenu, signées par la chaîne de qualification de votre
-site. Il n'y a pas d'auto-update, jamais (R-25). Aujourd'hui, mettre à jour
-une instance isolée, c'est transporter le nouveau binaire comme vous
-transportez le reste.
-
-Les deux sont suivis sur la page [État du projet](../../discover/status/).
+**Mettre à jour Tobby lui-même dans la zone.** Depuis la v0.6.0 (R-25),
+chaque release est publiée en artefacts OCI prêts à référencer dans une
+recipe, si bien que les mises à jour de Tobby traversent le flux miroir
+standard comme n'importe quel contenu, signées par la chaîne de
+qualification de votre site. Il n'y a pas d'auto-update, jamais. Voir
+[mettre à jour Tobby en zone isolée](../update-tobby/).

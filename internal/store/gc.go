@@ -15,6 +15,8 @@ import (
 	distribution "github.com/distribution/distribution/v3"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 )
 
 // Removal and garbage collection (FR-044, amendment 2026-08-12).
@@ -69,6 +71,9 @@ func (s *Store) DeleteRepository(ctx context.Context, name string, logger *slog.
 		return &RecipeManagedError{Repo: name, Recipes: managing}
 	}
 	defer s.exclusive()()
+	// Classified before the ledger entry goes away with the repository:
+	// the removal record carries what was removed (FR-098, FR-090).
+	class := s.Classify(name).Class
 
 	dir := filepath.Join(s.root, "docker", "registry", "v2", "repositories", filepath.FromSlash(name))
 	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
@@ -80,12 +85,14 @@ func (s *Store) DeleteRepository(ctx context.Context, name string, logger *slog.
 	if err := s.dropProvenance(name); err != nil {
 		return err
 	}
+	s.dropReferrerIndex(name)
 	res, err := s.sweep(ctx)
 	if err != nil {
 		return err
 	}
 	logger.LogAttrs(ctx, slog.LevelInfo, "repository removed",
 		slog.String("repository", name),
+		slog.String(logging.KeyProvenance, string(class)),
 		slog.Int("content_swept", res.Removed),
 		slog.Int("content_deferred", res.Deferred))
 	return nil
@@ -197,6 +204,11 @@ func (s *Store) PruneTags(ctx context.Context, refs []TagRef, logger *slog.Logge
 	// empty directory and a stale provenance entry the media manifest
 	// would still have to describe (FR-054). It goes with its tags.
 	for _, name := range touched {
+		// A repository that was never there (or is already gone) is not
+		// "removed" by this prune: counting it would overstate the result.
+		if _, err := os.Stat(filepath.Join(s.root, "docker", "registry", "v2", "repositories", filepath.FromSlash(name))); err != nil {
+			continue
+		}
 		empty, err := s.hasNoTags(ctx, name)
 		if err != nil {
 			return res, err
@@ -293,6 +305,14 @@ func (s *Store) sweep(ctx context.Context) (sweepResult, error) {
 	// links are repository-scoped), and the global blob set.
 	global := map[digest.Digest]bool{}
 	for _, name := range repos {
+		// The referrers index is refreshed from what the repository holds
+		// before it is used as a mark root (referrers.go).
+		s.refMu.Lock()
+		_, rerr := s.rebuildReferrerIndex(ctx, name)
+		s.refMu.Unlock()
+		if rerr != nil {
+			return res, rerr
+		}
 		reach, err := s.markRepository(ctx, name)
 		if err != nil {
 			return res, err
@@ -376,6 +396,10 @@ func (s *Store) markRepository(ctx context.Context, name string) (map[digest.Dig
 		if err := s.markManifest(ctx, ms, desc.Digest, reach); err != nil {
 			return nil, err
 		}
+	}
+	// Referrers (OCI 1.1) live as long as their subject does.
+	if err := s.markReferrers(ctx, name, ms, reach); err != nil {
+		return nil, err
 	}
 	return reach, nil
 }

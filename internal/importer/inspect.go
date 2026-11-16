@@ -30,6 +30,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/blobfetch"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
@@ -157,6 +158,27 @@ type options struct {
 	// the plain streaming behavior, which is also what a zero threshold
 	// or an instance without a state directory gets.
 	resumer *blobfetch.Resumer
+	// unitImportDisabled is hardening.disableUnitImport (FR-098): every
+	// inspection and every transfer refuses with TBY-POL-005.
+	unitImportDisabled bool
+}
+
+// WithUnitImportDisabled carries hardening.disableUnitImport (FR-098,
+// R-17). It travels with the source policy every import surface already
+// threads through (the runner, the API, the screen), so no surface can
+// start an import the instance refuses — and the runner refuses too,
+// which also stops a task queued before the switch was set and resumed
+// after the restart that set it (FR-029).
+func WithUnitImportDisabled(disabled bool) Option {
+	return func(o *options) { o.unitImportDisabled = disabled }
+}
+
+// refusal is the hardening refusal, or nil when unit imports are open.
+func (o *options) refusal() error {
+	if !o.unitImportDisabled {
+		return nil
+	}
+	return hardening.UnitImportRefusal()
 }
 
 // WithSourcePolicy carries everything that decides which sources a unit
@@ -290,6 +312,9 @@ func budgetOf(ctx context.Context) string {
 // chart (FR-024) and is inspected through its conversion.
 func Inspect(ctx context.Context, reference string, local Local, opts ...Option) (*Report, error) {
 	o := buildOptions(opts)
+	if err := o.refusal(); err != nil {
+		return nil, err
+	}
 	if isChartRepoURL(reference) {
 		return inspectChartRepo(ctx, reference, local, o)
 	}
@@ -494,4 +519,17 @@ func mapRemoteErr(ctx context.Context, host, reference, budget string, err error
 			taxonomy.Params{"host": host}).WithCause(err)
 	}
 	return taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err)
+}
+
+// Options folds several options into one, applied in order — so that the
+// single policy value every import surface threads through can carry the
+// source policy and the hardening switch together.
+func Options(opts ...Option) Option {
+	return func(o *options) {
+		for _, fn := range opts {
+			if fn != nil {
+				fn(o)
+			}
+		}
+	}
 }

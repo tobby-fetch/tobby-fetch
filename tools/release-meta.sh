@@ -37,6 +37,17 @@ if [ "${event}" = "push" ] && case "${ref}" in refs/tags/v*) true ;; *) false ;;
   dry_run=false
   ns="ghcr.io/${owner}"
 else
+  # A rehearsal signs keyless too, and its certificate names the ref it
+  # ran on. On a tag ref that identity is the release's own
+  # (release.yml@refs/tags/vX.Y.Z), which the published verification
+  # commands pin: a rehearsal there would sign blobs — SBOMs, the
+  # integration kit — that pass them. Rehearsals run from a branch.
+  case "${ref}" in
+    refs/tags/*)
+      echo "::error::a rehearsal runs from a branch, not from ${ref}: on a tag ref its signatures would carry the release identity" >&2
+      exit 1
+      ;;
+  esac
   version="${input_version}"
   dry_run=true
   ns="ghcr.io/${owner}/dry-run"

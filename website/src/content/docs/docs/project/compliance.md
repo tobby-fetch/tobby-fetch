@@ -35,7 +35,7 @@ citing an "L4" refer to the retired v0.1 draft
 |---|---|---|---|
 | PO — Prepare the organization | Pinned toolchain (`mise.toml`), protected trunk with mandatory review, DCO on every commit, published security policy | [CONTRIBUTING.md](https://github.com/tobby-fetch/tobby-fetch/blob/main/CONTRIBUTING.md), [SECURITY.md](https://github.com/tobby-fetch/tobby-fetch/blob/main/SECURITY.md) | delivered |
 | PS — Protect the software | Signed releases, SHA256SUMS under SLSA provenance, actions pinned by full commit SHA, third-party tools checksum-verified | release.yml, [ci.yml](https://github.com/tobby-fetch/tobby-fetch/blob/main/.github/workflows/ci.yml) | delivered |
-| PW — Produce well-secured software | Numbered, testable requirements (SRS); strict lint with zero suppressions; race detector and anti-flaky double run; per-package coverage floor; full-history secret scanning | [Tests and proofs](../tests-and-proofs/), [SRS](../../reference/srs-adr/) | delivered; parser fuzzing and input-validation review upcoming (milestone 7) |
+| PW — Produce well-secured software | Numbered, testable requirements (SRS); strict lint with zero suppressions; race detector and anti-flaky double run; per-package coverage floor; full-history secret scanning | [Tests and proofs](../tests-and-proofs/), [SRS](../../reference/srs-adr/) | delivered, with parser fuzzing in CI and the per-entry-point [input-validation review](../../security/input-validation/) |
 | RV — Respond to vulnerabilities | Trivy and govulncheck as merge and release gates; weekly image rebuild behind a Trivy gate; coordinated disclosure with patch releases | ci.yml, [weekly-rebuild.yml](https://github.com/tobby-fetch/tobby-fetch/blob/main/.github/workflows/weekly-rebuild.yml), SECURITY.md | delivered |
 
 ## OWASP SCVS
@@ -59,9 +59,9 @@ operator's supply chain.
 | Measure family | Tobby mechanism | Proof | Status |
 |---|---|---|---|
 | Supply-chain security (21(2)(d)) | Verification at entry: cosign signatures against the destination's own trust roots, pinned digests, registry allowlist; Tobby's own releases verifiable end to end | [Content trust](../../security/content-trust/), [Verify a release](../verify-a-release/) | delivered |
-| Vulnerability handling and disclosure (21(2)(e)) | Published CVD process with patch releases for Tobby itself; policy-driven CVE scanning of the content Tobby moves, with an offline-updatable database | SECURITY.md; scanning: **upcoming (milestone 6)** | mixed — see cells |
+| Vulnerability handling and disclosure (21(2)(e)) | Published CVD process with patch releases for Tobby itself; policy-driven CVE scanning of the content Tobby moves, with an offline-updatable database | SECURITY.md; [vulnerability scanning](../../security/vulnerability-scanning/), [offline database](../../air-gap/vulnerability-database/) | delivered |
 | Cryptography (21(2)(h)) | Sigstore/cosign verification, argon2id credential storage, TLS everywhere with private-CA support and no global "skip verify" | [Security one-pager](../../security/one-pager/), milestone-4 audit ("zero `InsecureSkipVerify`") | delivered |
-| Access control (21(2)(i)) | Authentication on by default, three-role RBAC on UI, API and registry, last-administrator invariant; enterprise identity (OIDC, SAML) | [Auth and RBAC](../../security/auth-rbac/); OIDC/SAML: **upcoming (milestone 6)** | mixed — see cells |
+| Access control (21(2)(i)) | Authentication on by default, three-role RBAC on UI, API and registry, last-administrator invariant; enterprise identity (OIDC, SAML) | [Auth and RBAC](../../security/auth-rbac/), [enterprise identity](../../security/enterprise-identity/) | delivered |
 | Logging and incident evidence (supports 21(2)(b)) | Stable-schema security audit log, end-to-end run ID; the audit trail crosses the air gap on the medium | [Audit log](../../security/audit-log/), [tracing a transfer](../../air-gap/traceability/) | delivered |
 
 ## Reading the table honestly

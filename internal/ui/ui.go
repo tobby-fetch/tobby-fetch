@@ -12,13 +12,18 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/clock"
+	"github.com/tobby-fetch/tobby-fetch/internal/consume"
 	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
+	"github.com/tobby-fetch/tobby-fetch/internal/provenance"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -99,6 +104,19 @@ type UI struct {
 	mediaGate *mediagate.Gate
 	// integrity runs the on-demand store verification (FR-057, R-31).
 	integrity IntegrityVerifier
+	// aids computes the consumption aids (FR-065, 7.1).
+	aids *consume.Service
+	// diagnostics backs the diagnostic bundle screen (FR-095, R-30);
+	// state backs the state-directory inventory (FR-097, R-27). Nil on an
+	// instance wired without them: the screen then says so.
+	diagnostics BundleGenerator
+	state       func() (*statedir.Inventory, error)
+	// hardening and scanHistory are the FR-098 inputs (provenance.go).
+	hardening   hardening.Switches
+	scanHistory *provenance.History
+	// policy is the effective content policy (R-15), read-only on
+	// /admin/policy; nil renders the screen empty.
+	policy PolicyViewer
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -194,6 +212,18 @@ type Options struct {
 	// mirror answer alike (FR-061). Nil: the screen says this instance
 	// cannot verify.
 	Integrity IntegrityVerifier
+	// Aids backs the consumption aids (FR-065, 7.1): the mapping table
+	// exports and the registries.yaml snippet. Nil leaves the screens
+	// stating that no registry is known.
+	Aids *consume.Service
+
+	// Diagnostics, Clock and State back the operations screens of
+	// milestone 7 (R-30, R-32, R-27) — the services the API mirrors read,
+	// so screen and endpoint answer alike (FR-061). Clock feeds the
+	// persistent banner of an implausible clock (FR-096).
+	Diagnostics BundleGenerator
+	Clock       *clock.Monitor
+	State       func() (*statedir.Inventory, error)
 
 	// Federation is the federated sign-in (FR-070, FR-071, FR-078): the
 	// provider buttons of the sign-in page and the /auth/ round trips
@@ -203,6 +233,19 @@ type Options struct {
 	// Scan reads the vulnerability-scanning state for the banners and the
 	// Retriever screen's indicator (FR-031, FR-032, R-13).
 	Scan func() ScanState
+
+	// Hardening is the pair of FR-098 switches (R-17): the import and
+	// FileSet screens show their action disabled naming the setting, the
+	// content browser states a read-only registry, and the handlers
+	// refuse. Zero is the default instance.
+	Hardening hardening.Switches
+	// ScanHistory reports the last scan of each tag on the repository
+	// page (FR-098); nil reports none.
+	ScanHistory *provenance.History
+	// Policy is the effective content policy (FR-031 amendment R-15,
+	// FR-098) shown read-only on /admin/policy — the source behind
+	// GET /api/v1/policy, so the two cannot differ (FR-061).
+	Policy PolicyViewer
 }
 
 // New assembles the UI.
@@ -220,6 +263,7 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		render.Occupancy = opts.Occupancy.Current
 	}
 	render.Scan = opts.Scan
+	render.Clock = opts.Clock
 	return &UI{
 		render:            render,
 		authn:             authn,
@@ -249,7 +293,13 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		mediaZone:         opts.MediaZone,
 		mediaGate:         opts.MediaGate,
 		integrity:         opts.Integrity,
+		aids:              opts.Aids,
+		diagnostics:       opts.Diagnostics,
+		state:             opts.State,
 		federation:        opts.Federation,
+		hardening:         opts.Hardening,
+		scanHistory:       opts.ScanHistory,
+		policy:            opts.Policy,
 	}
 }
 
@@ -275,11 +325,11 @@ type Router interface {
 // is the wrapper it is declared with here, and docs/rbac-matrix.md is its
 // documented form (FR-074).
 func (u *UI) Mount(rt Router) {
-	// Every UI response — pages, fragments, errors, redirects, static
-	// assets — carries the browser security headers (v0.4.2 hardening,
-	// headers.go). Wrapping at mount time is what makes a route added
-	// later unable to forget them.
-	mux := securedRouter{r: rt}
+	// Every UI handler reads a bounded body (B-034, headers.go). Wrapping
+	// at mount time is what makes a route added later unable to forget
+	// it. The security headers are the listener's (NFR-022,
+	// internal/server/headers.go), stamped on every surface at once.
+	mux := boundedRouter{r: rt}
 	mux.Handle("GET /static/", StaticHandler(u.themeOverride))
 
 	// Session endpoints (outside the session gate).
@@ -335,6 +385,13 @@ func (u *UI) Mount(rt Router) {
 	mux.Handle("GET /recipes/plan", operator(u.planScreen))
 	mux.Handle("POST /recipes/plan", operator(u.planSubmit))
 	mux.Handle("GET /recipes/{recipe}/mapping", app(u.recipeMapping))
+	// The consumption aids (FR-065, 7.1): downloads on the "/-/" separator
+	// (ADR-0015 §3), and the same aids for the whole store. Read-only.
+	mux.Handle("GET /recipes/{recipe}/mapping/-/export", app(u.recipeExport))
+	mux.Handle("GET /recipes/{recipe}/mapping/-/registries.yaml", app(u.recipeRegistries))
+	mux.Handle("GET /consumption", app(u.consumptionScreen))
+	mux.Handle("GET "+PathConsumptionExport, app(u.consumptionExport))
+	mux.Handle("GET "+PathConsumptionRegistries, app(u.consumptionRegistries))
 
 	// The Media screen (FR-062 amendment R-02, FR-052): the physical
 	// transfer, on both sides of it. Reading the medium's inventory is a
@@ -395,7 +452,18 @@ func (u *UI) Mount(rt Router) {
 	mux.Handle("POST /admin/oci-layout/plan", admin(u.layoutEstimate))
 	mux.Handle("POST /admin/oci-layout/export", admin(u.layoutExport))
 	mux.Handle("POST /admin/oci-layout/import", admin(u.layoutImport))
+	// Operations (FR-095, FR-097; R-30, R-27): the diagnostic bundle and the
+	// state-directory inventory. Admin on both — the first gathers logs and
+	// configuration into one archive, the second names every file of the
+	// instance's identity. The API mirrors are POST /api/v1/diagnostics/bundle
+	// and GET /api/v1/state.
+	mux.Handle("GET "+PathDiagnostics, admin(u.adminDiagnostics))
+	mux.Handle("POST "+PathDiagnosticsBundle, admin(u.adminDiagnosticsBundle))
+	mux.Handle("GET "+PathState, admin(u.adminState))
 	mux.Handle("GET /admin/store", admin(u.storeScreen))
+	// The effective content policy (R-15): read-only — the policy lives
+	// in the configuration file and the Retriever.
+	mux.Handle("GET "+PathPolicy, admin(u.adminPolicy))
 	mux.Handle("POST /admin/store/reset", admin(u.storeReset))
 	mux.Handle("GET /help", app(u.helpScreen))
 	// The embedded documentation (R-05, NFR-003): the guides at
@@ -535,6 +603,13 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
+	// Login CSRF: another origin's page must not be able to sign this
+	// browser in under an account of the attacker's choosing. There is no
+	// session yet, so no token; the origin check is the protection.
+	if !auth.SameOrigin(r) {
+		u.csrfRefused(w, r, "unauthenticated")
+		return
+	}
 	name := r.PostFormValue("username")
 	next := sanitizeNext(r.PostFormValue("next"))
 	origin := auth.ClientOrigin(r)
@@ -551,12 +626,22 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	acct, ok := u.authn.Store.VerifyPassword(name, r.PostFormValue("password"), u.now())
+	// A claimed name outside the name grammar is a failed attempt like a
+	// wrong password — same answer, same budget — but it is neither
+	// verified nor written to the trail as given (NFR-023).
+	actor := name
+	var acct auth.Account
+	ok := false
+	if auth.ValidPresentedName(name) {
+		acct, ok = u.authn.Store.VerifyPassword(name, r.PostFormValue("password"), u.now())
+	} else {
+		actor = auth.InvalidActor
+	}
 	if !ok {
 		u.authn.RecordFailure(origin)
 		u.authn.Observe(auth.MethodBasic, auth.OutcomeFailure)
 		audit.Log(r.Context(), u.logger, &audit.Event{
-			Actor: name, Action: audit.ActionLogin, Target: "ui",
+			Actor: actor, Action: audit.ActionLogin, Target: "ui",
 			Outcome: audit.OutcomeDenied, Origin: origin,
 		})
 		v := u.render.view(r, u.loginPageData(r, next,
@@ -630,10 +715,14 @@ func (u *UI) switchTheme(w http.ResponseWriter, r *http.Request) {
 	u.redirectBack(w, r)
 }
 
-// prefCSRFOK checks the CSRF token for the preference switchers: required
-// with a live session, tolerated without one (the login page has no
-// session yet, and the preference is harmless).
+// prefCSRFOK checks the CSRF protection of the preference switchers: the
+// origin check always, and the token too with a live session — tolerated
+// without one (the login page has no session yet, and the preference is
+// harmless).
 func (u *UI) prefCSRFOK(r *http.Request) bool {
+	if !auth.SameOrigin(r) {
+		return false
+	}
 	if u.authn.Disabled {
 		return true
 	}
@@ -641,7 +730,7 @@ func (u *UI) prefCSRFOK(r *http.Request) bool {
 	if !ok {
 		return true
 	}
-	return sess.CheckCSRF(r.PostFormValue("csrf"))
+	return sess.CheckCSRF(csrfToken(r))
 }
 
 // redirectBack returns to the submitted local origin page.

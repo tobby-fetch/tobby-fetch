@@ -16,9 +16,7 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 
@@ -135,9 +133,8 @@ func (m *mediaAPI) verify(w http.ResponseWriter, r *http.Request) {
 		m.api.Problem(w, r, notADestination())
 		return
 	}
-	req, err := decodeMediaRequest(r)
-	if err != nil {
-		m.api.Problem(w, r, err)
+	req, ok := m.decodeMediaRequest(w, r)
+	if !ok {
 		return
 	}
 	id, _ := auth.IdentityFrom(r.Context())
@@ -182,9 +179,8 @@ func (m *mediaAPI) importMedia(w http.ResponseWriter, r *http.Request) {
 		m.api.Problem(w, r, notADestination())
 		return
 	}
-	req, err := decodeMediaRequest(r)
-	if err != nil {
-		m.api.Problem(w, r, err)
+	req, ok := m.decodeMediaRequest(w, r)
+	if !ok {
 		return
 	}
 	id, _ := auth.IdentityFrom(r.Context())
@@ -246,16 +242,14 @@ func (m *mediaAPI) authorizeOverrides(r *http.Request, id auth.Identity, req *me
 }
 
 // decodeMediaRequest reads the optional body. An absent one is the
-// ordinary case — no waiver — and not an error.
-func decodeMediaRequest(r *http.Request) (*mediaRequest, *taxonomy.Error) {
+// ordinary case — no waiver — and not an error. On failure the request
+// has been answered.
+func (m *mediaAPI) decodeMediaRequest(w http.ResponseWriter, r *http.Request) (*mediaRequest, bool) {
 	req := &mediaRequest{}
-	err := json.NewDecoder(io.LimitReader(r.Body, maxMediaRequest)).Decode(req)
-	if err == nil || errors.Is(err, io.EOF) {
-		return req, nil
+	if !m.api.decodeJSON(w, r, maxMediaRequest, req, true, bodyInvalid) {
+		return nil, false
 	}
-	return nil, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
-		"file": "the request body", "path": "-", "constraint": err.Error(),
-	})
+	return req, true
 }
 
 // stageOf names the phase a running verification is in, for the refusal

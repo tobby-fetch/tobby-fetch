@@ -47,8 +47,9 @@ func downFederation(t *testing.T) *federation.Service {
 
 // TestLoginPageWithEveryMethod is the multi-method sign-in page in a real
 // browser (6.3, R-20): the provider button and the local form are both
-// usable; with the provider down the page says so with TBY-AUTH-016 —
-// visible, not hidden behind a disabled control — and the local form
+// usable; with the provider down the page says so in plain words
+// (login.idp_unavailable) with TBY-AUTH-016 — visible, not hidden behind
+// a disabled control — and the local form
 // still signs in. The button itself lands back on the page, explained,
 // rather than on a browser error page.
 func TestLoginPageWithEveryMethod(t *testing.T) {
@@ -60,7 +61,13 @@ func TestLoginPageWithEveryMethod(t *testing.T) {
 	s.wait(t, "the outage is stated, visibly, with its code",
 		`(() => { const b = document.querySelector("[data-idp-unavailable]");
 		  return b !== null && b.offsetParent !== null && b.textContent.includes("TBY-AUTH-016") &&
-		         b.textContent.includes("Corp directory"); })()`)
+		         b.textContent.includes("Corp directory cannot be reached: federated sign-in is unavailable. Local sign-in still works."); })()`)
+	if !s.evalBool(t, "the provider button stays a live link, described by the statement",
+		`(() => { const a = document.querySelector("[data-federated-login]"), b = document.querySelector("[data-idp-unavailable]");
+		  return a.tagName === "A" && a.getAttribute("href") !== null && !a.hasAttribute("aria-disabled") &&
+		         a.getAttribute("aria-describedby") === b.id; })()`) {
+		t.Error("the provider button is not a usable link described by the outage statement (R-20)")
+	}
 	if !s.evalBool(t, "the local form says its use is recorded",
 		`document.querySelector("[data-local-under-federation]") !== null`) {
 		t.Error("the local form does not say its use under federation is recorded")

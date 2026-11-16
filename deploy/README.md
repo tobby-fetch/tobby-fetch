@@ -57,7 +57,7 @@ Every release publishes this chart as an OCI artifact, signed with cosign
 like the image:
 
 ```sh
-helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0-rc.1 \
   --namespace tobby --create-namespace \
   --set config.mode=passthrough
 ```
@@ -66,7 +66,7 @@ The chart version is the Tobby version — chart `0.6.0` deploys image
 `v0.6.0` — so pin `--version`. Verify before installing:
 
 ```sh
-cosign verify ghcr.io/tobby-fetch/charts/tobby:0.6.0 \
+cosign verify ghcr.io/tobby-fetch/charts/tobby:1.0.0-rc.1 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
 ```
@@ -102,7 +102,7 @@ kubectl -n tobby create secret docker-registry tobby-registry-credentials \
   --docker-username=tobby \
   --docker-password="$(cat ./token)"
 
-helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
+helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0-rc.1 \
   --namespace tobby --reuse-values \
   --set registryCredentials.enabled=true \
   --set registryCredentials.existingSecret=tobby-registry-credentials
@@ -153,7 +153,7 @@ value to change instead:
 Reviewing what you are about to install:
 
 ```sh
-helm template tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 --set config.mode=passthrough
+helm template tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0-rc.1 --set config.mode=passthrough
 ```
 
 ---
@@ -381,6 +381,26 @@ On `SIGTERM`, Tobby stops accepting new work and gives in-flight transfers
 `terminationGracePeriodSeconds` must stay above it — the defaults are 30s
 and 60s. Raise both together, or the kubelet kills the process
 mid-checkpoint.
+
+### Alert rules and a dashboard
+
+The chart can ship the supervision kit (R-11), both **off by default**:
+
+| Value | Renders |
+| --- | --- |
+| `alerting.prometheusRule.enabled` | A `PrometheusRule` (needs the Prometheus Operator CRDs). Put the labels your `ruleSelector` asks for under `alerting.prometheusRule.labels`. |
+| `alerting.rulesFile.enabled` | The same rules as a plain Prometheus rules file in a ConfigMap, key `tobby-alerts.rules.yaml`. At default thresholds the file is also kept here: [`charts/tobby/files/tobby-alerts.rules.yaml`](charts/tobby/files/tobby-alerts.rules.yaml), generated from the chart by `tools/chart-alert-rules.sh`. |
+| `dashboard.enabled` | A ConfigMap carrying an example Grafana dashboard, with the label the Grafana sidecar watches. |
+
+The bounds are `alerting.thresholds.*` (repeated sync failures, the age of the
+last success, saturation, store occupancy, the vulnerability database and
+scanner, certificate expiry, the clock). A mirror instance synchronizes when an
+operator says so: set `alerting.thresholds.syncMaxAgeSeconds` to `0` there.
+Every expression names only families of `metrics-reference.json`, the metrics
+reference each release publishes signed beside `openapi.yaml`, and a test holds
+the chart to it; the rules have `promtool` unit tests
+(`charts/tobby/tests/tobby-alerts_test.yaml`). More in the
+[documentation](https://tobby-fetch.github.io/tobby-fetch/docs/passthrough/monitoring/).
 
 ---
 

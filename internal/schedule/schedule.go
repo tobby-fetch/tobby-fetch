@@ -28,13 +28,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 )
 
 // overrideFile is the persisted override, inside the state directory.
-const overrideFile = "schedule.json"
+const overrideFile = statedir.Schedule
 
 // MinOverride is the floor an operator-supplied interval may not go
 // below. It bounds only the override, never the configured value: the
@@ -91,7 +92,7 @@ func Open(stateRoot string, configured time.Duration) (*Interval, error) {
 	if stateRoot == "" {
 		return iv, nil
 	}
-	iv.path = filepath.Join(stateRoot, overrideFile)
+	iv.path = statedir.Path(stateRoot, overrideFile)
 	raw, err := os.ReadFile(iv.path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):

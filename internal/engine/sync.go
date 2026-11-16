@@ -120,6 +120,10 @@ type Engine struct {
 	// zoneThresholdSet remembers whether the last served Retriever posed
 	// a scan threshold, which makes the policy blocking for its zone.
 	zoneThresholdSet atomic.Bool
+	// zoneExceptions holds the exceptions of the last served Retriever,
+	// for the effective policy view and the exception gauge (R-15); nil
+	// until a Retriever has been served.
+	zoneExceptions atomic.Pointer[[]scan.Exception]
 	// verdicts receives every verification report this engine produces,
 	// whichever surface asked for one — the serving gate of FR-054 is
 	// built on it (internal/mediagate). Nil on an instance that serves
@@ -219,6 +223,18 @@ func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) e
 	// exceptions refine the instance's for every recipe of this run.
 	zonePol := zonePolicyOf(retr.Spec.ScanPolicy)
 	e.zoneThresholdSet.Store(zonePol.threshold != nil)
+	zoneExceptions := append([]scan.Exception(nil), zonePol.exceptions...)
+	e.zoneExceptions.Store(&zoneExceptions)
+	// A v1alpha1 Retriever may declare an exception without expiry: it is
+	// applied, and stated as unbounded wherever it shows (R-15).
+	for _, ex := range zoneExceptions {
+		if ex.Unbounded() {
+			logger.LogAttrs(ctx, slog.LevelWarn, "Retriever scan exception without expiry: applied, unbounded",
+				slog.String("id", ex.ID), slog.String("zone", retr.Metadata.Name),
+				slog.String("code", string(taxonomy.CodeScanExceptionUnbounded)),
+				slog.String("requirement", "FR-031/R-15"))
+		}
+	}
 	// The instant this run resolved its Retriever. It dates the DELIVERY,
 	// which is what the destination's freshness guard compares against
 	// (R-28) — not the moment the bookkeeping was written, which would
@@ -467,6 +483,18 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	}
 	wg.Wait()
 
+	// FR-033 (B-062): each ingredient's own signature, read in the local
+	// store where it was just copied (§12.2). Recorded on every surface
+	// and, by default, nothing more: the recipe signature verified above
+	// pins every digest. Under trust.requireIngredientSignatures, an
+	// ingredient without a verifiable one withholds the recipe whole
+	// (R-19) — before it is scanned, stored, recorded or pushed.
+	if refusals := e.checkFetchedSignatures(ctx, sink, logger, recipe, records, rid); len(refusals) > 0 {
+		resolved.failed()
+		e.withholdRecipe(ctx, sink, logger, fetched, rid, refusals, withheldBySignatures)
+		return
+	}
+
 	// FR-031: every image is scanned at retrieval — a declared container
 	// image, and any ingredient whose content is one (ADR-0017) — in
 	// passthrough as in mirror mode, and before anything of the recipe is
@@ -476,7 +504,7 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	system := recipe.Metadata.Name == scan.SystemRecipe && verified && scopeName == ""
 	if refusals := e.scanRecipe(ctx, sink, logger, fetched, rid, zonePol, system); len(refusals) > 0 {
 		resolved.failed()
-		e.withholdRecipe(ctx, sink, logger, fetched, rid, refusals)
+		e.withholdRecipe(ctx, sink, logger, fetched, rid, refusals, withheldByScan)
 		return
 	}
 
@@ -575,16 +603,15 @@ func (e *Engine) verifyRecipe(ctx context.Context, f *FetchedRecipe, d Decision)
 		if errors.Is(err, sigverify.ErrNoSignature) && d.AllowUnsigned {
 			return false, d.Scope, nil
 		}
-		return false, d.Scope, withScope(d.Scope, err)
+		return false, d.Scope, refused(ctx, src, f.NominalRepo, f.ManifestDigest, d, err)
 	}
-	if d.AllowUnsigned {
+	// B-068: with no key to try, allowUnsigned admits only a recipe that
+	// carries no signature at all — the verdict a present signature gets
+	// when keys apply and none verifies it.
+	if d.AllowUnsigned && media.Unsigned(ctx, src, f.NominalRepo, f.ManifestDigest) {
 		return false, d.Scope, nil
 	}
-	return false, d.Scope, taxonomy.New(taxonomy.CodeSignature, taxonomy.Params{
-		"recipe":       f.NominalRepo + ":" + f.Tag,
-		"fingerprints": "none — no trust root is configured",
-		"scope":        d.Scope,
-	})
+	return false, d.Scope, noKeyRefusal(ctx, src, f.NominalRepo, f.ManifestDigest, f.NominalRepo+":"+f.Tag, d)
 }
 
 // syncIngredient fetches one ingredient by its pinned digest into its

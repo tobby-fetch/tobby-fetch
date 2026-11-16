@@ -107,11 +107,15 @@ Refus par recipe, dérogeables par personne :
 | [`TBY-MED-013`](../../reference/errors/#tby-med-013) | un fichier atteint par la recipe que l'inventaire ne liste pas |
 | [`TBY-MED-014`](../../reference/errors/#tby-med-014) | un manifest ou un index atteignable qui ne se parse pas |
 | [`TBY-MED-015`](../../reference/errors/#tby-med-015) | un blob dont les octets ne donnent pas le digest que son propre chemin annonce |
+| [`TBY-MED-016`](../../reference/errors/#tby-med-016) | le graphe de recipes du support liste un ingrédient, un digest ou un emplacement que le document de recipe signé n'épingle pas |
 
-Le dernier est ce qui empêche l'inventaire non signé d'être porteur : un
-attaquant qui corrompt un blob et réécrit l'inventaire pour qu'il concorde
-met en défaut l'inventaire et se fait quand même prendre par l'adresse de
-contenu.
+Les deux derniers sont ce qui empêche la comptabilité non signée d'être
+porteuse. Un attaquant qui corrompt un blob et réécrit l'inventaire pour
+qu'il concorde met en défaut l'inventaire et se fait quand même prendre par
+l'adresse de contenu. Un attaquant qui ajoute un ingrédient au graphe de
+recipes, ou change le digest de l'un d'eux, se fait prendre par le document
+de recipe signé : ce qu'une recipe livre, et ce qu'une porte ouverte sert,
+se lit dans ce document et jamais dans la liste propre du support.
 
 ### Quatre refus restent globaux
 
@@ -191,6 +195,28 @@ qu'elle a menée n'a pas validé le support.
 - **Aucun rôle ne le contourne.** Un verrou fermé n'est pas un refus
   d'autorisation : la matrice des rôles décide qui peut demander, le verrou
   décide si cette instance est prête à distribuer quoi que ce soit.
+- **Un verrou ouvert sert l'ensemble vérifié, et lui seul.** La vérification
+  enregistre ce qu'atteignent les recipes poussables — artefacts de recipe et
+  leurs signatures, ingrédients et leurs propres signatures, chaque manifeste
+  et blob qu'ils nomment, chaque fichier recalculé — et le verrou sert
+  exactement cela, en lecture seule. Un tag se résout vers l'empreinte à
+  laquelle il a été vérifié ; le catalogue et les listes de tags ne montrent
+  que le contenu vérifié ; un FileSet ne se résout que parmi les versions
+  vérifiées. Une image ou une version de FileSet ajoutée au support après
+  l'écriture de son manifeste, le contenu qu'aucune recipe poussable
+  n'atteint et toute écriture répondent `403` avec
+  [`TBY-MED-033`](../../reference/errors/#tby-med-033). Un support qui ne
+  liste aucune recipe ne valide rien et n'ouvre rien
+  ([`TBY-MED-034`](../../reference/errors/#tby-med-034)).
+- **Un manifeste absent n'exempte pas un support.** Une instance dotée d'une
+  `zone:` dont le store contient du contenu mais pas de `meta/media.json` est
+  elle aussi verrouillée, et sa vérification bloque sur
+  [`TBY-MED-001`](../../reference/errors/#tby-med-001).
+- **Un cache de FileSet transporté laisse une trace.** Il n'est jamais
+  servi — il est jeté et reconstruit depuis les blobs vérifiés — et le
+  rapport le résume ([`TBY-MED-023`](../../reference/errors/#tby-med-023)) ;
+  tout ce qui, sous `meta/fileserve/`, n'est pas une extraction est signalé
+  comme non couvert.
 
 Une instance miroir côté source n'est pas concernée. Son store porte lui
 aussi un manifeste — elle l'a écrit — mais le support est sa propre sortie

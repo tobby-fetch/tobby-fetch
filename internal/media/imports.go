@@ -8,10 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 )
 
 // The freshness register (FR-052 amendment R-28).
@@ -30,7 +31,7 @@ import (
 // backwards.
 
 // importsFile is the register's file name inside the state directory.
-const importsFile = "media-imports.json"
+const importsFile = statedir.MediaImports
 
 // ImportRecord is the last completed import of one zone.
 type ImportRecord struct {
@@ -79,7 +80,7 @@ func OpenImports(stateRoot string) (*Imports, error) {
 	if stateRoot == "" {
 		return im, nil
 	}
-	im.path = filepath.Join(stateRoot, importsFile)
+	im.path = statedir.Path(stateRoot, importsFile)
 	raw, err := os.ReadFile(im.path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
@@ -98,6 +99,23 @@ func OpenImports(stateRoot string) (*Imports, error) {
 		im.records[zone] = rec
 	}
 	return im, nil
+}
+
+// Ensure writes an empty register when the state directory holds none, so
+// that an instance configured with a zone identity always has the file
+// (FR-097): its later absence then means a restore that lost it
+// (TBY-STA-003), not a zone that never imported anything. No-op without a
+// state directory or when the register exists.
+func (i *Imports) Ensure() error {
+	if i.path == "" {
+		return nil
+	}
+	if _, err := os.Stat(i.path); err == nil || !errors.Is(err, os.ErrNotExist) {
+		return nil //nolint:nilerr // only a missing file is created; any other state is left to the first Record
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return writeJSON(i.path, importsState{Zones: map[string]ImportRecord{}})
 }
 
 // Last returns the last completed import recorded for zone.

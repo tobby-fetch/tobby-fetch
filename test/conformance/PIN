@@ -1,0 +1,11 @@
+# Pinned upstream conformance suite (sourced by run.sh).
+#
+# opencontainers/distribution-spec, directory conformance/. Pinned by the
+# commit the tag points at: a tag can be moved, a commit hash cannot, and
+# run.sh refuses a checkout whose HEAD is anything else. The module graph
+# of the suite is verified by its own go.sum.
+#
+# Bumping is a reviewed edit: change both lines together, replay the suite,
+# and re-read known-gaps.txt against the new test names.
+DISTRIBUTION_SPEC_TAG=v1.1.1
+DISTRIBUTION_SPEC_COMMIT=a139cc423184af6078077b9b7ee336eddbd03f8f

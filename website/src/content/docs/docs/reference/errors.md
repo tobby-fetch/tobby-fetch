@@ -69,10 +69,15 @@ its published rendering.
 ### TBY-AUTH-004
 
 - **What happened:** the form could not be submitted safely.
-- **Probable cause:** the anti-forgery token is missing or has expired —
-  the page was probably left open for a long time.
-- **Corrective action:** the form has been reloaded with a fresh token:
-  submit it again.
+- **Probable cause:** the anti-forgery token is missing, wrong or expired,
+  or the request came from a page of another site — the page was probably
+  left open for a long time. Every state-changing request authenticated by
+  the browser session carries the token, UI forms and API calls alike
+  (`X-CSRF-Token` header on the API), and is refused when the browser says
+  it comes from another origin.
+- **Corrective action:** reload the page and submit again. A script or
+  tool calling the API authenticates with a token (`Authorization:
+  Bearer`), not with the browser session.
 - **Fixable offline:** yes · **Blocks:** the submitted request only
 
 ### TBY-AUTH-005
@@ -442,22 +447,54 @@ its published rendering.
   twice is a no-op, not this error.
 - **Fixable offline:** no (a new signed version comes from the authoring pipeline) · **Blocks:** the publication only (policy class, exit 3); never overridable
 
+### TBY-POL-005
+
+- **What happened:** This instance does not accept unit imports.
+- **Probable cause:** It is hardened with `<setting>`: content enters its store through verified recipes only, and a unit import or a local packing would be content no recipe vouches for.
+- **Corrective action:** Deliver the content through a signed recipe. If unit imports are needed on this instance, an administrator removes `<setting>` from its configuration and restarts it.
+- **Where:** the import screen and `POST /api/v1/import` with its inspection (HTTP 403), FileSet packing on the screen, the API and `tobby fileset pack` (policy class, exit 3); each refusal is a `hardening.refused` audit event naming the setting
+- **Fixable offline:** yes · **Blocks:** the import or packing; recipe synchronizations are unaffected
+
+### TBY-POL-006
+
+- **What happened:** This registry is read-only: pushes are refused.
+- **Probable cause:** The instance is hardened with `<setting>`: its embedded registry serves content and accepts none from clients, whatever their role. Recipe synchronizations still write to the store.
+- **Corrective action:** Pull from this registry, or push to the zone registry instead. Seeding this instance by push requires an administrator to remove `<setting>` and restart it.
+- **Where:** every write to `/v2/` — blob upload, chunk, commit, mount, manifest put, deletion — for every client and role, administrators included, as the OCI `DENIED` error (HTTP 403) whose message starts with the code, which `docker`, `helm`, `oras` and `skopeo` print; each refusal is a `hardening.refused` audit event naming the setting
+- **Fixable offline:** yes · **Blocks:** the push; pulls and recipe synchronizations are unaffected
+
 ## Signature and digest verification (TBY-SIG)
 
 ### TBY-SIG-001
 
 - **What happened:** the recipe signature could not be verified.
-- **Probable cause:** no configured trust root validates the signature of
-  *\<recipe\>* (the tried key fingerprints are listed). When a declared
-  trust scope matched the recipe, the message **names that scope**
+- **Probable cause:** no trust root that applies to *\<recipe\>*
+  validates its signature (the tried key fingerprints are listed). When a
+  declared trust scope matched the recipe, the message **names that scope**
   (*\<scope\>*) and the keys tried are the ones the scope allows: a key
   that is a valid trust root elsewhere, but is not listed by the scope's
-  `roots`, does not apply inside it.
+  `roots`, does not apply inside it. Outside every scope, the keys tried
+  are the **default set** — the roots no scope lists: a root that a scope
+  lists is reserved to that scope and verifies nothing outside it. When
+  every configured root is reserved, nothing is tried and the message says
+  so. When the signature does verify against a root that does not apply
+  here, the message names it — root name and fingerprint (*\<reserved\>*)
+  and the scope it is reserved to (*\<reservedto\>*).
 - **Corrective action:** check that the zone's trust roots include the key
   that signed this recipe — or, when a scope is named, that the scope's
-  `roots` list it, or that the recipe belongs under another scope (see
+  `roots` list it, or that the recipe belongs under another scope. When a
+  reserved root is named, either extend that scope's `repositories` to
+  cover the recipe, or have the recipe re-signed with a key that applies
+  where it is (see
   [Signatures, trust roots and allowlist](../../security/content-trust/)). An
   unverified recipe is never admitted.
+- **Ingredients:** an ingredient's own signature raises this code only on
+  an instance that sets `trust.requireIngredientSignatures: true`. The
+  subject then reads *ingredient \<name\> of \<recipe\> (\<repository\>@\<digest\>)*,
+  the fingerprints are those the ingredient's applicable roots offered (or
+  "no signature artifact found"), and the whole recipe is withheld. Without
+  that setting, an ingredient signature that does not verify is recorded
+  and blocks nothing.
 - **Fixable offline:** yes, when the right public key is available locally (trust roots are destination configuration); a genuinely unsigned or wrongly signed recipe must be re-signed upstream · **Blocks:** the recipe concerned (verification class, exit 4); never overridable
 
 ### TBY-SIG-002
@@ -583,6 +620,27 @@ Reserved at the opening of milestone 6 (FR-031, FR-032): the policy is advisory 
 - **Probable cause:** It is the scanner's own delivery. Refusing it with the policy it arms would leave the zone unable to arm a scanner, or to update its database.
 - **Corrective action:** Nothing to do. Its findings stay reported; the trust in this content rests on the tobby-system recipe's signature.
 - **Fixable offline:** yes · **Blocks:** nothing
+
+### TBY-SCN-026
+
+- **What happened:** The exception for `<id>` does not cover `<reference>`.
+- **Probable cause:** The exception is scoped to `<scope>`, and this item lies outside that scope: the finding is judged as if no exception existed.
+- **Corrective action:** Nothing to do if the scope is right. If this item was meant to be covered, widen the exception's scope in the configuration — it stays bounded by its expiry.
+- **Fixable offline:** yes · **Blocks:** nothing by itself — the finding is judged without the exception
+
+### TBY-SCN-027
+
+- **What happened:** The OpenVEX document `<path>` cannot be used.
+- **Probable cause:** `<detail>`
+- **Corrective action:** Fix or remove the document listed under scan.vex, then restart. Tobby reads OpenVEX documents and never fetches them: the file must be a valid local document.
+- **Fixable offline:** yes · **Blocks:** the start of the instance
+
+### TBY-SCN-028
+
+- **What happened:** The Retriever exception for `<id>` has no expiry.
+- **Probable cause:** It applies, but it is unbounded in time: exceptions declared by an instance must carry an expiry, and Retrievers will too from the v1 format on.
+- **Corrective action:** Ask the owner of the zone's Retriever to give the exception an expires date and a justification.
+- **Fixable offline:** yes · **Blocks:** nothing — the exception applies and is reported as unbounded
 
 ## Destination limits (TBY-DST)
 
@@ -809,6 +867,20 @@ a partially damaged medium still hands over its intact recipes.
 - **Corrective action:** re-copy the store from the source instance.
 - **Fixable offline:** yes · **Blocks:** the recipe reaching that blob, no override (verification class, exit 4)
 
+### TBY-MED-016
+
+- **What happened:** the medium's recipe graph does not match the signed
+  recipe.
+- **Probable cause:** the medium's bookkeeping (`meta/recipes.json`, copied
+  into `meta/media.json`) lists an ingredient, a digest or a location that
+  the signed recipe document does not pin, or the artifact carries the
+  document of another recipe. The bookkeeping is not signed; only the
+  signed document decides what a delivery is.
+- **Corrective action:** do not import this delivery. Re-produce the medium
+  from the source instance, and investigate how the bookkeeping changed if
+  nobody assembled the medium by hand.
+- **Fixable offline:** yes · **Blocks:** that recipe whole, no override (verification class, exit 4)
+
 ### TBY-MED-020
 
 - **What happened:** a file on the medium is not covered by the inventory.
@@ -833,6 +905,21 @@ a partially damaged medium still hands over its intact recipes.
   which blocks globally — were altered after the manifest was written.
 - **Corrective action:** re-copy the store from the source instance if you
   did not alter it deliberately. Nothing is pushed out of these files.
+- **Fixable offline:** yes · **Blocks:** nothing (reported only)
+
+### TBY-MED-023
+
+- **What happened:** the medium carries a FileSet extraction cache
+  (`meta/fileserve/`), which is ignored and rebuilt.
+- **Probable cause:** the source instance served FileSets from this store.
+  The cache is outside the manifest's coverage, so none of it was hashed; the
+  finding names its file count and size. A destination never serves it: it
+  discards it and re-extracts from the verified blobs. Anything under it that
+  does not have the shape of an extraction is reported separately as
+  [TBY-MED-020](#tby-med-020).
+- **Corrective action:** nothing for the import. If you did not expect an
+  extraction on the medium, inspect or remove the directory before the
+  medium travels back — it crosses the gap unverified.
 - **Fixable offline:** yes · **Blocks:** nothing (reported only)
 
 ### TBY-MED-030
@@ -879,6 +966,34 @@ a partially damaged medium still hands over its intact recipes.
   blocked delivery and the file that failed. Re-copy the medium from the
   source instance and verify it again. The intact deliveries can still be
   pushed into the zone registry, which then serves them.
+- **Fixable offline:** yes · **Blocks:** the embedded registry and the file
+  surface, for this medium
+
+### TBY-MED-033
+
+- **What happened:** the request is outside the content the verification of
+  the medium cleared.
+- **Probable cause:** once the gate is open, `/v2/` and `/files/` serve only
+  what the pushable recipes reach — their artifacts, signatures, ingredients
+  and the ingredients' own signatures — read-only. Content no verified recipe
+  reaches, a tag added or moved after verification, and every write are
+  refused (B-063).
+- **Corrective action:** read the report on the Media screen: content
+  outside the verified set is listed in its findings. Deliver it through a
+  recipe on a new medium, or push it into the zone registry.
+- **Fixable offline:** yes · **Blocks:** that request only
+
+### TBY-MED-034
+
+- **What happened:** the verification of the medium cleared no content, so
+  this instance serves none of it.
+- **Probable cause:** the media manifest lists no recipe: nothing on the
+  medium is reachable from a delivery, nothing was re-hashed, and the
+  verdict is *pushable* with nothing to push. Such a medium used to open the
+  gate and serve its whole store (B-063).
+- **Corrective action:** check that the source synchronization delivered its
+  recipes before the medium was written, then re-copy the medium and verify
+  it again.
 - **Fixable offline:** yes · **Blocks:** the embedded registry and the file
   surface, for this medium
 
@@ -1024,6 +1139,85 @@ directory it came from would be worse than a refusal naming the entry.
   configuration file and restart the instance.
 - **Fixable offline:** yes · **Blocks:** the packing concerned; nothing is written
 
+## Consumption aids (TBY-AID)
+
+The mapping table and the `registries.yaml` snippet of FR-065: generated from what the store holds, for the registry the zone pulls from.
+
+### TBY-AID-001
+
+- **What happened:** No consumption aid can be generated: this instance names no registry the zone pulls from.
+- **Probable cause:** The mapping table and the registries.yaml snippet point at the zone registry. This instance pushes to no destination.registry, and consumption.registry is not set.
+- **Corrective action:** Set destination.registry when this instance pushes to the zone registry, or consumption.registry to the address the zone's clients pull from — this instance itself when it serves the zone.
+- **Fixable offline:** yes · **Blocks:** the generation of the aid
+
+## Diagnostic bundle (TBY-DIA)
+
+The local, redacted archive of FR-095. Redaction fails closed: a bundle that would carry a secret is not written.
+
+### TBY-DIA-001
+
+- **What happened:** The diagnostic bundle could not be produced.
+- **Probable cause:** `<detail>`
+- **Corrective action:** Retry; if it fails again, collect the instance logs by the means of the deployment. Nothing was written or sent: a bundle is local only.
+- **Fixable offline:** yes · **Blocks:** the bundle
+
+### TBY-DIA-002
+
+- **What happened:** The diagnostic bundle was withheld: `<member>` still contained a secret.
+- **Probable cause:** Before releasing a bundle, Tobby searches every member for the secret values it knows. One was found, so the bundle was not written rather than written with it.
+- **Corrective action:** Report this defect to the Tobby maintainers with the member name — never with the bundle. Meanwhile, collect the information by hand.
+- **Fixable offline:** yes · **Blocks:** the bundle — never shipped with a secret in it
+
+### TBY-DIA-003
+
+- **What happened:** A diagnostic bundle is already being built on this instance.
+- **Probable cause:** One bundle is built at a time: each holds the members in memory and searches them for secrets, and concurrent requests would multiply that.
+- **Corrective action:** Wait a few seconds for the bundle in progress to finish, then ask again. Nothing was written or sent.
+- **Fixable offline:** yes · **Blocks:** this bundle only — nothing was written or sent
+
+## Clock plausibility (TBY-CLK)
+
+FR-096: the local clock checked against anchors the instance holds without any network. These codes warn and record; they change no verdict.
+
+### TBY-CLK-001
+
+- **What happened:** The local clock reads `<now>`, earlier than the build of this binary (`<anchor>`).
+- **Probable cause:** The clock is `<gap>` behind a date this binary proves has passed. Expiries, freshness checks and certificate validity are judged against this clock.
+- **Corrective action:** Set the host's clock (time source of the zone, or by hand from a trusted reference), then restart. Tobby warns and records; it does not correct the clock.
+- **Fixable offline:** yes · **Blocks:** nothing — a warning, recorded in the audit log
+
+### TBY-CLK-002
+
+- **What happened:** The local clock reads `<now>`, earlier than the production of medium `<medium>` (`<anchor>`).
+- **Probable cause:** The medium was resolved `<gap>` after the time this host believes it is: one of the two clocks is wrong, and freshness and expiry checks depend on it.
+- **Corrective action:** Check this host's clock against a trusted reference before trusting expiry and freshness verdicts. Tobby warns and records; it does not correct the clock.
+- **Fixable offline:** yes · **Blocks:** nothing — a warning, recorded in the audit log
+
+## Instance state directory (TBY-STA)
+
+FR-097: the normative state directory — the backup target of an instance besides its store — checked at startup.
+
+### TBY-STA-001
+
+- **What happened:** The instance refuses to start: the state directory `<root>` has an unknown layout (`<version>`).
+- **Probable cause:** It was written by another version of Tobby, or it is not a Tobby state directory.
+- **Corrective action:** Start the version that wrote it, or restore the state directory from a backup made with this version. The documented layout is the backup contract.
+- **Fixable offline:** yes · **Blocks:** the start of the instance
+
+### TBY-STA-002
+
+- **What happened:** The instance refuses to start: `<path>` is open to every user of the host (`<mode>`).
+- **Probable cause:** It is a secret entry of the state directory — password or token hashes, a private key — readable by other users, or a directory holding one that other users can write to (and so replace the secret), or an entry whose access list could not be read, which Tobby refuses rather than assume it is narrow. Tobby creates them for its owner only; a broader mode usually comes from a restore that did not keep permissions.
+- **Corrective action:** Remove the access of other users (chmod o-rwx on Unix, on the entry and on the directories that hold it, and keep the state root out of a shared sticky directory owned by another account; on Windows, remove Everyone, Users, Authenticated Users and the other broad principals from its access list), check who could read or replace it meanwhile, then restart. Group access granted by the volume (Kubernetes fsGroup) is tolerated.
+- **Fixable offline:** yes · **Blocks:** the start of the instance
+
+### TBY-STA-003
+
+- **What happened:** The state directory holds no `<entry>`.
+- **Probable cause:** An identity entry is missing — typically after an incomplete restore. The instance starts without it, and behaves as a new instance for what it held.
+- **Corrective action:** If this instance was restored, restore the missing entry from the same backup and restart; otherwise nothing to do.
+- **Fixable offline:** yes · **Blocks:** nothing by itself — the instance starts without the entry
+
 ## Tasks (TBY-TSK)
 
 ### TBY-TSK-001
@@ -1064,3 +1258,29 @@ directory it came from would be worse than a refusal naming the entry.
 - **Corrective action:** check your network link and retry; the page
   resumes as soon as the instance answers.
 - **Fixable offline:** yes · **Blocks:** the browser session's view only
+
+### TBY-SRV-004
+
+- **What happened:** the request is too large.
+- **Probable cause:** its body exceeds the `<limit>` bytes this endpoint
+  accepts; it was refused before being read (NFR-023). Every API endpoint
+  has a bound sized to its largest legitimate document; see the
+  [input validation](../../security/input-validation/) table.
+- **Corrective action:** send a smaller body. A document over the bound is
+  not one this endpoint was built for: check that the right file was sent.
+- **Fixable offline:** yes · **Blocks:** the request only
+
+### TBY-SRV-005
+
+- **What happened:** the request body is not of a type this endpoint
+  accepts.
+- **Probable cause:** it is declared `<type>` (or carries no
+  `Content-Type`); the endpoint decodes `<want>` only, which is
+  `application/json` on every API endpoint that reads a document. A browser
+  page of another origin cannot send that type without a CORS preflight
+  the instance never grants, which is why nothing else is read (NFR-012,
+  NFR-023).
+- **Corrective action:** send the body with `Content-Type: application/json`
+  (curl: `-H 'Content-Type: application/json'`). The CLI and the interface
+  already do.
+- **Fixable offline:** yes · **Blocks:** the request only

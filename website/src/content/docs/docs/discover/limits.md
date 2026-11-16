@@ -140,7 +140,7 @@ collection, task queue, consistent state). Tobby is a promotion path, not
 your zone's serving registry of record — and if it temporarily is (the
 stand-in use case), schedule upgrades accordingly.
 
-## Not yet — known operational gaps
+## Operational defaults to know
 
 - **Transit-store cleanup is off by default in passthrough.** Retriever-aligned
   pruning exists (R-33) but `sync.prune` is `false` unless you set it: a
@@ -148,16 +148,17 @@ stand-in use case), schedule upgrades accordingly.
   shrinking it. Set `storage.occupancyThreshold` so the instance tells you
   when the store outgrows its volume — unset means unmonitored, not "within
   limits".
-- **No on-demand integrity check.** Full store verification with a
-  timestamped report arrives with R-31 (milestone 6).
-- **No vulnerability scanning yet.** Scanning with a blocking or advisory
-  policy is milestone 6 (6.1); until then, scanning belongs to your
-  upstream qualification pipeline.
-- **Backup procedure not yet formalized.** The state directory is the
-  backup target, but the tested end-to-end rebuild procedure is R-27
-  (milestone 7). See [operating in the long run](../../passthrough/operate/).
 
-Each of these is tracked, with its milestone, on the
+Three gaps this page used to list are closed: on-demand store integrity
+verification with a timestamped report (R-31, v0.6.0 —
+[verify the store's integrity](../../passthrough/verify-store/)),
+vulnerability scanning with a blocking or advisory policy (6.1, v0.6.0 —
+[vulnerability scanning](../../security/vulnerability-scanning/)), and the
+backup of the state directory with a rebuild procedure tested end to end
+(R-27, v1.0.0-rc.1 —
+[back up and rebuild an instance](../../passthrough/backup-rebuild/)).
+
+Every feature is tracked, with its status and milestone, on the
 [project status](../../discover/status/) page — and the
 [threat model](../../security/threat-model/) states which security controls
 exist today versus which are scheduled.

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"@context\":\"https://openvex.dev/ns/v0.2.0\",\"@id\":\"https://vex.example/seed\",\"author\":\"Site security\",\"timestamp\":\"2026-11-16T10:00:00Z\",\"version\":1,\"statements\":[{\"vulnerability\":{\"name\":\"CVE-2024-1\"},\"products\":[{\"@id\":\"registry.example.com:5000/team/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"@id\":\"ghcr.io/team/app\"}],\"status\":\"not_affected\",\"justification\":\"inline_mitigations_already_exist\"}]}")

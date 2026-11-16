@@ -55,6 +55,12 @@ type Report struct {
 	// carries that will never be pushed, and bookkeeping that does not
 	// match its inventory entry.
 	Findings []Finding `json:"findings,omitempty"`
+	// Served is the content this verification vouches for — what the
+	// pushable recipes reach, re-hashed — and the only content a guarded
+	// destination instance serves (B-063). Nil when no recipe is pushable.
+	// It serializes as a summary (digest and counts); only the in-process
+	// report a verification returned carries the listing itself.
+	Served *Served `json:"served,omitempty"`
 	// Checked is what verification actually read and hashed — the honest
 	// volumetry, which is smaller than the inventory's when a global block
 	// stopped the walk.
@@ -165,6 +171,12 @@ type RecipeVerdict struct {
 	// for the recipe — what the SOURCE zone decided. A claim of an
 	// unsigned document: shown beside Assurance, never instead of it.
 	SourceAssurance *assurance.Marker `json:"sourceAssurance,omitempty"`
+	// Ingredients are the verdicts on the ingredients' own signatures,
+	// taken once the recipe itself verified (FR-033, B-062). Recorded
+	// whatever they say; blocking only under
+	// trust.requireIngredientSignatures, and then Reason names the
+	// ingredient.
+	Ingredients []IngredientVerdict `json:"ingredients,omitempty"`
 	// Files and Bytes are what this recipe reaches on the medium.
 	Files int   `json:"files"`
 	Bytes int64 `json:"bytes"`

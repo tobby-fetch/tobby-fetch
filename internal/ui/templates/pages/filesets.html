@@ -59,7 +59,8 @@
   <h2 class="t-kick">{{.T "filesets.pack_title"}}</h2>
   <p class="t-muted t-note">{{.T "filesets.no_upload"}}</p>
   {{if not .IsAdmin}}<p class="t-muted t-note">{{.T "filesets.admin_only"}}</p>{{end}}
-  {{if not .Data.PackEnabled}}<p class="t-muted t-note">{{.T "filesets.inert"}}</p>{{end}}
+  {{if .Data.UnitImportDisabled}}<p id="pack-hardened" class="t-muted t-note" data-hardening="disableUnitImport">{{.T "hardening.unit_import_disabled"}}</p>
+  {{else if not .Data.PackEnabled}}<p class="t-muted t-note">{{.T "filesets.inert"}}</p>{{end}}
 
   <form class="t-form t-card" method="post" action="/filesets/pack"
         hx-disabled-elt="find button[type='submit']" hx-indicator="find .htmx-indicator">
@@ -90,7 +91,7 @@
       {{/* Disabled, never hidden: an action an operator cannot take here
            has to explain itself (ADR-0015). */}}
       <button type="submit" class="t-btn t-btn--primary"
-              {{if or (not .IsAdmin) (not .Data.PackEnabled)}}disabled aria-describedby="pack-source-help"{{end}}>{{.T "filesets.submit"}}</button>
+              {{if .Data.UnitImportDisabled}}disabled aria-describedby="pack-hardened"{{else if or (not .IsAdmin) (not .Data.PackEnabled)}}disabled aria-describedby="pack-source-help"{{end}}>{{.T "filesets.submit"}}</button>
       <span class="htmx-indicator t-pulse-dot" aria-hidden="true"></span>
     </div>
   </form>

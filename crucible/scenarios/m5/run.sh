@@ -31,6 +31,10 @@
 #      NOTHING, and /readyz still answers 200 with the reason.
 #   8. A medium addressed to another zone is refused, and the refusal is
 #      waivable by an administrator and audited (FR-054, FR-094).
+#   8b. B-063: an intact copy of the medium opens the gate of a second
+#      destination instance, which then serves the verified set only — a
+#      tag planted after the manifest and an unreached unit import are
+#      on the medium and answer 403.
 #   9. R-19: one ingredient blob is truncated. The recipe reaching it is
 #      blocked WHOLE and named with the offending file; its neighbour is
 #      pushed. That is the whole arbitration, exercised.
@@ -44,7 +48,8 @@
 #      skopeo reads, and re-imports at identical digests.
 #  14. R-05: /help serves both languages with no route out.
 #  15. R-41: a directory packed on the isolated side is served under
-#      /files/ — without any HTTP write surface existing.
+#      /files/ — by a real GET, without a restart (B-058) — and without
+#      any HTTP write surface existing.
 #  16. R-04: a plan run leaves the store byte-identical.
 #  17. FR-046: the operator role cannot reset the store; the admin can,
 #      with the typed confirmation, and it is audited.
@@ -425,6 +430,22 @@ check "NFR-020: a secret planted under the store makes the instance refuse to st
 # on the shelf, not by the machine that reads it. One blob of zone-app is
 # cut short; zone-tool is left intact. R-19 says the first is blocked whole
 # and named, and the second still crosses.
+#
+# Before the cut, an intact copy of the store is kept on the same medium for
+# step 11b (B-063), and content is planted in it AFTER its manifest was
+# written: a new tag on the intact delivery's ingredient. Nothing about it is
+# inventoried, no recipe reaches it, and an open gate must not serve it.
+TOOL_REPO=$(echo "$MANIFEST" | jq -r '.recipes[] | select(.name=="zone-tool") | .ingredients[0].repo')
+TOOL_TAG=$(echo "$MANIFEST" | jq -r '.recipes[] | select(.name=="zone-tool") | .ingredients[0].tag')
+[ -n "$TOOL_REPO" ] && [ "$TOOL_REPO" != null ] && [ -n "$TOOL_TAG" ] && [ "$TOOL_TAG" != null ] ||
+    fail "B-063: the manifest names no repository and tag for zone-tool's ingredient"
+inc exec tbc-m5-connected -- sh -c "
+    pkill -f '[t]obby serve' || true
+    cp -a /media/tobby/store /media/tobby/store-whole
+    tags=/media/tobby/store-whole/docker/registry/v2/repositories/$TOOL_REPO/_manifests/tags
+    cp -a \"\$tags/$TOOL_TAG\" \"\$tags/9.9.9\"
+" || fail "B-063: could not prepare the intact copy of the medium"
+check "B-063: an intact copy of the medium carries a tag planted after its manifest"
 BLOB=$(echo "$MANIFEST" | jq -r '.recipes[] | select(.name=="zone-app") | .ingredients[0].digest' | cut -d: -f2)
 inc exec tbc-m5-connected -- sh -c "
     # [t]obby, not tobby: pkill -f matches full command lines, and the
@@ -476,6 +497,41 @@ echo "$WAIVED" | jq -e '[(.blocks // [])[] | select(.code=="TBY-MED-006") | .ove
     fail "FR-054: the administrator waiver did not clear the zone refusal"
 check "FR-054: a medium for another zone is blocked; the admin waiver clears it and is recorded"
 
+# -- 11b. B-063: an open gate serves the verified set, and nothing else ------
+# The intact copy prepared in step 9 verifies whole, so a second destination
+# instance over it opens its gate — and must then serve what the pushable
+# recipes reach, and refuse the tag planted after the manifest and the unit
+# import no recipe reaches (local-notes), both of which the medium holds.
+ISOLATED_IP=$(instance_ip tbc-m5-isolated)
+inc exec tbc-m5-isolated -- sh -c "
+    sed -e 's#root: /media/tobby/store\$#root: /media/tobby/store-whole#' \
+        -e 's#root: /var/lib/tobby-state\$#root: /var/lib/tobby-state-whole#' \
+        -e 's#addr: :8080#addr: :8082#' /etc/tobby/config.yaml >/etc/tobby/whole.yaml
+    nohup tobby serve --config /etc/tobby/whole.yaml >/var/log/tobby-whole.log 2>&1 &
+"
+wait_ready tbc-m5-isolated http://127.0.0.1:8082/readyz
+curl -s -o /dev/null -X POST -H 'Content-Type: application/json' -d '{}' \
+    "http://$ISOLATED_IP:8082/api/v1/media/verify" || fail "B-063: the verification could not be started"
+for _ in $(seq 1 120); do
+    curl -s "http://$ISOLATED_IP:8082/api/v1/media/verification" >"$WORK/whole.json" || true
+    jq -e '.running == false and .report != null' "$WORK/whole.json" >/dev/null 2>&1 && break
+    sleep 1
+done
+jq -e '.serving == true and .report.verdict == "pushable" and (.report.served.digest | startswith("sha256:"))' \
+    "$WORK/whole.json" >/dev/null ||
+    fail "B-063: the intact copy did not verify whole with a served set: $(cat "$WORK/whole.json")"
+code() { curl -s -o "$WORK/body" -w '%{http_code}' -H "Accept: $OCI_ACCEPT" "http://$ISOLATED_IP:8082$1" || echo 000; }
+OCI_ACCEPT='application/vnd.oci.image.manifest.v1+json,application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.v2+json'
+[ "$(code "/v2/$TOOL_REPO/manifests/$TOOL_TAG")" = "200" ] ||
+    fail "B-063: the verified ingredient is not served by its verified tag"
+for path in "/v2/$TOOL_REPO/manifests/9.9.9" "/v2/localhost/filesets/local-notes/manifests/1.0.0"; do
+    c=$(code "$path")
+    [ "$c" = "403" ] && grep -q TBY-MED-033 "$WORK/body" ||
+        fail "B-063: $path is on the medium but reached by no verified recipe, and answered $c: $(cat "$WORK/body")"
+done
+inc exec tbc-m5-isolated -- sh -c 'pkill -f "[t]obby serve --config /etc/tobby/whole.yaml" || true'
+check "B-063: the open gate serves the verified set; a planted tag and an unreached unit import answer 403 TBY-MED-033"
+
 # -- 12. R-19: the damaged delivery is blocked, its neighbour is not ---------
 VERDICT=$(inc exec tbc-m5-isolated -- sh -c 'tobby media verify --output json 2>/dev/null' || true)
 echo "$VERDICT" | jq -e '.verdict == "partial"' >/dev/null ||
@@ -488,6 +544,24 @@ echo "$VERDICT" | jq -e '.recipes[] | select(.name=="zone-tool") | .pushable == 
     fail "R-19: an intact delivery was blocked because its neighbour was damaged"
 OFFENDER=$(echo "$VERDICT" | jq -r '.recipes[] | select(.name=="zone-app") | .reason.path')
 check "R-19: zone-app blocked whole, naming $OFFENDER; zone-tool still pushable"
+
+# -- 12b. B-062: ingredient signatures, recorded by default, required on request
+# The ingredients were pushed unsigned: by default the report records "none"
+# and blocks nothing on it. The SAME medium, verified by the same instance
+# with trust.requireIngredientSignatures, blocks the intact delivery too —
+# TBY-SIG-001 naming the ingredient — which is the verdict the import
+# would act on (one rule for media verify and the import).
+echo "$VERDICT" | jq -e '.recipes[] | select(.name=="zone-tool") | .ingredients[0].signature.state == "none" and (.ingredients[0].required | not)' >/dev/null ||
+    fail "B-062: the default report does not record zone-tool's unsigned ingredient as such: $(echo "$VERDICT" | jq -c '.recipes[] | select(.name=="zone-tool") | .ingredients')"
+inc exec tbc-m5-isolated -- sh -c \
+    "awk '{print} /^trust:\$/ {print \"  requireIngredientSignatures: true\"}' /etc/tobby/config.yaml >/etc/tobby/config-strict.yaml"
+STRICT=$(inc exec tbc-m5-isolated -- sh -c 'tobby media verify --config /etc/tobby/config-strict.yaml --output json 2>/dev/null' || true)
+echo "$STRICT" | jq -e '.recipes[] | select(.name=="zone-tool") | .pushable == false and .reason.code == "TBY-SIG-001"
+    and (.reason.params.recipe | startswith("ingredient tool of zone-tool@1.0.0"))
+    and .reason.params.fingerprints == "no signature artifact found"' >/dev/null ||
+    fail "B-062: with trust.requireIngredientSignatures, the unsigned ingredient does not block its delivery: $(echo "$STRICT" | jq -c '.recipes[]? | {name, pushable, reason}')"
+inc exec tbc-m5-isolated -- rm -f /etc/tobby/config-strict.yaml
+check "B-062: unsigned ingredients recorded \"none\" by default; with trust.requireIngredientSignatures, media verify blocks zone-tool with TBY-SIG-001 naming its ingredient"
 
 # -- 13. Import: only what cleared crosses into the zone registry ------------
 inc exec tbc-m5-isolated -- sh -c 'tobby media import --output json' >"$WORK/import.json" 2>/dev/null || true
@@ -609,6 +683,55 @@ for method in POST PUT PATCH DELETE MKCOL; do
     esac
 done
 check "R-41: a directory packed on the isolated side becomes a FileSet; /files/ still accepts no write method"
+
+# And served — by a real GET, which is what the probe above never made
+# (B-058). The medium's own instance cannot show it: its medium is
+# deliberately damaged, so its gate stays closed and /files/ answers 403
+# whatever it holds. A zone-local instance on a working store of the
+# isolated node can, and it is the R-41 shape exactly — a directory of
+# the zone, packed through the remote surface (FR-048), served under
+# /files/ the moment the call returns. Before B-058 that GET answered 404
+# until the instance was restarted, because only a synchronization ever
+# re-resolved the served FileSets.
+inc exec tbc-m5-isolated -- sh -c "mkdir -p /etc/tobby && cat >/etc/tobby/zone-files.yaml <<'EOF'
+mode: mirror
+storage:
+  root: /var/lib/tobby-zone-files
+state:
+  root: /var/lib/tobby-zone-files-state
+server:
+  addr: :8081
+auth:
+  disabled: true
+files:
+  packRoots:
+    - /root/pool
+  filesets:
+    - name: zone-notes
+      ref: localhost/filesets/zone-notes
+      version: 1.0.0
+      anonymous: true
+EOF
+nohup tobby serve --config /etc/tobby/zone-files.yaml >/var/log/tobby-zone-files.log 2>&1 &"
+wait_ready tbc-m5-isolated http://127.0.0.1:8081/readyz
+PACK_CODE=$(curl -s -o "$WORK/pack.json" -w '%{http_code}' -X POST \
+    -H 'Content-Type: application/json' \
+    -d '{"source":"/root/pool","name":"zone-notes","version":"1.0.0"}' \
+    "http://$ISOLATED_IP:8081/api/v1/filesets/pack" || echo 000)
+[ "$PACK_CODE" = "201" ] ||
+    fail "R-41/FR-048: packing through the API answered $PACK_CODE: $(cat "$WORK/pack.json" 2>/dev/null)"
+SERVED=$(curl -s "http://$ISOLATED_IP:8081/files/zone-notes/README" || true)
+SERVED_CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://$ISOLATED_IP:8081/files/zone-notes/README" || echo 000)
+[ "$SERVED_CODE" = "200" ] && [ "$SERVED" = "deb content" ] ||
+    fail "R-41/B-058: a FileSet packed through the API is not served by a GET without a restart ($SERVED_CODE: $SERVED)"
+for method in POST PUT PATCH DELETE MKCOL; do
+    CODE=$(curl -s -o /dev/null -w '%{http_code}' -X "$method" \
+        "http://$ISOLATED_IP:8081/files/zone-notes/README" || echo 000)
+    [ "$CODE" = "405" ] ||
+        fail "R-41/FR-047: /files/ answered $CODE to $method on a served FileSet, want 405"
+done
+inc exec tbc-m5-isolated -- sh -c 'pkill -f "[t]obby serve --config /etc/tobby/zone-files.yaml" || true'
+check "R-41/B-058: a directory packed through the API is served at once by a real GET; its URL accepts no write method"
 
 # -- 19. FR-046: the reset is the admin's, and it is typed ------------------
 # curl again, for the same reason as the write-method probe above: this

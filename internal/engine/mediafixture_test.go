@@ -44,6 +44,10 @@ type mediumRecipe struct {
 	// §12.2) instead of the classic attached tag. B-015 lived in the gap
 	// between the two.
 	bundleSig bool
+	// ingredientKey, when set, signs the delivery's ingredient upstream
+	// with that key (classic attached layout): the publisher's own
+	// signature, which travels with its subject onto the medium (§12.2).
+	ingredientKey *sigtest.KeyPair
 }
 
 // medium is a produced transportable store, with the identifiers a
@@ -85,6 +89,9 @@ func seedMedium(t *testing.T, kp *sigtest.KeyPair, recipes ...mediumRecipe) *med
 	for _, r := range recipes {
 		imgRepo := "docker.io/library/" + r.name
 		imgDig := seedImage(t, src, imgRepo, r.version)
+		if r.ingredientKey != nil {
+			signManifest(t, src.st, imgRepo, imgDig, r.ingredientKey)
+		}
 		yaml := cookedRecipeYAML(t, r.name, r.version, []spec.Ingredient{{
 			Name: "app", Kind: spec.IngredientContainerImage,
 			Ref: imgRepo, Version: r.version, Digest: imgDig,

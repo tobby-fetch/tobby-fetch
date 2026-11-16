@@ -37,6 +37,9 @@ tobby
 ├── import         Import a standard OCI image layout into the store
 ├── config
 │   └── dump       Print the effective configuration (secrets redacted)
+├── consumption
+│   ├── table      Print the source→destination mapping table
+│   └── registries-yaml  Print the K3s/RKE2 registries.yaml mirror snippet
 ├── fileset
 │   └── pack       Package a local directory as a FileSet in the store
 ├── media
@@ -44,6 +47,12 @@ tobby
 │   └── import     Verify a transported store, then push what it cleared
 ├── store
 │   └── verify     Verify the integrity of a whole store (either mode)
+├── diagnostics
+│   └── bundle     Write one redacted diagnostic archive for support
+├── state
+│   └── inspect    List the state directory: classes, sizes, permissions
+├── scan
+│   └── exceptions List the vulnerability exceptions with their origin, scope, expiry and state (R-15)
 ├── recipe
 │   └── push       Validate a recipe and publish it to a cookbook
 ├── user
@@ -276,6 +285,14 @@ Entries are independent: one image that did not survive the medium fails on
 its own line and the rest still lands. An import that lost entries exits
 `1` and names them.
 
+What lands is recorded as a unit import of origin `oci-layout`: content no
+recipe manages, never pruned, individually removable. The command honours
+`hardening.disableUnitImport`, read from the same configuration file as the
+instance (`--config`, or the default path when it exists): on a hardened
+instance it refuses with [TBY-POL-005](../errors/#tby-pol-005), writes
+nothing, records a `hardening.refused` audit event on stderr, and exits
+with the policy code `3`.
+
 ### tobby config dump
 
 ```
@@ -291,6 +308,39 @@ points at. Details in the
 
 `--output json` re-encodes the same redacted document for callers that
 would rather not carry a YAML parser.
+
+### tobby consumption table
+
+```
+tobby consumption table [--recipe <name>[@<version>]]... [--destination <host[:port]>] [--output markdown|json|csv]
+```
+
+Prints the source→destination mapping table (SRS FR-065): for every
+ingredient of the selected recipes — FileSets included — the reference the
+recipe names, the reference at the destination registry, and the pinned
+digest. It reads the recipe graph of the store directory, so it works on a
+host where no instance is running, and matches what was pushed.
+
+`--recipe` is repeatable (`name` selects every recorded version,
+`name@version` one of them; none selects the whole store). The registry is
+`--destination`, else `consumption.registry`, else `destination.registry`;
+with none, the command fails with `TBY-AID-001`. `--output` chooses the
+format — `markdown` (the default), `json` or `csv` — and all three carry the
+same rows. See [consumption aids](../../passthrough/consumption-aids/).
+
+### tobby consumption registries-yaml
+
+```
+tobby consumption registries-yaml [--recipe <name>[@<version>]]... [--destination <host[:port]>]
+```
+
+Prints, on stdout and as a single YAML document, the `registries.yaml` that
+makes K3s and RKE2 pull the selected recipes' images from the zone registry:
+one mirror per source registry host, with the zone registry as endpoint and a
+rewrite onto the relocated path. `tobby consumption registries` is an alias.
+No credential is ever written; the output is deterministic and carries no
+timestamp. It is the one command that owes no `--output json`: the file it
+prints is meant to be installed on the nodes as it is.
 
 ### tobby fileset pack
 
@@ -313,6 +363,13 @@ configuration block to add.
 
 In text mode the digest alone is on stdout, so the command composes into a
 script; the rest of the report is on stderr.
+
+The command honours `hardening.disableUnitImport`, read from the same
+configuration file as the instance (`--config`, or the default path when
+it exists): on a hardened instance it refuses with
+[TBY-POL-005](../errors/#tby-pol-005), writes nothing, records a
+`hardening.refused` audit event on stderr, and exits with the policy code
+`3`. Running it beside an instance does not bypass that instance's switch.
 
 ### tobby media verify
 
@@ -479,6 +536,93 @@ Exit codes: `0` the store is intact, `1` the verification was cancelled or faile
 `4` a defect was found — a blob that
 does not match its digest, an incomplete or unreadable manifest, a
 signature that no longer verifies.
+
+### tobby diagnostics bundle
+
+```
+tobby diagnostics bundle [-o <file>] [--instance <url> [--token-file <file>]] [flags]
+```
+
+Writes one local, redacted archive for support (SRS FR-095): the version and
+build, the effective configuration, recent log records, the reports of the
+most recent tasks, a metrics snapshot, the last integrity report, the state
+inventory, and a `MANIFEST.json` with the digest of every file.
+
+Redaction fails closed: every file is searched for the secret values the
+instance knows before anything is written, and a match aborts the command
+with [`TBY-DIA-002`](../../reference/errors/#tby-dia-002), naming the file.
+Tobby sends the archive nowhere. The default file name is
+`tobby-diagnostics-<UTC time>.tar.gz` in the current directory; an existing file
+is never overwritten, and the archive is written readable by its owner only.
+
+Without `--instance` the archive is assembled on the host from the
+configuration, the store and the state directory; the log window and the
+metrics belong to a running process and appear in the manifest as omitted,
+with the reason. With `--instance` (or `TOBBY_INSTANCE_URL`) the archive is
+requested from the running instance, with the administrator's token from
+`TOBBY_API_TOKEN` or `--token-file`, and includes them. The request is
+audited either way. Exit codes: `0` written, `3` refused (the redaction check,
+or the role), `1` failed. See
+[Collect a diagnostic bundle](../../passthrough/diagnostics/).
+
+### tobby state inspect
+
+```
+tobby state inspect [flags]
+```
+
+Lists the entries of the instance state directory (SRS FR-097) with their
+class — *identity* (back it up) or *discardable* — whether they are secret,
+their size and their permissions. Names, classes, sizes and modes only; never a
+content. It reads the directory without opening anything, so it is safe beside
+a running instance. A secret entry readable by every user of the host is
+flagged, and the command exits `3` with
+[`TBY-STA-002`](../../reference/errors/#tby-sta-002) — the refusal a start would
+give. See [Back up and rebuild an instance](../../passthrough/backup-rebuild/).
+
+### tobby scan exceptions
+
+```
+tobby scan exceptions [flags]
+```
+
+Lists the vulnerability exceptions of the scan policy (SRS FR-031,
+amendment R-15) — the same document as the
+[Content policy screen](../../security/vulnerability-scanning/#the-effective-policy)
+and `GET /api/v1/policy`: for each exception its origin (`instance`,
+`retriever`, or `vex` with the OpenVEX document), its scope, its
+justification, its expiry and its state **now** — `active`, `expired` (it no
+longer applies: the findings it covered are judged again) or `unbounded` (a
+Retriever exception of the `v1alpha1` format without expiry, applied,
+`TBY-SCN-028`). The OpenVEX documents are listed with the statements they
+admitted and ignored, and why; the hardening switches are stated.
+
+**Where it reads from.** By default, **this host's configuration**
+(`--config`, the environment) and its `scan.vex` documents, in this process,
+contacting nothing: a document that cannot be read or validated fails as it
+would refuse the start (`TBY-SCN-027`). The Retriever's exceptions are only
+known to a running instance that has served its Retriever — they are not
+listed in that mode, and the report says so (`"retriever_known": false`).
+With `--instance` (or `TOBBY_INSTANCE_URL` set) the command reads a running
+instance's effective policy instead, `GET /api/v1/policy`, the Retriever's
+exceptions included; the JSON document says which (`"source":
+"configuration"` or `"instance"`).
+
+| Flag | Purpose |
+|---|---|
+| `--config` | The configuration file to read (offline form). |
+| `--output text\|json` | `json` emits the policy document on stdout (`source`, `evaluated_at`, `mode`, `threshold`, `blocking`, `retriever_known`, `exceptions[]`, `vex_documents[]`, `hardening`). |
+| `--instance` | Base URL of the running instance to read; token (**admin** role, the floor of `GET /api/v1/policy` and of its screen) from `TOBBY_API_TOKEN` or `--token-file`, sent over `http://` only to this host unless `--allow-plaintext-token`. |
+
+```sh
+tobby scan exceptions
+tobby scan exceptions --output json | jq -r '.exceptions[] | select(.state=="expired") | .id'
+tobby scan exceptions --instance https://tobby.example:8443
+```
+
+The command changes nothing. Exit codes: `0` the policy was read, whatever
+the states; `1` the configuration or a VEX document could not be read; `2`
+usage error (an instance flag without `--instance`, for instance).
 
 ### tobby recipe push
 

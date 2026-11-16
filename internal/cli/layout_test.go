@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/opencontainers/go-digest"
@@ -108,6 +109,47 @@ func TestExportImportRoundTripThroughTheCLI(t *testing.T) {
 	}
 	if got != want {
 		t.Errorf("digest after the round trip = %s, want %s", got, want)
+	}
+	// B-071: what landed is a unit import of origin oci-layout, not
+	// content pushed through /v2/.
+	if c := st.Classify(layoutTestRepo); c.Class != store.ProvenanceUnitImport || c.Origin != store.OriginOCILayout {
+		t.Errorf("imported repository classified %+v, want unit-import of origin oci-layout", c)
+	}
+}
+
+// TestLayoutImportRefusedUnderHardening (B-071): the CLI import is a unit
+// import too, so it reads hardening.disableUnitImport from the
+// configuration the instance serves with and refuses with TBY-POL-005 —
+// the policy exit class, one hardening.refused record, nothing written.
+func TestLayoutImportRefusedUnderHardening(t *testing.T) {
+	source, _ := seedStoreRoot(t)
+	out := filepath.Join(t.TempDir(), "payload.tar")
+	if _, err := run(t, "export", "--storage-root", source, out); err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	cfgFile := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfgFile, []byte("hardening:\n  disableUnitImport: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	destination := t.TempDir()
+	_, stderr, err := runSplit(t, "import", "--storage-root", destination, "--config", cfgFile, out)
+	var te *taxonomy.Error
+	if !errors.As(err, &te) || te.Code() != taxonomy.CodeUnitImportDisabled {
+		t.Fatalf("import under hardening = %v, want TBY-POL-005", err)
+	}
+	if got := exitCodeFor(classifyUsage(err)); got != taxonomy.ExitPolicy {
+		t.Errorf("exit code = %d, want the policy class", got)
+	}
+	for _, want := range []string{`"action":"hardening.refused"`, `"setting":"hardening.disableUnitImport"`} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr misses %s:\n%s", want, stderr)
+		}
+	}
+	if strings.Contains(stderr, `"action":"layout.import"`) {
+		t.Errorf("the refusal was also audited as a failed import:\n%s", stderr)
+	}
+	if _, err := os.Stat(filepath.Join(destination, "docker", "registry", "v2", "repositories", "docker.io")); err == nil {
+		t.Error("a refused layout import wrote content")
 	}
 }
 

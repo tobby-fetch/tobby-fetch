@@ -125,10 +125,29 @@ func TestEveryReportedDocumentMatchesItsSchema(t *testing.T) {
 		assertDocument(t, "tobby user list", stdout, stderr)
 	})
 
+	t.Run("tobby diagnostics bundle", func(t *testing.T) {
+		dir := t.TempDir()
+		stdout, stderr := runJSON(t, "", "diagnostics", "bundle", "--mode", "passthrough",
+			"--storage-root", filepath.Join(dir, "store"), "--state-root", filepath.Join(dir, "state"),
+			"-o", filepath.Join(dir, "bundle.tar.gz"))
+		assertDocument(t, "tobby diagnostics bundle", stdout, stderr)
+	})
+
+	t.Run("tobby state inspect", func(t *testing.T) {
+		stdout, stderr := runJSON(t, "", "state", "inspect", "--state-root", t.TempDir())
+		assertDocument(t, "tobby state inspect", stdout, stderr)
+	})
+
 	t.Run("tobby fileset pack", func(t *testing.T) {
 		stdout, stderr := runJSON(t, "", "fileset", "pack", packTree(t), "debs:1.0.0",
 			"--storage-root", t.TempDir())
 		assertDocument(t, "tobby fileset pack", stdout, stderr)
+	})
+
+	t.Run("tobby consumption table", func(t *testing.T) {
+		root := consumptionStore(t)
+		stdout, stderr := runJSON(t, "", "consumption", "table", "--storage-root", root, "--destination", "reg.zone.example")
+		assertDocument(t, "tobby consumption table", stdout, stderr)
 	})
 
 	t.Run("tobby export", func(t *testing.T) {
@@ -158,6 +177,16 @@ func TestEveryReportedDocumentMatchesItsSchema(t *testing.T) {
 		cfgPath := mediumConfig(t, root, servedZone, registry.Listener.Addr().String())
 		stdout, stderr = runJSON(t, "", "media", "import", "--config", cfgPath)
 		assertDocument(t, "tobby media import", stdout, stderr)
+	})
+
+	t.Run("tobby scan exceptions", func(t *testing.T) {
+		cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+		vexPath := writeVEX(t)
+		if err := os.WriteFile(cfgPath, []byte(scanExceptionsConfig(vexPath)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		stdout, stderr := runJSON(t, "", "scan", "exceptions", "--config", cfgPath)
+		assertDocument(t, "tobby scan exceptions", stdout, stderr)
 	})
 
 	t.Run("tobby store verify", func(t *testing.T) {

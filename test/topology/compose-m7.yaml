@@ -1,0 +1,90 @@
+# Hermetic CI topology, milestone 7 — UC2 end to end (ADR-0014 tier 1,
+# DEVELOPMENT-PLAN §2.7): synchronize on a store that will travel, carry it,
+# verify it and import it into an isolated zone.
+#
+#   - "connected": the source registry (image + cookbook) and the mirror
+#     instance whose store IS the medium (volume "medium-a").
+#   - "airgap" (`internal: true`, no route out): the zone registry and the
+#     tools that run on the destination side. The store arrives there as a
+#     COPY on another volume, mounted at another path — the property a
+#     transport has to preserve is that nothing but the files matter.
+#
+# The configuration files, trust root and retriever are generated into
+# ./.m7 by scenario-m7-uc2.sh and bind-mounted read-only as /etc/tobby.
+
+name: tobby-topology-m7
+
+networks:
+  connected: {}
+  airgap:
+    internal: true
+
+volumes:
+  medium-a: {}
+  medium-b: {}
+  medium-c: {}
+
+services:
+  source-registry:
+    image: registry:3
+    networks: [connected]
+    ports:
+      - "127.0.0.1:5320:5000"
+
+  # Mirror instance, connected side. Authentication is opted out EXPLICITLY
+  # (FR-075, audited): the secure posture is the m2/m3 scenarios' subject.
+  tobby-connected:
+    image: tobby-topology:local
+    command: [serve, --config, /etc/tobby/connected.yaml]
+    environment:
+      TOBBY_AUTH_DISABLED: "true"
+    networks: [connected]
+    ports:
+      - "127.0.0.1:5321:8080"
+    volumes:
+      - medium-a:/media
+      - ./.m7:/etc/tobby:ro
+
+  # The courier: a root shell with two media attached, to copy one onto
+  # the other (the transport) and to damage a copy (the tamper case).
+  courier:
+    image: alpine:3.22
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["true"]
+    networks: []
+    volumes:
+      - medium-a:/a
+      - medium-b:/b
+      - medium-c:/c
+
+  # Destination side. Both mount a medium at /m2, a path the connected side
+  # never used. They are one-shot: `docker compose run --rm tobby-zone media …`.
+  tobby-zone:
+    image: tobby-topology:local
+    environment:
+      TOBBY_AUTH_DISABLED: "true"
+    networks: [airgap]
+    volumes:
+      - medium-b:/m2
+      - ./.m7:/etc/tobby:ro
+
+  tobby-zone-damaged:
+    image: tobby-topology:local
+    environment:
+      TOBBY_AUTH_DISABLED: "true"
+    networks: [airgap]
+    volumes:
+      - medium-c:/m2
+      - ./.m7:/etc/tobby:ro
+
+  # The isolated zone's own registry, written only by `media import`.
+  zone-registry:
+    image: registry:3
+    networks: [airgap]
+
+  # In-zone client and egress canary.
+  canary:
+    image: curlimages/curl:8.17.0
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["true"]
+    networks: [airgap]

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -45,6 +46,13 @@ func (s *Server) extract(ctx context.Context, set FileSet, target string) error 
 	raw, err := s.blobs.Manifest(ctx, set.Repo, set.ManifestDigest)
 	if err != nil {
 		return fmt.Errorf("reading manifest: %w", err)
+	}
+	// The bytes are the ones the digest names, or nothing is extracted
+	// (A1 of the milestone-7 review): the store is a directory, and what
+	// a verification hashed minutes ago is not what this read returns
+	// unless it is checked again here.
+	if want, perr := digest.Parse(set.ManifestDigest); perr != nil || digest.FromBytes(raw) != want {
+		return fmt.Errorf("manifest %s: the stored bytes hash to %s", set.ManifestDigest, digest.FromBytes(raw))
 	}
 	var manifest ocispec.Manifest
 	if err := json.Unmarshal(raw, &manifest); err != nil {
@@ -142,8 +150,18 @@ func (s *Server) applyLayer(ctx context.Context, repo string, layer *ocispec.Des
 		return fmt.Errorf("opening blob: %w", err)
 	}
 	defer rc.Close() //nolint:errcheck // read-only stream
+	if err := layer.Digest.Validate(); err != nil {
+		return fmt.Errorf("layer digest: %w", err)
+	}
 
-	content, closeDec, err := newDecompressor(rc, layer.MediaType)
+	// Every byte read off the blob goes through the digest its descriptor
+	// names (A1): the entries are applied as they stream, into the
+	// temporary directory, and the extraction is committed only if the
+	// whole blob — read to its end — hashed and measured as declared.
+	verifier := layer.Digest.Verifier()
+	raw := &countingReader{r: io.TeeReader(rc, verifier)}
+
+	content, closeDec, err := newDecompressor(raw, layer.MediaType)
 	if err != nil {
 		return err
 	}
@@ -153,6 +171,15 @@ func (s *Server) applyLayer(ctx context.Context, repo string, layer *ocispec.Des
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
+			// Whatever the tar stream did not need still belongs to the
+			// blob; bounded by the declared size, plus one byte to see a
+			// blob longer than its descriptor.
+			if _, err := io.Copy(io.Discard, io.LimitReader(raw, max(layer.Size-raw.n, 0)+1)); err != nil {
+				return fmt.Errorf("reading blob: %w", err)
+			}
+			if raw.n != layer.Size || !verifier.Verified() {
+				return fmt.Errorf("blob %s: %d bytes read do not match the descriptor (%d bytes, that digest)", layer.Digest, raw.n, layer.Size)
+			}
 			return nil
 		}
 		if err != nil {
@@ -165,6 +192,18 @@ func (s *Server) applyLayer(ctx context.Context, repo string, layer *ocispec.Des
 			return err
 		}
 	}
+}
+
+// countingReader counts the bytes read through it.
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
 }
 
 // newDecompressor wraps the blob stream according to the layer media

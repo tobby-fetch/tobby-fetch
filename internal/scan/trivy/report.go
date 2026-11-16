@@ -32,8 +32,11 @@ type nativeReport struct {
 }
 
 type nativeFinding struct {
-	VulnerabilityID  string                `json:"VulnerabilityID"`
-	PkgName          string                `json:"PkgName"`
+	VulnerabilityID string `json:"VulnerabilityID"`
+	PkgName         string `json:"PkgName"`
+	PkgIdentifier   struct {
+		PURL string `json:"PURL"`
+	} `json:"PkgIdentifier"`
 	InstalledVersion string                `json:"InstalledVersion"`
 	FixedVersion     string                `json:"FixedVersion"`
 	Severity         string                `json:"Severity"`
@@ -67,7 +70,10 @@ func parseReport(raw []byte) (version string, findings []scan.Finding, err error
 			if v.VulnerabilityID == "" {
 				continue
 			}
-			key := v.VulnerabilityID + "\x00" + v.PkgName + "\x00" + v.InstalledVersion
+			// The package URL is part of the identity: two packages of the
+			// same name and version in two ecosystems are two findings,
+			// and a VEX subcomponent covers one of them only (B-070).
+			key := v.VulnerabilityID + "\x00" + v.PkgName + "\x00" + v.InstalledVersion + "\x00" + v.PkgIdentifier.PURL
 			if seen[key] {
 				continue
 			}
@@ -86,7 +92,10 @@ func parseReport(raw []byte) (version string, findings []scan.Finding, err error
 		if fa.Package != fb.Package {
 			return fa.Package < fb.Package
 		}
-		return fa.InstalledVersion < fb.InstalledVersion
+		if fa.InstalledVersion != fb.InstalledVersion {
+			return fa.InstalledVersion < fb.InstalledVersion
+		}
+		return fa.PURL < fb.PURL
 	})
 	return rep.Trivy.Version, findings, nil
 }
@@ -103,6 +112,7 @@ func normalize(v *nativeFinding) scan.Finding {
 		ID:               v.VulnerabilityID,
 		Severity:         scan.Severity(strings.ToUpper(v.Severity)),
 		Package:          v.PkgName,
+		PURL:             v.PkgIdentifier.PURL,
 		InstalledVersion: v.InstalledVersion,
 		FixedVersion:     v.FixedVersion,
 	}

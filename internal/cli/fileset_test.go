@@ -402,7 +402,7 @@ func TestSelectFileSetManifestSparseIndex(t *testing.T) {
 // not parse is reported as such, not treated as a plain manifest.
 func TestSelectFileSetManifestRejectsCorruptIndex(t *testing.T) {
 	_, err := selectFileSetManifest(context.Background(), openFileSetStore(t), fileSetRepo,
-		[]byte("{not json"), ocispec.MediaTypeImageIndex, "sha256:deadbeef", "linux/amd64")
+		[]byte("{not json"), ocispec.MediaTypeImageIndex, "sha256:deadbeef", "linux/amd64", nil)
 	if err == nil || !strings.Contains(err.Error(), "parsing index") {
 		t.Errorf("corrupt index payload = %v, want a parsing-index error", err)
 	}
@@ -459,7 +459,7 @@ func TestSyncFileSetsServesWhatResolvedDespiteAFailure(t *testing.T) {
 		config.FileSetServe{Name: "not-synced-yet", Ref: "registry.example.com/filesets/absent"},
 		config.FileSetServe{Name: "debs", Ref: fileSetRef},
 	)
-	syncFileSets(context.Background(), fsrv, st, cfg, slog.New(slog.DiscardHandler))
+	syncFileSets(context.Background(), fsrv, st, cfg, nil, slog.New(slog.DiscardHandler))
 
 	enabled := fsrv.Enabled()
 	if len(enabled) != 1 || enabled[0].Name != "debs" {

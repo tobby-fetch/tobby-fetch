@@ -50,7 +50,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -64,6 +63,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
@@ -170,7 +170,7 @@ func New(eg *netx.Egress, kc authn.Keychain, stateRoot string, threshold config.
 		locks:     map[string]chan struct{}{},
 	}
 	if stateRoot != "" {
-		r.root = filepath.Join(stateRoot, "partials")
+		r.root = statedir.Path(stateRoot, statedir.Partials)
 	}
 	return r
 }

@@ -1,0 +1,12 @@
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Intel Xeon E3-1231 v3 8 threads, 32 GB RAM, Ubuntu 24.04.5 LTS (kernel 6.8.0-146), Incus 7.6 (Zabbly stable); ref milestone-7 @ 2c8aa7d; node created 2026-11-16T16:45Z, destroyed 2026-11-16T17:27Z (verified)
+ok   scenario m7 started 2026-11-16T17:03:47Z
+ok   tooling available (jq, curl, openssl, tar)
+ok   built tobby for linux/amd64
+ok   a value is planted in every secret-bearing setting: proxy password, OIDC secret, SAML key, registry credentials, TLS key, a token, a password (each verified in place)
+ok   the host command, the same command asking the instance, and the API each produced an archive
+ok   zero occurrence of any planted value, in clear or base64, in the host, instance and API archives
+ok   every archive holds documented members only, and the manifest digests match them
+ok   the instance archive holds version, redacted configuration, logs, medium log, tasks, metrics, integrity report and state inventory; the host archive says what it leaves out
+ok   the operator and viewer roles are refused (403)
+ok   audited per requester, counted, and no connection through the witness proxy during any generation
+ok   scenario m7 b-diagnostics complete — report: crucible-report-m7-b-diagnostics.txt

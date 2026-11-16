@@ -185,19 +185,17 @@ The reset is also available as `POST /api/v1/store/reset`. There is no
 
 <!-- TODO: screenshot: the store administration screen — what the store holds, and the typed confirmation the reset requires -->
 
-## Two things that are not here yet
+## Clocks, and Tobby itself
 
-**Clock coherence.** Freshness comparisons assume plausible clocks. Detecting
-an implausible clock at startup and at medium opening — warn and audit, never
-silently correct — is planned for milestone 7 (R-32). Until then, a
-destination whose clock is wrong can refuse a fresh medium or accept a stale
-one, and the audit trail will faithfully record the wrong time.
+**Clock coherence.** Freshness comparisons assume plausible clocks. Since
+v1.0.0-rc.1 (R-32), an implausible clock — behind the build of the binary at
+startup, or behind the production of a medium when it is opened — is
+warned about and audited, and never silently corrected: a banner, a log
+record, the command line's error output, a metric and an audit event name
+the gap. See [detect a wrong clock](../clock-check/).
 
-**Updating Tobby itself inside the zone.** At milestone 6, each release is
-published as recipe-ready OCI artifacts, so Tobby updates travel through the
-standard mirror flow like any other content, signed by your site's own
-qualification chain. There is no auto-update, ever (R-25). Today, updating
-an isolated instance means carrying the new binary the way you carry
-anything else.
-
-Both are tracked on the [project status](../../discover/status/) page.
+**Updating Tobby itself inside the zone.** Since v0.6.0 (R-25), each release
+is published as recipe-ready OCI artifacts, so Tobby updates travel through
+the standard mirror flow like any other content, signed by your site's own
+qualification chain. There is no auto-update, ever. See
+[updating Tobby in an isolated zone](../update-tobby/).

@@ -1,0 +1,15 @@
+# Message keys that are defined and, on purpose, not (yet) used.
+#
+# One entry per line: <catalog> <key or key prefix> :: <reason>. The catalog
+# name is the one tools/i18ncheck prints: ui, slip, taxonomy.
+#
+# An entry is deleted as soon as its key is used, or removed from the
+# catalogs: i18ncheck fails on an entry that matches no unused key.
+
+# Milestone 7 labels reserved at the opening of the milestone (2026-11-16,
+# "Milestone 7" blocks of internal/ui/i18n/{en,fr}.yaml). Each track removes
+# the entries of its own block when it renders the labels: i18ncheck fails on
+# an entry that matches no unused key, so an exemption cannot outlive its use.
+# Track A — consumption aids and UI polish (7.1).
+# Track B — operations and supervision.
+# Track C — content controls and hardening.

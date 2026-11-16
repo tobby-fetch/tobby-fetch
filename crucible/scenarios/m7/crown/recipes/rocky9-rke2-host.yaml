@@ -1,0 +1,26 @@
+# DRAFT recipe — cooked by crucible/scenarios/m7/z-crown-rke2.sh at run time.
+#
+# The OS packages a bare Rocky Linux 9 host needs before RKE2 can start on
+# it with SELinux enforcing, as an rpm repository (rpms + createrepo_c
+# metadata + the Rancher signing key) packed as one FileSet and served by
+# Tobby under /files/ to dnf (FR-047).
+#
+# The package set is not hand-maintained: the scenario asks dnf, on a twin
+# of the bare host (same Incus image, connected zone), for the exact
+# transaction "install tar selinux-policy-targeted container-selinux
+# rke2-selinux iptables-nft" would perform, and packs what it downloaded —
+# the requested packages plus every dependency the image lacks.
+apiVersion: recipe.tobby.dev/v1alpha1
+kind: Recipe
+metadata:
+  name: rocky9-rke2-host
+  version: 1.36.5
+  description: >-
+    Rocky Linux 9 host prerequisites of RKE2 v1.36.5 (SELinux policy,
+    container-selinux, rke2-selinux, iptables) as a dnf repository.
+spec:
+  ingredients:
+    - name: rocky9-rke2-repo
+      kind: FileSet
+      ref: artifacts.crucible.test/os/rocky9-rke2
+      version: 1.36.5

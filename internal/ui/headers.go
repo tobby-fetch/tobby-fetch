@@ -16,17 +16,17 @@ import (
 	"strings"
 )
 
-// Browser-facing security headers, stamped on every UI response by the
-// Mount wrapper (v0.4.2 hardening). Middleware rather than the renderer:
-// the renderer only sees pages that rendered, and the responses most
-// worth hardening — error pages, redirects, static assets — must carry
-// the same headers.
+// The UI's Content-Security-Policy (v0.4.2 hardening, NFR-022). The
+// headers themselves are stamped by the listener's one security-header
+// middleware (internal/server/headers.go), on every response of every
+// surface; this file only BUILDS the policy of the UI's HTML responses,
+// because only this package knows its templates.
 //
-// The Content-Security-Policy is defense in depth on top of
-// html/template's contextual escaping, and it is built to fit what the
-// UI actually is (ADR-0015): a self-contained, server-rendered
-// application whose only scripts are the vendored htmx + idiomorph
-// files and a handful of inline <script> blocks in the templates.
+// The policy is defense in depth on top of html/template's contextual
+// escaping, and it is built to fit what the UI actually is (ADR-0015): a
+// self-contained, server-rendered application whose only scripts are the
+// vendored htmx + idiomorph files and a handful of inline <script> blocks
+// in the templates.
 //
 //   - script-src carries 'self' plus the SHA-256 of each embedded inline
 //     script, computed at startup from the template sources — never
@@ -40,16 +40,17 @@ import (
 //   - style-src needs 'unsafe-inline' for the style="" attributes the
 //     templates use for one-off spacing; a compromise consciously taken —
 //     attribute styles cannot exfiltrate and cannot execute.
-//   - frame-ancestors 'none' (plus the legacy X-Frame-Options for old
-//     proxies): no screen of this UI has a reason to be framed, and a
-//     framed session UI is a clickjacking target.
+//   - frame-ancestors 'none' (plus X-Frame-Options from the middleware):
+//     no screen of this UI has a reason to be framed, and a framed
+//     session UI is a clickjacking target.
+//   - base-uri 'none': no template uses <base>, so an injected one could
+//     only re-point the relative script and form URLs elsewhere.
 //   - form-action 'self' keeps every form posting home — the CSRF token
 //     (NFR-012) protects the session, this protects the submission.
-const (
-	referrerPolicy = "same-origin"
-	frameOptions   = "DENY"
-	contentTypeNos = "nosniff"
-)
+
+// ContentSecurityPolicy returns the policy of the UI's HTML responses,
+// for the listener's security-header middleware (server.HeaderPolicy).
+func ContentSecurityPolicy() string { return cspHeader }
 
 // cspHeader is the policy with the inline-script hashes baked in, built
 // once at startup: the templates are embedded, so the set of inline
@@ -82,7 +83,7 @@ func buildCSP() string {
 		"font-src 'self'",
 		"connect-src 'self'",
 		"object-src 'none'",
-		"base-uri 'self'",
+		"base-uri 'none'",
 		"form-action 'self'",
 		"frame-ancestors 'none'",
 	}, "; ")
@@ -160,31 +161,27 @@ func renderedScript(src []byte) ([]byte, error) {
 // request is refused the way an empty form is.
 const maxUIRequestBody = 16 << 20
 
-// secureHeaders stamps the security headers on one handler's responses,
-// and bounds the body it may read.
-func secureHeaders(next http.Handler) http.Handler {
+// boundBody bounds the body one UI handler may read (B-034). The security
+// headers are no longer stamped here: the listener's middleware does it
+// for every surface (NFR-022).
+func boundBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Body != nil {
 			r.Body = http.MaxBytesReader(w, r.Body, maxUIRequestBody)
 		}
-		h := w.Header()
-		h.Set("Content-Security-Policy", cspHeader)
-		h.Set("X-Content-Type-Options", contentTypeNos)
-		h.Set("X-Frame-Options", frameOptions)
-		h.Set("Referrer-Policy", referrerPolicy)
 		next.ServeHTTP(w, r)
 	})
 }
 
-// securedRouter wraps a Router so every mounted UI handler answers with
-// the security headers — the patterns pass through untouched, which is
-// what keeps the RBAC matrix test seeing the route table as declared.
-type securedRouter struct{ r Router }
+// boundedRouter wraps a Router so every mounted UI handler reads at most
+// maxUIRequestBody — the patterns pass through untouched, which is what
+// keeps the RBAC matrix test seeing the route table as declared.
+type boundedRouter struct{ r Router }
 
-func (s securedRouter) Handle(pattern string, h http.Handler) {
-	s.r.Handle(pattern, secureHeaders(h))
+func (s boundedRouter) Handle(pattern string, h http.Handler) {
+	s.r.Handle(pattern, boundBody(h))
 }
 
-func (s securedRouter) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Request)) {
-	s.r.Handle(pattern, secureHeaders(http.HandlerFunc(h)))
+func (s boundedRouter) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Request)) {
+	s.r.Handle(pattern, boundBody(http.HandlerFunc(h)))
 }

@@ -134,6 +134,13 @@ type scanItemView struct {
 type findingRow struct {
 	ID, Severity, Score, Package, Installed, Fixed string
 	Violates, Excepted                             bool
+	// The exception markers beside the finding (R-15): the OpenVEX
+	// document of the exception that covered it, an unbounded Retriever
+	// exception that covered it, an exception whose scope excludes this
+	// item, an exception that matched but has expired.
+	VEXDocument         string
+	Unbounded           bool
+	OutOfScope, Expired bool
 }
 
 func scanItemViewOf(lang string, r *scan.Report) *scanItemView {
@@ -161,18 +168,33 @@ func scanItemViewOf(lang string, r *scan.Report) *scanItemView {
 	for _, id := range ev.Violations {
 		violates[id] = true
 	}
-	excepted := map[string]bool{}
+	excepted := map[string]scan.Exception{}
 	for _, ex := range ev.ExceptionsApplied {
-		excepted[ex.ID] = true
+		if _, seen := excepted[ex.ID]; !seen {
+			excepted[ex.ID] = ex
+		}
+	}
+	outOfScope, expired := map[string]bool{}, map[string]bool{}
+	for _, ex := range ev.ExceptionsOutOfScope {
+		outOfScope[ex.ID] = true
+	}
+	for _, ex := range ev.ExceptionsExpired {
+		expired[ex.ID] = true
 	}
 	rows := make([]findingRow, 0, len(r.Findings))
 	scores := make([]float64, 0, len(r.Findings))
 	for i := range r.Findings {
 		f := &r.Findings[i]
+		ex, isExcepted := excepted[f.ID]
 		row := findingRow{
 			ID: f.ID, Severity: string(f.Severity), Package: f.Package,
 			Installed: f.InstalledVersion, Fixed: f.FixedVersion,
-			Violates: violates[f.ID], Excepted: excepted[f.ID],
+			Violates: violates[f.ID], Excepted: isExcepted,
+			OutOfScope: violates[f.ID] && outOfScope[f.ID],
+			Expired:    violates[f.ID] && expired[f.ID],
+		}
+		if isExcepted && !row.Violates {
+			row.VEXDocument, row.Unbounded = ex.VEX, ex.Unbounded()
 		}
 		score := -1.0
 		if f.CVSS != nil {

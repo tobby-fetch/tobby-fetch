@@ -1,0 +1,256 @@
+---
+title: État du projet et notes de version
+description: Chaque fonctionnalité avec son statut et son jalon — la source unique de tous les badges de ce site — plus les notes de version par version.
+sidebar:
+  order: 3
+---
+
+import StatusTable from "../../../../../components/StatusTable.astro";
+
+Tobby est publié et en développement actif. Les jalons 1 à 7 sont livrés ; la
+version courante est **v1.0.0-rc.1**, la première release candidate de la 1.0.0. Le tableau ci-dessous est produit à
+partir d'un unique fichier de données (`status.yaml`) et alimente chaque badge
+de statut de ce site — y compris la vue filtrée de la
+[fiche sécurité](../../security/one-pager/). Si une page et ce tableau se
+contredisent, c'est le tableau qui a raison et la page qui a un bug.
+
+## Statut des fonctionnalités
+
+<StatusTable lang="fr" />
+
+## Trains de versions
+
+Chaque jalon correspond à une ligne mineure : le jalon N sort en **v0.N.x** —
+sauf le jalon 7, qui sort en release candidates de la 1.0.0.
+Les versions correctives d'un train ne portent que des correctifs et du
+durcissement, jamais de nouvelle fonctionnalité.
+
+| Jalon | Train | Statut |
+|---|---|---|
+| 1 — Fondations | v0.1.x | Livré (v0.1.0, 2026-08-11) |
+| 2 — Aperçu de l'expérience utilisateur | v0.2.x | Livré (v0.2.0, 2026-08-12) |
+| 3 — Moteur de recipes | v0.3.x | Livré (v0.3.0, 2026-08-16) |
+| 4 — Passthrough | v0.4.x | Livré (v0.4.0 → v0.4.2) |
+| 5 — Mirror et air-gap | v0.5.x | Livré (v0.5.0 → v0.5.2) |
+| 6 — Contrôles renforcés et identité d'entreprise | v0.6.x | Livré (v0.6.0, 2026-11-12) |
+| 7 — Finitions, documentation et recette | v1.0.0-rc.x → 1.0.0 | Livré en v1.0.0-rc.1 ; la recette formelle et la 1.0.0 suivent |
+
+**Cadence observée.** Les cinq premiers jalons ont été livrés entre le
+2026-08-11 (v0.1.0) et le 2026-08-27 (v0.5.0), avec deux correctifs de
+durcissement en chemin (v0.4.1 le 2026-08-18, v0.4.2 le 2026-08-22) et deux
+versions de maintenance ensuite (v0.5.1 le 2026-11-07, v0.5.2 le 2026-11-09) ;
+le jalon 6 a suivi le 2026-11-12 (v0.6.0). C'est la cadence de la phase de
+développement initiale, non un engagement : chaque jalon sort quand ses
+scénarios de recette passent sur le [crucible](../../project/tests-and-proofs/),
+pas à une date.
+
+**Chemin vers la 1.0.** Tous les jalons sont livrés : le jalon 7 a apporté
+les travaux de finition, la documentation bilingue complète et le
+durcissement prouvé par les tests, dans la release candidate v1.0.0-rc.1.
+Reste la recette adversariale de cette candidate. La version 1.0.0 gèle les quatre
+surfaces publiques (CLI, API, configuration, layout de stockage) sous SemVer —
+la [politique de release et de compatibilité](../../project/release-compatibility/)
+est la référence de ce qui est déjà stable et de ce qui se gèle à la 1.0.
+
+## Notes de version
+
+Chaque train de jalon a un rapport de recette brut ; ils sont publiés sous
+[rapports de recette](../../project/acceptance-reports/). Le changelog complet
+vit dans le dépôt
+([CHANGELOG.md](https://github.com/tobby-fetch/tobby-fetch/blob/main/CHANGELOG.md)).
+
+### v0.6.0 — 2026-11-12 (jalon 6)
+
+Contrôles renforcés et identité d'entreprise : chaque image est analysée pour
+ses vulnérabilités sous une politique, et les personnes se connectent par le
+fournisseur d'identité de l'organisation.
+
+- **Analyse de vulnérabilités avec politique** (6.1, 6.2, R-13). Chaque image
+  de conteneur est analysée à la récupération par une exécution Trivy
+  épinglée, hors ligne, hors processus. La politique est **consultative par
+  défaut** — les constats sont rapportés, rien n'est retenu — et devient
+  **bloquante** avec `scan.mode: block` ou un seuil CVSS posé par un Retriever
+  ou une recipe, avec des exceptions listées à la main. Un refus retient toute
+  la recipe. La base et le scanner franchissent l'air gap par le canal
+  `tobby-system`, et une base périmée n'est jamais silencieuse.
+- **L'analyse suit le contenu, non le type déclaré**
+  ([ADR-0017](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0017-scan-by-content.md)) :
+  une image déclarée comme `OCIArtifact`, ou une archive `docker save`
+  transportée dans un `FileSet`, est reconnue par ses octets et analysée sous
+  la même politique.
+- **Connexion d'entreprise : OpenID Connect et SAML 2.0** (6.3), désactivée par
+  défaut, à côté des comptes locaux et des tokens ; les groupes sont associés
+  aux trois rôles. Un fournisseur injoignable n'arrête jamais l'instance ni
+  ne met fin à une session (R-20) ; les sessions inactives expirent et les
+  tokens peuvent expirer (R-14).
+- **Vérification d'intégrité du store à la demande** (R-31) : `tobby store
+  verify`, l'écran d'intégrité du store et l'API recalculent le hash de chaque
+  blob, contrôlent les manifestes et signatures de chaque recipe enregistrée et
+  listent les orphelins dans un rapport horodaté — en lecture seule, sans
+  jamais réparer.
+- **Le contenu à confiance réduite reste marqué** (R-22) : une recipe admise
+  sans signature sous un trust scope assoupli porte un marqueur d'assurance
+  réduite dans les rapports, écrans, journaux, métriques et le manifeste du
+  média.
+- **Le bordereau de transfert imprimable** (R-07) : l'écran Média sous forme de
+  document HTML ou texte bilingue, non signé et le disant.
+- **Tobby se met à jour par son propre canal** (R-25) : chaque release est
+  publiée prête à l'emploi en recipe, binaires compris, de sorte qu'une zone
+  fait franchir l'air gap à Tobby sous sa propre signature. Rien ne se met à
+  jour tout seul.
+
+### v0.5.2 — 2026-11-09 (maintenance)
+
+- **Le chart Helm est publié avec chaque release** comme artefact OCI signé :
+  `helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby
+  --version 0.5.2`.
+  La version du chart est la version de Tobby.
+- **Le chart déploie de nouveau la bonne image.** Son image par défaut était
+  restée en v0.3.0 depuis le jalon 3 (B-035) ; un contrôle fait désormais
+  échouer le build et la release quand le chart est en retard.
+
+### v0.5.1 — 2026-11-07 (maintenance)
+
+Aucune nouvelle fonctionnalité : la chaîne d'outils passe à Go 1.27.3 et chaque
+dépendance Go, outil épinglé et action CI à sa dernière version, et tout le
+crucible des jalons 1 à 5 a été rejoué sur le résultat.
+
+- **Deux corrections de l'interface web** trouvées par l'analyse statique
+  livrée avec les nouveaux outils. La redirection après connexion pouvait être
+  envoyée vers un autre hôte par un lien écrit d'une façon qu'un navigateur,
+  mais pas une comparaison de chaînes, lit comme relative au protocole (B-033) ;
+  et les corps de requête n'étaient pas bornés, de sorte que le formulaire de
+  connexion acceptait un envoi non authentifié écrit sur disque sans limite
+  (B-034). Les cookies de langue et de thème sont désormais `HttpOnly`.
+- **La reconstruction hebdomadaire de l'image refonctionne** : elle échouait
+  depuis que son outil de packaging exigeait un Go plus récent que celui de la
+  release qu'elle reconstruit.
+
+### v0.5.0 — 2026-08-27 (jalon 5)
+
+Mirror et air-gap livrés : le deuxième cas d'usage complet, d'une
+synchronisation mirror vers un store transportable jusqu'à un push vérifié à
+l'intérieur d'une zone isolée.
+
+- **Le média et sa vérification.** Chaque synchronisation mirror écrit un
+  [manifeste de média](../../air-gap/media-security/) — un inventaire de chaque
+  fichier couvert, des recipes satisfaites avec leurs digests épinglés, de
+  l'identité de la zone, de l'identifiant du média et du run. Il est
+  délibérément non signé et rien ne repose sur lui ; la destination redérive
+  l'authenticité des signatures cosign des recipes contre ses propres trust
+  roots et de l'adresse de contenu de chaque fichier
+  ([ADR-0016](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0016-media-manifest.md)).
+  Le blocage est décidé **par recipe** (R-19) : un média portant deux livraisons
+  dont l'une est arrivée endommagée livre quand même celle qui est intacte.
+- **Exploitation côté isolé** (FR-052) : `tobby media verify`,
+  `tobby media import`, leurs miroirs `/api/v1/media`, et l'[écran
+  Média](../../air-gap/import-destination/) guidé — Vérifier, Rapport,
+  Pousser, le contrôle Pousser étant absent tant qu'un verdict n'a pas validé
+  une livraison.
+- **Un média non vérifié ne sert rien.** Une instance de destination détenant
+  un store transporté retient `/v2/` et `/files/` jusqu'à ce que la
+  vérification le valide, en répondant `403` avec `TBY-MED-030` et la marche à
+  suivre, tout en restant vivante et prête pour que l'écran qui corrige la
+  situation reste accessible.
+- **Contrôle préalable et mode plan** (FR-055, R-04) : volumes calculés par
+  recipe et dédupliqués par digest face à l'espace libre et aux capacités du
+  système de fichiers de la cible, et `tobby sync --dry-run` produisant le
+  rapport complet d'une synchronisation à venir sans effet de bord et avec son
+  propre code de sortie.
+- **Une ligne de commande sous contrat stable** (R-08) : `--output json`
+  partout, une [table de codes de sortie publiée](../../reference/cli/#codes-de-sortie)
+  générée depuis le code, `--wait`, et un mode non interactif garanti.
+- **Export et import au layout d'image OCI** (FR-051),
+  [réinitialisation du store](../../air-gap/manage-media/) auditée (FR-046),
+  élagage aligné sur les retrievers avec seuil d'occupation du store (R-33), et
+  `tobby fileset pack` (R-41).
+- **La documentation voyage dans le binaire** (R-05) : `/help` sert tout ce
+  corpus hors ligne, dans les deux langues, sur une instance sans route vers
+  quoi que ce soit.
+- **Windows est une plateforme validée, pas seulement compilée** (5.6) : le
+  parcours mirror s'exécute de bout en bout sur un runner CI Windows, contre un
+  véritable volume FAT32. Huit défauts trouvés par ce premier vrai passage sont
+  corrigés. Les manifestes winget et Scoop sont construits et joints à chaque
+  release. Les deux canaux ont depuis été publiés — Scoop, puis winget sous le
+  nom `tobby-fetch.tobby` le 2026-09-26 — voir
+  [plateformes prises en charge](../../reference/platforms/).
+
+### v0.4.2 — 2026-08-22
+
+Version de durcissement, sans nouvelle fonctionnalité. Un audit de qualité
+ponctuel a été mené entre les jalons 4 et 5 et cette version en porte les
+correctifs :
+
+- **Défauts corrigés :** une data race entre la persistance des tâches et la
+  synchronisation parallèle des ingrédients (B-016), et un ramasse-miettes
+  capable de balayer les blobs d'un transfert en cours (B-017). Corrigés
+  aussi : une panique d'un exécuteur de tâches pouvait tuer tout le service,
+  les erreurs d'usage de la CLI sortaient avec le mauvais code, et
+  `tobby recipe push` remontait des erreurs de transport brutes au lieu de
+  blocs de taxonomie.
+- **Durcissement :** rétention et pagination de l'historique des tâches,
+  limitation de débit sur les échecs d'authentification (avant le calcul du
+  hash du mot de passe), en-têtes de sécurité avec une Content-Security-Policy
+  à base de hash, un chien de garde de progression sur les téléchargements
+  bloqués, et `govulncheck` ainsi qu'une analyse de secrets sur tout
+  l'historique ajoutés aux gates de qualité.
+
+### v0.4.1 — 2026-08-18
+
+Une correction : une instance servant le certificat TLS de repli généré ne
+pouvait pas adopter un certificat de remplacement depuis l'écran
+d'administration (FR-082). L'adoption est désormais proposée dans le répertoire
+d'état, comme étape séparée et délibérée.
+
+### v0.4.0 — 2026-08-18 (jalon 4)
+
+Passthrough livré : le service de promotion continue, la liste d'autorisation
+des registries, le cycle de vie des comptes avec RBAC dans l'interface et
+l'API, la prise en charge réseau d'entreprise (proxies authentifiés, CA
+privées, TLS serveur), la reprise fine des gros téléchargements, la
+publication de recipes depuis l'interface, le chart Helm de référence et une
+suite de non-régression de l'interface pilotée par navigateur.
+
+- **Défauts corrigés :** les trust scopes étaient appariés différemment sur les
+  deux moitiés d'une promotion (B-014), et les signatures Sigstore bundle
+  étaient laissées en arrière par la copie un saut en aval (B-015) — tous deux
+  attrapés par des runs du crucible avant la release, non par des
+  utilisateurs. Corrigés aussi : des écrans de tâches qui ne cessaient jamais
+  d'interroger (B-012) et des téléchargements de fichiers détournés par la
+  navigation « boostée » (B-013).
+
+### v0.3.0 — 2026-08-16 (jalon 3)
+
+Le moteur de recipes : validation stricte par le SDK de la spécification, les
+quatre types d'ingrédients, résolution semver avec synchronisation
+différentielle par digest, vérification cosign hors ligne dans les deux
+layouts publiés, substitution de source et cascade de zones, service des
+FileSets sous `/files/`, `tobby quickstart`, `tobby recipe push`, paquets
+Linux (.deb/.rpm/.apk) et cinq recipes d'exemple commentées.
+
+- **Défauts corrigés :** les filtres de contenu et de tâches ne réagissaient
+  qu'à leur premier contrôle (B-011), plus un lot de corrections de
+  l'interface (toasts de copie, bascules de thème et de langue sous
+  navigation « boostée », comptes de plateformes affichés en présent/total).
+
+### v0.2.0 — 2026-08-12 (jalon 2)
+
+Le premier parcours complet derrière une authentification activée par défaut :
+interface web bilingue rendue côté serveur, navigation dans le contenu, import
+unitaire à la demande avec choix de plateforme, suivi persistant des tâches,
+l'API `/api/v1` avec son document OpenAPI auto-servi, et la taxonomie
+d'erreurs TBY-*.
+
+### v0.1.0 — 2026-08-11 (jalon 1)
+
+Fondations : le squelette applicatif (configuration en couches, journaux
+structurés, sondes, métriques, arrêt gracieux), la registry OCI embarquée avec
+le layout de relocalisation, le journal d'audit et l'identifiant de run, les
+gates de qualité à cinq niveaux, et les bases de la chaîne de release SLSA L3.
+
+## Limites connues
+
+Les limites actuelles sont documentées avec leurs conséquences et
+justifications sur [limites et hors périmètre](../../discover/limits/) ; elles
+sont suivies par fonctionnalité dans le tableau de statut ci-dessus plutôt que
+par version.

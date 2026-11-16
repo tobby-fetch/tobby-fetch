@@ -20,6 +20,8 @@ import (
 	"strings"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
+	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/ocilayout"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -44,6 +46,11 @@ type Service struct {
 	// paths with, so a recipe-scoped export finds the recipe artifact
 	// where the synchronization put it.
 	base string
+	// afterReset runs once a reset has touched the store (SetAfterReset).
+	afterReset func(ctx context.Context)
+	// unitImportDisabled is hardening.disableUnitImport (FR-098): an OCI
+	// layout import is a unit import, refused with TBY-POL-005.
+	unitImportDisabled bool
 }
 
 // New builds the service. The queue may be nil on a surface that runs
@@ -51,6 +58,26 @@ type Service struct {
 func New(st *store.Store, queue *tasks.Queue, base string, logger *slog.Logger) *Service {
 	return &Service{store: st, queue: queue, base: base, logger: logger}
 }
+
+// SetAfterReset installs what runs once a reset has touched the store,
+// whether it completed or failed part-way: state derived from the store's
+// content and kept beside it must follow it. The FileSet cache is that
+// state — it lives in meta/, which the reset keeps, and it kept serving
+// FileSets whose blobs the reset had removed (B-059).
+func (s *Service) SetAfterReset(f func(ctx context.Context)) { s.afterReset = f }
+
+// SetUnitImportDisabled carries hardening.disableUnitImport (FR-098,
+// B-071). An OCI layout import brings content no recipe manages into the
+// store, exactly like a unit import from a registry, so the switch closes
+// it too: StartImport refuses to enqueue, and Import refuses to run —
+// which covers the CLI, and the runner resuming a task queued before the
+// switch was set. The surfaces write the hardening.refused audit record,
+// since the actor and the origin belong to them. Export is untouched: it
+// brings nothing in.
+func (s *Service) SetUnitImportDisabled(disabled bool) { s.unitImportDisabled = disabled }
+
+// UnitImportDisabled reports whether layout imports are refused.
+func (s *Service) UnitImportDisabled() bool { return s.unitImportDisabled }
 
 // Register installs the export and import runners on the queue. Call
 // before the queue is started.
@@ -143,6 +170,9 @@ func (s *Service) Export(ctx context.Context, req *ExportRequest, logger *slog.L
 // IS a content write, and a sweep started from another surface must wait
 // for it rather than collect underneath it.
 func (s *Service) Import(ctx context.Context, req *ImportRequest, logger *slog.Logger, onEntry func(*ocilayout.Entry)) (*ocilayout.ImportReport, error) {
+	if s.unitImportDisabled {
+		return nil, hardening.UnitImportRefusal()
+	}
 	logger.LogAttrs(ctx, slog.LevelInfo, "importing an OCI image layout",
 		slog.String("input", req.Input), slog.String("requirement", "FR-051"))
 	report, err := ocilayout.Import(ctx, s.store, ocilayout.ImportOptions{
@@ -151,6 +181,7 @@ func (s *Service) Import(ctx context.Context, req *ImportRequest, logger *slog.L
 	if err != nil {
 		return nil, s.problem(err, req.Input)
 	}
+	s.recordProvenance(ctx, report, logger)
 	logger.LogAttrs(ctx, slog.LevelInfo, "OCI image layout imported",
 		slog.String("input", req.Input), slog.Int("entries", len(report.Entries)),
 		slog.Int("failed", report.Failed()), slog.Int("manifests", report.Manifests),
@@ -158,6 +189,37 @@ func (s *Service) Import(ctx context.Context, req *ImportRequest, logger *slog.L
 		slog.Int("ignored", len(report.Ignored)),
 		slog.String("requirement", "FR-051"))
 	return report, nil
+}
+
+// recordProvenance records every repository an entry of the import
+// landed in as a unit import of origin oci-layout (FR-098, B-071): without
+// an entry it would read as seeded content pushed through /v2/ — not
+// removable, counted as seed by the unmanaged-content metric. The store's
+// never-downgrade rule applies: a repository already known (seeded, unit
+// imported, or managed by a recipe) keeps its class.
+func (s *Service) recordProvenance(ctx context.Context, report *ocilayout.ImportReport, logger *slog.Logger) {
+	seen := map[string]bool{}
+	for i := range report.Entries {
+		e := &report.Entries[i]
+		repo := e.Ref.Repo
+		if e.Err != nil || repo == "" || seen[repo] {
+			continue
+		}
+		seen[repo] = true
+		if _, err := s.store.RecordUnitImportFrom(repo, store.OriginOCILayout); err != nil {
+			logger.LogAttrs(ctx, slog.LevelWarn, "the provenance of the imported repository could not be recorded",
+				slog.String("repository", repo), slog.String("error", err.Error()),
+				slog.String("requirement", "FR-098"))
+			continue
+		}
+		// The class the repository now has: the ledger may have known
+		// better (never-downgrade rule).
+		c := s.store.Classify(repo)
+		logger.LogAttrs(ctx, slog.LevelInfo, "layout import recorded",
+			slog.String("repository", repo),
+			slog.String(logging.KeyProvenance, string(c.Class)), slog.String("origin", string(c.Origin)),
+			slog.String("requirement", "FR-051/FR-098"))
+	}
 }
 
 // Reset empties the store (FR-046).
@@ -180,6 +242,9 @@ func (s *Service) Reset(ctx context.Context, actor, origin, confirmation string)
 			taxonomy.Params{"phrase": ConfirmationPhrase})
 	}
 	res, err := s.store.Reset(ctx, s.logger)
+	if s.afterReset != nil {
+		s.afterReset(ctx)
+	}
 	if err != nil {
 		event.Outcome = audit.OutcomeFailure
 		audit.Log(ctx, s.logger, event)

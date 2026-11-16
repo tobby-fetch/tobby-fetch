@@ -187,6 +187,8 @@ func New(opts *Options) (*Service, error) {
 		// name, and a 3xx answer is a refusal, not a detour (NFR-019).
 		c := *opts.Client
 		c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		// Every response body bounded, whichever library reads it.
+		c.Transport = boundedTransport{base: c.Transport}
 		s.client = &c
 	}
 	if s.logger == nil {

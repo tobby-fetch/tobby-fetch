@@ -97,6 +97,9 @@ func TestStoreResetKeepsItsTypedConfirmationOnTheBrowserSurface(t *testing.T) {
 	if w.Code != entry.HTTPStatus {
 		t.Fatalf("wrong confirmation = %d, want the TBY-STO-006 status: %s", w.Code, w.Body.String())
 	}
+	if !strings.Contains(w.Body.String(), string(taxonomy.CodeResetConfirmation)) {
+		t.Errorf("the refused reset does not explain itself: no %s on the page", taxonomy.CodeResetConfirmation)
+	}
 	ctx := context.Background()
 	repos, err := st.Repositories(ctx)
 	if err != nil || len(repos) != 1 {

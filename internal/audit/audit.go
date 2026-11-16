@@ -220,6 +220,33 @@ const (
 	ActionIntegrityVerify = "store.verify"
 )
 
+// Actions reserved at the opening of milestone 7. No surface emits them
+// yet; each track wires its own and documents it on the audit-log page
+// (website security/audit-log) when it does.
+const (
+	// ActionDiagnosticsBundle is a diagnostic bundle produced or refused
+	// (FR-095, R-30): the requester is the actor, the outcome failure when
+	// the redaction check aborted it. Track B.
+	ActionDiagnosticsBundle = "diagnostics.bundle"
+	// ActionClockImplausible is a local clock found earlier than an anchor
+	// beyond the tolerance (FR-096, R-32); the target names the anchor
+	// ("build" or the medium identifier), the gap is in the details.
+	// Track B.
+	ActionClockImplausible = "clock.implausible"
+	// ActionScanExceptionExpired is an item refused again because the
+	// exception that admitted it expired (FR-031 amendment, R-15): the
+	// target is the item ("repository@digest"), the outcome denied, and
+	// the exception is named in the exception, exception_source and
+	// exception_expires fields — one record per expired exception that
+	// matched the refused item. Emitted by the engine beside the
+	// scan.block record of the same refusal.
+	ActionScanExceptionExpired = "scan.exception_expired"
+	// ActionHardeningRefused is a write refused by a hardening switch
+	// (FR-098, R-17): a unit import, a packing or a registry push, with
+	// the setting that refused it. Track C.
+	ActionHardeningRefused = "hardening.refused"
+)
+
 // Event is one security audit event (FR-094 schema).
 type Event struct {
 	// Actor is the authenticated identity, ActorLocal for local invocation,
@@ -240,6 +267,25 @@ type Event struct {
 	// Actor. Emitted as "actor_name" only when set (additive to the
 	// schema).
 	ActorName string
+	// Detail is optional free context that is not the target — the gap of
+	// a clock found implausible, for one (FR-096). Emitted as "detail"
+	// only when set (additive to the schema). Never a secret: the same
+	// rule as every field of the trail.
+	Detail string
+	// Setting names the configuration key that decided the outcome, on
+	// the events a setting causes rather than an identity — the hardening
+	// refusals of FR-098 (ActionHardeningRefused). Emitted as "setting"
+	// only when set (additive to the schema, like actor_name).
+	Setting string
+	// Exception, ExceptionSource and ExceptionExpires name the scan
+	// exception an event is about (ActionScanExceptionExpired, R-15): its
+	// identifier, where it was written ("instance", "retriever", or
+	// "vex:<document path>"), and its expiry, RFC 3339. Emitted as
+	// "exception", "exception_source" and "exception_expires" only when
+	// set (additive to the schema).
+	Exception        string
+	ExceptionSource  string
+	ExceptionExpires string
 }
 
 // Log emits e on logger at INFO level. The timestamp is supplied by the
@@ -257,6 +303,17 @@ func Log(ctx context.Context, logger *slog.Logger, e *Event) {
 	}
 	if e.ActorName != "" {
 		attrs = append(attrs, slog.String("actor_name", e.ActorName))
+	}
+	if e.Detail != "" {
+		attrs = append(attrs, slog.String("detail", e.Detail))
+	}
+	if e.Setting != "" {
+		attrs = append(attrs, slog.String("setting", e.Setting))
+	}
+	if e.Exception != "" {
+		attrs = append(attrs, slog.String("exception", e.Exception),
+			slog.String("exception_source", e.ExceptionSource),
+			slog.String("exception_expires", e.ExceptionExpires))
 	}
 	logger.LogAttrs(ctx, slog.LevelInfo, e.Action, attrs...)
 }

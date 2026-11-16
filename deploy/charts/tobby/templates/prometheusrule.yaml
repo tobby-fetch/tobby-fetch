@@ -1,0 +1,25 @@
+{{/*
+SPDX-License-Identifier: GPL-3.0-only
+Copyright © 2026 infraBuilder SASU and contributors
+
+Prometheus Operator alerting rules (R-11). Requires the monitoring.coreos.com
+CRDs; off by default so the chart installs on a cluster that has none.
+*/}}
+{{- if .Values.alerting.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "tobby.fullname" . }}
+  {{- with .Values.alerting.prometheusRule.namespace }}
+  namespace: {{ . | quote }}
+  {{- end }}
+  labels:
+    {{- include "tobby.labels" . | nindent 4 }}
+    app.kubernetes.io/component: instance
+    {{- with .Values.alerting.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    {{- include "tobby.alertGroups" . | nindent 4 }}
+{{- end }}

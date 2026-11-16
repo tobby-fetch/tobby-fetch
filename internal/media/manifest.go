@@ -39,6 +39,19 @@ const ManifestPath = "meta/media.json"
 // return logs there, after this inventory was taken).
 var coveredRoots = []string{"docker/registry/v2", "meta"}
 
+// FileSetCache is the FileSet server's extraction cache (FR-047), in
+// slash form. It sits under meta/ but is NOT covered (B-060): it is
+// derived from blobs by whichever instance serves it, and the destination
+// side discards whatever cache a medium carries and re-extracts from the
+// verified blobs (FR-054, B-058). Inventorying it vouched for nothing and
+// turned every rebuild into "metadata altered" and "uncovered" findings.
+const FileSetCache = "meta/fileserve"
+
+// inFileSetCache reports whether a slash path lies in the FileSet cache.
+func inFileSetCache(slash string) bool {
+	return slash == FileSetCache || strings.HasPrefix(slash, FileSetCache+"/")
+}
+
 // Manifest is the media manifest: meta/media.json.
 //
 // Unsigned by design (ADR-0006). Every field is a claim the destination
@@ -321,6 +334,9 @@ func covered(slash string) bool {
 		// The atomic-write temp files of meta/ (and any left behind by a
 		// crash): transient by definition, and inventorying one would
 		// make the manifest describe a file that is about to be renamed.
+		return false
+	}
+	if inFileSetCache(slash) {
 		return false
 	}
 	for _, sub := range coveredRoots {

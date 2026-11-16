@@ -13,7 +13,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -94,13 +93,26 @@ type createImportRequest struct {
 	} `json:"platforms"`
 }
 
+// auditTargetUnitImport is the audit target of a unit import refused
+// before its reference is known.
+const auditTargetUnitImport = "unit-import"
+
+// maxImportRequest bounds a unit-import request: one reference and its
+// platform list.
+const maxImportRequest = 64 << 10
+
 // create serves POST /api/v1/import: enqueue one unit-import task and
 // answer 201 with it (mirror of the screen's confirmation step).
 func (t *tasksAPI) create(w http.ResponseWriter, r *http.Request) {
+	// hardening.disableUnitImport (FR-098): refused before the body is
+	// read — no task, no inspection, one audit record.
+	if t.api.refuseUnitImport(w, r, auditTargetUnitImport) {
+		return
+	}
 	var req createImportRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		t.api.Problem(w, r, taxonomy.New(taxonomy.CodeBadReference,
-			taxonomy.Params{"reference": ""}).WithCause(err))
+	if !t.api.decodeJSON(w, r, maxImportRequest, &req, false, func(err error) *taxonomy.Error {
+		return taxonomy.New(taxonomy.CodeBadReference, taxonomy.Params{"reference": ""}).WithCause(err)
+	}) {
 		return
 	}
 	req.Reference = strings.TrimSpace(req.Reference)
@@ -166,6 +178,15 @@ type inspectResponse struct {
 // inspection (import.inspectTimeout), same parameter as the screen.
 func (t *tasksAPI) inspect(w http.ResponseWriter, r *http.Request) {
 	ref := strings.TrimSpace(r.URL.Query().Get("ref"))
+	// The inspection is the first step of a unit import: refused with it
+	// (FR-098), before any remote is contacted.
+	target := ref
+	if target == "" {
+		target = auditTargetUnitImport
+	}
+	if t.api.refuseUnitImport(w, r, target) {
+		return
+	}
 	if ref == "" {
 		t.api.Problem(w, r, taxonomy.New(taxonomy.CodeBadReference,
 			taxonomy.Params{"reference": ref}).

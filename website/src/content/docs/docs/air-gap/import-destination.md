@@ -103,10 +103,15 @@ Per-recipe refusals, none of them waivable by anyone:
 | [`TBY-MED-013`](../../reference/errors/#tby-med-013) | a file the recipe reaches that the inventory does not list |
 | [`TBY-MED-014`](../../reference/errors/#tby-med-014) | a reachable manifest or index that cannot be parsed |
 | [`TBY-MED-015`](../../reference/errors/#tby-med-015) | a blob whose bytes do not hash to the digest its own path claims |
+| [`TBY-MED-016`](../../reference/errors/#tby-med-016) | the medium's recipe graph lists an ingredient, digest or location the signed recipe document does not pin |
 
-The last one is what keeps the unsigned inventory from being load-bearing:
-an attacker who corrupts a blob and rewrites the inventory to agree defeats
-the inventory and is still caught by the content address.
+The last two are what keep the unsigned bookkeeping from being
+load-bearing. An attacker who corrupts a blob and rewrites the inventory to
+agree defeats the inventory and is still caught by the content address. An
+attacker who adds an ingredient to the recipe graph, or changes one's
+digest, is caught by the signed recipe document: what a recipe delivers,
+and what an open gate serves, is read from that document and never from the
+medium's own list.
 
 ### Four refusals stay medium-wide
 
@@ -179,6 +184,26 @@ medium.
 - **No role bypasses it.** A closed gate is not an authorization refusal:
   the role matrix decides who may ask, the gate decides whether this
   instance is willing to hand anything out yet.
+- **An open gate serves the verified set, and only it.** The verification
+  records what the pushable recipes reach — recipe artifacts and their
+  signatures, ingredients and their own signatures, every manifest and blob
+  they name, each file re-hashed — and the gate serves exactly that,
+  read-only. A tag resolves to the digest it was verified at; the catalog
+  and the tag lists show only verified content; a FileSet resolves only
+  among verified versions. An image or a FileSet version added to the medium
+  after its manifest was written, content no pushable recipe reaches, and
+  any write answer `403` with
+  [`TBY-MED-033`](../../reference/errors/#tby-med-033). A medium that lists
+  no recipe clears nothing and opens nothing
+  ([`TBY-MED-034`](../../reference/errors/#tby-med-034)).
+- **A missing manifest does not exempt a medium.** An instance with a
+  `zone:` whose store holds content but no `meta/media.json` is guarded as
+  well, and its verification blocks on
+  [`TBY-MED-001`](../../reference/errors/#tby-med-001).
+- **A carried FileSet cache leaves a trace.** It is never served — it is
+  discarded and rebuilt from the verified blobs — and the report summarizes
+  it ([`TBY-MED-023`](../../reference/errors/#tby-med-023)); anything under
+  `meta/fileserve/` that is not an extraction is reported as uncovered.
 
 A source-side mirror instance is unaffected. Its store carries a manifest
 too — it wrote one — but the medium is its own output rather than something

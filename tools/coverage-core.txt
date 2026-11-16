@@ -1,0 +1,26 @@
+# Core packages of the release coverage gate (DEVELOPMENT-PLAN §3,
+# NFR-016): >= 70 % statement coverage each, checked by tools/covercheck
+# against a `go test -coverprofile` profile. Module-relative paths, one per
+# line. Moving a package in or out is a reviewed edit of this file.
+#
+# This gate is stricter in scope and complementary to tools/check-coverage.sh
+# (every internal/ package at the same floor); it exists so the packages the
+# release criteria name are listed explicitly instead of inferred.
+
+# fetch: resumable blob download, unit import (inspect, transfer, vendoring)
+internal/blobfetch
+internal/importer
+
+# resolve: recipe/ingredient resolution (version selection, digests), sync
+# and promote engine; destination mapping (where an ingredient lands)
+internal/engine
+internal/relocate
+
+# store: the embedded OCI store (write, read, GC, integrity)
+internal/store
+
+# policy: transfer policy evaluation and refusals
+internal/policy
+
+# signature verification: cosign key-based attached signatures
+internal/sigverify

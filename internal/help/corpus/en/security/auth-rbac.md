@@ -58,6 +58,7 @@ so they share one table.
 | Accounts, roles, tokens | `/admin/accounts` + `POST` routes | `/api/v1/accounts…`, `/api/v1/tokens…` | admin |
 | Retriever source and interval | `/admin/retriever…` | `/api/v1/retriever…` | admin |
 | Network screen, certificate replacement | `/admin/network…` | `/api/v1/network…` | admin |
+| Effective content policy (exceptions, OpenVEX documents, hardening switches) | `GET /admin/policy` | `GET /api/v1/policy` | admin |
 
 The embedded registry (`/v2/`) is gated **by HTTP method**, not by path,
 so standard clients work unmodified (FR-076): `GET`/`HEAD` (pull,
@@ -69,9 +70,40 @@ surfaced by a permanent banner (FR-047). `/healthz`, `/readyz`, and
 `/metrics` are unauthenticated: the orchestrator's contract, no instance
 content.
 
+**Cross-site request forgery (NFR-012).** The session cookie is ambient: the
+browser attaches it on its own. Every request it authenticates whose method
+is not `GET`, `HEAD` or `OPTIONS` must therefore carry the session's
+anti-forgery token: the `csrf` field of the interface's forms, or the
+`X-CSRF-Token` header on an API call made from a signed-in page. With the
+token, an API call is served as the session's identity, and the
+per-endpoint floor still applies. Without it, the cookie alone authorizes
+no API mutation. As defense in depth, such a request is also refused when
+the browser says it comes from another origin. That verdict comes from
+`Sec-Fetch-Site` when the browser sends it, and otherwise from `Origin`.
+`Origin` is compared with the request's `Host`, or with `X-Forwarded-Host`
+behind a reverse proxy that rewrites `Host`; the scheme is not compared,
+so TLS can be terminated in front. Basic and Bearer credentials carry no
+ambient authority and are exempt. So are the federated callbacks under
+`/auth/`, which carry their own `state` and `InResponseTo` checks. The
+sign-in form and, under the FR-075 override, every state-changing request
+without a credential are refused on a cross-origin verdict alone.
+
+`Origin: null` counts as another origin. A browser sends it for a
+sandboxed frame, and for every form post of a page served with
+`Referrer-Policy: no-referrer`, so a forging page can choose it. The
+instance's own pages are served with `Referrer-Policy: same-origin`: no
+referrer ever leaves for another site, and the browser sends their real
+`Origin` on their own posts. A request with no `Origin` and no
+`Sec-Fetch-Site` passes the check (curl, the CLI). A browser cannot use
+that path against the API: every API endpoint that reads a document
+requires `Content-Type: application/json` (`TBY-SRV-005` otherwise), a
+type a page of another origin cannot send without a CORS preflight, and
+the instance grants none.
+
 Refusals are coded, not just numbered: no credential → `TBY-AUTH-002`;
 role below the floor → `TBY-AUTH-003` naming the required role; missing
-anti-forgery token → `TBY-AUTH-004` (NFR-012); expired session →
+or forged anti-forgery token, or cross-origin state change →
+`TBY-AUTH-004` (NFR-012); expired session →
 `TBY-AUTH-005`; expired token → `TBY-AUTH-013`; federated sign-in refused
 → `TBY-AUTH-014` (OIDC), `TBY-AUTH-015` (SAML), provider unreachable →
 `TBY-AUTH-016`, no mapped group → `TBY-AUTH-017`. See [errors](../../reference/errors/).
@@ -117,3 +149,12 @@ and it is never silent (FR-075): every request then carries the explicit
 banner, and the startup emits an `auth.override_active`
 [audit record](../../security/audit-log/). The default posture, and the only
 supported one, is authentication on.
+
+Under the override, the origin check is the only protection against
+forged requests. It does not stop DNS rebinding: a hostile site that
+re-points its own name at the instance's address is, for the browser,
+the same origin as itself. The instance does not validate the `Host`
+header, since it has no configured public name to compare it with. Keep
+an instance with authentication off on a network that the browsers of
+people who visit untrusted sites cannot reach, or put a reverse proxy in
+front that only answers its own host name.

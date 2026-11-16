@@ -11,7 +11,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
@@ -82,15 +81,13 @@ func (p *planAPI) plan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body planRequest
-	if r.Body != nil && r.ContentLength != 0 {
-		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxPlanBody))
-		if err := dec.Decode(&body); err != nil {
-			p.api.Problem(w, r, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
-				"file": "the request body", "path": "(root)",
-				"constraint": "the body must be a JSON object with the optional members \"retriever\", \"document\" and \"skip_destination\": " + err.Error(),
-			}))
-			return
-		}
+	if !p.api.decodeJSON(w, r, maxPlanBody, &body, true, func(err error) *taxonomy.Error {
+		return taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
+			"file": "the request body", "path": "(root)",
+			"constraint": "the body must be a JSON object with the optional members \"retriever\", \"document\" and \"skip_destination\": " + err.Error(),
+		})
+	}) {
+		return
 	}
 
 	plan, err := p.opts.Planner.Plan(r.Context(), engine.PlanOptions{

@@ -69,6 +69,24 @@ destination-side return logs (the audit back-channel of FR-054). Files that
 keep being written after the inventory is taken cannot be inventoried
 without invalidating it on the next line they receive.
 
+*Amendment 2026-11-16 (B-060).* The FileSet extraction cache,
+`meta/fileserve/`, is outside coverage too. It is derived from blobs by
+whichever instance serves it, and the destination never serves the tree a
+medium carries: it discards it and re-extracts from the blobs the
+verification cleared (FR-054, FR-047 amendment). Inventorying it vouched
+for nothing and reported every rebuild as altered bookkeeping. Manifests
+written before this amendment may list it; those entries remain legal
+paths and are ignored by the verification, so such a medium is neither
+refused nor reported for them.
+
+*Amendment 2026-11-16 (milestone-7 review, A9).* Outside coverage is not
+outside sight. A carried cache is summarized in one non-blocking finding
+(`TBY-MED-023`: file count and bytes, ignored and rebuilt), and anything
+under `meta/fileserve/` that does not have the shape an extraction leaves —
+`<name>/<digest>/rootfs/…` and `<name>/<digest>/.complete` — is reported as
+uncovered content (`TBY-MED-020`), path by path. A tree nothing hashes would
+otherwise cross the gap in both directions without a trace.
+
 ### 4. The unit of a block is the recipe
 
 Verification and the push decision are taken **recipe by recipe**. A recipe
@@ -97,6 +115,21 @@ blocks nothing.
 This is the reconciliation of FR-054 with RECIPE-SPEC §12.3, and §12.3 was
 amended to state the granularity normatively rather than leave "the affected
 item" to the reader.
+
+*Amendment 2026-11-16 (B-063) — the reached set is the only thing served.*
+"Reported and never pushed" was enforced on the push and not on serving: a
+guarded destination whose gate had opened served its whole store, so content
+reachable from no verified recipe — a tag added after the manifest was
+written, an inventoried file nothing reaches, a blob nothing hashed — was
+handed out by `/v2/` and `/files/`. The verification now computes, during its
+walk, the **served set**: the union of what the pushable recipes reach (recipe
+artifacts, their signature artifacts, the ingredients, the ingredients' own
+signature artifacts, and every manifest, index child and blob those name),
+each file of it re-hashed by that walk, with a digest over its canonical
+listing. The gate serves that set and nothing else, read-only; a tag resolves
+to the digest it was verified at; FileSet resolution looks only inside it. A
+verification that clears no content — a medium listing no recipe, which reads
+*pushable* with nothing to push — opens nothing (`TBY-MED-034`).
 
 ### 5. Media identity and freshness are anti-accident guards
 

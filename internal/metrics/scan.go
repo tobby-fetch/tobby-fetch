@@ -62,6 +62,10 @@ type ScanMetrics struct {
 	Items *prometheus.CounterVec
 	// Findings counts findings by severity, per scanned item.
 	Findings *prometheus.CounterVec
+	// Reblocked counts items refused again because an exception that
+	// admitted them expired (R-15, MetricScanReblocked). At zero from the
+	// first scrape: "nothing re-blocked" is a measured fact.
+	Reblocked prometheus.Counter
 
 	gauges *scanGauges
 }
@@ -84,6 +88,10 @@ func newScanMetrics(reg *prometheus.Registry) *ScanMetrics {
 		Name: MetricScanFindings,
 		Help: "Vulnerability findings reported by item scans, by scanner severity (FR-031).",
 	}, []string{"severity"})
+	reblocked := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: MetricScanReblocked,
+		Help: "Items refused by a blocking vulnerability policy because an exception that matched one of their violating findings has expired (FR-031, R-15).",
+	})
 	for _, v := range scanVerdicts {
 		items.WithLabelValues(v)
 	}
@@ -97,8 +105,8 @@ func newScanMetrics(reg *prometheus.Registry) *ScanMetrics {
 		age:       prometheus.NewDesc(MetricScanDBAge, "Age of the vulnerability database, from the build timestamp it records (R-13); exposed while a database is present.", nil, nil),
 		stale:     prometheus.NewDesc(MetricScanDBStale, "1 while the vulnerability database is older than scan.maxDbAge (R-13); exposed while a database is present.", nil, nil),
 	}
-	reg.MustRegister(items, findings, g)
-	return &ScanMetrics{Items: items, Findings: findings, gauges: g}
+	reg.MustRegister(items, findings, reblocked, g)
+	return &ScanMetrics{Items: items, Findings: findings, Reblocked: reblocked, gauges: g}
 }
 
 // scanGauges is a collector: the gauges are computed at scrape time from

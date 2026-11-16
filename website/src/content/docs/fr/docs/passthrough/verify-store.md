@@ -51,7 +51,7 @@ configuration (`trust.roots`, `trust.scopes`), **jamais** du store : un support
 n'en porte aucune qui compte. Elle refuse un répertoire qui n'est pas déjà un
 store Tobby, au lieu de l'estampiller.
 
-Les codes de sortie suivent la [table publiée](../../reference/cli/#exit-codes) :
+Les codes de sortie suivent la [table publiée](../../reference/cli/#codes-de-sortie) :
 `0` pour un store sain, `4` — la classe vérification — quand un défaut a été
 trouvé. Un script peut s'y brancher, et lire le rapport avec `--output json` ;
 le document est décrit par le schéma publié à côté du document OpenAPI.

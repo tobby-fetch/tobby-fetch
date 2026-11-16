@@ -1,0 +1,21 @@
+{{/*
+SPDX-License-Identifier: GPL-3.0-only
+Copyright © 2026 infraBuilder SASU and contributors
+
+The alerting rules as a plain Prometheus rules file (R-11), for a Prometheus
+not run by the Operator: mount the ConfigMap and list the file under
+rule_files. Off by default.
+*/}}
+{{- if .Values.alerting.rulesFile.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tobby.fullname" . }}-alert-rules
+  labels:
+    {{- include "tobby.labels" . | nindent 4 }}
+    app.kubernetes.io/component: instance
+data:
+  tobby-alerts.rules.yaml: |
+    groups:
+      {{- include "tobby.alertGroups" . | nindent 6 }}
+{{- end }}

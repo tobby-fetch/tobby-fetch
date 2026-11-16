@@ -83,6 +83,9 @@
   </form>
 
   <h2 class="t-kick">{{.T "layout.import_title"}}</h2>
+  {{/* FR-098 (B-071): a layout import is a unit import; under
+       hardening.disableUnitImport the form is shown disabled, the setting named. */}}
+  {{if .Data.ImportDisabled}}<p id="layout-import-hardened" class="t-muted t-note" data-hardening="disableUnitImport">{{.T "hardening.unit_import_disabled"}}</p>{{end}}
   <form class="t-form t-card" method="post" action="/admin/oci-layout/import"
         hx-disabled-elt="find button[type='submit']">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
@@ -101,7 +104,7 @@
            aria-describedby="layout-repository-help">
     <p id="layout-repository-help" class="t-form-hint">{{.T "layout.repository_help"}}</p>
 
-    <button type="submit" class="t-btn t-btn--primary"{{if not .Data.Configured}} disabled{{end}}>{{.T "layout.import_submit"}}</button>
+    <button type="submit" class="t-btn t-btn--primary"{{if or (not .Data.Configured) .Data.ImportDisabled}} disabled{{end}}{{if .Data.ImportDisabled}} aria-describedby="layout-import-hardened"{{end}}>{{.T "layout.import_submit"}}</button>
   </form>
 </section>
 {{end}}

@@ -23,22 +23,30 @@
     </span>
   </div>
   {{end}}
-  {{/* Provenance zone (FR-044 amendment, UI-SPEC §5.4): how this
-       repository entered the store — recipe-managed (naming the recipes),
-       unit import, or seeded through /v2/. */}}
+  {{/* Provenance zone (FR-044 amendment, FR-098, UI-SPEC §5.4): how this
+       repository entered the store — recipe-managed (naming the recipes,
+       with the reduced-assurance marker when a relaxed scope admitted
+       them), unit import or local packing, or seeded through /v2/ — and
+       the last vulnerability scan among its tags. A fact about this
+       store, never written into any registry. */}}
   <p class="t-kick">{{.T "repo.provenance_title"}}</p>
-  <p>
+  <p data-provenance="{{.Data.ProvClass}}">
+    <span class="t-badge{{if eq .Data.ProvClass "recipe"}} t-badge--recipe{{end}}" translate="no" lang="en">{{.Data.ProvClass}}</span>
+    {{.T .Data.ProvLabel}}
+    {{template "assurance-badge" (withData . .Data.Provenance.Assurance)}}
+  </p>
+  <p class="t-muted">
     {{if eq .Data.ProvClass "recipe"}}
-    <span class="t-badge t-badge--recipe" translate="no" lang="en">recipe</span>
     {{.T "repo.provenance_recipe"}}{{range $i, $n := .Data.ManagedBy}}{{if $i}},{{end}} <a class="t-mono" href="/recipes" translate="no">{{$n}}</a>{{end}}
     {{else if eq .Data.ProvClass "unit-import"}}
-    <span class="t-badge" translate="no" lang="en">unit-import</span>
     {{.T "repo.provenance_unit"}}
     {{else}}
-    <span class="t-badge" translate="no" lang="en">seed</span>
     {{.T "repo.provenance_seed"}}
     {{end}}
   </p>
+  {{with .Data.LastScan}}<p class="t-muted" data-last-scan="{{.Verdict}}"><time datetime="{{$.TimeAttr .ScannedAt}}">{{$.T "provenance.last_scan" "When" ($.FmtTime .ScannedAt) "Verdict" .Verdict}}</time></p>{{end}}
+  {{if and .Data.UnitImportDisabled (eq .Data.ProvClass "unit-import")}}<p class="t-muted t-note" data-hardening="disableUnitImport">{{.T "hardening.unit_import_disabled"}}</p>{{end}}
+  {{if and .Data.RegistryReadOnly (eq .Data.ProvClass "seed")}}<p class="t-muted t-note" data-hardening="disableRegistryPush">{{.T "hardening.registry_push_disabled"}}</p>{{end}}
   {{if .Data.Tags}}
   <p class="t-kick">{{.TN "repo.tags_count" (len .Data.Tags) "Count" (len .Data.Tags)}}</p>
   <table class="t-table">
@@ -49,6 +57,7 @@
         <th scope="col">{{.T "repo.th_digest"}}</th>
         <th scope="col" class="t-num">{{.T "repo.th_size"}}</th>
         <th scope="col" class="t-num">{{.T "repo.th_platforms"}}</th>
+        <th scope="col">{{.T "provenance.th_last_scan"}}</th>
       </tr>
     </thead>
     <tbody>
@@ -65,6 +74,9 @@
         <td class="t-num" title="{{.Size}}">{{$.FmtBytes .Size}}</td>
         {{/* present/total — never the raw index total alone (B-007) */}}
         <td class="t-num" title="{{$.T "repo.platforms_title" "Present" .Present "Total" .Platforms}}">{{.Present}}/{{.Platforms}}</td>
+        {{/* FR-098: the tag's last scan, with the age of the database it
+             was scanned with (R-13: stated by the report). */}}
+        <td data-scan="{{with .Scan}}{{.Verdict}}{{end}}">{{with .Scan}}<time datetime="{{$.TimeAttr .ScannedAt}}">{{$.T "provenance.last_scan" "When" ($.FmtTime .ScannedAt) "Verdict" .Verdict}}</time>{{end}}{{with .ScanDBAge}}<br><span class="t-muted">{{$.T "provenance.scan_db_age" "Age" .}}</span>{{end}}{{if not .Scan}}<span class="t-muted">{{$.T "provenance.never_scanned"}}</span>{{end}}</td>
       </tr>
       {{end}}
     </tbody>
