@@ -22,7 +22,6 @@
 "nav.recipes": "Recipes"
 "nav.filesets": "File sets"
 "nav.media": "Media"
-"nav.milestone": "milestone {{.N}}"
 
 "banner.auth_disabled": "Authentication is disabled on this instance: every visitor has full access. Re-enable it by removing auth.disabled from the configuration."
 "banner.trust_relaxed": "Signature verification is relaxed by the declared trust scope(s): {{.Scopes}}. Recipes admitted unsigned are labeled on every surface."
