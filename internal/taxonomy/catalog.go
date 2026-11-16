@@ -479,7 +479,6 @@ const (
 	// CodeAidsNoRegistry refuses to generate a consumption aid on an
 	// instance that names no registry the zone pulls from: neither
 	// destination.registry nor consumption.registry (FR-065 amendment, 7.1).
-	// Reserved: emitter lands with 7.1 (track A).
 	CodeAidsNoRegistry Code = "TBY-AID-001"
 	// CodeDiagnosticsFailed is a diagnostic bundle that could not be
 	// produced (FR-095, R-30). Reserved: emitter lands with R-30 (track B).

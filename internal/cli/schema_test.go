@@ -131,6 +131,12 @@ func TestEveryReportedDocumentMatchesItsSchema(t *testing.T) {
 		assertDocument(t, "tobby fileset pack", stdout, stderr)
 	})
 
+	t.Run("tobby consumption table", func(t *testing.T) {
+		root := consumptionStore(t)
+		stdout, stderr := runJSON(t, "", "consumption", "table", "--storage-root", root, "--destination", "reg.zone.example")
+		assertDocument(t, "tobby consumption table", stdout, stderr)
+	})
+
 	t.Run("tobby export", func(t *testing.T) {
 		source, _ := seedStoreRoot(t)
 		plan := filepath.Join(t.TempDir(), "planned.tar")

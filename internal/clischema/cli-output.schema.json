@@ -147,6 +147,34 @@
       }
     },
 
+    "tobby consumption table": {
+      "title": "tobby consumption table --output json",
+      "description": "The source→destination mapping table of the selected recipes (FR-065), as GET /api/v1/mapping serves it with ?format=json.",
+      "type": "object",
+      "required": ["destination", "entries"],
+      "additionalProperties": false,
+      "properties": {
+        "destination": { "type": "string", "description": "The registry host the destination references name." },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["recipe", "recipeVersion", "ingredient", "kind", "source", "destination", "digest"],
+            "additionalProperties": false,
+            "properties": {
+              "recipe": { "type": "string" },
+              "recipeVersion": { "type": "string" },
+              "ingredient": { "type": "string" },
+              "kind": { "type": "string" },
+              "source": { "type": "string", "description": "The reference the recipe names, with its tag (or digest when it has no tag)." },
+              "destination": { "type": "string", "description": "The reference at the destination registry, relocated per FR-035." },
+              "digest": { "type": "string", "pattern": "^[a-z0-9]+:[a-f0-9]+$" }
+            }
+          }
+        }
+      }
+    },
+
     "tobby sync": {
       "title": "tobby sync --output json (trigger)",
       "description": "What a command-line trigger did: which instance it drove, whether it followed the task to the end, and the task itself.",
