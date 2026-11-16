@@ -25,6 +25,8 @@ import (
 
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/store"
 )
 
 // --- harness ------------------------------------------------------------
@@ -213,6 +215,14 @@ func TestPackedManifestIsASingleManifestImage(t *testing.T) {
 	}
 	if m.Annotations[AnnotationPacked] != "true" {
 		t.Fatalf("annotations = %v, want %s=true", m.Annotations, AnnotationPacked)
+	}
+	// RECIPE-SPEC §7.4: the FileSet marker, spelled as the content
+	// browser reads it.
+	if m.Annotations[AnnotationKind] != KindFileSet {
+		t.Fatalf("annotations = %v, want %s=%s", m.Annotations, AnnotationKind, KindFileSet)
+	}
+	if AnnotationKind != store.AnnotationKind || AnnotationPacked != store.AnnotationFileSetPacked || KindFileSet != string(store.KindFileSet) {
+		t.Fatal("the FileSet markers written here and read by the content browser have drifted apart")
 	}
 
 	cfgRaw, err := st.Blob(context.Background(), res.Repository, m.Config.Digest.String())

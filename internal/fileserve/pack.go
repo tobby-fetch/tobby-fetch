@@ -69,6 +69,12 @@ const (
 	// the provenance ledger, an annotation is part of the content: it
 	// survives an export and reaches any consumer of the image.
 	AnnotationPacked = "dev.tobby.fileset/packed"
+	// AnnotationKind is the RECIPE-SPEC §7.4 FileSet marker, which any
+	// registry browser reads; value KindFileSet. The content browser
+	// (store.AnnotationKind) reads both markers; a test keeps the
+	// spellings in step without making this package depend on the store.
+	AnnotationKind = "dev.tobby.recipe/kind"
+	KindFileSet    = "FileSet"
 )
 
 // packedLayerMediaType is the uncompressed OCI filesystem layer. See the
@@ -718,6 +724,7 @@ func packManifest(config, layer *ocispec.Descriptor) ([]byte, error) {
 		Layers:    []ocispec.Descriptor{*layer},
 		Annotations: map[string]string{
 			AnnotationPacked: "true",
+			AnnotationKind:   KindFileSet,
 		},
 	}
 	raw, err := json.Marshal(m)

@@ -70,6 +70,21 @@ const (
 	mediaTypeDockerConfig = "application/vnd.docker.container.image.v1+json"
 )
 
+// Manifest annotations that mark a FileSet. A FileSet is a standard image
+// on purpose (RECIPE-SPEC §7.4), so its media types cannot say what it is;
+// the specification reserves a manifest marker for that, and a FileSet
+// packed by this instance (FR-048) carries Tobby's own marker as well.
+// Display only: the marker names a badge, it decides nothing else — what
+// is scanned is decided by content (ADR-0017), what is trusted by the
+// recipe's signature and pinned digests.
+const (
+	// AnnotationKind is the RECIPE-SPEC §7.4 marker, value "FileSet".
+	AnnotationKind = "dev.tobby.recipe/kind"
+	// AnnotationFileSetPacked marks a FileSet packed by `tobby fileset
+	// pack` (FR-048), value "true".
+	AnnotationFileSetPacked = "dev.tobby.fileset/packed"
+)
+
 // TagInfo is one tag of a repository as the tag table shows it (UI-SPEC
 // §5.4): pinned digest, logical size, platform counts, manifest media type.
 type TagInfo struct {
@@ -268,6 +283,11 @@ func (s *Store) ManifestInfo(ctx context.Context, name, tagOrDigest string) (*Ma
 	}
 
 	info.IsIndex = true
+	if probe.fileSetMarked() {
+		// §7.4 marks the index of a multi-platform FileSet too: it
+		// decides before any child is read.
+		info.Kind = KindFileSet
+	}
 	for _, c := range m.References() {
 		p := PlatformInfo{Digest: c.Digest.String(), Size: c.Size}
 		if c.Platform != nil {
@@ -551,6 +571,9 @@ func (s *Store) summarize(ctx context.Context, ms distribution.ManifestService, 
 	}
 
 	sum.size = int64(len(payload))
+	if probe, err := probeManifest(payload); err == nil && probe.fileSetMarked() {
+		sum.kind = KindFileSet
+	}
 	for _, c := range m.References() {
 		sum.platforms++
 		present, err := ms.Exists(ctx, c.Digest)
@@ -622,17 +645,22 @@ func probeManifest(payload []byte) (*manifestProbe, error) {
 
 // kind detects the ingredient kind from the probed media types (UI-SPEC
 // §7, badge component): HelmChart by the CNCF helm config type, Recipe by
-// the RECIPE-SPEC §11.2 artifact type, ContainerImage by an OCI or Docker
-// image config, anything else OCIArtifact.
+// the RECIPE-SPEC §11.2 artifact type, FileSet by the RECIPE-SPEC §7.4
+// manifest marker (or the marker of a FileSet packed here), ContainerImage
+// by an OCI or Docker image config, anything else OCIArtifact. The media
+// types of a recipe or a chart outrank a marker: those kinds are fixed by
+// their formats, and a marker claiming otherwise is wrong.
 //
-// TODO(FileSet): RECIPE-SPEC does not define a FileSet artifact media type
-// yet; FileSet artifacts read as OCIArtifact until it does.
+// An unmarked FileSet — published before §7.4 reserved the marker, or by a
+// tool that does not set it — still reads as the image it is.
 func (p *manifestProbe) kind() Kind {
 	switch {
 	case p.ArtifactType == mediaTypeRecipe || p.Config.MediaType == mediaTypeRecipe:
 		return KindRecipe
 	case p.Config.MediaType == mediaTypeHelmConfig:
 		return KindHelmChart
+	case p.fileSetMarked():
+		return KindFileSet
 	case p.ArtifactType != "":
 		return KindOCIArtifact
 	case p.Config.MediaType == mediaTypeOCIConfig || p.Config.MediaType == mediaTypeDockerConfig:
@@ -640,6 +668,11 @@ func (p *manifestProbe) kind() Kind {
 	default:
 		return KindOCIArtifact
 	}
+}
+
+// fileSetMarked reports whether the manifest carries a FileSet marker.
+func (p *manifestProbe) fileSetMarked() bool {
+	return p.Annotations[AnnotationKind] == string(KindFileSet) || p.Annotations[AnnotationFileSetPacked] == "true"
 }
 
 // configPlatform reads os/arch/variant from an image config blob — the
