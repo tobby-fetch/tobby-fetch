@@ -198,6 +198,11 @@ func (s *Store) PruneTags(ctx context.Context, refs []TagRef, logger *slog.Logge
 	// empty directory and a stale provenance entry the media manifest
 	// would still have to describe (FR-054). It goes with its tags.
 	for _, name := range touched {
+		// A repository that was never there (or is already gone) is not
+		// "removed" by this prune: counting it would overstate the result.
+		if _, err := os.Stat(filepath.Join(s.root, "docker", "registry", "v2", "repositories", filepath.FromSlash(name))); err != nil {
+			continue
+		}
 		empty, err := s.hasNoTags(ctx, name)
 		if err != nil {
 			return res, err
