@@ -563,7 +563,10 @@ recorded, and media verification and import agree; with
 blocks its Recipe on every path, `media verify` included; trust roots are
 configurable without rebuild, provided inline, as files, or as HTTPS URLs fetched
 at configuration time (RECIPE-SPEC §12.3); relaxation applies only to the
-declared scope. *(ADR-0007; amended for B-062)*
+declared scope; a trust root listed by a scope verifies only inside the scopes
+listing it, outside every scope only the roots no scope lists apply, and the
+refusal names the reserved root that would have verified.
+*(ADR-0007; amended for B-062 and B-057)*
 
 **FR-034 — Recipe propagation.**
 Tobby SHALL push the Recipes themselves (as OCI artifacts, signatures attached) to
