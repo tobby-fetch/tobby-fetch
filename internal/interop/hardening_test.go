@@ -16,17 +16,18 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
-// exportLayout writes a layout of one image to a fresh archive.
-func exportLayout(t *testing.T) (archive, digest string) {
+// exportLayout writes a layout of one image to a fresh archive and
+// returns its path.
+func exportLayout(t *testing.T) string {
 	t.Helper()
 	src := openStore(t)
-	img := putImage(t, src, ingredientRepo, "3.22.1", "alpine")
+	putImage(t, src, ingredientRepo, "3.22.1", "alpine")
 	out := filepath.Join(t.TempDir(), "payload.tar")
 	if _, err := interop.New(src, nil, "", slog.New(slog.DiscardHandler)).Export(context.Background(),
 		&interop.ExportRequest{Output: out}, slog.New(slog.DiscardHandler)); err != nil {
 		t.Fatalf("exporting: %v", err)
 	}
-	return out, img.Digest.String()
+	return out
 }
 
 // TestLayoutImportRecordsItsProvenance (B-071): content imported from an
@@ -36,7 +37,7 @@ func exportLayout(t *testing.T) (archive, digest string) {
 // never-downgrade rule still holds: a repository already holding seeded
 // content stays seed.
 func TestLayoutImportRecordsItsProvenance(t *testing.T) {
-	archive, _ := exportLayout(t)
+	archive := exportLayout(t)
 	dst := openStore(t)
 	if _, err := interop.New(dst, nil, "", slog.New(slog.DiscardHandler)).
 		Import(context.Background(), &interop.ImportRequest{Input: archive}, slog.New(slog.DiscardHandler), nil); err != nil {
@@ -68,7 +69,7 @@ func TestLayoutImportRecordsItsProvenance(t *testing.T) {
 // before the switch was set and resumed after the restart that set it.
 // Nothing lands.
 func TestLayoutImportRefusedWhenUnitImportDisabled(t *testing.T) {
-	archive, _ := exportLayout(t)
+	archive := exportLayout(t)
 	dst := openStore(t)
 	svc, queue := newQueued(t, dst)
 	svc.SetUnitImportDisabled(true)

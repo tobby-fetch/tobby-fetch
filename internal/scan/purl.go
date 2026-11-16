@@ -69,15 +69,15 @@ var caseInsensitiveTypes = map[string]bool{
 
 // identity is the namespace and name of p in the form two package URLs of
 // the same type compare in.
-func (p *PackageURL) identity() (string, string) {
-	ns, name := p.Namespace, p.Name
+func (p *PackageURL) identity() (namespace, name string) {
+	namespace, name = p.Namespace, p.Name
 	if caseInsensitiveTypes[p.Type] {
-		ns, name = strings.ToLower(ns), strings.ToLower(name)
+		namespace, name = strings.ToLower(namespace), strings.ToLower(name)
 	}
 	if p.Type == "pypi" {
 		name = strings.ReplaceAll(name, "_", "-")
 	}
-	return ns, name
+	return namespace, name
 }
 
 // Matches reports whether the package a finding reports — its package URL
