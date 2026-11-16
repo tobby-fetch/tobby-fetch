@@ -740,6 +740,22 @@ Tobby with no other infrastructure; a path-traversal and link-escape corpus
 returns errors; a non-enabled FileSet under `/files/` returns 404; range
 requests return 206.
 
+*Amendment 2026-11-16 (B-058) — served as soon as present.* An enabled
+FileSet SHALL be served as soon as its content is in the store, whatever
+path brought it there — synchronization, unit or media import, OCI layout
+import, packing (FR-048) or a push through the embedded registry — without
+an instance restart. On a destination instance holding a transported
+medium, no extraction SHALL be written before the verification required by
+FR-054 has cleared the medium, and the served content SHALL be extracted
+from the verified blobs, never taken from an extraction carried on the
+medium.
+*Acceptance:* a FileSet enabled by configuration is returned by a GET
+under `/files/` immediately after it is packed through the API, after a
+unit import settles, and after a push through `/v2/`; on a destination
+instance, nothing exists under the FileSet cache before the verification,
+and after a clearing verdict the served bytes are those of the verified
+blobs even when the medium carried an altered extraction.
+
 **FR-048 — Operator FileSet packing. *(amendment 2026-08-26)***
 Tobby SHALL provide, via CLI (`tobby fileset pack`) and API/UI, a packing
 operation that takes a local file tree, packages it as a single-manifest
