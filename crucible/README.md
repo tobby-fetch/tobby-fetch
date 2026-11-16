@@ -47,12 +47,15 @@ crucible/
     ├── m3/run.sh     # milestone-3 recipe engine
     ├── m4/run.sh     # milestone-4 passthrough / promotion
     ├── m5/run.sh     # milestone-5 mirror & air-gap
-    └── m6/           # milestone-6 controls & enterprise identity
-        ├── run.sh    # dispatcher: runs every a-*, b-*, c-* scenario
-        ├── a-*.sh    # track A: scanning, database, self-update
-        ├── b-*.sh    # track B: enterprise identity, auth hardening
-        ├── c-*.sh    # track C: integrity, trust scopes, assurance
-        └── *-lib.sh  # per-track sourced helpers (b-lib.sh, c-lib.sh)
+    ├── m6/           # milestone-6 controls & enterprise identity
+    │   ├── run.sh    # dispatcher: runs every a-*, b-*, c-* scenario
+    │   ├── a-*.sh    # track A: scanning, database, self-update
+    │   ├── b-*.sh    # track B: enterprise identity, auth hardening
+    │   ├── c-*.sh    # track C: integrity, trust scopes, assurance
+    │   └── *-lib.sh  # per-track sourced helpers (b-lib.sh, c-lib.sh)
+    └── m7/
+        ├── crown.sh  # the crown: RKE2 bootstrapped air-gapped from a bare OS
+        └── crown/    # its helpers, draft recipes, node files, YAML helper
 ```
 
 Everything lives in the dedicated Incus project `tobby-crucible`; the host's
@@ -257,3 +260,41 @@ pattern all read exactly like the guard under test failing.
   device as a *claim* beside the destination's own verdict — a manifest
   that claims nothing hides nothing — and never written into the
   destination registry (same digests, no marker artifact: RECIPE-SPEC §7.1).
+
+### m7 — the crown
+
+The scenario that exercises every milestone at once (DEVELOPMENT-PLAN §2.7):
+an RKE2 v1.36.5 cluster bootstrapped fully air-gapped from a bare Rocky
+Linux 9 VM, with everything served by Tobby.
+
+1. Three recipes are cooked from the drafts under `scenarios/m7/crown/recipes/`
+   and signed: `rke2` (the release's 16 images, checked entry for entry
+   against its `rke2-images.linux-amd64.txt`, plus the tarball, checksums
+   and pinned installer as a FileSet), `rocky9-rke2-host` (an rpm repository
+   FileSet: the exact dnf transaction a connected twin of the bare host
+   computes for SELinux policy, container-selinux, rke2-selinux and
+   iptables) and `crown-app` (busybox, referenced by nominal path).
+2. They cross on a real block device; the destination-side instance
+   verifies the medium (which opens `/files/`) and imports it into the zone
+   registry, where every ingredient is checked at its relocated path with
+   its pinned digest.
+3. Feature 7.1 generates the `registries.yaml` snippet and the mapping
+   table; the table is held to what was pushed, digest for digest.
+4. The bare VM — never connected, no resolver — installs its packages with
+   dnf from the served FileSet alone, switches to SELinux enforcing,
+   installs RKE2 by the tarball method with **no image tarball**, and pulls
+   every image through the generated mirror configuration.
+5. Node Ready, every system pod Running or Completed, the nominal-path pod
+   runs, a never-pushed nominal tag fails at the zone. Proof comes from
+   witnesses that are not the product: a capture on the node's own
+   interface (every manifest the cluster runs was requested from the zone
+   registry at its relocated path), containerd's image store (each image
+   under its pinned digest), and leak captures on every way out of the zone
+   (zero packet sourced in it for the whole run).
+
+On top of the baseline it needs KVM (two VMs: 4 vCPU / 8 GiB / 40 GiB for
+the node, 2 vCPU / 2 GiB for its twin), `tcpdump` on the host, and Docker
+Hub credentials (`CRUCIBLE_DOCKER_CONFIG`) — 17 images exceed the anonymous
+rate limit. `CRUCIBLE_M7_DEBUG_AIDS=handmade` replaces the generated aids
+with hand-written ones to rehearse the rest of the scenario; such a run
+says DEBUG on every dependent line and always ends with a FAIL.

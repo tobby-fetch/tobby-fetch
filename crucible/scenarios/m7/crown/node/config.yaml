@@ -1,0 +1,6 @@
+# /etc/rancher/rke2/config.yaml of the crown node. Nothing here points at a
+# registry: where images come from is the business of registries.yaml,
+# which Tobby generates — a system-default-registry here would bypass the
+# snippet under test and prove nothing about it.
+selinux: true
+write-kubeconfig-mode: "0600"
