@@ -407,6 +407,16 @@ jobs:
       - name: Publish the raw check report (m4)
         if: always()
         run: cat /tmp/tobby-topology-m4-report.txt >> "$GITHUB_STEP_SUMMARY" || true
+      # Milestone 7: UC2 end to end on the mirror mode — synchronize onto a
+      # store that travels (REAL cosign), carry a copy to an isolated
+      # segment, block a damaged copy whole, verify and import the intact
+      # one into the zone registry, read the pinned digest back from inside
+      # the zone. On both architectures (matrix above).
+      - name: Milestone-7 scenario — UC2 mirror, transport, verify, import
+        run: sh test/topology/scenario-m7-uc2.sh
+      - name: Publish the raw check report (m7 UC2)
+        if: always()
+        run: cat /tmp/tobby-topology-m7-uc2-report.txt >> "$GITHUB_STEP_SUMMARY" || true
 
   e2e-browser:
     name: Browser non-regression (R-38, chromedp, ${{ matrix.arch }})
