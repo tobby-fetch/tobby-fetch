@@ -465,6 +465,9 @@
 "TBY-SRV-004.what": "The request is too large."
 "TBY-SRV-004.cause": "Its body exceeds the {{.limit}} bytes this endpoint accepts; it was refused before being read."
 "TBY-SRV-004.action": "Send a smaller body. A document over the bound is not one this endpoint was built for: check that the right file was sent."
+"TBY-SRV-005.what": "The request body is not of a type this endpoint accepts."
+"TBY-SRV-005.cause": "It is declared {{.type}}; this endpoint decodes {{.want}} only. A browser page of another origin cannot send that type without a preflight the instance never grants, which is why nothing else is read."
+"TBY-SRV-005.action": "Send the body with the header Content-Type: {{.want}} (curl: -H 'Content-Type: {{.want}}'). The CLI and the interface already do."
 
 # Exit-code table (FR-066 amendment R-08). Not error codes: the rows of
 # the published command-line contract, rendered by ExitCodeTable into the

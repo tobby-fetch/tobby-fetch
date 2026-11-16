@@ -4,10 +4,12 @@
 package api
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"strconv"
 
@@ -29,6 +31,17 @@ import (
 // "skip_destination" must not run the operation with its default — and so
 // is anything after the JSON value, which a lenient decoder would never
 // read.
+//
+// And it is where the media type is required (B-069): a body is decoded
+// only when it is declared Content-Type: application/json, with or
+// without parameters (charset). A browser can send text/plain,
+// application/x-www-form-urlencoded and multipart/form-data cross-origin
+// without asking first; application/json it can only send after a CORS
+// preflight, which this instance never grants. Without the check, a page
+// of another origin could drive the API with a no-cors fetch — harmless
+// with sessions (the token is required) but not under the FR-075
+// override, where the origin check would then be the only defence.
+// Anything else is refused with TBY-SRV-005 (415) before a byte is read.
 
 // maxAPIRequestBody is the bound of every /api/v1 request body: the
 // largest legitimate one is a recipe publication (cookbook document,
@@ -59,6 +72,23 @@ func tooLarge(limit int64) *taxonomy.Error {
 		taxonomy.Params{"limit": strconv.FormatInt(limit, 10)})
 }
 
+// isJSONMediaType reports whether ct declares application/json, with or
+// without parameters, case-insensitively (RFC 9110 §8.3.1).
+func isJSONMediaType(ct string) bool {
+	mt, _, err := mime.ParseMediaType(ct)
+	return err == nil && mt == "application/json"
+}
+
+// unsupportedMediaType is the TBY-SRV-005 refusal of a body that is not
+// declared application/json; ct is what the request declared.
+func unsupportedMediaType(ct string) *taxonomy.Error {
+	if ct == "" {
+		ct = "(none)"
+	}
+	return taxonomy.New(taxonomy.CodeUnsupportedMediaType,
+		taxonomy.Params{"type": ct, "want": "application/json"})
+}
+
 // errTrailingData is a body with something after its JSON document.
 var errTrailingData = errors.New("unexpected data after the JSON document")
 
@@ -81,7 +111,17 @@ func (a *API) decodeJSON(w http.ResponseWriter, r *http.Request, limit int64, v 
 		a.Problem(w, r, invalid(io.EOF))
 		return false
 	}
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
+	body := bufio.NewReader(http.MaxBytesReader(w, r.Body, limit))
+	if !isJSONMediaType(r.Header.Get("Content-Type")) {
+		// An endpoint whose body is optional still accepts an empty one
+		// sent without a type (a chunked request of zero bytes).
+		if _, err := body.Peek(1); errors.Is(err, io.EOF) && emptyOK {
+			return true
+		}
+		a.Problem(w, r, unsupportedMediaType(r.Header.Get("Content-Type")))
+		return false
+	}
+	dec := json.NewDecoder(body)
 	dec.DisallowUnknownFields()
 	err := dec.Decode(v)
 	if err == nil {

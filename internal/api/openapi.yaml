@@ -23,6 +23,10 @@ info:
     Request bodies are bounded (16 MiB for any request, tighter per
     endpoint; over the bound: 413 TBY-SRV-004) and decoded strictly: an
     unknown member, or data after the JSON document, is refused (NFR-023).
+    A request body must be declared Content-Type: application/json (a
+    charset parameter is accepted); any other type, or none, is refused
+    with 415 TBY-SRV-005, so a page of another origin cannot post a
+    document without a CORS preflight the instance never grants.
     A signed-in browser page may call a mutating endpoint with the session
     cookie only when it sends the session's anti-forgery token in the
     X-CSRF-Token header from the instance's own origin; otherwise the call

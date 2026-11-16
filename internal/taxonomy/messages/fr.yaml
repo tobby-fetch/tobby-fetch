@@ -465,6 +465,9 @@
 "TBY-SRV-004.what": "La requête est trop volumineuse."
 "TBY-SRV-004.cause": "Son corps dépasse les {{.limit}} octets que ce point d'accès accepte ; elle a été refusée avant d'être lue."
 "TBY-SRV-004.action": "Envoyez un corps plus petit. Un document au-delà de la borne n'est pas de ceux que ce point d'accès traite : vérifiez que le bon fichier a été envoyé."
+"TBY-SRV-005.what": "Le corps de la requête n'est pas d'un type que ce point d'accès accepte."
+"TBY-SRV-005.cause": "Il est déclaré {{.type}} ; ce point d'accès ne décode que {{.want}}. Une page d'une autre origine ne peut pas envoyer ce type sans une vérification préalable (preflight) que l'instance n'accorde jamais : c'est pourquoi rien d'autre n'est lu."
+"TBY-SRV-005.action": "Envoyez le corps avec l'en-tête Content-Type: {{.want}} (curl : -H 'Content-Type: {{.want}}'). La CLI et l'interface le font déjà."
 
 # Table des codes de sortie (FR-066, amendement R-08). Ce ne sont pas des
 # codes d'erreur : ce sont les lignes du contrat de ligne de commande

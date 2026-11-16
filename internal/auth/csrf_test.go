@@ -33,7 +33,7 @@ func TestSameOrigin(t *testing.T) {
 		{"other port is another origin", "tobby.example:8080", map[string]string{"Origin": "http://tobby.example:9090"}, false},
 		{"sibling subdomain", "tobby.example.org", map[string]string{"Origin": "https://evil.example.org"}, false},
 		{"unparseable Origin", "tobby.example", map[string]string{"Origin": "::"}, false},
-		{"Origin null (no-referrer form post)", "tobby.example", map[string]string{"Origin": "null"}, true},
+		{"Origin null (opaque initiator: sandboxed frame, no-referrer page)", "tobby.example", map[string]string{"Origin": "null"}, false},
 		{"Origin null, browser says cross-site", "tobby.example", map[string]string{"Origin": "null", "Sec-Fetch-Site": "cross-site"}, false},
 		{"Sec-Fetch-Site same-origin wins over a rewritten Host", "127.0.0.1:8080", map[string]string{"Origin": "https://tobby.example", "Sec-Fetch-Site": "same-origin"}, true},
 		{"Sec-Fetch-Site none (typed address)", "tobby.example", map[string]string{"Sec-Fetch-Site": "none"}, true},
@@ -194,6 +194,29 @@ func TestAPIOverrideRefusesCrossOrigin(t *testing.T) {
 	}
 	if w := e.do(http.MethodGet, func(r *http.Request) { r.Header.Set("Sec-Fetch-Site", "cross-site") }); w.Code != http.StatusAccepted {
 		t.Errorf("override, cross-site GET: %d, want 202 (no GET changes state)", w.Code)
+	}
+}
+
+// TestAPIOverrideRefusesOriginNull (B-069): under the FR-075 override the
+// origin check is the only CSRF protection — no session, no token. A page
+// served with Referrer-Policy: no-referrer, or a sandboxed iframe, makes
+// the browser send "Origin: null" on its cross-origin POST, and over plain
+// HTTP no Sec-Fetch-Site. That request must not be served as the anonymous
+// administrator: the instance's own pages are served with
+// Referrer-Policy: same-origin, so its own posts carry a real Origin.
+func TestAPIOverrideRefusesOriginNull(t *testing.T) {
+	e := newCSRFEnv(t)
+	e.a.Disabled = true
+	w := e.do(http.MethodPost, func(r *http.Request) {
+		r.Header.Set("Origin", "null")
+		r.Header.Set("Content-Type", "text/plain;charset=UTF-8")
+	})
+	if !refusedCSRF(w) {
+		t.Errorf("override, cross-site POST with Origin: null = %d served=%v, want 403 TBY-AUTH-004", w.Code, e.served)
+	}
+	w = e.do(http.MethodPost, func(r *http.Request) { r.Header.Set("Origin", "http://tobby.example") })
+	if w.Code != http.StatusAccepted {
+		t.Errorf("override, same-origin POST = %d, want 202", w.Code)
 	}
 }
 

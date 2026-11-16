@@ -287,7 +287,7 @@ need() { # <label> <headers> <name> <substring>
 }
 common() { # <label> <headers>
     need "$1" "$2" X-Content-Type-Options nosniff
-    need "$1" "$2" Referrer-Policy no-referrer
+    need "$1" "$2" Referrer-Policy same-origin
     need "$1" "$2" Strict-Transport-Security max-age=
 }
 for path in /content /help; do

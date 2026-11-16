@@ -1754,7 +1754,9 @@ finds none.
 
 **NFR-022 — HTTP security headers. *(amendment 2026-11-16, 7.3)***
 Every response of the single listener SHALL carry `X-Content-Type-Options:
-nosniff` and `Referrer-Policy: no-referrer`; every HTML response its
+nosniff` and `Referrer-Policy: same-origin` (amended by B-069: it was
+`no-referrer`, under which browsers send `Origin: null` on the instance's own
+form posts); every HTML response its
 `Content-Security-Policy` (no inline script without a hash, `frame-ancestors
 'none'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`) and
 `X-Frame-Options: DENY`; every response to an authenticated request

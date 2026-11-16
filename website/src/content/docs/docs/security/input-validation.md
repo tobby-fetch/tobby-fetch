@@ -31,7 +31,7 @@ fields are refused.
 |---|---|---|---|---|
 | Request line and headers (all surfaces) | 1 MiB of headers, 10 s to send them | net/http | per surface, below | `431` / connection closed |
 | UI form bodies (every route) | 16 MiB per request. URL-encoded forms are also capped at 10 MiB by net/http. The certificate upload holds 2 MiB in memory and 1 MiB per PEM document | form / multipart | per screen | the screen's code |
-| API JSON bodies (every route) | 16 MiB per request: a declared `Content-Length` above it is refused unread, and a chunked body is cut at the bound. Each endpoint then applies its own bound (table below) | JSON, strict. A body that continues after its document is refused | per endpoint | `TBY-SRV-004` (413) for size, then the endpoint's code |
+| API JSON bodies (every route) | 16 MiB per request: a declared `Content-Length` above it is refused unread, and a chunked body is cut at the bound. Each endpoint then applies its own bound (table below) | JSON, strict, declared `Content-Type: application/json` (a `charset` parameter is accepted). A body that continues after its document is refused | per endpoint | `TBY-SRV-004` (413) for size, `TBY-SRV-005` (415) for any other media type, then the endpoint's code |
 | Sign-in username, Basic user name | 256 bytes, valid UTF-8, no control character, checked **before** the password | — | the name is never verified or logged as given; the audit actor reads `invalid-name` | `TBY-AUTH-002` |
 | `next` / `back` redirect targets | URL | — | must be a local path (`/`, not `//`, no `\`, no control character); otherwise the target is `/` | — |
 | State-changing requests authenticated by the session cookie | — | — | anti-forgery token and origin check (NFR-012) | `TBY-AUTH-004` |

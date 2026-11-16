@@ -146,13 +146,19 @@ func TestLoginRefusesCrossOrigin(t *testing.T) {
 func TestOverrideRefusesCrossOriginUI(t *testing.T) {
 	mux := mount(newTestUI(t, true))
 	for _, path := range []string{"/admin/store/reset", "/lang"} {
-		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader("confirmation=x&lang=fr"))
-		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		r.Header.Set("Origin", "https://evil.example")
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, r)
-		if !csrfRefusal(w) {
-			t.Errorf("override, cross-site POST %s: %d, want 403 TBY-AUTH-004", path, w.Code)
+		// "Origin: null" is what a page served with no-referrer, or a
+		// sandboxed iframe, makes the browser send (B-069): over plain
+		// HTTP there is no Sec-Fetch-Site to tell it apart, so it is
+		// refused like a named foreign origin.
+		for _, origin := range []string{"https://evil.example", "null"} {
+			r := httptest.NewRequest(http.MethodPost, path, strings.NewReader("confirmation=x&lang=fr"))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			r.Header.Set("Origin", origin)
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, r)
+			if !csrfRefusal(w) {
+				t.Errorf("override, cross-site POST %s from Origin %s: %d, want 403 TBY-AUTH-004", path, origin, w.Code)
+			}
 		}
 	}
 }

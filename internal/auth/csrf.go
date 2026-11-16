@@ -69,10 +69,20 @@ func SafeMethod(m string) bool {
 //     X-Forwarded-Host without a CORS preflight this instance never
 //     grants — and an attacker forging their own request gains nothing,
 //     they hold no victim cookie.
-//  3. "Origin: null" is no origin at all: browsers send it for every form
-//     POST of a page served with Referrer-Policy: no-referrer (NFR-022),
-//     as well as for sandboxed or opaque initiators. It is treated as
-//     absent, falling back to the outcome of step 1.
+//  3. "Origin: null" is refused (B-069). Browsers send it for an opaque
+//     initiator — a sandboxed iframe, a data: document — and for every
+//     non-CORS POST of a page served with Referrer-Policy: no-referrer, so
+//     a forging page can choose to send it, and over plain HTTP no
+//     Sec-Fetch-Site accompanies it. The instance's own pages are served
+//     with Referrer-Policy: same-origin (NFR-022), under which the
+//     browser sends their real Origin on their own posts; null therefore
+//     never stands for one of them. With a session this is depth (the
+//     token is still required); under the FR-075 override it is the
+//     protection.
+//  4. No Origin at all passes: a non-browser client (curl, the CLI), or a
+//     browser too old to send it. A cross-origin browser API call cannot
+//     reach a JSON endpoint without a preflight, since the API requires
+//     Content-Type: application/json (TBY-SRV-005).
 func SameOrigin(r *http.Request) bool {
 	switch r.Header.Get("Sec-Fetch-Site") {
 	case "same-origin", "none":
@@ -83,8 +93,11 @@ func SameOrigin(r *http.Request) bool {
 		return false
 	}
 	origin := r.Header.Get("Origin")
-	if origin == "" || origin == "null" {
+	switch origin {
+	case "":
 		return true
+	case "null":
+		return false
 	}
 	u, err := url.Parse(origin)
 	if err != nil || u.Host == "" {

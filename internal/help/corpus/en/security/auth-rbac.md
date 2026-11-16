@@ -87,6 +87,18 @@ ambient authority and are exempt. So are the federated callbacks under
 sign-in form and, under the FR-075 override, every state-changing request
 without a credential are refused on a cross-origin verdict alone.
 
+`Origin: null` counts as another origin. A browser sends it for a
+sandboxed frame, and for every form post of a page served with
+`Referrer-Policy: no-referrer`, so a forging page can choose it. The
+instance's own pages are served with `Referrer-Policy: same-origin`: no
+referrer ever leaves for another site, and the browser sends their real
+`Origin` on their own posts. A request with no `Origin` and no
+`Sec-Fetch-Site` passes the check (curl, the CLI). A browser cannot use
+that path against the API: every API endpoint that reads a document
+requires `Content-Type: application/json` (`TBY-SRV-005` otherwise), a
+type a page of another origin cannot send without a CORS preflight, and
+the instance grants none.
+
 Refusals are coded, not just numbered: no credential → `TBY-AUTH-002`;
 role below the floor → `TBY-AUTH-003` naming the required role; missing
 or forged anti-forgery token, or cross-origin state change →
@@ -136,3 +148,12 @@ and it is never silent (FR-075): every request then carries the explicit
 banner, and the startup emits an `auth.override_active`
 [audit record](../../security/audit-log/). The default posture, and the only
 supported one, is authentication on.
+
+Under the override, the origin check is the only protection against
+forged requests. It does not stop DNS rebinding: a hostile site that
+re-points its own name at the instance's address is, for the browser,
+the same origin as itself. The instance does not validate the `Host`
+header, since it has no configured public name to compare it with. Keep
+an instance with authentication off on a network that the browsers of
+people who visit untrusted sites cannot reach, or put a reverse proxy in
+front that only answers its own host name.

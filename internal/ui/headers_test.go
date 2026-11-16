@@ -43,8 +43,8 @@ func TestSecurityHeadersOnEveryUIResponse(t *testing.T) {
 		if got := h.Get("X-Frame-Options"); got != "DENY" {
 			t.Errorf("%s: X-Frame-Options = %q, want DENY", path, got)
 		}
-		if got := h.Get("Referrer-Policy"); got != "no-referrer" {
-			t.Errorf("%s: Referrer-Policy = %q, want no-referrer", path, got)
+		if got := h.Get("Referrer-Policy"); got != "same-origin" {
+			t.Errorf("%s: Referrer-Policy = %q, want same-origin", path, got)
 		}
 		want := cspHeader
 		if path == "/static/app.css" {

@@ -89,6 +89,19 @@ sont aussi : ils portent leurs propres contrôles `state` et `InResponseTo`.
 Le formulaire de connexion et, sous la dérogation FR-075, toute requête qui
 modifie l'état sans identifiant sont refusés sur le seul verdict d'origine.
 
+`Origin: null` compte comme une autre origine. Un navigateur l'envoie pour
+un cadre sandboxé, et pour tout envoi de formulaire d'une page servie avec
+`Referrer-Policy: no-referrer` : une page de falsification peut donc le
+choisir. Les pages de l'instance sont servies avec
+`Referrer-Policy: same-origin` : aucun référent ne part vers un autre
+site, et le navigateur envoie leur vraie `Origin` sur leurs propres envois.
+Une requête sans `Origin` ni `Sec-Fetch-Site` passe la vérification (curl,
+la CLI). Un navigateur ne peut pas emprunter ce chemin contre l'API : tout
+point d'accès de l'API qui lit un document exige
+`Content-Type: application/json` (`TBY-SRV-005` sinon), un type qu'une page
+d'une autre origine ne peut pas envoyer sans vérification préalable CORS,
+et l'instance n'en accorde aucune.
+
 Les refus sont codés, pas seulement numérotés : aucun identifiant →
 `TBY-AUTH-002` ; rôle sous le seuil → `TBY-AUTH-003`, qui nomme le rôle requis ;
 token anti-falsification absent ou falsifié, ou modification depuis une autre
@@ -140,3 +153,13 @@ alors l'identité explicite `anonymous` avec le rôle `admin`, l'interface
 affiche un bandeau permanent, et le démarrage émet un
 [enregistrement d'audit](../../security/audit-log/) `auth.override_active`. La
 posture par défaut, et la seule prise en charge, est l'authentification activée.
+
+Sous la dérogation, la vérification d'origine est la seule protection
+contre les requêtes falsifiées. Elle n'arrête pas le rebinding DNS : un
+site hostile qui fait pointer son propre nom vers l'adresse de l'instance
+est, pour le navigateur, la même origine que lui. L'instance ne valide pas
+l'en-tête `Host`, faute de nom public configuré auquel le comparer. Gardez
+une instance sans authentification sur un réseau que les navigateurs de
+personnes qui visitent des sites non fiables ne peuvent pas atteindre, ou
+placez devant elle un proxy inverse qui ne répond qu'à son propre nom
+d'hôte.
