@@ -302,3 +302,5 @@ set_clock $((RESOLVED_EPOCH - 20 * 60))
 vm sh -c 'tobby media verify --config /etc/tobby/dest.yaml --output json >/tmp/verify.out 2>/tmp/verify.err; true'
 if vm grep -q 'CLK\|clock.implausible' /tmp/verify.err; then fail "a clock 20 minutes behind the medium raised something"; fi
 check "a clock 20 minutes behind the medium's production raises nothing"
+
+check "scenario m7 b-clock complete — report: $CRUCIBLE_REPORT"

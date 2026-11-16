@@ -225,3 +225,5 @@ b7_api "$NODE_IP" "admin:$PL_PASSWORD" GET /metrics | grep -q '^tobby_diagnostic
 PROXY_AFTER=$(inc exec "$PROXY" -- sh -c 'wc -l </var/log/proxy.log')
 [ "$PROXY_BEFORE" = "$PROXY_AFTER" ] || fail "the witness proxy saw $((PROXY_AFTER - PROXY_BEFORE)) request(s) during the generations (NFR-019)"
 check "audited per requester, counted, and no connection through the witness proxy during any generation"
+
+check "scenario m7 b-diagnostics complete — report: $CRUCIBLE_REPORT"

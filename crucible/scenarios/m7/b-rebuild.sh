@@ -180,3 +180,5 @@ inc exec "$NEW" -- grep -q "TBY-STA-003" /var/log/tobby.log || fail "no TBY-STA-
 inc exec "$NEW" -- grep '"msg":"state directory entry missing"' /var/log/tobby.log | grep -q "media-imports.json" ||
     fail "the TBY-STA-003 record does not name media-imports.json"
 check "a missing import record: the instance starts and reports TBY-STA-003 naming media-imports.json"
+
+check "scenario m7 b-rebuild complete — report: $CRUCIBLE_REPORT"

@@ -394,3 +394,5 @@ if scrape | grep -q '^tobby_scan_db_present 0'; then
 else
     fail "this instance reports a database it was never given: tobby_scan_db_present is not 0"
 fi
+
+check "scenario m7 b-supervision complete — report: $CRUCIBLE_REPORT"
