@@ -132,6 +132,22 @@
       "presence": "always"
     },
     {
+      "name": "tobby_hardening_enabled",
+      "type": "gauge",
+      "help": "1 for each hardening switch set (FR-098: hardening.disableUnitImport, hardening.disableRegistryPush), 0 otherwise.",
+      "labels": [
+        {
+          "name": "setting",
+          "values": [
+            "disableRegistryPush",
+            "disableUnitImport"
+          ]
+        }
+      ],
+      "requirement": "FR-098, R-17",
+      "presence": "on a serving instance (tobby serve), both settings from the first scrape"
+    },
+    {
       "name": "tobby_integrity_last_verification_timestamp_seconds",
       "type": "gauge",
       "help": "End time of the last completed on-demand store verification, in Unix seconds; absent until one has completed.",
@@ -228,6 +244,30 @@
       "presence": "while a vulnerability database is present"
     },
     {
+      "name": "tobby_scan_exceptions",
+      "type": "gauge",
+      "help": "Vulnerability exceptions in configuration (FR-031, R-15) — the instance's scan.exceptions, those born of the scan.vex documents and those of the last served Retriever — by state (active, expired) and source (instance, retriever, vex).",
+      "labels": [
+        {
+          "name": "state",
+          "values": [
+            "active",
+            "expired"
+          ]
+        },
+        {
+          "name": "source",
+          "values": [
+            "instance",
+            "retriever",
+            "vex"
+          ]
+        }
+      ],
+      "requirement": "FR-031, R-15",
+      "presence": "on a serving instance (tobby serve), every state and source from the first scrape"
+    },
+    {
       "name": "tobby_scan_findings_total",
       "type": "counter",
       "help": "Vulnerability findings reported by item scans, by scanner severity (FR-031).",
@@ -272,6 +312,13 @@
       "presence": "once the scanner state is known"
     },
     {
+      "name": "tobby_scan_reblocked_items_total",
+      "type": "counter",
+      "help": "Items refused by a blocking vulnerability policy because an exception that matched one of their violating findings has expired (FR-031, R-15).",
+      "requirement": "FR-031, R-15",
+      "presence": "always"
+    },
+    {
       "name": "tobby_scan_scanner_available",
       "type": "gauge",
       "help": "1 when a verified scanner binary is usable, 0 in the degraded mode (FR-031).",
@@ -308,6 +355,22 @@
       "unit": "bytes",
       "requirement": "FR-045, R-33",
       "presence": "always"
+    },
+    {
+      "name": "tobby_store_unmanaged_repositories",
+      "type": "gauge",
+      "help": "Repositories of the store not managed by a recipe (FR-098), by provenance class: unit-import (unit imports and packed FileSets) and seed (pushed through /v2/).",
+      "labels": [
+        {
+          "name": "class",
+          "values": [
+            "seed",
+            "unit-import"
+          ]
+        }
+      ],
+      "requirement": "FR-098, R-17",
+      "presence": "on a serving instance (tobby serve), both classes; a scrape whose store walk fails leaves it out"
     },
     {
       "name": "tobby_sync_duration_seconds",

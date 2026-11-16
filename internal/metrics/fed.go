@@ -31,6 +31,9 @@ func Fed() *Registry {
 	reg.SetServerCertificate(func() (time.Time, bool) { return now, true })
 	reg.ObserveIntegrityVerification(VerdictClean, now)
 	reg.RegisterReducedRecipes([]string{"scope"}, func() map[string]int { return nil })
+	reg.RegisterScanExceptions(func() ExceptionCounts { return nil })
+	reg.RegisterHardening(false, false)
+	reg.RegisterUnmanaged(func() (map[string]int, error) { return nil, nil })
 	reg.Scan.SetState(func() ScanState {
 		return ScanState{DBPresent: true, ScannerAvailable: true}
 	})
