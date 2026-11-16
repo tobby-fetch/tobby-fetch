@@ -1134,7 +1134,7 @@ codes distinguishing success, policy refusal, and verification failure.
 carry a contract an automation can depend on across versions:
 `--output json` on every command that reports anything, with schemas documented
 alongside the OpenAPI document (FR-060); an exhaustive, published table of exit
-codes — the command-line projection of the error taxonomy (FR-065) — covered by
+codes — the command-line projection of the error taxonomy (ADR-0015) — covered by
 the project's semantic-versioning promise, so that removing or renumbering a code
 is a breaking change; a guaranteed non-interactive mode, where no command
 prompts and none requires a terminal; and `--wait` on every command that starts
@@ -1541,7 +1541,7 @@ guide, in English and French, served by the instance itself under `/help` and
 reachable with no outbound connection (NFR-019) — the destination zone is
 air-gapped by definition, so documentation that lives on a website is
 documentation the operator who needs it most cannot read. Screens SHOULD link
-into the relevant section contextually, and every error code (FR-065) SHOULD
+into the relevant section contextually, and every error code (ADR-0015) SHOULD
 link to its entry.
 *Acceptance:* an instance started with no network serves the complete guides in
 both languages; a link check over the embedded corpus finds no dangling target;
