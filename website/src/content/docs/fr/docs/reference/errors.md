@@ -495,14 +495,16 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 - **Quoi :** Cette instance n'accepte pas d'import unitaire.
 - **Cause probable :** Elle est durcie par `<setting>` : le contenu n'entre dans son store que par des recipes vérifiées, et un import unitaire ou un empaquetage local serait un contenu qu'aucune recipe ne garantit.
 - **Action corrective :** Livrez ce contenu par une recipe signée. Si l'import unitaire est nécessaire sur cette instance, un administrateur retire `<setting>` de sa configuration et la redémarre.
-- **Remédiable hors-ligne :** oui · **Bloque :** l'import ou l'empaquetage ; les synchronisations de recipes ne sont pas concernées · **Statut :** réservé — émis à partir du jalon 7
+- **Où :** l'écran d'import et `POST /api/v1/import` avec son inspection (HTTP 403), l'empaquetage de FileSets à l'écran, par l'API et par `tobby fileset pack` (classe politique, sortie 3) ; chaque refus est un événement d'audit `hardening.refused` qui nomme le réglage
+- **Remédiable hors-ligne :** oui · **Bloque :** l'import ou l'empaquetage ; les synchronisations de recipes ne sont pas concernées
 
 ### TBY-POL-006
 
 - **Quoi :** Ce registre est en lecture seule : les push sont refusés.
 - **Cause probable :** L'instance est durcie par `<setting>` : sa registry embarquée sert du contenu et n'en accepte d'aucun client, quel que soit son rôle. Les synchronisations de recipes écrivent toujours dans le store.
 - **Action corrective :** Tirez depuis ce registre, ou poussez vers la registry de la zone. Alimenter cette instance par push exige qu'un administrateur retire `<setting>` et la redémarre.
-- **Remédiable hors-ligne :** oui · **Bloque :** le push ; les tirages et les synchronisations de recipes ne sont pas concernés · **Statut :** réservé — émis à partir du jalon 7
+- **Où :** toute écriture sur `/v2/` — upload de blob, morceau, validation, montage, push de manifeste, suppression — pour tous les clients et tous les rôles, administrateurs compris, sous la forme de l'erreur OCI `DENIED` (HTTP 403) dont le message commence par le code, que `docker`, `helm`, `oras` et `skopeo` affichent ; chaque refus est un événement d'audit `hardening.refused` qui nomme le réglage
+- **Remédiable hors-ligne :** oui · **Bloque :** le push ; les tirages et les synchronisations de recipes ne sont pas concernés
 
 ## Vérification des signatures et digests (TBY-SIG)
 

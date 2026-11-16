@@ -66,15 +66,17 @@ type Clock struct {
 // Hardening holds the per-instance switches that remove a way in
 // (FR-098). Both default to false. They are hardening, not relaxation: no
 // acknowledgement is needed, but each is reported like every security
-// setting. Track C.
+// setting — which is why neither is omitempty: the configuration dump
+// shows both, false included, so "off" is read rather than inferred.
+// Track C.
 type Hardening struct {
 	// DisableUnitImport refuses unit imports (FR-023) and local FileSet
 	// packing (FR-048) on every surface, the command line included.
-	DisableUnitImport bool `yaml:"disableUnitImport,omitempty"`
+	DisableUnitImport bool `yaml:"disableUnitImport"`
 	// DisableRegistryPush makes the embedded registry read-only for every
 	// client and every role. Recipe-driven writes (FR-027) are unaffected;
 	// seeding (UC3) becomes impossible on this instance.
-	DisableRegistryPush bool `yaml:"disableRegistryPush,omitempty"`
+	DisableRegistryPush bool `yaml:"disableRegistryPush"`
 }
 
 // ExceptionScope narrows a scan exception to the items it was meant for
@@ -141,8 +143,6 @@ type reservedOptIn struct {
 var milestone7Reserved = []reservedOptIn{
 	{"consumption.registry", func(c *Config) bool { return c.Consumption.Registry != "" }, "the consumption aids (7.1)"},
 	{"consumption.caFile", func(c *Config) bool { return c.Consumption.CAFile != "" }, "the consumption aids (7.1)"},
-	{"hardening.disableUnitImport", func(c *Config) bool { return c.Hardening.DisableUnitImport }, "per-content provenance and hardening (R-17)"},
-	{"hardening.disableRegistryPush", func(c *Config) bool { return c.Hardening.DisableRegistryPush }, "per-content provenance and hardening (R-17)"},
 	{"scan.vex", func(c *Config) bool { return len(c.Scan.VEX) > 0 }, "scoped and bounded exceptions (R-15)"},
 	{"scan.exceptions[].scope", func(c *Config) bool {
 		for _, ex := range c.Scan.Exceptions {

@@ -323,6 +323,13 @@ commande affiche le bloc de configuration à ajouter.
 En mode texte, le digest seul est sur stdout, pour que la commande se compose
 dans un script ; le reste du rapport est sur stderr.
 
+La commande respecte `hardening.disableUnitImport`, lu dans le même fichier de
+configuration que l'instance (`--config`, ou le chemin par défaut s'il
+existe) : sur une instance durcie, elle refuse avec
+[TBY-POL-005](../errors/#tby-pol-005), n'écrit rien, consigne un événement
+d'audit `hardening.refused` sur stderr et sort avec le code politique `3`. La
+lancer à côté d'une instance ne contourne pas l'interrupteur de celle-ci.
+
 ### tobby media verify
 
 ```

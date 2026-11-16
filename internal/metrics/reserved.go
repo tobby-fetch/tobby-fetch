@@ -94,7 +94,9 @@ const (
 	// outcome = written | refused (redaction failed closed) | failed.
 	MetricDiagnosticsBundles = "tobby_diagnostics_bundles_total"
 
-	// Track C — provenance and hardening (R-17, FR-098).
+	// Track C — provenance and hardening (R-17, FR-098): registered by
+	// RegisterUnmanaged and RegisterHardening (provenance.go) and no
+	// longer listed by ReservedFamilies.
 
 	// MetricStoreUnmanaged is the number of repositories not managed by a
 	// verified recipe: gauge, label class = unit-import | seed.
@@ -131,8 +133,6 @@ func ReservedFamilies() []string {
 		MetricServerCertificateExpiry,
 		MetricClockImplausible,
 		MetricDiagnosticsBundles,
-		MetricStoreUnmanaged,
-		MetricHardeningEnabled,
 		MetricScanExceptions,
 		MetricScanReblocked,
 	}

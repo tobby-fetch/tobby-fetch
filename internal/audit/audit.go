@@ -263,6 +263,11 @@ type Event struct {
 	// Actor. Emitted as "actor_name" only when set (additive to the
 	// schema).
 	ActorName string
+	// Setting names the configuration key that decided the outcome, on
+	// the events a setting causes rather than an identity — the hardening
+	// refusals of FR-098 (ActionHardeningRefused). Emitted as "setting"
+	// only when set (additive to the schema, like actor_name).
+	Setting string
 }
 
 // Log emits e on logger at INFO level. The timestamp is supplied by the
@@ -280,6 +285,9 @@ func Log(ctx context.Context, logger *slog.Logger, e *Event) {
 	}
 	if e.ActorName != "" {
 		attrs = append(attrs, slog.String("actor_name", e.ActorName))
+	}
+	if e.Setting != "" {
+		attrs = append(attrs, slog.String("setting", e.Setting))
 	}
 	logger.LogAttrs(ctx, slog.LevelInfo, e.Action, attrs...)
 }

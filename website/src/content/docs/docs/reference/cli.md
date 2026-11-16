@@ -314,6 +314,13 @@ configuration block to add.
 In text mode the digest alone is on stdout, so the command composes into a
 script; the rest of the report is on stderr.
 
+The command honours `hardening.disableUnitImport`, read from the same
+configuration file as the instance (`--config`, or the default path when
+it exists): on a hardened instance it refuses with
+[TBY-POL-005](../errors/#tby-pol-005), writes nothing, records a
+`hardening.refused` audit event on stderr, and exits with the policy code
+`3`. Running it beside an instance does not bypass that instance's switch.
+
 ### tobby media verify
 
 ```

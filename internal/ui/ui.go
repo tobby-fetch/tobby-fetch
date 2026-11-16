@@ -14,10 +14,12 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
+	"github.com/tobby-fetch/tobby-fetch/internal/provenance"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
@@ -99,6 +101,9 @@ type UI struct {
 	mediaGate *mediagate.Gate
 	// integrity runs the on-demand store verification (FR-057, R-31).
 	integrity IntegrityVerifier
+	// hardening and scanHistory are the FR-098 inputs (provenance.go).
+	hardening   hardening.Switches
+	scanHistory *provenance.History
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -203,6 +208,15 @@ type Options struct {
 	// Scan reads the vulnerability-scanning state for the banners and the
 	// Retriever screen's indicator (FR-031, FR-032, R-13).
 	Scan func() ScanState
+
+	// Hardening is the pair of FR-098 switches (R-17): the import and
+	// FileSet screens show their action disabled naming the setting, the
+	// content browser states a read-only registry, and the handlers
+	// refuse. Zero is the default instance.
+	Hardening hardening.Switches
+	// ScanHistory reports the last scan of each tag on the repository
+	// page (FR-098); nil reports none.
+	ScanHistory *provenance.History
 }
 
 // New assembles the UI.
@@ -250,6 +264,8 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		mediaGate:         opts.MediaGate,
 		integrity:         opts.Integrity,
 		federation:        opts.Federation,
+		hardening:         opts.Hardening,
+		scanHistory:       opts.ScanHistory,
 	}
 }
 

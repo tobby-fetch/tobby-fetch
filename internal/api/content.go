@@ -17,6 +17,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/provenance"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -54,10 +55,9 @@ type contentOccupancy struct {
 type contentRepoItem struct {
 	Name string `json:"name"`
 	Kind string `json:"kind"`
-	// Provenance is the repository's provenance class (FR-098). Reserved
-	// at the opening of milestone 7: empty, hence omitted, until R-17
-	// lands (track C).
-	Provenance string `json:"provenance,omitempty"`
+	// Provenance is the repository's provenance class (FR-098): recipe,
+	// unit-import or seed. Always present.
+	Provenance string `json:"provenance"`
 	Tags       int    `json:"tags"`
 	SizeBytes  int64  `json:"sizeBytes"`
 }
@@ -89,9 +89,16 @@ func (c *contentAPI) list(w http.ResponseWriter, r *http.Request) {
 		Total:        page.Total,
 		Occupancy:    c.occupancyJSON(),
 	}
+	// One snapshot of the ledgers for the whole page (FR-098).
+	classifier, err := c.store.Classifier()
+	if err != nil {
+		c.problem(w, r, err)
+		return
+	}
 	for _, repo := range page.Repos {
 		resp.Repositories = append(resp.Repositories, contentRepoItem{
 			Name: repo.Name, Kind: string(repo.Kind), Tags: repo.Tags, SizeBytes: repo.Size,
+			Provenance: string(classifier.Classify(repo.Name).Class),
 		})
 	}
 	c.api.JSON(w, http.StatusOK, resp)
@@ -120,20 +127,23 @@ type contentTag struct {
 	SizeBytes        int64  `json:"sizeBytes"`
 	Platforms        int    `json:"platforms"`
 	PresentPlatforms int    `json:"presentPlatforms"`
+	// LastScan is the tag's last vulnerability scan (FR-098, FR-031),
+	// absent when the digest was never scanned on this instance.
+	LastScan *contentProvenanceScan `json:"lastScan,omitempty"`
 }
 
 // contentRepoResponse mirrors the repository detail page.
 type contentRepoResponse struct {
 	Name string `json:"name"`
 	Kind string `json:"kind"`
-	// Provenance is reserved at the opening of milestone 7 (FR-098,
-	// R-17, track C): nil, hence omitted, until the feature lands.
-	Provenance *contentProvenance `json:"provenance,omitempty"`
+	// Provenance is how the repository entered the store (FR-098).
+	Provenance *contentProvenance `json:"provenance"`
 	Tags       []contentTag       `json:"tags"`
 }
 
 // contentProvenance is the Provenance schema of the OpenAPI document
-// (FR-098). Reserved for track C of milestone 7.
+// (FR-098): the class, its origin, the managing recipes and their
+// assurance, and the most recent scan among the repository's tags.
 type contentProvenance struct {
 	Class     string                 `json:"class"`
 	Origin    string                 `json:"origin,omitempty"`
@@ -142,11 +152,15 @@ type contentProvenance struct {
 	LastScan  *contentProvenanceScan `json:"lastScan,omitempty"`
 }
 
-// contentProvenanceScan is the last scan of a repository's tags.
+// contentProvenanceScan is one last scan (FR-098): the verdict, the scan
+// date, and the database it was scanned with — its build date and its age
+// at scan time, as the report stated it (R-13).
 type contentProvenanceScan struct {
-	Verdict         string    `json:"verdict"`
-	ScannedAt       time.Time `json:"scannedAt"`
-	DatabaseBuiltAt time.Time `json:"databaseBuiltAt,omitzero"`
+	Verdict            string    `json:"verdict"`
+	ScannedAt          time.Time `json:"scannedAt"`
+	DatabaseBuiltAt    time.Time `json:"databaseBuiltAt,omitzero"`
+	DatabaseAgeSeconds int64     `json:"databaseAgeSeconds"`
+	DatabaseStale      bool      `json:"databaseStale"`
 }
 
 // contentPlatform is one platform entry of the manifest detail; Present is
@@ -201,12 +215,27 @@ func (c *contentAPI) repoDetail(w http.ResponseWriter, r *http.Request, name str
 		Kind: string(info.Kind),
 		Tags: make([]contentTag, 0, len(info.Tags)),
 	}
+	digests := make([]string, 0, len(info.Tags))
 	for _, tag := range info.Tags {
-		resp.Tags = append(resp.Tags, contentTag{
+		digests = append(digests, tag.Digest)
+	}
+	scans := c.api.controls.Scans.LastScans(name, digests)
+	for _, tag := range info.Tags {
+		ct := contentTag{
 			Tag: tag.Tag, Digest: tag.Digest, SizeBytes: tag.Size,
 			Platforms: tag.Platforms, PresentPlatforms: tag.Present,
-		})
+		}
+		if s, ok := scans[tag.Digest]; ok {
+			ct.LastScan = scanJSON(&s)
+		}
+		resp.Tags = append(resp.Tags, ct)
 	}
+	class := c.store.Classify(name)
+	var last *provenance.Scan
+	if s, ok := provenance.Latest(scans); ok {
+		last = &s
+	}
+	resp.Provenance = provenanceJSON(&class, last)
 	c.api.JSON(w, http.StatusOK, resp)
 }
 

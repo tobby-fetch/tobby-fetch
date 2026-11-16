@@ -212,6 +212,22 @@ seuls les FileSets listés ici sont servis sous `/files/<name>/`.
 | `files.filesets[].platform` | p. ex. `linux/amd64` | Sélectionne le manifeste de plateforme d'un FileSet multi-plateforme ; un index ambigu sans cette clé est refusé. |
 | `files.filesets[].anonymous` | booléen | Autorise pour ce FileSet les lectures non authentifiées (amorçage d'un hôte nu) — signalé, jamais silencieux. |
 
+### Durcissement
+
+Fichier de configuration uniquement. Deux interrupteurs, désactivés par
+défaut, qui **ferment une porte d'entrée** (SRS FR-098). C'est du
+durcissement, pas un assouplissement : les activer ne demande aucun
+acquittement, mais chacun est signalé comme tout réglage de sécurité — dans
+le journal de démarrage, dans `tobby config dump` (les deux clés toujours
+affichées, `false` compris), sur les écrans dont il désactive l'action, et
+dans la métrique `tobby_hardening_enabled`. Voir le
+[modèle de sécurité](../../security/model/#interrupteurs-de-durcissement).
+
+| Clé | Type | Défaut | Rôle |
+|---|---|---|---|
+| `hardening.disableUnitImport` | bool | `false` | Refuse l'import unitaire (l'écran `/import`, `POST /api/v1/import` et son inspection) et l'empaquetage de FileSets sur toutes les surfaces — le formulaire de `/filesets`, `POST /api/v1/filesets/pack` **et** [`tobby fileset pack`](../../reference/cli/#tobby-fileset-pack), qui lit le même fichier de configuration (`--config`, ou le chemin par défaut s'il existe). Chaque refus répond [TBY-POL-005](../../reference/errors/#tby-pol-005) en nommant le réglage et est audité comme `hardening.refused`. Une tâche d'import unitaire mise en file avant l'activation refuse aussi à sa reprise. Les synchronisations de recipes ne sont pas concernées. |
+| `hardening.disableRegistryPush` | bool | `false` | Rend la registry embarquée accessible en lecture seule pour **tous les clients et tous les rôles, administrateurs compris** : toute écriture sur `/v2/` — début, morceau et validation d'upload de blob, montage inter-dépôts, push de manifeste, suppression — répond l'erreur OCI `DENIED` portant [TBY-POL-006](../../reference/errors/#tby-pol-006), auditée comme `hardening.refused`. Les pulls ne sont pas concernés, pas plus que les synchronisations de recipes, qui écrivent directement dans le store. Alimenter cette instance par push (UC3) — y compris par un autre Tobby qui y promeut — devient impossible, à dessein. |
+
 ### Interface, journalisation, arrêt
 
 | Clé | Type | Défaut | Env | Rôle |

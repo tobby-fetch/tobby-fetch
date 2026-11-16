@@ -15,6 +15,8 @@ import (
 	distribution "github.com/distribution/distribution/v3"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 )
 
 // Removal and garbage collection (FR-044, amendment 2026-08-12).
@@ -69,6 +71,9 @@ func (s *Store) DeleteRepository(ctx context.Context, name string, logger *slog.
 		return &RecipeManagedError{Repo: name, Recipes: managing}
 	}
 	defer s.exclusive()()
+	// Classified before the ledger entry goes away with the repository:
+	// the removal record carries what was removed (FR-098, FR-090).
+	class := s.Classify(name).Class
 
 	dir := filepath.Join(s.root, "docker", "registry", "v2", "repositories", filepath.FromSlash(name))
 	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
@@ -86,6 +91,7 @@ func (s *Store) DeleteRepository(ctx context.Context, name string, logger *slog.
 	}
 	logger.LogAttrs(ctx, slog.LevelInfo, "repository removed",
 		slog.String("repository", name),
+		slog.String(logging.KeyProvenance, string(class)),
 		slog.Int("content_swept", res.Removed),
 		slog.Int("content_deferred", res.Deferred))
 	return nil

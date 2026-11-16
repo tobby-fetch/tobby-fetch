@@ -30,6 +30,10 @@ type API struct {
 	// OpenAPI cross-check (FR-060) and the RBAC matrix (FR-074), which
 	// fails on any endpoint shipped without a documented role floor.
 	routes []string
+	// controls carries the FR-098 inputs of the content and import
+	// endpoints (provenance.go): the hardening switches and the scan
+	// history. Set once at wiring time, before the listener serves.
+	controls Controls
 }
 
 // New builds the API surface.

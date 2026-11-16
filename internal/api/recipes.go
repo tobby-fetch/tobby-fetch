@@ -263,18 +263,13 @@ func (rc *recipesAPI) deleteRepo(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// provenance resolves the effective provenance of one repository: the
-// live recipe graph wins, then the recorded ledger class, then seed —
-// the same resolution as the screen (FR-061).
+// provenance resolves the effective provenance of one repository through
+// the store's one classification rule (FR-098, store/provenance.go): the
+// live recipe graph wins, then the recorded ledger class, then seed — the
+// same resolution as the screen (FR-061).
 func (rc *recipesAPI) provenance(repo string) (class store.ProvenanceClass, managedBy []string) {
-	managed := rc.opts.Store.ManagingRecipes(repo)
-	if len(managed) > 0 {
-		return store.ProvenanceRecipe, managed
-	}
-	if p, ok := rc.opts.Store.ProvenanceOf(repo); ok {
-		return p.Class, nil
-	}
-	return store.ProvenanceSeed, nil
+	c := rc.opts.Store.Classify(repo)
+	return c.Class, c.Recipes
 }
 
 // maxSyncBody bounds the optional trigger body: it carries one boolean,

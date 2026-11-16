@@ -29,6 +29,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check"
@@ -40,6 +41,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/metrics"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
+	"github.com/tobby-fetch/tobby-fetch/internal/provenance"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/server"
@@ -270,7 +272,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// first-class (ADR-0013). Reads need viewer, writes need operator
 	// (ADR-0009) — docker/helm/oras authenticate with the same accounts and
 	// tokens as the UI and the API (FR-076).
-	srv.Handle("/v2/", mediaGate.Guard("/v2/", mediagate.RegistryRefusal, authn.Registry(st.APIHandler())))
+	// FR-098 (R-17): the hardening switches, stated at startup and in the
+	// metrics; the registry guard sits inside authentication, so a refused
+	// push names who asked, and records what a client pushed as seeded.
+	hard := setupHardening(ctx, cfg, st, reg, logger)
+	srv.Handle("/v2/", mediaGate.Guard("/v2/", mediagate.RegistryRefusal, authn.Registry(hardening.Registry(hard, st, logger, st.APIHandler()))))
 
 	// The persistent task queue lives inside the store (FR-050) and
 	// re-queues interrupted tasks at startup (FR-029). The unit-import
@@ -368,7 +374,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// The source policy every surface that can start an import runs
 	// under — the runner, the API and the UI. Built here rather than at
 	// each call site: that is what makes forgetting it impossible.
-	importPolicy := importer.WithSourcePolicy(cfg.Registries, allowlist, egress)
+	importPolicy := importer.Options(importer.WithSourcePolicy(cfg.Registries, allowlist, egress),
+		importer.WithUnitImportDisabled(hard.DisableUnitImport))
 	queue.Register(tasks.TypeUnitImport, importer.NewRunner(st, importPolicy, importer.WithResume(resumer)))
 
 	// The recipe engine (milestone 3): substitution-aware remote access
@@ -619,12 +626,14 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	fileSets := &fileserve.Surface{
 		Catalog: storeCatalog{st: st},
 		Packer: fileserve.NewPacker(st, cfg.Storage.BasePrefix, logger,
-			fileserve.WithPackRoots(cfg.Files.PackRoots)),
+			fileserve.WithPackRoots(cfg.Files.PackRoots),
+			fileserve.WithUnitImportDisabled(hard.DisableUnitImport)),
 		Served:      fsrv.Enabled,
 		Declared:    declaredFileSets(cfg),
 		BasePrefix:  cfg.Storage.BasePrefix,
 		PackEnabled: len(cfg.Files.PackRoots) > 0,
 	}
+	fileSets.UnitImportDisabled = hard.DisableUnitImport // FR-098
 
 	// The versioned REST API (FR-060), strict UI parity (FR-061). Content
 	// browsing reads the store through its accessors (FR-062), never the
@@ -636,6 +645,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	interopSvc.Register()
 
 	restAPI := api.New(authn, logger)
+	scanHistory := &provenance.History{Tasks: queue, Graph: st}
+	restAPI.SetControls(api.Controls{Hardening: hard, Scans: scanHistory})
 	api.RegisterContent(restAPI, st, occupancy)
 	api.RegisterTasks(restAPI, queue, st, time.Duration(cfg.Import.InspectTimeout), importPolicy)
 	api.RegisterAccounts(restAPI, accounts)
@@ -702,6 +713,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Integrity:          integritySvc,
 		Federation:         fed,
 		Scan:               scanning.uiState,
+		Hardening:          hard,
+		ScanHistory:        scanHistory,
 	})
 	webUI.Mount(srv.Mux())
 	webUI.MountFederation(srv.Mux())

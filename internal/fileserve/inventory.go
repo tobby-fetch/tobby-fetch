@@ -113,6 +113,10 @@ type Surface struct {
 	// none, packing from this surface is refused and the surface says so
 	// rather than only failing (FR-075).
 	PackEnabled bool
+	// UnitImportDisabled is hardening.disableUnitImport (FR-098): the
+	// Packer refuses, and the screen and the API say why before anyone
+	// tries.
+	UnitImportDisabled bool
 }
 
 // Inventory lists what this instance holds and what it serves.
@@ -126,6 +130,12 @@ func (s *Surface) Inventory(ctx context.Context) ([]Entry, error) {
 
 // Pack packages a local directory through the surface's confined packer.
 func (s *Surface) Pack(ctx context.Context, req PackRequest) (*PackResult, error) {
+	// The Packer refuses too when built with WithUnitImportDisabled; the
+	// surface checks on its own so that a wiring which set one and not
+	// the other still refuses (FR-098).
+	if s.UnitImportDisabled {
+		return nil, UnitImportDisabled{}
+	}
 	return s.Packer.Pack(ctx, req)
 }
 

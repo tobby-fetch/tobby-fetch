@@ -175,6 +175,36 @@ La vérification d'intégrité du store à la demande, depuis l'interface et
 l'API (R-31), arrive avec le jalon 6.
 :::
 
+## Ce que le store détient, et d'où
+
+Chaque dépôt du navigateur de contenu (`/content`) porte sa **classe de
+provenance** (FR-098) : `recipe` — géré par des recipes vérifiées contre
+les trust roots de cette instance, nommées sur la page du dépôt, avec le
+marqueur d'assurance réduite quand un périmètre de confiance assoupli les a
+admises —, `unit-import` — un [import unitaire](../one-off-import/), ou une
+FileSet empaquetée sur cette instance (affichée comme telle) — ou `seed` —
+poussé par `/v2/` par un client standard. La page du dépôt montre aussi,
+par tag, le résultat et la date de sa dernière analyse de vulnérabilités
+avec l'âge de la base utilisée, quand cette instance l'a analysé. Les mêmes
+faits sont sur `GET /api/v1/content` (la `provenance` de chaque ligne) et
+`GET /api/v1/content/{repo}` (l'objet `provenance`, et `lastScan` sur
+chaque tag) ; les enregistrements de journal qui concernent un dépôt — un
+import, un push, un retrait — portent un champ `provenance`.
+
+`tobby_store_unmanaged_repositories{class}` compte ce qu'aucune recipe ne
+gère, par classe : une zone qui ne devrait détenir que du contenu de
+recipes alerte dès qu'elle n'est pas nulle. Pour en faire une garantie
+plutôt qu'une surveillance, activez les
+[interrupteurs de durcissement](../../security/model/#interrupteurs-de-durcissement) :
+`hardening.disableUnitImport` ferme l'import unitaire et l'empaquetage sur
+toutes les surfaces, `hardening.disableRegistryPush` met `/v2/` en lecture
+seule pour tous les clients et tous les rôles. Les deux sont signalés au
+démarrage, dans `tobby config dump`, sur les écrans qu'ils désactivent et
+dans `tobby_hardening_enabled` ; les synchronisations de recipes ne sont
+pas concernées. La dernière analyse d'un tag est lue dans les rapports de
+tâches que l'instance détient encore : `tasks.keepFinished` borne donc
+jusqu'où elle remonte.
+
 ## Monter de version
 
 Lisez d'abord les [notes de release](../../discover/status/) ; la

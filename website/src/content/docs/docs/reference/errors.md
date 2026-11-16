@@ -452,14 +452,16 @@ its published rendering.
 - **What happened:** This instance does not accept unit imports.
 - **Probable cause:** It is hardened with `<setting>`: content enters its store through verified recipes only, and a unit import or a local packing would be content no recipe vouches for.
 - **Corrective action:** Deliver the content through a signed recipe. If unit imports are needed on this instance, an administrator removes `<setting>` from its configuration and restarts it.
-- **Fixable offline:** yes · **Blocks:** the import or packing; recipe synchronizations are unaffected · **Status:** reserved — emitted from milestone 7
+- **Where:** the import screen and `POST /api/v1/import` with its inspection (HTTP 403), FileSet packing on the screen, the API and `tobby fileset pack` (policy class, exit 3); each refusal is a `hardening.refused` audit event naming the setting
+- **Fixable offline:** yes · **Blocks:** the import or packing; recipe synchronizations are unaffected
 
 ### TBY-POL-006
 
 - **What happened:** This registry is read-only: pushes are refused.
 - **Probable cause:** The instance is hardened with `<setting>`: its embedded registry serves content and accepts none from clients, whatever their role. Recipe synchronizations still write to the store.
 - **Corrective action:** Pull from this registry, or push to the zone registry instead. Seeding this instance by push requires an administrator to remove `<setting>` and restart it.
-- **Fixable offline:** yes · **Blocks:** the push; pulls and recipe synchronizations are unaffected · **Status:** reserved — emitted from milestone 7
+- **Where:** every write to `/v2/` — blob upload, chunk, commit, mount, manifest put, deletion — for every client and role, administrators included, as the OCI `DENIED` error (HTTP 403) whose message starts with the code, which `docker`, `helm`, `oras` and `skopeo` print; each refusal is a `hardening.refused` audit event naming the setting
+- **Fixable offline:** yes · **Blocks:** the push; pulls and recipe synchronizations are unaffected
 
 ## Signature and digest verification (TBY-SIG)
 

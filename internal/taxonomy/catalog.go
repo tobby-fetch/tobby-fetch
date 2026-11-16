@@ -180,13 +180,13 @@ const (
 	// any change, even a single digest, requires a new metadata.version).
 	CodeTagImmutable Code = "TBY-POL-004"
 	// CodeUnitImportDisabled refuses a unit import or a local packing on an
-	// instance hardened with hardening.disableUnitImport (FR-098, R-17).
-	// Reserved: emitter lands with R-17 (milestone 7, track C).
+	// instance hardened with hardening.disableUnitImport (FR-098, R-17):
+	// the import screen and API, and every packing surface, the command
+	// line included (package hardening, fileserve.PackProblem).
 	CodeUnitImportDisabled Code = "TBY-POL-005"
 	// CodeRegistryPushDisabled refuses a push to the embedded registry on an
 	// instance hardened with hardening.disableRegistryPush (FR-098), in the
-	// OCI DENIED envelope on /v2/. Reserved: emitter lands with R-17
-	// (milestone 7, track C).
+	// OCI DENIED envelope on /v2/ (hardening.Registry).
 	CodeRegistryPushDisabled Code = "TBY-POL-006"
 
 	// CodeSignature is a recipe signature that no configured trust root

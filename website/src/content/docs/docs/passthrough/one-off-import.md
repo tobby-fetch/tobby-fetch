@@ -108,4 +108,26 @@ managing recipe. In mirror mode, unit imports are excluded from the
 default prune, which touches recipe-managed content only (FR-045). The
 full model is [content trust](../../security/content-trust/).
 
+The content browser and the API say it too: an imported repository shows
+the provenance class `unit-import` — a FileSet packed on this instance
+shows as *Packed on this instance*, class `unit-import` with the origin
+`local-pack` — and it counts in the
+`tobby_store_unmanaged_repositories{class="unit-import"}` metric
+(FR-098). Importing into a repository that already holds content pushed
+through `/v2/` leaves it classed `seed`: the class never becomes easier to
+remove than what the repository already held.
+
+## When the instance refuses imports
+
+An instance hardened with `hardening.disableUnitImport` accepts content
+through verified recipes only. The import screen then shows its form
+disabled, naming the setting; `POST /api/v1/import`, its inspection and
+FileSet packing — the `/filesets` form, `POST /api/v1/filesets/pack` and
+`tobby fileset pack`, which reads the same configuration file — answer
+[TBY-POL-005](../../reference/errors/#tby-pol-005), and each refusal is a
+`hardening.refused` audit event. That is a decision of the instance's
+administrator, not a fault: deliver the content through a signed recipe,
+or ask for the setting to be removed. See the
+[configuration reference](../../reference/configuration/#hardening).
+
 Last stop of the section: [operating in the long run](../../passthrough/operate/).

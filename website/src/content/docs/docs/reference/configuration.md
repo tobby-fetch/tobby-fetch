@@ -206,6 +206,21 @@ listed here are served under `/files/<name>/`.
 | `files.filesets[].platform` | e.g. `linux/amd64` | Selects the platform manifest of a multi-platform FileSet; an ambiguous index without it is refused. |
 | `files.filesets[].anonymous` | bool | Opts this FileSet into unauthenticated reads (bare-host bootstrap) — reported, never silent. |
 
+### Hardening
+
+Configuration file only. Two switches, both off by default, that **remove a
+way in** (SRS FR-098). They are hardening, not relaxation: setting them asks
+for no acknowledgement, but each is reported like every security setting —
+in the startup log, in `tobby config dump` (both keys always shown, `false`
+included), on the screens whose action it disables, and in the
+`tobby_hardening_enabled` metric. See the
+[security model](../../security/model/#hardening-switches).
+
+| Key | Type | Default | Purpose |
+|---|---|---|---|
+| `hardening.disableUnitImport` | bool | `false` | Refuses unit imports (the `/import` screen, `POST /api/v1/import` and its inspection) and FileSet packing on every surface — the `/filesets` form, `POST /api/v1/filesets/pack` **and** [`tobby fileset pack`](../../reference/cli/#tobby-fileset-pack), which reads the same configuration file (`--config`, or the default path when it exists). Each refusal answers [TBY-POL-005](../../reference/errors/#tby-pol-005) naming the setting and is audited as `hardening.refused`. A unit-import task queued before the switch was set refuses too when it resumes. Recipe synchronizations are unaffected. |
+| `hardening.disableRegistryPush` | bool | `false` | Makes the embedded registry read-only for **every client and every role, administrators included**: every `/v2/` write — blob upload, chunk, commit, cross-repository mount, manifest put, deletion — answers the OCI `DENIED` error carrying [TBY-POL-006](../../reference/errors/#tby-pol-006), audited as `hardening.refused`. Pulls are unaffected, and so are recipe synchronizations, which write the store directly. Seeding this instance by push (UC3) — including another Tobby promoting into it — becomes impossible, by design. |
+
 ### UI, logging, shutdown
 
 | Key | Type | Default | Env | Purpose |

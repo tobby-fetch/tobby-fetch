@@ -161,6 +161,34 @@ On-demand integrity verification of the store through the UI and API
 (R-31) ships with milestone 6.
 :::
 
+## What the store holds, and from where
+
+Every repository of the content browser (`/content`) carries its
+**provenance class** (FR-098): `recipe` — managed by recipes verified
+against this instance's trust roots, named on the repository page, with
+the reduced-assurance marker when a relaxed trust scope admitted them —
+`unit-import` — a [one-off import](../one-off-import/), or a FileSet
+packed on this instance (shown as such) — or `seed` — pushed through
+`/v2/` by a standard client. The repository page also shows, per tag, the
+result and the date of its last vulnerability scan with the age of the
+database it was scanned with, when this instance scanned it. The same facts
+are on `GET /api/v1/content` (the `provenance` of each row) and
+`GET /api/v1/content/{repo}` (the `provenance` object, and `lastScan` on
+each tag); the log records that concern a repository — an import, a push,
+a removal — carry a `provenance` field.
+
+`tobby_store_unmanaged_repositories{class}` counts what no recipe manages,
+by class: a zone that should hold recipe content only alerts on it being
+non-zero. To make that a guarantee rather than a watch, set the
+[hardening switches](../../security/model/#hardening-switches):
+`hardening.disableUnitImport` closes unit imports and packing on every
+surface, `hardening.disableRegistryPush` makes `/v2/` read-only for every
+client and role. Both are stated at startup, in `tobby config dump`, on
+the screens they disable and in `tobby_hardening_enabled`; recipe
+synchronizations are unaffected. The last scan of a tag is read from the
+task reports the instance still holds, so `tasks.keepFinished` bounds how
+far back it reaches.
+
 ## Upgrading
 
 Read the [release notes](../../discover/status/) first; the compatibility

@@ -55,10 +55,6 @@ func TestMilestone7ReservedOptInsAreRefused(t *testing.T) {
 	}{
 		"consumption.registry": {func(c *Config) { c.Consumption.Registry = "registry.zone.example" }, []string{"consumption.registry is reserved", "7.1"}},
 		"consumption.caFile":   {func(c *Config) { c.Consumption.CAFile = "/etc/rancher/ca.crt" }, []string{"consumption.caFile is reserved", "7.1"}},
-		"hardening.disableUnitImport": {func(c *Config) { c.Hardening.DisableUnitImport = true },
-			[]string{"hardening.disableUnitImport is reserved", "R-17"}},
-		"hardening.disableRegistryPush": {func(c *Config) { c.Hardening.DisableRegistryPush = true },
-			[]string{"hardening.disableRegistryPush is reserved", "R-17"}},
 		"scan.vex": {func(c *Config) {
 			c.Scan.VEX = []VEXDocument{{Path: "/etc/tobby/site.openvex.json", Expires: time.Date(2027, 3, 31, 0, 0, 0, 0, time.UTC)}}
 		}, []string{"scan.vex is reserved", "R-15"}},

@@ -11,6 +11,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
@@ -54,7 +55,11 @@ type fileSetListJSON struct {
 	FileSets []fileSetJSON `json:"filesets"`
 	// PackEnabled mirrors the screen's disabled form: the API says why an
 	// action it advertises would be refused, rather than only refusing.
+	// False under hardening.disableUnitImport too.
 	PackEnabled bool `json:"packEnabled"`
+	// PackDisabledBy names the hardening setting that refuses packing on
+	// this instance (FR-098), absent when none does.
+	PackDisabledBy string `json:"packDisabledBy,omitempty"`
 }
 
 // list serves GET /api/v1/filesets: every FileSet this instance holds or
@@ -67,6 +72,9 @@ func (f *fileSetsAPI) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := fileSetListJSON{FileSets: make([]fileSetJSON, 0, len(entries)), PackEnabled: f.surface.PackEnabled}
+	if f.surface.UnitImportDisabled {
+		out.PackEnabled, out.PackDisabledBy = false, hardening.SettingDisableUnitImport
+	}
 	for i := range entries {
 		e := &entries[i]
 		out.FileSets = append(out.FileSets, fileSetJSON{
@@ -125,6 +133,13 @@ func (f *fileSetsAPI) pack(w http.ResponseWriter, r *http.Request) {
 	res, err := f.surface.Pack(r.Context(), fileserve.PackRequest{
 		Source: req.Source, Name: req.Name, Version: req.Version,
 	})
+	var hardened fileserve.UnitImportDisabled
+	if errors.As(err, &hardened) {
+		// One refusal, one record: the hardening event names the setting.
+		hardening.AuditRefused(r.Context(), f.api.logger, id.Name, auth.ClientOrigin(r), target, hardening.SettingDisableUnitImport)
+		f.api.Problem(w, r, fileserve.PackProblem(err))
+		return
+	}
 	if err != nil {
 		te := fileserve.PackProblem(err)
 		record(packOutcome(te))

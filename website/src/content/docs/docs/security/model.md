@@ -66,6 +66,33 @@ disables signature verification: the only relaxation is a scope, named,
 bound to explicit repository patterns.
 → [Authentication and RBAC](../auth-rbac/), [Secrets](../secrets/)
 
+### Hardening switches
+
+The other direction exists too: two settings, off by default, that **close
+a way in** rather than open one (SRS FR-098).
+
+| Switch | What it closes | What still works |
+| --- | --- | --- |
+| `hardening.disableUnitImport` | unit imports and FileSet packing, on the screen, the API **and** the command line — [TBY-POL-005](../../reference/errors/#tby-pol-005) | recipe synchronizations |
+| `hardening.disableRegistryPush` | every write to the embedded registry, for every client and every role, administrators included — OCI `DENIED` carrying [TBY-POL-006](../../reference/errors/#tby-pol-006) | pulls, recipe synchronizations |
+
+With both set, content enters the store only through recipes verified
+against the instance's trust roots. A hardening switch needs no
+acknowledgement, but it is reported like every security setting — the
+startup log, `tobby config dump`, the screen whose action it disables
+(shown disabled, naming the setting), the `tobby_hardening_enabled` metric
+— and every refusal is a `hardening.refused` audit event, so an operator
+never mistakes a refusal for a fault. Seeding the instance by push (UC3) is
+then impossible, by design.
+
+Whether the switches are on or not, every repository carries its
+**provenance class** — `recipe`, `unit-import` or `seed` — in the content
+browser, the API, the log records that concern it and the
+`tobby_store_unmanaged_repositories` metric: the content no verified recipe
+vouches for is always counted and always visible. The class is a fact about
+this store; it is never written into any registry and decides nothing about
+trust. → [Configuration](../../reference/configuration/#hardening)
+
 ## 4. No connection that was not configured
 
 Tobby opens no network connection the operator did not configure: no
@@ -182,7 +209,7 @@ Security-relevant actions emit audit events with a fixed six-field schema
 records separable by one marker field. The origin is the client network
 address; forwarding headers are not trusted. Sign-ins and refusals,
 account and token changes, content-affecting actions, session and token
-expiry, scan refusals and store verification are recorded, and every
+expiry, scan refusals, hardening refusals and store verification are recorded, and every
 synchronization carries a run identifier that follows it through logs,
 tasks and reports.
 → [Audit log](../audit-log/), [Metrics and logs](../../reference/metrics-logs/)

@@ -186,6 +186,8 @@ paths:
         (FR-048). No file is uploaded: the request names a path, and the
         path must sit under files.packRoots. The result is unsigned and
         recorded as a manual import. Mirror of the /filesets screen form.
+        Refused with TBY-POL-005 on an instance hardened with
+        hardening.disableUnitImport (FR-098), audited as hardening.refused.
         Role admin.
       requestBody:
         required: true
@@ -210,7 +212,9 @@ paths:
       summary: >-
         Enqueue one unit-import task from a prior inspection. The digests
         are re-verified at commit (FR-026). Mirror of the /import screen's
-        confirmation. Role operator.
+        confirmation. Refused with TBY-POL-005 on an instance hardened with
+        hardening.disableUnitImport (FR-098), audited as hardening.refused.
+        Role operator.
       requestBody:
         required: true
         content:
@@ -234,6 +238,8 @@ paths:
       summary: >-
         Inspect a remote reference before importing — bounded by
         import.inspectTimeout. Mirror of the /import screen's step 2.
+        Refused with TBY-POL-005, before any remote is contacted, on an
+        instance hardened with hardening.disableUnitImport (FR-098).
         Role operator.
       parameters:
         - name: ref
@@ -1910,8 +1916,9 @@ components:
                 type: string
                 enum: [recipe, unit-import, seed]
                 description: >-
-                  Reserved (R-17, milestone 7): the repository's provenance
-                  class (FR-098). Absent until the feature lands.
+                  The repository's provenance class (FR-098): managed by
+                  recipes, brought by a unit import or a local packing, or
+                  pushed through /v2/. Always present.
               tags:
                 type: integer
               sizeBytes:
@@ -1951,13 +1958,17 @@ components:
               presentPlatforms:
                 type: integer
                 description: Entries whose manifest is locally held (sparse index, FR-022).
+              lastScan:
+                $ref: "#/components/schemas/LastScan"
     Provenance:
       description: >-
-        Reserved (R-17, milestone 7). How a repository entered the store
-        (FR-098): managed by verified recipes, a unit import or local
-        packing, or a direct push through /v2/. A fact about this store,
-        never written into any registry. Absent until the feature lands.
+        How a repository entered the store (FR-098): managed by recipes
+        verified against this instance's trust roots (with the
+        reduced-assurance marker when a relaxed scope admitted them), a
+        unit import or local packing, or a direct push through /v2/. A fact
+        about this store, never written into any registry.
       type: object
+      required: [class]
       properties:
         class:
           type: string
@@ -1972,12 +1983,31 @@ components:
         assurance:
           $ref: "#/components/schemas/Assurance"
         lastScan:
-          type: object
-          description: The last vulnerability scan of the repository's tags, when one exists (FR-031).
-          properties:
-            verdict: { type: string }
-            scannedAt: { type: string, format: date-time }
-            databaseBuiltAt: { type: string, format: date-time }
+          $ref: "#/components/schemas/LastScan"
+    LastScan:
+      type: object
+      description: >-
+        The last vulnerability scan (FR-031, FR-098) — of one tag, or on
+        the repository the most recent among its tags. Absent when the
+        content was never scanned on this instance (a unit import, a push,
+        content out of the scan scope). Read from the task reports this
+        instance still holds (tasks.keepFinished).
+      required: [verdict, scannedAt, databaseAgeSeconds, databaseStale]
+      properties:
+        verdict:
+          type: string
+          enum: [pass, warn, block]
+        scannedAt: { type: string, format: date-time }
+        databaseBuiltAt:
+          type: string
+          format: date-time
+          description: Build time of the vulnerability database the scan used.
+        databaseAgeSeconds:
+          type: integer
+          description: The database age at scan time, as the report stated it (R-13).
+        databaseStale:
+          type: boolean
+          description: The database was beyond scan.maxDbAge at scan time.
     ContentManifest:
       type: object
       properties:
@@ -2030,7 +2060,14 @@ components:
             Whether files.packRoots names at least one directory. False
             means this surface packs nothing: the answer is TBY-FIL-003
             for every path (FR-075 — the capability is granted by
-            configuration, not by a session).
+            configuration, not by a session). Also false under
+            hardening.disableUnitImport (FR-098).
+        packDisabledBy:
+          type: string
+          enum: [hardening.disableUnitImport]
+          description: >-
+            The hardening setting that refuses packing on this instance
+            (FR-098); absent when none does.
     FileSet:
       type: object
       required: [name, reference, repository, versions, provenance, signed, declared, served, anonymous]
