@@ -27,6 +27,13 @@ them.
 
 ### Added
 
+- **The embedded registry serves the OCI 1.1 Referrers API.**
+  `GET /v2/<name>/referrers/<digest>` (with the `artifactType` filter and
+  `OCI-Filters-Applied`) and the `OCI-Subject` header on a manifest PUT with
+  a `subject`. Referrers stay as long as their subject is reachable and
+  follow the garbage collector's existing rule otherwise. The upstream
+  `distribution-spec` conformance suite, pinned, now passes unfiltered in CI
+  on linux/amd64 and linux/arm64.
 - **A FileSet reads as a FileSet** in the content browser and the API.
   RECIPE-SPEC §7.4 now reserves a manifest marker,
   `dev.tobby.recipe/kind: FileSet`, which the browser reads — on a

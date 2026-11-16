@@ -635,9 +635,16 @@ FR-044 forbids, for instance) SHALL be excluded by name, with its reason, in
 the documentation; no other exclusion is acceptable for a release candidate.
 FR-098's hardening switch that refuses pushes is evaluated separately: the
 suite runs against the default configuration.
+
+The embedded registry implements the OCI 1.1 Referrers API
+(`GET /v2/<name>/referrers/<digest>`, the `artifactType` filter with its
+`OCI-Filters-Applied` header, and `OCI-Subject` on a manifest PUT carrying a
+`subject`) in front of the registry library, which does not. Referrers are
+kept as long as their subject is reachable (FR-044) and follow its fate
+otherwise. The exclusion list is therefore empty: the suite runs unfiltered
+and every spec it does not skip on its own conditions passes.
 *Acceptance:* the CI job runs the pinned suite and fails the build on any
-unlisted failure; the published exclusion list matches the suite's
-configuration.
+failure; no spec is excluded.
 
 **FR-041 — Standard client compatibility.**
 The embedded registry SHALL be usable with `docker`, `podman`, `helm`, `oras`, and

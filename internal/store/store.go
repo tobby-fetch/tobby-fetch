@@ -45,8 +45,14 @@ import (
 
 // Store is the embedded OCI registry over the local storage directory.
 type Store struct {
-	app  *handlers.App
-	root string
+	app *handlers.App
+	// api is app behind the Referrers API (referrers.go).
+	api http.Handler
+	// inspect: the store was opened for inspection and writes nothing.
+	inspect bool
+	// refMu serializes the referrers index (referrers.go).
+	refMu sync.Mutex
+	root  string
 	// mediaID is the identity of the medium this store is (FR-054
 	// amendment R-28), minted at creation and read back on every open.
 	mediaID string
@@ -190,13 +196,15 @@ func OpenWith(ctx context.Context, root string, logger *slog.Logger, opts Option
 	// sides, so that an incident can be traced back to a physical medium.
 	logger.LogAttrs(ctx, slog.LevelInfo, "embedded registry initialized",
 		slog.String("root", root), slog.String("media_id", mediaID))
-	return &Store{app: app, root: root, mediaID: mediaID, browse: browse}, nil
+	st := &Store{app: app, root: root, mediaID: mediaID, browse: browse, inspect: opts.Inspect}
+	st.api = st.referrersHandler(app)
+	return st, nil
 }
 
 // APIHandler returns the OCI Distribution API (/v2/) handler. Mount it on
 // the instance's HTTP listener.
 func (s *Store) APIHandler() http.Handler {
-	return s.app
+	return s.api
 }
 
 // Root returns the storage root directory (the self-contained store,

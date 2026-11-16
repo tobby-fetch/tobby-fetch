@@ -469,11 +469,10 @@ jobs:
         run: go run ./tools/i18ncheck
 
   # OCI distribution-spec conformance (release criterion, DEVELOPMENT-PLAN
-  # §3): the pinned upstream suite against a real `tobby serve`. Everything
-  # runs from test/conformance/run.sh, which is also how a developer
-  # replays it locally; the specs the embedded registry is known to fail
-  # (the OCI 1.1 Referrers API) are a versioned, justified ledger there,
-  # re-checked on every run so a gap cannot silently close or widen.
+  # §3): the pinned upstream suite against a real `tobby serve`, nothing
+  # excluded — pull, push, content discovery (tags and the Referrers API)
+  # and content management. Everything runs from test/conformance/run.sh,
+  # which is also how a developer replays it locally.
   conformance:
     name: OCI distribution-spec conformance (${{ matrix.arch }})
     strategy:

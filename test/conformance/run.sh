@@ -11,10 +11,8 @@
 #      commit is not the pinned one;
 #   2. starts an instance (fresh state, generated administrator account,
 #      credentials never printed) and waits for /readyz;
-#   3. runs the four workflows — pull, push, content discovery, content
-#      management — with the specs of ./known-gaps.txt skipped;
-#   4. runs ONLY the known gaps and requires each to still fail, so the
-#      ledger cannot go stale (see known-gaps.txt).
+#   3. runs the four workflows — pull, push, content discovery (tag listing
+#      and the Referrers API), content management — with nothing excluded.
 #
 # Requires: go, git, jq, curl. Environment:
 #   TOBBY_BIN         binary under test (default: built from this checkout)
@@ -85,11 +83,9 @@ until curl -fsS "http://127.0.0.1:$PORT/readyz" >/dev/null 2>&1; do
 done
 step "ok   instance ready on 127.0.0.1:$PORT"
 
-# -- 3. Everything except the known gaps must pass -----------------------------
-GAPS="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$HERE/known-gaps.txt" |
-    sed -e 's/ :: .*$//' | paste -sd'|' -)"
-[ -n "$GAPS" ] || fail "known-gaps.txt holds no entry; drop the gap handling from run.sh instead"
-
+# -- 3. The whole suite must pass ---------------------------------------------
+# No spec is skipped on purpose: pull, push, content discovery (tag listing
+# and the Referrers API) and content management, all of them.
 export OCI_ROOT_URL="http://127.0.0.1:$PORT"
 export OCI_NAMESPACE="conformance/main"
 export OCI_CROSSMOUNT_NAMESPACE="conformance/other"
@@ -104,45 +100,26 @@ export OCI_REPORT_DIR="$OUT/report"
 mkdir -p "$OCI_REPORT_DIR"
 
 set +e
-"$WORK/conformance.test" -ginkgo.no-color -ginkgo.skip="$GAPS" \
-    -ginkgo.json-report="$OUT/main.json" >"$OUT/main.log" 2>&1
+"$WORK/conformance.test" -ginkgo.no-color -ginkgo.json-report="$OUT/main.json" >"$OUT/main.log" 2>&1
 MAIN_RC=$?
 set -e
 
 summary="$(jq -r '[.[0].SpecReports[] | select(.LeafNodeType == "It")] |
     "\(map(select(.State == "passed")) | length) passed, \(map(select(.State == "failed")) | length) failed, \(map(select(.State == "skipped")) | length) skipped"' "$OUT/main.json")"
-step "main run: $summary"
+step "run: $summary"
 if [ "$MAIN_RC" -ne 0 ]; then
     jq -r '.[0].SpecReports[] | select(.State == "failed") |
         "FAIL " + ((.ContainerHierarchyTexts + [.LeafNodeText]) | join(" "))' "$OUT/main.json" >&2
-    fail "conformance failures outside the known gaps (full log: $OUT/main.log)"
+    fail "conformance failures (full log: $OUT/main.log)"
 fi
-
-# -- 4. The known gaps must still be gaps -------------------------------------
-# The suite's own exit status is the wrong signal here (it is non-zero as
-# soon as one spec fails), so the verdict is read from the JSON report.
-set +e
-"$WORK/conformance.test" -ginkgo.no-color -ginkgo.focus="$GAPS" \
-    -ginkgo.json-report="$OUT/gaps.json" >"$OUT/gaps.log" 2>&1
-set -e
-[ -s "$OUT/gaps.json" ] || fail "the known-gap run produced no report (see $OUT/gaps.log)"
-RAN="$(jq '[.[0].SpecReports[] | select(.LeafNodeType == "It" and .State != "skipped")] | length' "$OUT/gaps.json")"
-CLOSED="$(jq -r '.[0].SpecReports[] | select(.LeafNodeType == "It" and .State == "passed") |
-    "  " + ((.ContainerHierarchyTexts + [.LeafNodeText]) | join(" "))' "$OUT/gaps.json")"
-EXPECTED="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$HERE/known-gaps.txt" | wc -l | tr -d ' ')"
-if [ -n "$CLOSED" ]; then
-    printf '%s\n' "$CLOSED" >&2
-    fail "known gaps that now PASS: remove them from test/conformance/known-gaps.txt"
-fi
-[ "$RAN" -eq "$EXPECTED" ] ||
-    fail "known-gaps.txt lists $EXPECTED spec(s) but $RAN ran and failed: an entry matches nothing, or several specs"
-step "ok   known gaps: $RAN spec(s) still fail, as recorded in known-gaps.txt"
+# The spec's own conditional skips are listed, not hidden.
+jq -r '.[0].SpecReports[] | select(.LeafNodeType == "It" and .State == "skipped") |
+    "skip " + ((.ContainerHierarchyTexts + [.LeafNodeText]) | join(" "))' "$OUT/main.json"
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     {
         printf '### OCI distribution-spec %s conformance\n\n' "$DISTRIBUTION_SPEC_TAG"
-        printf 'commit %s: %s; %s known gap(s) (Referrers API) still failing.\n' \
-            "$DISTRIBUTION_SPEC_COMMIT" "$summary" "$RAN"
+        printf 'commit %s: %s.\n' "$DISTRIBUTION_SPEC_COMMIT" "$summary"
     } >>"$GITHUB_STEP_SUMMARY"
 fi
-step "conformance: $summary; $RAN known gap(s) documented"
+step "conformance: $summary"
