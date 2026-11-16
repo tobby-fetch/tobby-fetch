@@ -12,10 +12,7 @@ ui login.idp_unavailable :: message prepared with the federated sign-in (milesto
 # the entries of its own block when it renders the labels: i18ncheck fails on
 # an entry that matches no unused key, so an exemption cannot outlive its use.
 # Track A — consumption aids and UI polish (7.1).
-ui banner.clock_implausible :: reserved 2026-11-16, milestone 7 track A
 # Track B — operations and supervision.
-ui diagnostics. :: reserved 2026-11-16, milestone 7 track B (diagnostic bundle)
-ui state. :: reserved 2026-11-16, milestone 7 track B (state backup hint)
 # Track C — content controls and hardening.
 ui hardening. :: reserved 2026-11-16, milestone 7 track C
 ui provenance. :: reserved 2026-11-16, milestone 7 track C
