@@ -6,7 +6,6 @@ package vex
 import (
 	"errors"
 	"fmt"
-	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -150,8 +149,9 @@ func productName(p *Product) string {
 //
 // The repository is canonicalized as ingredients are (ADR-0013), so it is
 // compared with the same form. Subcomponents narrow the scope to the
-// packages they name (package URLs); one that is not a package URL makes
-// the product unbounded.
+// packages they name, by package URL matched exactly against each
+// finding's (B-070); one that is not a package URL makes the product
+// unbounded.
 func ScopeOf(p *Product) (*scan.ExceptionScope, error) {
 	id := p.ID
 	if id == "" && p.Identifiers != nil {
@@ -184,11 +184,11 @@ func ScopeOf(p *Product) (*scan.ExceptionScope, error) {
 		if !strings.HasPrefix(sid, "pkg:") && c.Identifiers != nil {
 			sid = c.Identifiers.PURL
 		}
-		names, err := packageNames(sid)
+		pu, err := packageURL(sid)
 		if err != nil {
 			return nil, fmt.Errorf("subcomponents[%d]: %w", i, err)
 		}
-		scope.Packages = append(scope.Packages, names...)
+		scope.Packages = append(scope.Packages, pu)
 	}
 	scope.Packages = dedupe(scope.Packages)
 	sort.Strings(scope.Packages)
@@ -199,32 +199,32 @@ func ScopeOf(p *Product) (*scan.ExceptionScope, error) {
 // version is the manifest digest, its repository_url qualifier the
 // repository.
 func ociPURLScope(id string) (*scan.ExceptionScope, error) {
-	pu, err := parsePURL(id)
+	pu, err := scan.ParsePackageURL(id)
 	if err != nil {
 		return nil, err
 	}
-	if pu.typ != "oci" {
-		return nil, fmt.Errorf("%q is a package of type %s, not an image (pkg:oci)", id, pu.typ)
+	if pu.Type != "oci" {
+		return nil, fmt.Errorf("%q is a package of type %s, not an image (pkg:oci)", id, pu.Type)
 	}
 	scope := &scan.ExceptionScope{}
-	if pu.version != "" {
-		if !digestPattern.MatchString(pu.version) {
+	if pu.Version != "" {
+		if !digestPattern.MatchString(pu.Version) {
 			return nil, fmt.Errorf("%q: the version of a pkg:oci is the manifest digest, sha256:<64 hex>", id)
 		}
-		scope.Digest = pu.version
+		scope.Digest = pu.Version
 	}
-	if ru := pu.qualifiers.Get("repository_url"); ru != "" {
+	if ru := pu.Qualifiers.Get("repository_url"); ru != "" {
 		repo, err := canonicalRepository(ru)
 		if err != nil {
 			return nil, fmt.Errorf("%q: repository_url: %w", id, err)
 		}
-		if last := repo[strings.LastIndexByte(repo, '/')+1:]; !strings.EqualFold(last, pu.name) {
-			return nil, fmt.Errorf("%q: repository_url %q does not end with the package name %q", id, ru, pu.name)
+		if last := repo[strings.LastIndexByte(repo, '/')+1:]; !strings.EqualFold(last, pu.Name) {
+			return nil, fmt.Errorf("%q: repository_url %q does not end with the package name %q", id, ru, pu.Name)
 		}
 		scope.Repository = repo
 	}
 	if scope.Digest == "" && scope.Repository == "" {
-		return nil, fmt.Errorf("%q names neither a digest nor a repository_url: it would cover every image called %s", id, pu.name)
+		return nil, fmt.Errorf("%q names neither a digest nor a repository_url: it would cover every image called %s", id, pu.Name)
 	}
 	return scope, nil
 }
@@ -264,69 +264,26 @@ func canonicalRepository(ref string) (string, error) {
 	return repo, nil
 }
 
-// packageNames reads a subcomponent's package URL into the package names
-// a finding may carry: the name, and with a namespace "namespace/name"
-// (Go modules, npm scopes) and "namespace:name" (Maven).
-func packageNames(id string) ([]string, error) {
+// packageURL reads a subcomponent's package URL into the form an
+// exception scope keeps (B-070): the package URL itself, matched against
+// the finding's own package URL on type, namespace, name, and the
+// declared version and qualifiers (scan.PackageURL.Matches). No bare name
+// or alias is derived from it — that widened the exception to every
+// package of the same name in any ecosystem, at any version. A
+// subcomponent with a subpath names a part of a package the scanner never
+// reports alone: it cannot be bounded, so its product is refused.
+func packageURL(id string) (string, error) {
 	if !strings.HasPrefix(id, "pkg:") {
-		return nil, fmt.Errorf("%q is not a package URL: a subcomponent narrows to a package, and one that cannot be read would leave the whole image covered", id)
+		return "", fmt.Errorf("%q is not a package URL: a subcomponent narrows to a package, and one that cannot be read would leave the whole image covered", id)
 	}
-	pu, err := parsePURL(id)
+	pu, err := scan.ParsePackageURL(id)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	names := []string{pu.name}
-	if pu.namespace != "" {
-		names = append(names, pu.namespace+"/"+pu.name, strings.ReplaceAll(pu.namespace, "/", ".")+":"+pu.name)
+	if pu.Subpath != "" {
+		return "", fmt.Errorf("%q names a subpath of a package: a finding is reported for a whole package, so it cannot be matched exactly", id)
 	}
-	return names, nil
-}
-
-// purl is the part of a package URL (purl-spec) this package reads.
-type purl struct {
-	typ, namespace, name, version string
-	qualifiers                    url.Values
-}
-
-// parsePURL reads pkg:type/namespace/name@version?qualifiers#subpath,
-// percent-decoding each component.
-func parsePURL(s string) (*purl, error) {
-	rest, ok := strings.CutPrefix(s, "pkg:")
-	if !ok {
-		return nil, fmt.Errorf("%q is not a package URL", s)
-	}
-	rest, _, _ = strings.Cut(rest, "#")
-	rest, rawQuery, _ := strings.Cut(rest, "?")
-	rest = strings.Trim(rest, "/")
-	p := &purl{}
-	if at := strings.LastIndexByte(rest, '@'); at >= 0 {
-		v, err := url.PathUnescape(rest[at+1:])
-		if err != nil {
-			return nil, fmt.Errorf("%q: version: %w", s, err)
-		}
-		p.version, rest = v, rest[:at]
-	}
-	typ, path, ok := strings.Cut(rest, "/")
-	if !ok || typ == "" || path == "" {
-		return nil, fmt.Errorf("%q: a package URL needs a type and a name", s)
-	}
-	p.typ = strings.ToLower(typ)
-	segs := strings.Split(path, "/")
-	for i, seg := range segs {
-		v, err := url.PathUnescape(seg)
-		if err != nil || v == "" {
-			return nil, fmt.Errorf("%q: malformed name", s)
-		}
-		segs[i] = v
-	}
-	p.name = segs[len(segs)-1]
-	p.namespace = strings.Join(segs[:len(segs)-1], "/")
-	q, err := url.ParseQuery(rawQuery)
-	if err != nil {
-		return nil, fmt.Errorf("%q: qualifiers: %w", s, err)
-	}
-	p.qualifiers = q
-	return p, nil
+	return id, nil
 }
 
 // dedupe drops repeated strings, keeping the first occurrence.

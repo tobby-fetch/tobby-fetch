@@ -190,9 +190,11 @@ func TestUnboundedRetrieverException(t *testing.T) {
 // covers the finding in those packages only.
 func TestPackagesNarrowAVEXException(t *testing.T) {
 	ex := Exception{ID: "CVE-2024-0001", Expires: now.Add(time.Hour), VEX: "/etc/tobby/site.openvex.json",
-		Scope: &ExceptionScope{Digest: digestA, Packages: []string{"libxml2"}}}
-	inPkg := Finding{ID: "CVE-2024-0001", Severity: SeverityCritical, CVSS: f64(9.8), Package: "libxml2"}
-	other := Finding{ID: "CVE-2024-0001", Severity: SeverityCritical, CVSS: f64(9.8), Package: "libxslt"}
+		Scope: &ExceptionScope{Digest: digestA, Packages: []string{"pkg:deb/debian/libxml2"}}}
+	inPkg := Finding{ID: "CVE-2024-0001", Severity: SeverityCritical, CVSS: f64(9.8), Package: "libxml2",
+		PURL: "pkg:deb/debian/libxml2@2.9.14?arch=amd64&distro=debian-12", InstalledVersion: "2.9.14"}
+	other := Finding{ID: "CVE-2024-0001", Severity: SeverityCritical, CVSS: f64(9.8), Package: "libxslt",
+		PURL: "pkg:deb/debian/libxslt@1.1.35?arch=amd64&distro=debian-12", InstalledVersion: "1.1.35"}
 	if rep := evaluateBlock([]Exception{ex}, nil, itemA, inPkg); rep.Policy.Verdict != VerdictPass || rep.Policy.ExceptionsApplied[0].Source() != SourceVEX {
 		t.Errorf("in package: %+v", rep.Policy)
 	}
@@ -217,5 +219,44 @@ func TestScopeReasonParametersAreCatalogued(t *testing.T) {
 	}
 	if !seen[taxonomy.CodeScanExceptionOutOfScope] || !seen[taxonomy.CodeScanExceptionUnbounded] {
 		t.Errorf("reasons = %v", codes(rep.Policy.Reasons))
+	}
+}
+
+// TestPackageURLMatchesExactly (B-070): a subcomponent's package URL
+// matches the finding's on type, namespace and name, on the version when
+// it declares one (epoch included), and on every qualifier it declares;
+// nothing else, and never a finding the scanner gave no package URL.
+func TestPackageURLMatchesExactly(t *testing.T) {
+	for _, c := range []struct {
+		pattern, purl, installed string
+		want                     bool
+	}{
+		{"pkg:deb/debian/openssl", "pkg:deb/debian/openssl@3.0.11-1~deb12u2?arch=amd64&distro=debian-12", "3.0.11-1~deb12u2", true},
+		{"pkg:deb/debian/openssl@3.0.11-1~deb12u2", "pkg:deb/debian/openssl@3.0.11-1~deb12u2?arch=amd64", "3.0.11-1~deb12u2", true},
+		{"pkg:deb/debian/openssl@3.0.11", "pkg:deb/debian/openssl@1.1.1w-0+deb11u1?arch=amd64", "1.1.1w-0+deb11u1", false},
+		{"pkg:deb/debian/openssl@3.0.11", "pkg:deb/debian/openssl@3.0.11?epoch=1", "1:3.0.11", false},
+		{"pkg:deb/debian/openssl@3.0.11?epoch=1", "pkg:deb/debian/openssl@3.0.11?epoch=1&arch=amd64", "1:3.0.11", true},
+		{"pkg:deb/debian/openssl?arch=arm64", "pkg:deb/debian/openssl@3.0.11?arch=amd64", "3.0.11", false},
+		{"pkg:deb/debian/openssl", "pkg:deb/ubuntu/openssl@3.0.11", "3.0.11", false},
+		{"pkg:deb/debian/openssl", "pkg:rpm/debian/openssl@3.0.11", "3.0.11", false},
+		{"pkg:DEB/Debian/OpenSSL", "pkg:deb/debian/openssl@3.0.11", "3.0.11", true},
+		{"pkg:golang/github.com/good/yaml@v1.2.3", "pkg:golang/github.com/good/yaml@v1.2.3", "v1.2.3", true},
+		{"pkg:golang/github.com/good/yaml", "pkg:golang/github.com/evil/yaml@v1.2.3", "v1.2.3", false},
+		{"pkg:golang/github.com/good/yaml", "pkg:deb/debian/yaml@0.1", "0.1", false},
+		{"pkg:golang/github.com/good/yaml", "pkg:golang/yaml@v1.2.3", "v1.2.3", false},
+		{"pkg:golang/github.com/Good/yaml", "pkg:golang/github.com/good/yaml@v1.2.3", "v1.2.3", false},
+		{"pkg:pypi/Django_Rest", "pkg:pypi/django-rest@3.0", "3.0", true},
+		{"pkg:deb/debian/openssl@3.0.11", "pkg:deb/debian/openssl", "3.0.11", true},
+		{"pkg:deb/debian/openssl@3.0.11", "pkg:deb/debian/openssl", "3.0.12", false},
+		{"pkg:deb/debian/openssl", "", "3.0.11", false},
+		{"pkg:deb/debian/openssl#usr/lib", "pkg:deb/debian/openssl@3.0.11", "3.0.11", false},
+	} {
+		p, err := ParsePackageURL(c.pattern)
+		if err != nil {
+			t.Fatalf("%s: %v", c.pattern, err)
+		}
+		if got := p.Matches(c.purl, c.installed); got != c.want {
+			t.Errorf("%s matches %q (%s) = %v, want %v", c.pattern, c.purl, c.installed, got, c.want)
+		}
 	}
 }

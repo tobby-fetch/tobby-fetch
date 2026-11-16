@@ -2761,6 +2761,12 @@ components:
             CVSS base score compared with the threshold — the highest when
             several sources score the finding. Absent when none does.
         package: { type: string }
+        purl:
+          type: string
+          description: >-
+            The affected package's URL as the scanner identifies it; what a
+            VEX subcomponent is matched against. Absent when the scanner
+            gives none.
         installed_version: { type: string }
         fixed_version: { type: string }
         source: { type: string }
@@ -2801,8 +2807,11 @@ components:
           items: { type: string }
           description: >-
             For an exception born of an OpenVEX statement whose product
-            names subcomponents: the affected packages it covers; a finding
-            in another package of the item is not covered.
+            names subcomponents: the package URLs of the affected packages
+            it covers. A finding is covered only when its own purl matches
+            one exactly (type, namespace, name, and the version and
+            qualifiers declared); a finding in another package of the item,
+            or without a purl, is not covered.
     PolicyView:
       type: object
       required: [evaluated_at, mode, threshold, blocking, retriever_known, exceptions, vex_documents, hardening]

@@ -6,6 +6,8 @@ package vex
 import (
 	"testing"
 	"time"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 )
 
 // FuzzParse is the native fuzz target of the OpenVEX parser (NFR-024).
@@ -16,10 +18,12 @@ import (
 // what it accepts translates without panicking; and no exception it
 // yields is ever unbounded — every one carries the declared expiry and a
 // scope that narrows to a digest or a repository (a product that cannot
-// be bounded is skipped, never widened to the whole instance).
+// be bounded is skipped, never widened to the whole instance), and narrows
+// to packages by whole package URLs only.
 func FuzzParse(f *testing.F) {
 	f.Add([]byte(doc(`{"vulnerability":{"name":"CVE-2024-12345"},"products":[{"@id":"` + digestA + `"}],"status":"not_affected","justification":"component_not_present"}`)))
 	f.Add([]byte(doc(`{"vulnerability":{"name":"CVE-2024-12345"},"products":[{"@id":"pkg:oci/nginx"}],"status":"not_affected","impact_statement":"x"}`)))
+	f.Add([]byte(doc(`{"vulnerability":{"name":"CVE-2024-12345"},"products":[{"@id":"` + digestA + `","subcomponents":[{"@id":"pkg:golang/github.com/good/yaml@v1.2.3"}]}],"status":"not_affected","justification":"component_not_present"}`)))
 	f.Add([]byte(`{}`))
 	f.Add([]byte{})
 	expires := time.Date(2027, 3, 31, 0, 0, 0, 0, time.UTC)
@@ -41,6 +45,14 @@ func FuzzParse(f *testing.F) {
 		for _, ex := range tr.Exceptions {
 			if ex.Scope.IsZero() || ex.Scope.Digest == "" && ex.Scope.Repository == "" {
 				t.Fatalf("an unbounded exception was yielded: %+v", ex)
+			}
+			// A subcomponent narrows by its whole package URL, never by a
+			// bare name or a part of a package (B-070).
+			for _, id := range ex.Scope.Packages {
+				pu, err := scan.ParsePackageURL(id)
+				if err != nil || pu.Subpath != "" {
+					t.Fatalf("exception %+v narrows to %q, not a whole package URL", ex, id)
+				}
 			}
 			if !ex.Expires.Equal(expires) || ex.VEX != "/fuzz.json" || ex.ID == "" {
 				t.Fatalf("exception %+v does not carry the declared expiry and document", ex)

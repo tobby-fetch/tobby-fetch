@@ -4,7 +4,6 @@
 package scan
 
 import (
-	"slices"
 	"strings"
 	"time"
 
@@ -108,8 +107,11 @@ type ExceptionScope struct {
 	// Recipe is a recipe name, optionally "name@version".
 	Recipe string `json:"recipe,omitempty"`
 	// Packages narrows a VEX-born exception to the affected packages its
-	// statement names as subcomponents of the product: a finding in any
-	// other package of the item is not covered. Never set by hand.
+	// statement names as subcomponents of the product, as the package
+	// URLs it declares: a finding is covered only when its own package
+	// URL matches one of them exactly (PackageURL.Matches — type,
+	// namespace, name, and the version when one is declared). Never set
+	// by hand.
 	Packages []string `json:"packages,omitempty"`
 }
 
@@ -164,10 +166,21 @@ func (s *ExceptionScope) Covers(subj *Subject, f *Finding) bool {
 			return false
 		}
 	}
-	if len(s.Packages) > 0 && (f == nil || !slices.Contains(s.Packages, f.Package)) {
+	if len(s.Packages) > 0 && (f == nil || !s.coversPackage(f)) {
 		return false
 	}
 	return true
+}
+
+// coversPackage reports whether one of the scope's package URLs names the
+// package of f exactly (B-070). One that cannot be read matches nothing.
+func (s *ExceptionScope) coversPackage(f *Finding) bool {
+	for _, id := range s.Packages {
+		if p, err := ParsePackageURL(id); err == nil && p.Matches(f.PURL, f.InstalledVersion) {
+			return true
+		}
+	}
+	return false
 }
 
 // ExpiredAt reports whether the exception no longer applies at now: it
