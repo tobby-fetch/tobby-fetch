@@ -20,8 +20,9 @@
 #      transaction becomes an rpm repository packed as a FileSet.
 #   2. Three recipes cooked (digests resolved upstream, FileSets packed),
 #      published through `tobby recipe push` and signed by the crucible's
-#      test key: rke2 (16 images + the artifacts FileSet), rocky9-rke2-host
-#      (the rpm repository), crown-app (the nominal-path test image).
+#      test key: rke2 (16 images from registry.rancher.com + the artifacts
+#      FileSet), rocky9-rke2-host (the rpm repository), crown-app (the
+#      nominal-path test image, docker.io/library/busybox).
 #   3. The mirror instance writes them onto a real loop-backed block
 #      device, which is detached and re-attached in the isolated zone.
 #   4. The destination-side instance verifies the medium (FR-054), which
@@ -35,7 +36,9 @@
 #      packages with dnf from the served FileSet only, turns SELinux to
 #      enforcing, fetches RKE2 from /files/, installs it by the tarball
 #      method WITHOUT any image tarball, and starts with the generated
-#      registries.yaml as its only image source.
+#      registries.yaml as its only image source (system-default-registry:
+#      registry.rancher.com names the system images, rke2-runtime included;
+#      registries.yaml decides where they are fetched).
 #   7. Node Ready; every kube-system pod Running or Completed; a pod
 #      referencing docker.io/library/busybox (and its short form) runs; a
 #      pod referencing a nominal tag never pushed fails, at the zone.
@@ -58,10 +61,11 @@
 #
 # Requires, on top of the crucible baseline: KVM (/dev/kvm — two VMs),
 # tcpdump on the host (the witnesses), jq, curl, cosign (installed on demand
-# like m3-m6), and Docker Hub credentials (CRUCIBLE_DOCKER_CONFIG, a
-# dockerconfigjson with a "docker.io" entry): the 17 images are pulled from
-# Docker Hub, beyond its anonymous rate limit. CRUCIBLE_M7_ANONYMOUS_HUB=1
-# runs without, at the risk of TOO MANY REQUESTS mid-sync.
+# like m3-m6). No registry credentials: the RKE2 images come from
+# registry.rancher.com (no pull rate limit), and the one Docker Hub image
+# (busybox) costs two manifest GETs, well under the anonymous limit.
+# CRUCIBLE_DOCKER_CONFIG (a dockerconfigjson with a "docker.io" entry) is
+# used when present, for Docker Hub only.
 #
 # Knobs (all optional):
 #   CRUCIBLE_RKE2_ARTIFACTS  directory already holding rke2.linux-amd64.tar.gz,
@@ -156,10 +160,8 @@ if [ -n "${CRUCIBLE_DOCKER_CONFIG:-}" ]; then
     CROWN_HUB_BASIC=$(jq -r '.auths["docker.io"].auth // .auths["https://index.docker.io/v1/"].auth // empty' "$CRUCIBLE_DOCKER_CONFIG")
     [ -n "$CROWN_HUB_BASIC" ] || fail "CRUCIBLE_DOCKER_CONFIG has no docker.io auth entry"
     check "tooling available (jq, curl, tcpdump, cosign, KVM); Docker Hub credentials supplied"
-elif [ "${CRUCIBLE_M7_ANONYMOUS_HUB:-}" = 1 ]; then
-    check "tooling available (jq, curl, tcpdump, cosign, KVM); Docker Hub ANONYMOUS (rate limit risk, by request)"
 else
-    fail "no Docker Hub credentials: set CRUCIBLE_DOCKER_CONFIG (or CRUCIBLE_M7_ANONYMOUS_HUB=1 to take the rate-limit risk)"
+    check "tooling available (jq, curl, tcpdump, cosign, KVM); registries reached anonymously"
 fi
 [ "$SELINUX_MODE" = enforcing ] || check "WARNING SELinux mode '$SELINUX_MODE' requested: mise au point only, not the target posture"
 
@@ -189,15 +191,17 @@ done
     fail "the release checksums do not cover both the tarball and the image list"
 [ "$(sha256sum <"$ART/install.sh" | awk '{print $1}')" = "$RKE2_INSTALL_SH_SHA256" ] ||
     fail "the RKE2 installer is not the pinned one"
-# The draft recipe's images are the release's images, entry for entry: a
-# list that drifted would cook a recipe the cluster cannot run on.
+# The draft recipe's images are the release's images, entry for entry —
+# sourced from registry.rancher.com instead of docker.io (same repositories,
+# same tags): a list that drifted would cook a recipe the cluster cannot run
+# on.
 crown_yj json "$DATA/recipes/rke2.yaml" |
     jq -r '.spec.ingredients[] | select(.kind == "ContainerImage") | .ref + ":" + .version' | sort >"$WORK/draft-images.txt"
-sort "$ART/rke2-images.linux-amd64.txt" | sed '/^$/d' >"$WORK/release-images.txt"
+sed '/^$/d; s#^docker\.io/rancher/#registry.rancher.com/rancher/#' "$ART/rke2-images.linux-amd64.txt" | sort >"$WORK/release-images.txt"
 diff "$WORK/draft-images.txt" "$WORK/release-images.txt" >"$WORK/images.diff" ||
     fail "the draft rke2 recipe and the $RKE2_VERSION image list differ: $(tr '\n' ' ' <"$WORK/images.diff")"
 N_RKE2_IMAGES=$(wc -l <"$WORK/release-images.txt" | tr -d ' ')
-check "RKE2 $RKE2_VERSION: tarball and image list match the release checksums, installer pinned, $N_RKE2_IMAGES images = draft recipe"
+check "RKE2 $RKE2_VERSION: tarball and image list match the release checksums, installer pinned, $N_RKE2_IMAGES images = draft recipe (registry.rancher.com)"
 
 # -- 3. The gap's witnesses first, then the instances ---------------------------
 release_leftovers
@@ -485,10 +489,14 @@ crown_generate_registries_yaml "$WORK/registries.yaml"
 crown_generate_mapping_table "$WORK/table.json"
 crown_yj json "$WORK/registries.yaml" >"$WORK/registries.json" ||
     fail "FR-065: the generated registries.yaml is not a YAML document"
-jq -e --arg e "http://$DEST" '.mirrors["docker.io"].endpoint | index($e) != null' "$WORK/registries.json" >/dev/null ||
-    fail "FR-065: no docker.io mirror pointing at http://$DEST: $(jq -c '.mirrors' "$WORK/registries.json")"
-jq -e '.mirrors["docker.io"].rewrite["^(.*)$"] == "docker.io/$1"' "$WORK/registries.json" >/dev/null ||
-    fail "FR-065: the docker.io rewrite does not lead to the relocated path (ADR-0013): $(jq -c '.mirrors["docker.io"].rewrite' "$WORK/registries.json")"
+# One mirror per image source host — registry.rancher.com for RKE2,
+# docker.io for the nominal-path pod — each rewriting to its relocated path.
+for h in registry.rancher.com docker.io; do
+    jq -e --arg h "$h" --arg e "http://$DEST" '.mirrors[$h].endpoint | index($e) != null' "$WORK/registries.json" >/dev/null ||
+        fail "FR-065: no $h mirror pointing at http://$DEST: $(jq -c '.mirrors' "$WORK/registries.json")"
+    jq -e --arg h "$h" '.mirrors[$h].rewrite["^(.*)$"] == ($h + "/$1")' "$WORK/registries.json" >/dev/null ||
+        fail "FR-065: the $h rewrite does not lead to the relocated path (ADR-0013): $(jq -c --arg h "$h" '.mirrors[$h].rewrite' "$WORK/registries.json")"
+done
 # Every mirror is a source host the recipes actually name, and no
 # credentials are ever written into a snippet meant to be copied around.
 HOSTS=$(jq -r '[.[].spec.ingredients[].ref | split("/")[0] | sub("^(index|registry-1)\\.docker\\.io$"; "docker.io")] | unique | join(" ")' "$WORK/cooked-all.json")
@@ -497,7 +505,7 @@ for h in $(jq -r '.mirrors | keys[]' "$WORK/registries.json"); do
 done
 jq -e '[.configs // {} | .[] | .auth // empty] | length == 0' "$WORK/registries.json" >/dev/null ||
     fail "FR-065: the snippet carries credentials"
-check "${DBG}FR-065: registries.yaml generated — docker.io mirrored to http://$DEST, rewrite to the relocated path, no foreign host, no credentials"
+check "${DBG}FR-065: registries.yaml generated — registry.rancher.com and docker.io mirrored to http://$DEST, rewrites to the relocated paths, no foreign host, no credentials"
 while IFS= read -r line; do note "registries.yaml | $line"; done <"$WORK/registries.yaml"
 
 # The table, against what was pushed (not against itself): one entry per
@@ -668,10 +676,11 @@ check "all $N_PODS system pods Running (ready) or Completed"
 jq -r '.items[] | .metadata.namespace + "/" + .metadata.name + " " + .status.phase' "$WORK/pods.json" |
     while read -r p; do note "pod $p"; done
 
-HOSTS_TOML=/var/lib/rancher/rke2/agent/etc/containerd/certs.d/docker.io/hosts.toml
-inc exec "$NODE" -- grep -q "http://$DEST" "$HOSTS_TOML" ||
-    fail "containerd's docker.io host configuration does not carry the generated endpoint"
-check "${DBG}containerd configured from the generated snippet ($HOSTS_TOML → http://$DEST)"
+for h in registry.rancher.com docker.io; do
+    inc exec "$NODE" -- grep -q "http://$DEST" "/var/lib/rancher/rke2/agent/etc/containerd/certs.d/$h/hosts.toml" ||
+        fail "containerd's $h host configuration does not carry the generated endpoint"
+done
+check "${DBG}containerd configured from the generated snippet (certs.d/registry.rancher.com and certs.d/docker.io → http://$DEST)"
 
 # The FR-065 acceptance pod, then the negative control.
 inc file push "$DATA/node/crown-app-pod.yaml" "$NODE/root/crown-app-pod.yaml" >/dev/null
@@ -710,7 +719,7 @@ done | sort -u >"$WORK/files-requests.txt"
 [ -s "$WORK/zone-requests.txt" ] || fail "staging: the node capture holds no registry request at all"
 
 # rke2-runtime is pulled by RKE2 itself, before containerd exists.
-printf 'docker.io/rancher/rke2-runtime:%s\n' "$RKE2_TAG" >>"$WORK/running-images.txt"
+printf 'registry.rancher.com/rancher/rke2-runtime:%s\n' "$RKE2_TAG" >>"$WORK/running-images.txt"
 N_RUN=0
 while read -r img; do
     ref=${img%:*}
@@ -725,7 +734,7 @@ while read -r img; do
     esac
     N_RUN=$((N_RUN + 1))
 done <"$WORK/running-images.txt"
-check "every image the cluster runs ($N_RUN, rke2-runtime included) is in a recipe, was requested from the zone registry at its relocated path, and is held under its pinned digest"
+check "every image the cluster runs ($N_RUN, rke2-runtime included) is in a recipe, was requested from the zone registry at its relocated path (/v2/registry.rancher.com/rancher/…, /v2/docker.io/library/…), and is held under its pinned digest"
 grep -q " /v2/docker.io/library/busybox/manifests/$ABSENT_TAG" "$WORK/zone-requests.txt" ||
     fail "the negative control's pull never reached the zone registry: the mirror is not the route"
 check "the negative control's pull was asked of the zone registry — the generated mirror is THE route"

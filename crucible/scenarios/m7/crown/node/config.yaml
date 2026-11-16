@@ -1,6 +1,13 @@
-# /etc/rancher/rke2/config.yaml of the crown node. Nothing here points at a
-# registry: where images come from is the business of registries.yaml,
-# which Tobby generates — a system-default-registry here would bypass the
-# snippet under test and prove nothing about it.
+# /etc/rancher/rke2/config.yaml of the crown node.
+#
+# system-default-registry names every RKE2 system image — rke2-runtime
+# included — under registry.rancher.com, where the rke2 recipe sources them.
+# It says nothing about where the bytes come from: that is registries.yaml,
+# which Tobby generates. RKE2 pulls rke2-runtime itself (before containerd
+# exists) through the same file: wharfie's registry.Image applies the
+# mirror endpoints and their rewrites to every non-default endpoint
+# (rancher/wharfie v0.7.1, pkg/registries/registries.go), so the request
+# lands at <zone>/v2/registry.rancher.com/rancher/rke2-runtime/….
+system-default-registry: registry.rancher.com
 selinux: true
 write-kubeconfig-mode: "0600"

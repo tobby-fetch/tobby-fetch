@@ -54,6 +54,7 @@ crucible/
     │   ├── c-*.sh    # track C: integrity, trust scopes, assurance
     │   └── *-lib.sh  # per-track sourced helpers (b-lib.sh, c-lib.sh)
     └── m7/
+        ├── run.sh    # dispatcher: the crown, then any other m7 scenario
         ├── crown.sh  # the crown: RKE2 bootstrapped air-gapped from a bare OS
         └── crown/    # its helpers, draft recipes, node files, YAML helper
 ```
@@ -292,9 +293,15 @@ Linux 9 VM, with everything served by Tobby.
    under its pinned digest), and leak captures on every way out of the zone
    (zero packet sourced in it for the whole run).
 
+The RKE2 images are sourced from `registry.rancher.com` (same tags as
+`docker.io/rancher`, different index digests, no pull rate limit) and the
+node runs with `system-default-registry: registry.rancher.com`; busybox is
+the one Docker Hub image, and carries the nominal `docker.io/...` criterion.
+The generated snippet therefore mirrors both hosts to the zone registry.
+
 On top of the baseline it needs KVM (two VMs: 4 vCPU / 8 GiB / 40 GiB for
-the node, 2 vCPU / 2 GiB for its twin), `tcpdump` on the host, and Docker
-Hub credentials (`CRUCIBLE_DOCKER_CONFIG`) — 17 images exceed the anonymous
-rate limit. `CRUCIBLE_M7_DEBUG_AIDS=handmade` replaces the generated aids
+the node, 2 vCPU / 2 GiB for its twin) and `tcpdump` on the host. No
+registry credentials are needed; `CRUCIBLE_DOCKER_CONFIG` is used for
+Docker Hub when present. `CRUCIBLE_M7_DEBUG_AIDS=handmade` replaces the generated aids
 with hand-written ones to rehearse the rest of the scenario; such a run
 says DEBUG on every dependent line and always ends with a FAIL.

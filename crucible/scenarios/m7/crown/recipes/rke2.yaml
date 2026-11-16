@@ -7,10 +7,18 @@
 # very path milestone 7 has to prove. The binary, its checksums and the
 # pinned installer travel as one FileSet, served over HTTP under /files/.
 #
-# The image list is the release's own rke2-images.linux-amd64.txt (core +
-# the default CNI, canal), entry for entry; the scenario refuses to run if
-# the two ever differ. Only linux/amd64 is required at the destination
-# (sparse index, RECIPE-SPEC §7.1): the pinned index digest is preserved.
+# The images are the release's own rke2-images.linux-amd64.txt (core + the
+# default CNI, canal), entry for entry, but sourced from registry.rancher.com
+# — Rancher's public registry, which carries them under the same tags as
+# docker.io/rancher without Docker Hub's pull rate limit. Same tags, NOT the
+# same bytes: 13 of the 16 index digests differ between the two registries
+# (checked for v1.36.5+rke2r1), so the digests pinned here are
+# registry.rancher.com's, and the node must name images there. The node is configured with system-default-registry:
+# registry.rancher.com, so every system image it pulls is named there, and
+# the generated registries.yaml mirrors that host to the zone registry. The
+# scenario refuses to run if the list and the release ever differ. Only
+# linux/amd64 is required at the destination (sparse index, RECIPE-SPEC
+# §7.1): the pinned index digest is preserved.
 #
 # Cooking adds the digest of every ingredient: the images' index digests
 # are resolved against the upstream registry, the FileSet's is the one its
@@ -33,81 +41,81 @@ spec:
       version: v1.36.5-rke2r1
     - name: rke2-runtime
       kind: ContainerImage
-      ref: docker.io/rancher/rke2-runtime
+      ref: registry.rancher.com/rancher/rke2-runtime
       version: v1.36.5-rke2r1
       platforms: ["linux/amd64"]
     - name: hardened-kubernetes
       kind: ContainerImage
-      ref: docker.io/rancher/hardened-kubernetes
+      ref: registry.rancher.com/rancher/hardened-kubernetes
       version: v1.36.5-rke2r1-build20260923
       platforms: ["linux/amd64"]
     - name: hardened-coredns
       kind: ContainerImage
-      ref: docker.io/rancher/hardened-coredns
+      ref: registry.rancher.com/rancher/hardened-coredns
       version: v1.14.7-build20260909
       platforms: ["linux/amd64"]
     - name: hardened-cluster-autoscaler
       kind: ContainerImage
-      ref: docker.io/rancher/hardened-cluster-autoscaler
+      ref: registry.rancher.com/rancher/hardened-cluster-autoscaler
       version: v1.10.3-build20260819
       platforms: ["linux/amd64"]
     - name: hardened-dns-node-cache
       kind: ContainerImage
-      ref: docker.io/rancher/hardened-dns-node-cache
+      ref: registry.rancher.com/rancher/hardened-dns-node-cache
       version: 1.27.0-r1-build20260923
       platforms: ["linux/amd64"]
     - name: hardened-etcd
       kind: ContainerImage
-      ref: docker.io/rancher/hardened-etcd
+      ref: registry.rancher.com/rancher/hardened-etcd
       version: v3.6.14-k3s3-build20260915
       platforms: ["linux/amd64"]
     - name: hardened-k8s-metrics-server
       kind: ContainerImage
-      ref: docker.io/rancher/hardened-k8s-metrics-server
+      ref: registry.rancher.com/rancher/hardened-k8s-metrics-server
       version: v0.9.0-build20260909
       platforms: ["linux/amd64"]
     - name: hardened-addon-resizer
       kind: ContainerImage
-      ref: docker.io/rancher/hardened-addon-resizer
+      ref: registry.rancher.com/rancher/hardened-addon-resizer
       version: 1.8.23-build20260909
       platforms: ["linux/amd64"]
     - name: klipper-helm
       kind: ContainerImage
-      ref: docker.io/rancher/klipper-helm
+      ref: registry.rancher.com/rancher/klipper-helm
       version: v0.13.3-build20260909
       platforms: ["linux/amd64"]
     - name: klipper-lb
       kind: ContainerImage
-      ref: docker.io/rancher/klipper-lb
+      ref: registry.rancher.com/rancher/klipper-lb
       version: v0.4.17
       platforms: ["linux/amd64"]
     - name: mirrored-pause
       kind: ContainerImage
-      ref: docker.io/rancher/mirrored-pause
+      ref: registry.rancher.com/rancher/mirrored-pause
       version: 3.10.2
       platforms: ["linux/amd64"]
     - name: rke2-cloud-provider
       kind: ContainerImage
-      ref: docker.io/rancher/rke2-cloud-provider
+      ref: registry.rancher.com/rancher/rke2-cloud-provider
       version: v1.36.5-0.20260915232631-dca49392c395-build20260916
       platforms: ["linux/amd64"]
     - name: hardened-snapshot-controller
       kind: ContainerImage
-      ref: docker.io/rancher/hardened-snapshot-controller
+      ref: registry.rancher.com/rancher/hardened-snapshot-controller
       version: v8.6.0-build20260909
       platforms: ["linux/amd64"]
     - name: hardened-traefik
       kind: ContainerImage
-      ref: docker.io/rancher/hardened-traefik
+      ref: registry.rancher.com/rancher/hardened-traefik
       version: v3.7.13-build20260910
       platforms: ["linux/amd64"]
     - name: hardened-calico
       kind: ContainerImage
-      ref: docker.io/rancher/hardened-calico
+      ref: registry.rancher.com/rancher/hardened-calico
       version: v3.32.2-build20260909
       platforms: ["linux/amd64"]
     - name: hardened-flannel
       kind: ContainerImage
-      ref: docker.io/rancher/hardened-flannel
+      ref: registry.rancher.com/rancher/hardened-flannel
       version: v0.28.9-build20260909
       platforms: ["linux/amd64"]
