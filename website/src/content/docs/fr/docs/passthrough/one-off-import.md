@@ -119,7 +119,9 @@ géré par des recipes (FR-045). Le modèle complet est décrit dans
 Le navigateur de contenu et l'API le disent aussi : un dépôt importé porte
 la classe de provenance `unit-import` — une FileSet empaquetée sur cette
 instance apparaît comme *Empaqueté sur cette instance*, classe
-`unit-import` d'origine `local-pack` — et il compte dans la métrique
+`unit-import` d'origine `local-pack`, et le contenu restauré depuis un OCI
+image layout (`tobby import`, `/admin/oci-layout`) comme *Importé depuis un
+OCI image layout*, d'origine `oci-layout` — et il compte dans la métrique
 `tobby_store_unmanaged_repositories{class="unit-import"}` (FR-098).
 Importer dans un dépôt qui détient déjà du contenu poussé par `/v2/` le
 laisse en classe `seed` : la classe ne devient jamais plus facile à
@@ -130,9 +132,11 @@ retirer que ce que le dépôt détenait déjà.
 Une instance durcie par `hardening.disableUnitImport` n'accepte de contenu
 que par des recipes vérifiées. L'écran d'import affiche alors son
 formulaire désactivé, en nommant le réglage ; `POST /api/v1/import`, son
-inspection et l'empaquetage de FileSets — le formulaire de `/filesets`,
+inspection, l'empaquetage de FileSets — le formulaire de `/filesets`,
 `POST /api/v1/filesets/pack` et `tobby fileset pack`, qui lit le même
-fichier de configuration — répondent
+fichier de configuration — et l'import d'OCI image layout — le formulaire
+de `/admin/oci-layout`, `POST /api/v1/oci-layout/import` et
+`tobby import` — répondent
 [TBY-POL-005](../../reference/errors/#tby-pol-005), et chaque refus est un
 événement d'audit `hardening.refused`. C'est une décision de
 l'administrateur de l'instance, pas une panne : livrez le contenu par une

@@ -746,6 +746,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// behind the API, the UI, and the queue, so the confirmation rule and
 	// the selection rules cannot drift between surfaces (FR-061).
 	interopSvc := interop.New(st, queue, cfg.Storage.BasePrefix, logger)
+	interopSvc.SetUnitImportDisabled(hard.DisableUnitImport) // FR-098, B-071
 	interopSvc.Register()
 	fileSetRefresh.wrapTasks(queue, tasks.TypeLayoutImport)
 	interopSvc.SetAfterReset(fileSetRefresh.AfterReset)

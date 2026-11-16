@@ -285,6 +285,14 @@ Entries are independent: one image that did not survive the medium fails on
 its own line and the rest still lands. An import that lost entries exits
 `1` and names them.
 
+What lands is recorded as a unit import of origin `oci-layout`: content no
+recipe manages, never pruned, individually removable. The command honours
+`hardening.disableUnitImport`, read from the same configuration file as the
+instance (`--config`, or the default path when it exists): on a hardened
+instance it refuses with [TBY-POL-005](../errors/#tby-pol-005), writes
+nothing, records a `hardening.refused` audit event on stderr, and exits
+with the policy code `3`.
+
 ### tobby config dump
 
 ```

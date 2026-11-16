@@ -294,6 +294,15 @@ Les entrées sont indépendantes : une image qui n'a pas survécu au support
 échoue sur sa propre ligne et le reste est tout de même importé. Un import qui
 a perdu des entrées sort avec `1` et les nomme.
 
+Ce qui arrive est enregistré comme un import unitaire d'origine
+`oci-layout` : du contenu qu'aucune recipe ne gère, jamais purgé, retirable
+individuellement. La commande respecte `hardening.disableUnitImport`, lu
+dans le même fichier de configuration que l'instance (`--config`, ou le
+chemin par défaut s'il existe) : sur une instance durcie, elle refuse avec
+[TBY-POL-005](../errors/#tby-pol-005), n'écrit rien, consigne un événement
+d'audit `hardening.refused` sur stderr et sort avec le code de politique
+`3`.
+
 ### tobby config dump
 
 ```

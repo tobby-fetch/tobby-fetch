@@ -1026,6 +1026,7 @@
 "provenance.recipe": "Géré par une recipe vérifiée"
 "provenance.unit_import": "Import unitaire"
 "provenance.local_pack": "Empaqueté sur cette instance"
+"provenance.oci_layout": "Importé depuis un OCI image layout"
 "provenance.seed": "Poussé directement"
 "provenance.last_scan": "Dernière analyse {{.When}} : {{.Verdict}}"
 "provenance.recipe_reduced": "Géré par une recipe admise sous un périmètre de confiance assoupli"

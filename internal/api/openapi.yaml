@@ -1043,8 +1043,11 @@ paths:
         carrying an absolute path, a traversal or a link is refused with
         TBY-LAY-002 before anything is read (NFR-011). Compressed archives
         are refused. Entries are independent: one that did not survive the
-        medium fails on its own task item. Enqueues a task and answers it.
-        Audited (FR-094). Role admin.
+        medium fails on its own task item. What lands is recorded as a
+        unit import of origin oci-layout (FR-098). Refused with TBY-POL-005
+        on an instance hardened with hardening.disableUnitImport, audited as
+        hardening.refused. Enqueues a task and answers it. Audited
+        (FR-094). Role admin.
       requestBody:
         required: true
         content:
@@ -2211,7 +2214,10 @@ components:
           enum: [recipe, unit-import, seed]
         origin:
           type: string
-          description: Refines unit-import; "local-pack" for a packed FileSet (FR-048).
+          description: >-
+            Refines unit-import; "local-pack" for a packed FileSet (FR-048),
+            "oci-layout" for content imported from an OCI image layout
+            (FR-051).
         recipes:
           type: array
           description: The recipes managing the repository, for class recipe.

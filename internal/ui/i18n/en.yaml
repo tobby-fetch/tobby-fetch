@@ -1023,6 +1023,7 @@
 "provenance.recipe": "Managed by a verified recipe"
 "provenance.unit_import": "Unit import"
 "provenance.local_pack": "Packed on this instance"
+"provenance.oci_layout": "Imported from an OCI layout"
 "provenance.seed": "Pushed directly"
 "provenance.last_scan": "Last scanned {{.When}}: {{.Verdict}}"
 "provenance.recipe_reduced": "Managed by a recipe admitted under a relaxed trust scope"

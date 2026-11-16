@@ -198,8 +198,8 @@ gère, par classe : une zone qui ne devrait détenir que du contenu de
 recipes alerte dès qu'elle n'est pas nulle. Pour en faire une garantie
 plutôt qu'une surveillance, activez les
 [interrupteurs de durcissement](../../security/model/#interrupteurs-de-durcissement) :
-`hardening.disableUnitImport` ferme l'import unitaire et l'empaquetage sur
-toutes les surfaces, `hardening.disableRegistryPush` met `/v2/` en lecture
+`hardening.disableUnitImport` ferme l'import unitaire, l'import d'OCI image
+layout et l'empaquetage sur toutes les surfaces, `hardening.disableRegistryPush` met `/v2/` en lecture
 seule pour tous les clients et tous les rôles. Les deux sont signalés au
 démarrage, dans `tobby config dump`, sur les écrans qu'ils désactivent et
 dans `tobby_hardening_enabled` ; les synchronisations de recipes ne sont

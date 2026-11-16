@@ -186,8 +186,8 @@ a removal — carry a `provenance` field.
 by class: a zone that should hold recipe content only alerts on it being
 non-zero. To make that a guarantee rather than a watch, set the
 [hardening switches](../../security/model/#hardening-switches):
-`hardening.disableUnitImport` closes unit imports and packing on every
-surface, `hardening.disableRegistryPush` makes `/v2/` read-only for every
+`hardening.disableUnitImport` closes unit imports, OCI image layout
+imports and packing on every surface, `hardening.disableRegistryPush` makes `/v2/` read-only for every
 client and role. Both are stated at startup, in `tobby config dump`, on
 the screens they disable and in `tobby_hardening_enabled`; recipe
 synchronizations are unaffected. The last scan of a tag is read from the

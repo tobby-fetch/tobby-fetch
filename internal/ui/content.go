@@ -280,6 +280,8 @@ func provenanceLabel(c *store.Classification) string {
 		return "provenance.recipe"
 	case c.Class == store.ProvenanceUnitImport && c.Origin == store.OriginLocalPack:
 		return "provenance.local_pack"
+	case c.Class == store.ProvenanceUnitImport && c.Origin == store.OriginOCILayout:
+		return "provenance.oci_layout"
 	case c.Class == store.ProvenanceUnitImport:
 		return "provenance.unit_import"
 	default:

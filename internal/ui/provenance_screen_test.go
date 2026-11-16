@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
+	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/provenance"
 	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -216,6 +219,50 @@ func TestFileSetsPackDisabledWhenHardened(t *testing.T) {
 	}
 }
 
+// TestLayoutImportDisabledWhenHardened (B-071): an OCI layout import is
+// a unit import, so under hardening.disableUnitImport its form is shown
+// disabled naming the setting, and a submission is refused with
+// TBY-POL-005, audited as hardening.refused (and not as a layout import),
+// with no task created.
+func TestLayoutImportDisabledWhenHardened(t *testing.T) {
+	logs := &lockedLog{}
+	u, st := provenanceUI(t, hardening.Switches{DisableUnitImport: true}, logs)
+	q, err := tasks.Open(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.queue = q
+	u.interop = interop.New(st, q, "", slog.New(slog.DiscardHandler))
+	mux := mount(u)
+	c := login(t, mux, "alexis", "pw-admin")
+
+	body := get(t, mux, c, "/admin/oci-layout", nil).Body.String()
+	for _, want := range []string{`data-hardening="disableUnitImport"`, `disabled aria-describedby="layout-import-hardened"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("layout page misses %q", want)
+		}
+	}
+	sess, ok := u.authn.Sessions.Get(c.Value, time.Now())
+	if !ok {
+		t.Fatal("no live session for the cookie")
+	}
+	form := url.Values{"csrf": {sess.CSRF}, "input": {"/tmp/payload.tar"}}
+	r := httptest.NewRequest(http.MethodPost, "/admin/oci-layout/import", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(c)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "TBY-POL-005") {
+		t.Errorf("POST /admin/oci-layout/import = %d, want 403 TBY-POL-005:\n%s", w.Code, w.Body)
+	}
+	if n := len(q.List("", "", "")); n != 0 {
+		t.Errorf("%d task(s) created under the switch", n)
+	}
+	if !strings.Contains(logs.String(), `"action":"hardening.refused"`) || strings.Contains(logs.String(), `"action":"layout.import"`) {
+		t.Errorf("want exactly the hardening record:\n%s", logs)
+	}
+}
+
 // TestContentBrowserStatesReadOnlyRegistry: under
 // hardening.disableRegistryPush the content listing and a seeded
 // repository's page say the registry is read-only, naming the setting.
@@ -228,5 +275,14 @@ func TestContentBrowserStatesReadOnlyRegistry(t *testing.T) {
 		if !strings.Contains(body, `data-hardening="disableRegistryPush"`) || !strings.Contains(body, "hardening.disableRegistryPush") {
 			t.Errorf("%s does not state the read-only registry", target)
 		}
+	}
+}
+
+// TestProvenanceLabelOfALayoutImport (B-071): content imported from an
+// OCI image layout reads as such, not as content pushed directly.
+func TestProvenanceLabelOfALayoutImport(t *testing.T) {
+	c := store.Classification{Class: store.ProvenanceUnitImport, Origin: store.OriginOCILayout}
+	if got := provenanceLabel(&c); got != "provenance.oci_layout" {
+		t.Errorf("label = %q, want provenance.oci_layout", got)
 	}
 }

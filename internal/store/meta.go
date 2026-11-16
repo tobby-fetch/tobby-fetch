@@ -140,6 +140,13 @@ type ProvenanceOrigin string
 // reports, and this is the field that distinguishes it.
 const OriginLocalPack ProvenanceOrigin = "local-pack"
 
+// OriginOCILayout marks content imported from a standard OCI image layout
+// (FR-051): a unit import like any other — no recipe manages it, FR-045
+// never prunes it, the FR-044 amendment keeps it individually removable —
+// whose bytes came off a directory or an archive on this host rather
+// than from a source registry (B-071).
+const OriginOCILayout ProvenanceOrigin = "oci-layout"
+
 // Provenance is the recorded origin of one repository.
 type Provenance struct {
 	Class ProvenanceClass `json:"class"`
