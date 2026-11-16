@@ -1,0 +1,14 @@
+# Negative control: a nominal reference that was NEVER pushed to the zone.
+# It must fail to pull, and the capture must show the request arriving at
+# the zone registry — which is what makes the mirror THE route, not one
+# route among others that happened to be tried first.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: crown-absent
+  namespace: default
+spec:
+  containers:
+    - name: absent
+      image: docker.io/library/busybox:0.0.0-crown-absent
+      command: ["sleep", "3600"]
