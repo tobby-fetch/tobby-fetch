@@ -1,0 +1,14 @@
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Intel Xeon E3-1231 v3 8 threads, 32 GB RAM, Ubuntu 24.04.5 LTS (kernel 6.8.0-146), Incus 7.6 (Zabbly stable); ref milestone-7 @ 2c8aa7d; node created 2026-11-16T16:45Z, destroyed 2026-11-16T17:27Z (verified)
+# Note: on the previous node (created 2026-11-16T16:06Z, destroyed 16:44Z, same commit except the start-failure diagnostics), this scenario's VM failed to start (QEMU forkqemu error) in the full m7 run, while the same scenario passed alone on a fresh node and in this full run; the diagnostics added in 2c8aa7d print the QEMU log should it recur.
+ok   scenario m7 started 2026-11-16T17:02:49Z
+ok   tooling available (jq, curl, openssl, tar)
+ok   tooling available (jq, curl, cosign)
+ok   built tobby for linux/amd64 stamped with the build date 2026-11-16T17:02:49Z
+ok   the guest clock is set ten days before the build date and reads it (date: 2026-11-06 17:02)
+ok   the instance is ready: a clock in doubt changes no verdict
+ok   FR-096: a clock ten days before the build shows the log record, the banner, the metric, the audit event and the API verdict (TBY-CLK-001); nothing was corrected
+ok   a clock 20 minutes behind the build (tolerance 1h) raises nothing: metric 0, no record, no banner
+ok   a medium (20261116T170331Z-816d34373e40d9e5) was produced in the connected zone, resolved at 2026-11-16T17:03:33.104302166Z, and carried to the VM
+ok   FR-096: a medium opened on a clock three hours behind its production — TBY-CLK-002 on stderr naming it, the audit event, the API verdict and the banner
+ok   a clock 20 minutes behind the medium's production raises nothing
+ok   scenario m7 b-clock complete — report: crucible-report-m7-b-clock.txt

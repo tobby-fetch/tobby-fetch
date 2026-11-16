@@ -1,0 +1,26 @@
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Intel Xeon E3-1231 v3 8 threads, 32 GB RAM, Ubuntu 24.04.5 LTS (kernel 6.8.0-146), Incus 7.6 (Zabbly stable); ref milestone-7 @ 2c8aa7d; node created 2026-11-16T16:45Z, destroyed 2026-11-16T17:27Z (verified)
+ok   scenario m7 started 2026-11-16T17:10:25Z
+ok   tooling available (jq, curl, cosign, oras)
+ok   built tobby for linux/amd64
+ok   scanner fixtures: Trivy 0.76.2 checked twice (FileSet sha256:e93e32bf134f7307da2089d16b00ee1097a4b40c57375b2e4808bde26650c14f), database sha256:16724b54d33adebf718e4a88a4ed02e3595e20829cc09313e8b93b613108b350
+ok   fixtures: image A sha256:6d663d3ced5df5707e59d64d5f7e7383fb8d5104868ddf5fb55b049c99b82a71 (10.180.10.195:8080/team-a/vuln) and image B sha256:e023f112c858220de2a995ff5216f5bf9753584f53c45080bfee5d116d028563 (10.180.10.195:8080/team-b/vuln) — same config and layers, two digests, B served back by tag
+ok   fixtures: tobby-system, vuln-a and vuln-b published and signed (cosign verifies each under the zone key)
+ok   R-15: an exception without expires refuses the start, naming scan.exceptions[0] (CVE-2019-14697) and the remedy
+ok   R-15: an exception without justification refuses the start, naming scan.exceptions[0] (CVE-2019-14697)
+ok   R-15: a repository scope written host:port refuses the start (canonical form required, port written _)
+ok   R-15: a malformed OpenVEX document refuses the start (TBY-SCN-027, the path, the unknown field)
+ok   instance under test: mirror, blocking, authentication on (anonymous 401), admin and viewer tokens issued
+ok   R-15 digest scope: A (carries CVE-2019-14697) admitted by the exception scoped to its digest; B (carries CVE-2019-14697) refused (TBY-SCN-005), the exception named out of scope (TBY-SCN-026, scope digest=sha256:6d663d3ced5df5707e59d64d5f7e7383fb8d5104868ddf5fb55b049c99b82a71, reference 10.180.10.195:8080/team-b/vuln@sha256:e023f112c858220de2a995ff5216f5bf9753584f53c45080bfee5d116d028563) in its report and its log
+ok   R-15 repository scope (repository: 10.180.10.195_8080/team-a/*): A admitted, B refused with the exception named out of scope (TBY-SCN-026) in its report and its log
+ok   R-15 recipe scope (recipe: vuln-a): A admitted, B refused with the exception named out of scope (TBY-SCN-026) in its report and its log
+ok   R-15 recipe@version scope (recipe: vuln-a@1.0.0): A admitted, B refused with the exception named out of scope (TBY-SCN-026) in its report and its log
+ok   R-15 recipe@version scope: an exception for vuln-a@9.9.9 does not admit vuln-a@1.0.0 (TBY-SCN-026)
+ok   R-15 before the expiry (2026-11-16T17:15:18Z): A admitted, the exception active in the gauge and the policy view, no reblock
+ok   R-15 past the expiry (node clock > 2026-11-16T17:15:18Z, same process 821): tobby_scan_exceptions{source=instance,state=expired} 1 and active 0 before any evaluation, the policy view says expired
+ok   R-15 re-blocking: A refused again (TBY-SCN-005 + TBY-SCN-021, exceptions_expired), logged reblocked=true, one scan.exception_expired audit record (target 10.180.10.195:8080/team-a/vuln@sha256:6d663d3ced5df5707e59d64d5f7e7383fb8d5104868ddf5fb55b049c99b82a71, outcome denied, exception CVE-2019-14697, source instance, expires 2026-11-16T17:15:18Z) beside scan.block, tobby_scan_reblocked_items_total 1
+ok   R-15 OpenVEX: a justified not_affected statement on pkg:oci/vuln@<A's digest>?repository_url=10.180.10.195:8080/team-a/vuln admits A (exceptions_applied[].vex=/etc/tobby/vex/site.openvex.json, justification naming https://vex.example/m7c/site-1), not B; startup log admitted=1, gauge vex/active 1, policy view
+ok   R-15 OpenVEX impact_statement only: nothing admitted (startup WARN reason=impact-statement-only, vex_documents[0] admitted 0 ignored 1), A refused
+ok   R-15 Retriever exception without expiry: A and B admitted with TBY-SCN-028, WARN logged (code=TBY-SCN-028), policy view origin=retriever state=unbounded, gauge retriever/active 1
+ok   R-15 GET /api/v1/policy (admin): mode block, blocking, threshold 7, hardening both false, the instance exception (scope recipe=vuln-a, active) and the Retriever one (unbounded); anonymous 401, viewer 403 TBY-AUTH-003
+ok   R-15 tobby scan exceptions: offline source=configuration, retriever_known=false (the instance exception only); --instance with an admin token source=instance, retriever_known=true, the very exceptions of GET /api/v1/policy
+ok   scenario m7 c-exceptions complete — report: crucible-report-m7-c-exceptions.txt

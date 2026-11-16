@@ -1,0 +1,16 @@
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Intel Xeon E3-1231 v3 8 threads, 32 GB RAM, Ubuntu 24.04.5 LTS (kernel 6.8.0-146), Incus 7.6 (Zabbly stable); ref milestone-7 @ 05dafee (regression of milestones 1 to 6 for v1.0.0-rc.1); node created 2026-11-16T13:55Z, destroyed 2026-11-16T16:05Z (verified)
+ok   scenario m3 started 2026-11-16T15:30:17Z
+ok   cosign available (  ______   ______        _______. __    _______ .__   __.)
+ok   built tobby for linux/amd64
+ok   instances launched (source + node + downstream)
+ok   upstream registry serving (10.180.10.157:8080)
+ok   fixtures seeded (image sha256:e26df1deb466c7348b46d60a7751e3c92da2f1285a873e9999933b15e270dfc2, fileset sha256:0fd01b54c31b6df7231329d88e7d95f2069878b94f9b064494ebc31be880eac7), key pairs generated
+ok   cooked recipe signed (trusted 2.0.0, foreign-signed 2.0.1)
+ok   secure node configured (trust root, retriever, fileset) and serving
+ok   signed recipe synchronized: pinned digests intact, sparse index (2/3), signature copied
+ok   foreign-signed recipe refused (TBY-SIG-001), nothing landed
+ok   idempotence: second synchronization transferred zero bytes
+ok   the Sigstore bundle layout (cosign 3.x default) verifies like the classic one
+ok   FileSet served anonymously (opt-in), 206 on ranges, traversal refused
+ok   cascade: unmodified recipe consumed through substitution, identical relocated path, digest intact
+ok   scenario m3 complete — report: crucible-report-m3.txt
