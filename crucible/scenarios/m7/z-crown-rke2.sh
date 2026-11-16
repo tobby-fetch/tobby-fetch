@@ -609,6 +609,19 @@ printf '%s\n' "$NODE_PKGS" | sed '$d' | while read -r p; do note "installed $p";
 
 if [ "$SELINUX_MODE" = enforcing ]; then
     if [ "$(inc exec "$NODE" -- getenforce 2>/dev/null)" != Enforcing ]; then
+        # The harness's own channel first: the incus-agent runs from /run
+        # (var_run_t), so systemd starts it as init_t, which the targeted
+        # policy denies its vsock and /dev/incus sockets — an enforcing node
+        # would never answer `incus exec` again. A drop-in labels the
+        # binary bin_t once the setup has copied it, and init_t executing
+        # bin_t enters unconfined_service_t, the policy's own domain for
+        # third-party services. Nothing RKE2 or its pods run is touched.
+        inc exec "$NODE" -- sh -c '
+            mkdir -p /etc/systemd/system/incus-agent.service.d &&
+            printf "[Service]\nExecStartPre=-/usr/bin/chcon -t bin_t /run/incus_agent/incus-agent\n" \
+                >/etc/systemd/system/incus-agent.service.d/selinux.conf
+        ' || fail "staging: could not install the incus-agent SELinux drop-in on the node"
+        note "harness: incus-agent.service drop-in (agent binary labelled bin_t, runs unconfined_service_t)"
         # shellcheck disable=SC2016 # expanded by the node's shell
         inc exec "$NODE" -- sh -c '
             sed -i "s/^SELINUX=.*/SELINUX=enforcing/" /etc/selinux/config
