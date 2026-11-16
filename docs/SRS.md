@@ -1824,7 +1824,7 @@ tagged commit.
 **NFR-017 — UI accessibility and quality.**
 The web UI SHALL target WCAG 2.1 level AA (keyboard navigation, contrast, labels,
 focus states) and follow a consistent design system across all screens.
-*Acceptance:* automated accessibility checks (e.g., axe) report no AA violations on
+*Acceptance:* an automated accessibility audit in CI reports no AA violations on
 the FR-062 screens; a manual keyboard-only pass completes UC1 and UC2 flows.
 *(ADR-0010)*
 
