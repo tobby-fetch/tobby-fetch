@@ -463,3 +463,50 @@ func TestServeServesAMediumFileSetAfterAMediaImport(t *testing.T) {
 		t.Errorf("GET /files/… after the media import = %d %q, want 200 (B-058)", status, body)
 	}
 }
+
+// TestServeStopsServingAFileSetAfterAStoreReset: a reset (FR-046) empties
+// the store of its content, and what /files/ serves is that content. The
+// extracted cache survived the reset — it lives in meta/, which the reset
+// keeps — so a FileSet whose blobs were gone kept being served (B-059).
+//
+// Proved fallible: on the code before B-059 the GET after the reset still
+// answers 200 with the packed bytes, and the extracted tree is on disk.
+func TestServeStopsServingAFileSetAfterAStoreReset(t *testing.T) {
+	cfg := serveConfig(t)
+	cfg.Mode = config.ModeMirror
+	src := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(src, filepath.Dir(refreshFile)), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, filepath.FromSlash(refreshFile)), []byte("before the reset\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Files.PackRoots = []string{src}
+	cfg.Files.FileSets = []config.FileSetServe{{
+		Name: "packed", Ref: fileserve.PackReference("packed"), Version: "1.0.0", Anonymous: true,
+	}}
+	base := startServe(t, &cfg)
+	if status, raw := call(t, http.MethodPost, base+"/api/v1/filesets/pack",
+		map[string]string{"source": src, "name": "packed", "version": "1.0.0"}); status != http.StatusCreated {
+		t.Fatalf("POST /api/v1/filesets/pack = %d: %s", status, raw)
+	}
+	if status, _ := fetch(t, base+fileserve.RoutePrefix+"packed/"+refreshFile); status != http.StatusOK {
+		t.Fatalf("the packed FileSet is not served before the reset (%d)", status)
+	}
+
+	if status, raw := call(t, http.MethodPost, base+"/api/v1/store/reset",
+		map[string]string{"confirmation": "RESET"}); status/100 != 2 {
+		t.Fatalf("POST /api/v1/store/reset = %d: %s", status, raw)
+	}
+	if servedNow(t, base, "packed") {
+		t.Error("the inventory still reports the FileSet served after the store reset (B-059)")
+	}
+	status, body := fetch(t, base+fileserve.RoutePrefix+"packed/"+refreshFile)
+	if status != http.StatusNotFound {
+		t.Errorf("GET /files/packed/… after the reset = %d %q, want 404 (B-059)", status, body)
+	}
+	cache := filepath.Join(cfg.Storage.Root, "meta", "fileserve")
+	if entries, err := os.ReadDir(cache); err == nil && len(entries) > 0 {
+		t.Errorf("the fileset cache still holds %d entries after the reset (B-059)", len(entries))
+	}
+}

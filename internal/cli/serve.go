@@ -639,6 +639,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	interopSvc := interop.New(st, queue, cfg.Storage.BasePrefix, logger)
 	interopSvc.Register()
 	fileSetRefresh.wrapTasks(queue, tasks.TypeLayoutImport)
+	interopSvc.SetAfterReset(fileSetRefresh.AfterReset)
 
 	restAPI := api.New(authn, logger)
 	api.RegisterContent(restAPI, st, occupancy)

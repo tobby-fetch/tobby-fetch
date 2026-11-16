@@ -44,6 +44,8 @@ type Service struct {
 	// paths with, so a recipe-scoped export finds the recipe artifact
 	// where the synchronization put it.
 	base string
+	// afterReset runs once a reset has touched the store (SetAfterReset).
+	afterReset func(ctx context.Context)
 }
 
 // New builds the service. The queue may be nil on a surface that runs
@@ -51,6 +53,13 @@ type Service struct {
 func New(st *store.Store, queue *tasks.Queue, base string, logger *slog.Logger) *Service {
 	return &Service{store: st, queue: queue, base: base, logger: logger}
 }
+
+// SetAfterReset installs what runs once a reset has touched the store,
+// whether it completed or failed part-way: state derived from the store's
+// content and kept beside it must follow it. The FileSet cache is that
+// state — it lives in meta/, which the reset keeps, and it kept serving
+// FileSets whose blobs the reset had removed (B-059).
+func (s *Service) SetAfterReset(f func(ctx context.Context)) { s.afterReset = f }
 
 // Register installs the export and import runners on the queue. Call
 // before the queue is started.
@@ -180,6 +189,9 @@ func (s *Service) Reset(ctx context.Context, actor, origin, confirmation string)
 			taxonomy.Params{"phrase": ConfirmationPhrase})
 	}
 	res, err := s.store.Reset(ctx, s.logger)
+	if s.afterReset != nil {
+		s.afterReset(ctx)
+	}
 	if err != nil {
 		event.Outcome = audit.OutcomeFailure
 		audit.Log(ctx, s.logger, event)

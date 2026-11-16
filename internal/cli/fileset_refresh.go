@@ -40,8 +40,9 @@ import (
 //     a declared FileSet, in the background, so a client's push is never
 //     held up by an extraction — and a newer version pushed over a
 //     served one is picked up, which no read-side trigger could notice;
-//   - on a miss: a GET for a DECLARED FileSet that is not served resolves
-//     once before answering. This is the backstop for writes the instance
+//   - on a miss: a GET for a DECLARED FileSet that is not served waits for
+//     the resolution in flight, or starts one, before answering — every
+//     concurrent miss shares that one resolution (B-061). This is the backstop for writes the instance
 //     does not see (another process writing the store directory) and for
 //     the instant between a write and its background refresh. It is
 //     bounded twice: undeclared names never trigger anything, and a
@@ -78,14 +79,25 @@ type fileSetRefresher struct {
 	// it and must not wait for a refresh in progress.
 	untrusted atomic.Bool
 
-	// kmu guards the background refresh and the miss cooldowns.
+	// kmu guards the background refresh, the flight and the miss
+	// cooldowns.
 	kmu    sync.Mutex
 	queued bool
 	closed bool
 	wg     sync.WaitGroup
 	misses map[string]time.Time
 	now    func() time.Time
+	// flight is closed when every refresh begun while it was open has
+	// finished; nil when none is running. A miss waits on it rather than
+	// answering a 404 that the refresh under way is about to make wrong
+	// (B-061). pending counts the refreshes it covers.
+	flight  chan struct{}
+	pending int
 }
+
+// fileSetMissWait bounds how long a request for a declared FileSet waits
+// for a resolution in flight before it is answered with what is there.
+const fileSetMissWait = 30 * time.Second
 
 // fileSetMissCooldown is the shortest interval between two resolutions
 // triggered by misses on the same declared FileSet.
@@ -113,9 +125,44 @@ func newFileSetRefresher(ctx context.Context, fsrv *fileserve.Server, st *store.
 	return r
 }
 
+// begin registers one refresh in the current flight.
+func (r *fileSetRefresher) begin() {
+	r.kmu.Lock()
+	defer r.kmu.Unlock()
+	r.beginLocked()
+}
+
+// beginLocked registers one refresh in the current flight and returns
+// it. Callers hold kmu.
+func (r *fileSetRefresher) beginLocked() chan struct{} {
+	if r.flight == nil {
+		r.flight = make(chan struct{})
+	}
+	r.pending++
+	return r.flight
+}
+
+// end closes the flight once its last refresh is over.
+func (r *fileSetRefresher) end() {
+	r.kmu.Lock()
+	defer r.kmu.Unlock()
+	r.pending--
+	if r.pending == 0 {
+		close(r.flight)
+		r.flight = nil
+	}
+}
+
 // Refresh re-resolves the declared FileSets and syncs the server. It is
 // safe to call from any goroutine; calls are serialized.
 func (r *fileSetRefresher) Refresh(ctx context.Context) {
+	r.begin()
+	defer r.end()
+	r.refresh(ctx)
+}
+
+// refresh is Refresh without the flight bookkeeping.
+func (r *fileSetRefresher) refresh(ctx context.Context) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.gate.Serving() {
@@ -143,6 +190,26 @@ func (r *fileSetRefresher) Refresh(ctx context.Context) {
 	syncFileSets(ctx, r.fsrv, r.st, r.cfg, r.logger)
 }
 
+// AfterReset follows a store reset (FR-046, B-059): the reset removes the
+// content and keeps meta/, where the extracted cache lives, so the cache
+// is discarded outright — the content it was extracted from is gone, and
+// nothing about it is worth keeping, gate open or not — before the
+// declared FileSets are resolved again against the emptied store.
+func (r *fileSetRefresher) AfterReset(ctx context.Context) {
+	r.begin()
+	defer r.end()
+	r.mu.Lock()
+	err := r.fsrv.Discard()
+	r.mu.Unlock()
+	if err != nil {
+		r.logger.LogAttrs(ctx, slog.LevelWarn, "the fileset cache was not fully discarded after the store reset",
+			slog.String("error", err.Error()),
+			slog.String("action", "nothing is served from it; the leftovers are purged on the next refresh"),
+			slog.String("requirement", "FR-046"))
+	}
+	r.refresh(ctx)
+}
+
 // onTransition is the media gate's callback (mediagate.Gate.SetTransition).
 // It never blocks: closing only marks the cache untrusted, opening
 // schedules the extraction in the background.
@@ -167,12 +234,16 @@ func (r *fileSetRefresher) kick() {
 	r.queued = true
 	r.wg.Add(1)
 	r.kmu.Unlock()
+	// Registered in the flight BEFORE the goroutine starts, so a request
+	// arriving right after the trigger already finds something to wait on.
+	r.begin()
 	go func() {
 		defer r.wg.Done()
+		defer r.end()
 		r.kmu.Lock()
 		r.queued = false
 		r.kmu.Unlock()
-		r.Refresh(r.base)
+		r.refresh(r.base)
 	}()
 }
 
@@ -248,19 +319,55 @@ func (r *fileSetRefresher) Files(next http.Handler) http.Handler {
 		if req.Method == http.MethodGet || req.Method == http.MethodHead {
 			rest := strings.TrimPrefix(req.URL.Path, fileserve.RoutePrefix)
 			name, _, _ := strings.Cut(rest, "/")
-			if r.declared[name] && !r.fsrv.Serves(name) && r.allowMiss(name) {
-				r.Refresh(r.base)
+			if r.declared[name] && !r.fsrv.Serves(name) {
+				r.awaitResolution(req.Context(), name)
 			}
 		}
 		next.ServeHTTP(w, req)
 	})
 }
 
-// allowMiss reports whether a miss on name may trigger a resolution now,
-// and records it when it may.
-func (r *fileSetRefresher) allowMiss(name string) bool {
+// awaitResolution makes a miss wait for the resolution that can answer
+// it: the one in flight, or — cooldown permitting — one it starts. Every
+// concurrent miss joins the same flight, so a burst costs one resolution
+// and none of its requests answers a transient 404 (B-061). The wait is
+// bounded by fileSetMissWait and by the client hanging up; the resolution
+// itself runs under the instance's lifetime, never the request's.
+func (r *fileSetRefresher) awaitResolution(ctx context.Context, name string) {
+	// Joining, or deciding to start, is one step under kmu: a miss that
+	// read "nothing in flight" and lost the cooldown to a neighbour that
+	// had not registered its flight yet would answer the very 404 this
+	// exists to prevent.
 	r.kmu.Lock()
-	defer r.kmu.Unlock()
+	flight := r.flight
+	start := false
+	if flight == nil && !r.closed && r.allowMissLocked(name) {
+		flight, start = r.beginLocked(), true
+		r.wg.Add(1)
+	}
+	r.kmu.Unlock()
+	if flight == nil {
+		return
+	}
+	if start {
+		go func() {
+			defer r.wg.Done()
+			defer r.end()
+			r.refresh(r.base)
+		}()
+	}
+	timer := time.NewTimer(fileSetMissWait)
+	defer timer.Stop()
+	select {
+	case <-flight:
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+}
+
+// allowMissLocked reports whether a miss on name may start a resolution
+// now, and records it when it may. Callers hold kmu.
+func (r *fileSetRefresher) allowMissLocked(name string) bool {
 	now := r.now()
 	if last, ok := r.misses[name]; ok && now.Sub(last) < fileSetMissCooldown {
 		return false

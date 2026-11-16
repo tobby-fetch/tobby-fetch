@@ -5,9 +5,13 @@ package cli
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -92,5 +96,74 @@ func TestManifestWriteParsesTheRepository(t *testing.T) {
 		if repo != tc.repo || ok != tc.ok {
 			t.Errorf("%s %s = (%q, %v), want (%q, %v)", tc.method, tc.path, repo, ok, tc.repo, tc.ok)
 		}
+	}
+}
+
+// slowBlobs makes every extraction take long enough for concurrent
+// requests to overlap it deterministically.
+type slowBlobs struct{ storeBlobs }
+
+func (b slowBlobs) Blob(ctx context.Context, repo, dgst string) (io.ReadCloser, error) {
+	time.Sleep(300 * time.Millisecond)
+	return b.storeBlobs.Blob(ctx, repo, dgst)
+}
+
+// TestConcurrentMissesShareOneResolution: requests arriving together for
+// a declared FileSet that is present but not yet extracted — the instant
+// after a push, or the instant the media gate opens — all wait for the
+// same resolution and are all served. Before B-061 only the first one
+// waited; the others answered a transient 404 (and the cooldown kept them
+// from starting their own).
+func TestConcurrentMissesShareOneResolution(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		trigger func(r *fileSetRefresher)
+	}{
+		// Nothing running yet: the first miss starts the resolution.
+		{name: "misses start it", trigger: func(*fileSetRefresher) {}},
+		// A background refresh is already extracting (a push, the gate
+		// opening): the misses join it.
+		{name: "misses join a background refresh", trigger: func(r *fileSetRefresher) { r.kick() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := openFileSetStore(t)
+			src := t.TempDir()
+			if err := os.WriteFile(filepath.Join(src, "a.txt"), []byte("served"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			logger := slog.New(slog.DiscardHandler)
+			res, err := fileserve.NewPacker(st, "", logger, fileserve.WithPackRoots([]string{src})).
+				Pack(context.Background(), fileserve.PackRequest{Source: src, Name: "docs", Version: "1.0.0"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			fsrv := fileserve.NewServer(slowBlobs{storeBlobs{st: st}}, t.TempDir(), fileserve.Limits{}, logger)
+			t.Cleanup(func() { _ = fsrv.Close() })
+			cfg := fileSetConfig(config.FileSetServe{Name: "docs", Ref: res.Reference, Version: "1.0.0"})
+			gate := mediagate.Open(context.Background(), t.TempDir(), "", logger)
+			r := newFileSetRefresher(context.Background(), fsrv, st, cfg, gate, logger)
+			t.Cleanup(r.Close)
+			h := r.Files(fsrv.Handler())
+
+			tc.trigger(r)
+			const n = 16
+			codes := make([]int, n)
+			var wg sync.WaitGroup
+			for i := range n {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					rec := httptest.NewRecorder()
+					h.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/files/docs/a.txt", http.NoBody))
+					codes[i] = rec.Code
+				}()
+			}
+			wg.Wait()
+			for i, c := range codes {
+				if c != http.StatusOK {
+					t.Errorf("request %d of %d concurrent ones answered %d, want 200 (B-061)", i+1, n, c)
+				}
+			}
+		})
 	}
 }
