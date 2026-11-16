@@ -261,11 +261,19 @@ enabled=1
 gpgcheck=1
 gpgkey=https://rpm.rancher.io/public.key
 REPO
-mkdir -p /srv/crown-repo
+mkdir -p /srv/crown-repo /srv/crown-dl
+# First boot of a cloud image: cloud-init may still hold the package
+# manager; the transaction is computed once it is done.
+command -v cloud-init >/dev/null 2>&1 && cloud-init status --wait >/dev/null 2>&1 || true
 n=0
-until dnf -q -y install --downloadonly --destdir /srv/crown-repo $PKGS >/srv/dnf-download.log 2>&1; do
+until dnf -y install --downloadonly --destdir /srv/crown-dl $PKGS >/srv/dnf-download.log 2>&1; do
     n=\$((n + 1)); [ "\$n" -ge 20 ] && { cat /srv/dnf-download.log >&2; exit 1; }; sleep 5
 done
+# Copied out at once: dnf 4 counts the --destdir packages among its own
+# downloads, and the next successful transaction (createrepo_c below)
+# removes them with its cache — which left the first m7 pass an empty
+# repository.
+cp /srv/crown-dl/*.rpm /srv/crown-repo/ 2>/dev/null || true
 rpm -q $PKGS >/srv/preinstalled.txt 2>&1 || true
 dnf -q -y install createrepo_c >/dev/null
 curl -fsSL -o /srv/crown-repo/RPM-GPG-KEY-rancher https://rpm.rancher.io/public.key

@@ -54,10 +54,20 @@ crown_container() {
 # bare-OS image — the crown node and its connected twin are VMs because
 # RKE2 needs its own kernel (modules, SELinux, cgroups), which a system
 # container cannot give it.
+#
+# Created, then started: the images: server's cloud variants carry
+# requirements.cdrom_agent=true — Incus refuses to create such a VM until
+# it has the agent:config disk (the incus-agent and its credentials come
+# from that CD-ROM, not from the image).
 crown_vm() {
-    inc launch "$NODE_IMAGE" "$1" --vm --profile "$2" \
-        -c limits.cpu="$3" -c limits.memory="$4" \
-        -d root,size="$5" >/dev/null || fail "launching VM $1"
+    # The device comes in the instance config on stdin: -d only overrides
+    # a device the profile already has.
+    printf 'devices:\n  agent:\n    type: disk\n    source: agent:config\n' |
+        inc init "$NODE_IMAGE" "$1" --vm --profile "$2" \
+            -c limits.cpu="$3" -c limits.memory="$4" \
+            -d root,size="$5" >/dev/null ||
+        fail "launching VM $1"
+    inc start "$1" >/dev/null || fail "starting VM $1"
     crown_wait_agent "$1"
 }
 
