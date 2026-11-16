@@ -14,12 +14,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
+	"slices"
 	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
+	"github.com/tobby-fetch/tobby-fetch/internal/pathglob"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 )
@@ -30,33 +31,38 @@ const trustFetchTimeout = 30 * time.Second
 // TrustPolicy is the loaded trust configuration (FR-033, RECIPE-SPEC
 // §12.3): the multi-key trust-root set and the declared scopes. The
 // default — no scope matching — is strict: a recipe must verify against at
-// least one configured root. Relaxation exists only as declared scopes,
-// visible on every reporting surface; no undeclared bypass exists.
+// least one root of the default set. Relaxation exists only as declared
+// scopes, visible on every reporting surface; no undeclared bypass exists.
+//
+// A root that at least one scope lists is RESERVED to the scopes listing
+// it (B-057): it verifies inside them and nowhere else. The default set —
+// what applies outside every scope, and inside a scope that lists no
+// roots — is therefore the roots no scope lists. Before this rule, the
+// default was the union of every root, and an emergency key declared for
+// an "emergency" scope admitted any recipe outside that scope.
 type TrustPolicy struct {
-	roots  map[string]*sigverify.Keys
-	all    *sigverify.Keys
-	scopes []config.TrustScope
+	roots map[string]*sigverify.Keys
+	// order is the configured root names, in configuration order.
+	order []string
+	// reservedBy maps a reserved root to the scopes listing it, in
+	// declaration order. A root absent from it belongs to the default set.
+	reservedBy map[string][]string
+	// defaults is the default set; nil when every configured root is
+	// reserved (or none is configured).
+	defaults *sigverify.Keys
+	// reserved lists the reserved roots: what the default set excludes.
+	reserved []media.ExcludedRoot
+	scopes   []config.TrustScope
 	// requireIngredients is trust.requireIngredientSignatures (B-062):
 	// see DecideIngredient.
 	requireIngredients bool
 }
 
-// Decision is the trust verdict for one nominal cookbook repository.
-type Decision struct {
-	// AllowUnsigned admits an unsigned recipe — only ever true inside the
-	// named declared scope.
-	AllowUnsigned bool
-	// Scope names the matching declared scope; empty for the strict
-	// default.
-	Scope string
-	// Keys is the key set to verify against (the full root set by
-	// default; a scope may restrict it).
-	Keys *sigverify.Keys
-	// RequireSignature is set on an INGREDIENT decision only
-	// (DecideIngredient): the ingredient must carry a signature Keys
-	// verifies, or its recipe is blocked.
-	RequireSignature bool
-}
+// Decision is the trust verdict for one nominal cookbook repository. It
+// is the media package's TrustDecision: one verdict type, whichever
+// surface asks (synchronization, plan, promotion, media verification,
+// integrity check).
+type Decision = media.TrustDecision
 
 // LoadTrust resolves the configured trust roots into key material: inline
 // PEM, local file, or HTTPS URL fetched now — at configuration time, never
@@ -72,10 +78,9 @@ type Decision struct {
 func LoadTrust(cfg config.Trust, cacheDir string, eg *netx.Egress) (*TrustPolicy, error) {
 	client := netx.Or(eg).Client(trustFetchTimeout)
 	p := &TrustPolicy{
-		roots: map[string]*sigverify.Keys{}, scopes: cfg.Scopes,
+		roots: map[string]*sigverify.Keys{}, reservedBy: map[string][]string{}, scopes: cfg.Scopes,
 		requireIngredients: cfg.RequireIngredientSignatures,
 	}
-	var allPEM [][]byte
 	for _, r := range cfg.Roots {
 		var pem []byte
 		var err error
@@ -98,40 +103,71 @@ func LoadTrust(cfg config.Trust, cacheDir string, eg *netx.Egress) (*TrustPolicy
 			return nil, fmt.Errorf("trust root %s: %w", r.Name, err)
 		}
 		p.roots[r.Name] = keys
-		allPEM = append(allPEM, pem)
+		p.order = append(p.order, r.Name)
 	}
-	if len(allPEM) > 0 {
-		all, err := sigverify.ParsePublicKeys(allPEM...)
-		if err != nil {
-			return nil, err
-		}
-		p.all = all
-	}
+	p.reserve()
 	return p, nil
+}
+
+// reserve partitions the roots (B-057): a root listed by a scope is
+// reserved to the scopes listing it; the others form the default set.
+//
+// The reservation follows the KEY, not only the root's name: a public key
+// configured twice — once under a name a scope lists, once under a name
+// none does — stays out of the default set. Otherwise one duplicated
+// configuration entry would reopen the very leak the rule closes.
+func (p *TrustPolicy) reserve() {
+	for _, s := range p.scopes {
+		for _, name := range s.Roots {
+			if _, ok := p.roots[name]; ok && !slices.Contains(p.reservedBy[name], s.Name) {
+				p.reservedBy[name] = append(p.reservedBy[name], s.Name)
+			}
+		}
+	}
+	var unreserved, reserved []*sigverify.Keys
+	for _, name := range p.order {
+		if scopes, ok := p.reservedBy[name]; ok {
+			reserved = append(reserved, p.roots[name])
+			p.reserved = append(p.reserved, media.ExcludedRoot{Name: name, Scopes: scopes, Keys: p.roots[name]})
+			continue
+		}
+		unreserved = append(unreserved, p.roots[name])
+	}
+	if defaults := sigverify.Union(unreserved...).Without(sigverify.Union(reserved...)); defaults.Len() > 0 {
+		p.defaults = defaults
+	}
 }
 
 // Decide returns the trust verdict for a recipe's nominal cookbook
 // repository. Scopes are evaluated in declaration order, first match wins;
 // no match is the strict default. Trust follows the nominal ref, never the
 // substituted endpoint (FR-036).
+//
+// The key set is the scope's own roots when it lists some, and the
+// default set otherwise — outside every scope, and inside a scope that
+// lists no roots (an allowUnsigned-only scope). A root reserved to a scope
+// never verifies outside it (B-057). The roots a decision leaves out are
+// carried in Excluded, for the refusal message only.
 func (p *TrustPolicy) Decide(nominalRepo string) Decision {
 	for _, s := range p.scopes {
 		for _, pattern := range s.Repositories {
 			if matchPattern(pattern, nominalRepo) {
-				d := Decision{Scope: s.Name, AllowUnsigned: s.AllowUnsigned, Keys: p.all}
+				d := Decision{Scope: s.Name, AllowUnsigned: s.AllowUnsigned, Keys: p.defaults, Excluded: p.reserved}
 				if len(s.Roots) > 0 {
-					d.Keys = p.merge(s.Roots)
+					d.Keys, d.Excluded = p.merge(s.Roots), p.excluding(s.Roots)
 				}
 				return d
 			}
 		}
 	}
-	return Decision{Keys: p.all}
+	return Decision{Keys: p.defaults, Excluded: p.reserved}
 }
 
-// HasRoots reports whether any trust root is configured at all: without
-// one, only recipes admitted by an allowUnsigned scope can enter.
-func (p *TrustPolicy) HasRoots() bool { return p.all != nil }
+// HasRoots reports whether any trust root is configured at all, reserved
+// or not. Without one, only recipes admitted by an allowUnsigned scope
+// can enter. It says nothing about the default set, which may be empty
+// while roots exist (every root reserved to a scope).
+func (p *TrustPolicy) HasRoots() bool { return len(p.order) > 0 }
 
 // MediaTrust adapts this instance's trust policy to the media package's
 // verification interface (FR-054).
@@ -149,8 +185,7 @@ func (m MediaTrust) Decide(nominalRepo string) media.TrustDecision {
 	if m.Policy == nil {
 		return media.TrustDecision{}
 	}
-	d := m.Policy.Decide(nominalRepo)
-	return media.TrustDecision{AllowUnsigned: d.AllowUnsigned, Scope: d.Scope, Keys: d.Keys}
+	return m.Policy.Decide(nominalRepo)
 }
 
 // RelaxedScopes names the declared scopes that admit unsigned recipes —
@@ -164,6 +199,20 @@ func (p *TrustPolicy) RelaxedScopes() []string {
 		}
 	}
 	return names
+}
+
+// excluding lists the configured roots outside names, in configuration
+// order: what a scope listing names does not apply. A root of the default
+// set carries no scope.
+func (p *TrustPolicy) excluding(names []string) []media.ExcludedRoot {
+	var out []media.ExcludedRoot
+	for _, name := range p.order {
+		if slices.Contains(names, name) {
+			continue
+		}
+		out = append(out, media.ExcludedRoot{Name: name, Scopes: p.reservedBy[name], Keys: p.roots[name]})
+	}
+	return out
 }
 
 // merge aggregates the named roots into one verification set.
@@ -225,53 +274,9 @@ func fetchCachedKeyAt(client *http.Client, url, cachePath string) ([]byte, error
 
 // matchPattern matches a repository path against a scope pattern: "*"
 // matches within one path segment, "**" spans segments. The whole path
-// must match.
-func matchPattern(pattern, path string) bool {
-	return matchSegments(strings.Split(pattern, "/"), strings.Split(path, "/"))
-}
-
-func matchSegments(pat, parts []string) bool {
-	if len(pat) == 0 {
-		return len(parts) == 0
-	}
-	if pat[0] == "**" {
-		// "**" absorbs zero or more segments.
-		for skip := 0; skip <= len(parts); skip++ {
-			if matchSegments(pat[1:], parts[skip:]) {
-				return true
-			}
-		}
-		return false
-	}
-	if len(parts) == 0 {
-		return false
-	}
-	if !matchSegment(pat[0], parts[0]) {
-		return false
-	}
-	return matchSegments(pat[1:], parts[1:])
-}
-
-// matchSegment matches one segment with "*" wildcards (any run of
-// characters within the segment).
-func matchSegment(pat, s string) bool {
-	parts := strings.Split(pat, "*")
-	if len(parts) == 1 {
-		return pat == s
-	}
-	if !strings.HasPrefix(s, parts[0]) {
-		return false
-	}
-	s = s[len(parts[0]):]
-	for _, mid := range parts[1 : len(parts)-1] {
-		i := strings.Index(s, mid)
-		if i < 0 {
-			return false
-		}
-		s = s[i+len(mid):]
-	}
-	return strings.HasSuffix(s, parts[len(parts)-1])
-}
+// must match. The grammar lives in internal/pathglob, shared with the
+// repository scope of scan exceptions (R-15).
+func matchPattern(pattern, path string) bool { return pathglob.Match(pattern, path) }
 
 // nominalRepoOf joins a nominal reference's canonical form — the pattern
 // space of trust scopes ("registry.example.com/cookbook/wordpress").

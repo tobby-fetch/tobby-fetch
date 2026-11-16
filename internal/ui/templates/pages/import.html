@@ -10,6 +10,9 @@
   <h1 class="t-page-title">{{.T "import.title"}}</h1>
   <p class="t-page-sub">{{.T "import.subtitle"}}</p>
 <p class="t-page-guide">{{template "help-cta" (withData . (.Guide "passthrough/one-off-import"))}}</p>
+  {{/* FR-098: hardening.disableUnitImport shows the action disabled,
+       naming the setting — never hidden, never a mystery. */}}
+  {{if .Data.Disabled}}<p id="import-hardened" class="t-muted t-note" data-hardening="disableUnitImport">{{.T "hardening.unit_import_disabled"}}</p>{{end}}
 
   <form class="t-import-form" method="get" action="/import"
         hx-get="/import" hx-push-url="true" hx-target="#inspect-zone" hx-swap="outerHTML"
@@ -18,8 +21,8 @@
     <div class="t-row t-import-refrow">
       <input id="import-ref" class="t-input t-mono" type="text" name="ref" value="{{.Data.Ref}}"
              placeholder="docker.io/library/redis:8.10" required
-             autocomplete="off" autocapitalize="off" spellcheck="false" translate="no">
-      <button type="submit" class="t-btn t-btn--primary">{{.T "import.inspect_submit"}}</button>
+             autocomplete="off" autocapitalize="off" spellcheck="false" translate="no"{{if .Data.Disabled}} disabled aria-describedby="import-hardened"{{end}}>
+      <button type="submit" class="t-btn t-btn--primary"{{if .Data.Disabled}} disabled aria-describedby="import-hardened"{{end}}>{{.T "import.inspect_submit"}}</button>
       <span class="htmx-indicator t-pulse-dot" aria-hidden="true"></span>
     </div>
   </form>

@@ -57,7 +57,8 @@ La vérification est active par défaut pour toute recipe. Il n'existe **aucun
 contournement global**. Le seul assouplissement est un périmètre déclaré
 (`trust.scopes`) : nommé, limité à des motifs de dépôts explicites, évalué dans
 l'ordre de déclaration, le premier qui correspond l'emporte ; sans
-correspondance, c'est le défaut strict.
+correspondance, c'est le défaut strict — une signature vérifiée contre
+l'ensemble par défaut (ci-dessous).
 
 ```yaml
 trust:
@@ -96,6 +97,37 @@ de même lors d'une synchronisation, de la revérification de signature avant un
 push, dans un plan, et à la vérification d'un support transporté côté
 destination.
 
+**Un root listé par un périmètre est réservé à ce périmètre.** Il vérifie dans
+les périmètres qui le listent, et nulle part ailleurs. Ce qui s'applique hors
+de tout périmètre — et dans un périmètre qui ne liste aucun `roots`, comme un
+périmètre `allowUnsigned` seul — est l'**ensemble par défaut** : les roots
+qu'aucun périmètre ne liste. Dans l'exemple ci-dessus, `partner` vérifie les
+recipes de `partner.example.com` et rien d'autre, tandis que
+`org-release-key` et `platform-team` vérifient tout ce qui est hors de ce
+périmètre. La réservation suit la clé elle-même : la même clé publique
+configurée une seconde fois sous un nom qu'aucun périmètre ne liste reste
+réservée. Quand chaque root configuré est listé par un périmètre, l'ensemble
+par défaut est vide et toute recipe hors des périmètres est refusée, le
+message le disant.
+
+Quand une signature refusée est pourtant valide pour un root qui ne
+s'applique pas ici, `TBY-SIG-001` dit lequel : le nom et l'empreinte du root
+(paramètre `reserved`) et le périmètre auquel il est réservé (`reservedto`),
+de sorte que la correction — élargir ce périmètre, ou re-signer avec une clé
+qui s'applique — se lit dans le refus lui-même.
+
+:::caution[Changé en v1.0.0-rc.1 — rupture]
+Jusqu'à la v0.6.x, le défaut strict vérifiait contre **tous** les roots
+configurés, listés ou non par un périmètre : une clé listée par un périmètre
+vérifiait aussi toute recipe hors de celui-ci (B-057). Une configuration qui
+s'appuyait sur ce comportement — une recipe hors de tout périmètre signée par
+une clé que seul un périmètre liste — est désormais refusée avec
+`TBY-SIG-001`. Ajoutez un root qu'aucun périmètre ne liste pour ce contenu, ou
+étendez les `repositories` du périmètre pour le couvrir. Le contournement
+précédent, un périmètre fourre-tout `**` ne listant que les clés normales,
+n'est plus nécessaire et peut être retiré.
+:::
+
 :::note[À venir — provenance, contenu par contenu]
 Une évolution reste sur la feuille de route : la **provenance visible contenu
 par contenu** — vérifié par recipe, import unitaire, dépôt direct (R-17 — jalon
@@ -104,7 +136,7 @@ par contenu** — vérifié par recipe, import unitaire, dépôt direct (R-17 �
 
 Un périmètre peut aussi **restreindre** plutôt qu'assouplir : ses `roots`
 cantonnent une clé dédiée, comme la clé d'urgence de l'organisation, à un seul
-cookbook. C'est le mécanisme de la [voie d'urgence](../../recipes/emergency-path/)
+cookbook — et, la clé étant réservée, à ce seul cookbook. C'est le mécanisme de la [voie d'urgence](../../recipes/emergency-path/)
 documentée.
 
 ## Signatures des ingrédients — consignées, exigées seulement sur demande

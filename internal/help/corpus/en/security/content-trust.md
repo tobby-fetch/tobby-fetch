@@ -55,7 +55,7 @@ Verification is on by default for every recipe. There is **no global
 bypass**. The only relaxation is a declared scope (`trust.scopes`):
 named, restricted to explicit repository patterns, evaluated in
 declaration order with first match winning; no match means the strict
-default.
+default — a signature verified against the default set (below).
 
 ```yaml
 trust:
@@ -92,6 +92,35 @@ refused the recipe instead of hunting through every root
 a synchronization, on the signature re-check before a push, in a plan, and
 when a transported medium is verified on the destination side.
 
+**A root that a scope lists is reserved to that scope.** It verifies
+inside the scopes that list it, and nowhere else. What applies outside
+every scope — and inside a scope that lists no `roots`, such as an
+`allowUnsigned`-only one — is the **default set**: the roots no scope
+lists. In the example above, `partner` verifies `partner.example.com`
+recipes and nothing else, while `org-release-key` and `platform-team`
+verify everything outside that perimeter. The reservation follows the key
+itself: the same public key configured a second time under a name no
+scope lists stays reserved. When every configured root is listed by some
+scope, the default set is empty and every recipe outside the scopes is
+refused, the message saying so.
+
+When a refused signature does verify against a root that does not apply
+here, `TBY-SIG-001` says which one: the root's name and fingerprint
+(`reserved` parameter) and the scope it is reserved to (`reservedto`), so
+the fix — widen that scope, or re-sign with a key that applies — is
+readable from the refusal itself.
+
+:::caution[Changed in v1.0.0-rc.1 — breaking]
+Up to v0.6.x, the strict default verified against **every** configured
+root, scoped or not: a key listed by a scope also verified any recipe
+outside it (B-057). A configuration that relied on this — a recipe
+outside every scope signed by a key that only a scope lists — is now
+refused with `TBY-SIG-001`. Either add a root no scope lists for that
+content, or extend the scope's `repositories` to cover it. The former
+workaround, a catch-all `**` scope listing only the normal keys, is no
+longer needed and can be removed.
+:::
+
 :::note[Upcoming — provenance, content by content]
 One refinement is still on the roadmap: **provenance visible content by
 content** — recipe-verified, unit import, direct push (R-17 — milestone
@@ -99,7 +128,8 @@ content** — recipe-verified, unit import, direct push (R-17 — milestone
 :::
 
 A scope can also **restrict** rather than relax: its `roots` fence a
-dedicated key, such as the organization's emergency key, to one cookbook.
+dedicated key, such as the organization's emergency key, to one cookbook —
+and, the key being reserved, to that cookbook only.
 That is the mechanism behind the documented
 [emergency path](../../recipes/emergency-path/).
 

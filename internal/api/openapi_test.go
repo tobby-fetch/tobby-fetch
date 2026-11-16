@@ -53,6 +53,7 @@ var registeredRoutes = []string{
 	"GET /api/v1/openapi.yaml",
 	"POST /api/v1/plan",
 	"GET /api/v1/mapping",
+	"GET /api/v1/policy",
 	"GET /api/v1/recipes",
 	"GET /api/v1/recipes/{recipe}/mapping",
 	"GET /api/v1/recipes/{recipe}/registries.yaml",

@@ -541,17 +541,13 @@ func (e *Engine) verifyStored(ctx context.Context, localRepo, nominalRepo, manif
 		case errors.Is(err, sigverify.ErrNoSignature) && d.AllowUnsigned:
 			return nil
 		default:
-			return withScope(d.Scope, err)
+			return refused(ctx, src, localRepo, manifestDigest, d, err)
 		}
 	}
 	if d.AllowUnsigned {
 		return nil
 	}
-	return taxonomy.New(taxonomy.CodeSignature, taxonomy.Params{
-		"recipe":       subject,
-		"fingerprints": "none — no trust root is configured",
-		"scope":        d.Scope,
-	})
+	return noKeyRefusal(ctx, src, localRepo, manifestDigest, subject, d)
 }
 
 // pushFailed records one promotion failure on its task item and returns

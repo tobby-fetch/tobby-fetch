@@ -16,10 +16,12 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/consume"
 	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
+	"github.com/tobby-fetch/tobby-fetch/internal/provenance"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -109,6 +111,12 @@ type UI struct {
 	// instance wired without them: the screen then says so.
 	diagnostics BundleGenerator
 	state       func() (*statedir.Inventory, error)
+	// hardening and scanHistory are the FR-098 inputs (provenance.go).
+	hardening   hardening.Switches
+	scanHistory *provenance.History
+	// policy is the effective content policy (R-15), read-only on
+	// /admin/policy; nil renders the screen empty.
+	policy PolicyViewer
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -225,6 +233,19 @@ type Options struct {
 	// Scan reads the vulnerability-scanning state for the banners and the
 	// Retriever screen's indicator (FR-031, FR-032, R-13).
 	Scan func() ScanState
+
+	// Hardening is the pair of FR-098 switches (R-17): the import and
+	// FileSet screens show their action disabled naming the setting, the
+	// content browser states a read-only registry, and the handlers
+	// refuse. Zero is the default instance.
+	Hardening hardening.Switches
+	// ScanHistory reports the last scan of each tag on the repository
+	// page (FR-098); nil reports none.
+	ScanHistory *provenance.History
+	// Policy is the effective content policy (FR-031 amendment R-15,
+	// FR-098) shown read-only on /admin/policy — the source behind
+	// GET /api/v1/policy, so the two cannot differ (FR-061).
+	Policy PolicyViewer
 }
 
 // New assembles the UI.
@@ -276,6 +297,9 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		diagnostics:       opts.Diagnostics,
 		state:             opts.State,
 		federation:        opts.Federation,
+		hardening:         opts.Hardening,
+		scanHistory:       opts.ScanHistory,
+		policy:            opts.Policy,
 	}
 }
 
@@ -301,11 +325,11 @@ type Router interface {
 // is the wrapper it is declared with here, and docs/rbac-matrix.md is its
 // documented form (FR-074).
 func (u *UI) Mount(rt Router) {
-	// Every UI response — pages, fragments, errors, redirects, static
-	// assets — carries the browser security headers (v0.4.2 hardening,
-	// headers.go). Wrapping at mount time is what makes a route added
-	// later unable to forget them.
-	mux := securedRouter{r: rt}
+	// Every UI handler reads a bounded body (B-034, headers.go). Wrapping
+	// at mount time is what makes a route added later unable to forget
+	// it. The security headers are the listener's (NFR-022,
+	// internal/server/headers.go), stamped on every surface at once.
+	mux := boundedRouter{r: rt}
 	mux.Handle("GET /static/", StaticHandler(u.themeOverride))
 
 	// Session endpoints (outside the session gate).
@@ -437,6 +461,9 @@ func (u *UI) Mount(rt Router) {
 	mux.Handle("POST "+PathDiagnosticsBundle, admin(u.adminDiagnosticsBundle))
 	mux.Handle("GET "+PathState, admin(u.adminState))
 	mux.Handle("GET /admin/store", admin(u.storeScreen))
+	// The effective content policy (R-15): read-only — the policy lives
+	// in the configuration file and the Retriever.
+	mux.Handle("GET "+PathPolicy, admin(u.adminPolicy))
 	mux.Handle("POST /admin/store/reset", admin(u.storeReset))
 	mux.Handle("GET /help", app(u.helpScreen))
 	// The embedded documentation (R-05, NFR-003): the guides at
@@ -576,6 +603,13 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
+	// Login CSRF: another origin's page must not be able to sign this
+	// browser in under an account of the attacker's choosing. There is no
+	// session yet, so no token; the origin check is the protection.
+	if !auth.SameOrigin(r) {
+		u.csrfRefused(w, r, "unauthenticated")
+		return
+	}
 	name := r.PostFormValue("username")
 	next := sanitizeNext(r.PostFormValue("next"))
 	origin := auth.ClientOrigin(r)
@@ -592,12 +626,22 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	acct, ok := u.authn.Store.VerifyPassword(name, r.PostFormValue("password"), u.now())
+	// A claimed name outside the name grammar is a failed attempt like a
+	// wrong password — same answer, same budget — but it is neither
+	// verified nor written to the trail as given (NFR-023).
+	actor := name
+	var acct auth.Account
+	ok := false
+	if auth.ValidPresentedName(name) {
+		acct, ok = u.authn.Store.VerifyPassword(name, r.PostFormValue("password"), u.now())
+	} else {
+		actor = auth.InvalidActor
+	}
 	if !ok {
 		u.authn.RecordFailure(origin)
 		u.authn.Observe(auth.MethodBasic, auth.OutcomeFailure)
 		audit.Log(r.Context(), u.logger, &audit.Event{
-			Actor: name, Action: audit.ActionLogin, Target: "ui",
+			Actor: actor, Action: audit.ActionLogin, Target: "ui",
 			Outcome: audit.OutcomeDenied, Origin: origin,
 		})
 		v := u.render.view(r, u.loginPageData(r, next,
@@ -671,10 +715,14 @@ func (u *UI) switchTheme(w http.ResponseWriter, r *http.Request) {
 	u.redirectBack(w, r)
 }
 
-// prefCSRFOK checks the CSRF token for the preference switchers: required
-// with a live session, tolerated without one (the login page has no
-// session yet, and the preference is harmless).
+// prefCSRFOK checks the CSRF protection of the preference switchers: the
+// origin check always, and the token too with a live session — tolerated
+// without one (the login page has no session yet, and the preference is
+// harmless).
 func (u *UI) prefCSRFOK(r *http.Request) bool {
+	if !auth.SameOrigin(r) {
+		return false
+	}
 	if u.authn.Disabled {
 		return true
 	}
@@ -682,7 +730,7 @@ func (u *UI) prefCSRFOK(r *http.Request) bool {
 	if !ok {
 		return true
 	}
-	return sess.CheckCSRF(r.PostFormValue("csrf"))
+	return sess.CheckCSRF(csrfToken(r))
 }
 
 // redirectBack returns to the submitted local origin page.

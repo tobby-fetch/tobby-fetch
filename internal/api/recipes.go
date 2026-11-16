@@ -13,9 +13,7 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -185,18 +183,17 @@ func (rc *recipesAPI) sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prune := rc.opts.Prune
-	if body, rerr := io.ReadAll(io.LimitReader(r.Body, maxSyncBody)); rerr == nil && len(body) > 0 {
-		var req syncRequest
-		if uerr := json.Unmarshal(body, &req); uerr != nil {
-			rc.api.Problem(w, r, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
-				"file": "request body", "path": "prune",
-				"constraint": "the body must be a JSON object with an optional boolean \"prune\"",
-			}))
-			return
-		}
-		if req.Prune != nil {
-			prune = *req.Prune
-		}
+	var req syncRequest
+	if !rc.api.decodeJSON(w, r, maxSyncBody, &req, true, func(error) *taxonomy.Error {
+		return taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
+			"file": "request body", "path": "prune",
+			"constraint": "the body must be a JSON object with an optional boolean \"prune\"",
+		})
+	}) {
+		return
+	}
+	if req.Prune != nil {
+		prune = *req.Prune
 	}
 	id, _ := auth.IdentityFrom(r.Context())
 	task, err := rc.opts.Queue.Create(tasks.TypeSync, rc.opts.Source, id.Name, nil, tasks.WithPrune(prune))
@@ -288,18 +285,13 @@ func (rc *recipesAPI) deleteRepo(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// provenance resolves the effective provenance of one repository: the
-// live recipe graph wins, then the recorded ledger class, then seed —
-// the same resolution as the screen (FR-061).
+// provenance resolves the effective provenance of one repository through
+// the store's one classification rule (FR-098, store/provenance.go): the
+// live recipe graph wins, then the recorded ledger class, then seed — the
+// same resolution as the screen (FR-061).
 func (rc *recipesAPI) provenance(repo string) (class store.ProvenanceClass, managedBy []string) {
-	managed := rc.opts.Store.ManagingRecipes(repo)
-	if len(managed) > 0 {
-		return store.ProvenanceRecipe, managed
-	}
-	if p, ok := rc.opts.Store.ProvenanceOf(repo); ok {
-		return p.Class, nil
-	}
-	return store.ProvenanceSeed, nil
+	c := rc.opts.Store.Classify(repo)
+	return c.Class, c.Recipes
 }
 
 // maxSyncBody bounds the optional trigger body: it carries one boolean,
@@ -503,8 +495,9 @@ func (rc *recipesAPI) setInterval(w http.ResponseWriter, r *http.Request) {
 	// sent, not a statement about how this instance is configured: the
 	// two answer different codes, and therefore different HTTP statuses,
 	// so a client can tell "fix your request" from "fix the instance".
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
-		rc.api.Problem(w, r, intervalInvalid("the body must be a JSON object with an \"interval\" duration string (\"30m\"): "+err.Error()))
+	if !rc.api.decodeJSON(w, r, 4<<10, &body, false, func(err error) *taxonomy.Error {
+		return intervalInvalid("the body must be a JSON object with an \"interval\" duration string (\"30m\"): " + err.Error())
+	}) {
 		return
 	}
 	d, err := time.ParseDuration(strings.TrimSpace(body.Interval))

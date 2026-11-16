@@ -387,15 +387,20 @@ features:
   - id: "R-15"
     en: Scoped, expiring vulnerability exceptions (VEX-convergent)
     fr: Dérogations de vulnérabilités ciblées et bornées (convergence VEX)
-    status: upcoming
-    milestone: 7
+    status: available
     security: true
+    note:
+      en: "v1.0.0-rc.1: mandatory expiry and justification, scope by digest, repository and recipe, visible re-blocking (report, audit, metric), local OpenVEX input; Retriever exceptions without expiry apply and are reported unbounded until the v1 format."
+      fr: "v1.0.0-rc.1 : échéance et justification obligatoires, portée par digest, dépôt et recipe, re-blocage visible (rapport, audit, métrique), lecture OpenVEX locale ; les dérogations de Retriever sans échéance s'appliquent et sont signalées sans limite jusqu'au format v1."
   - id: "7.3"
     en: Hardening proven by tests (fuzzing, CSRF, OCI conformance suite)
     fr: Durcissement prouvé par les tests (fuzzing, CSRF, conformité OCI)
-    status: upcoming
+    status: partial
     milestone: 7
     security: true
+    note:
+      en: "Security part in v1.0.0-rc.1: CSRF and origin check on every cookie-authenticated change, one security-header middleware, bounded and strict inputs with the entry-point table, OpenVEX parser fuzzed in CI."
+      fr: "Volet sécurité en v1.0.0-rc.1 : CSRF et contrôle d'origine sur toute modification authentifiée par cookie, middleware unique d'en-têtes de sécurité, entrées bornées et strictes avec le tableau des points d'entrée, parseur OpenVEX fuzzé en CI."
   - id: "R-21"
     en: Documented emergency path (scoped, visible, organization-signed)
     fr: Voie d'urgence encadrée (périmètre déclaré, visible, signée par l'organisation)
@@ -408,9 +413,11 @@ features:
   - id: "R-17"
     en: Per-content provenance and trust class, visible everywhere
     fr: Provenance et confiance visibles contenu par contenu
-    status: upcoming
-    milestone: 7
+    status: available
     security: true
+    note:
+      en: "v1.0.0-rc.1: provenance class per repository and last scan per tag in the browser, the API, the logs and the metrics; hardening.disableUnitImport and hardening.disableRegistryPush."
+      fr: "v1.0.0-rc.1 : classe de provenance par dépôt et dernière analyse par tag dans le navigateur, l'API, les journaux et les métriques ; hardening.disableUnitImport et hardening.disableRegistryPush."
   - id: "7.4"
     en: Adversarial acceptance and version 1.0 (spec frozen at v1)
     fr: Recette contradictoire et version 1.0 (spec gelée en v1)

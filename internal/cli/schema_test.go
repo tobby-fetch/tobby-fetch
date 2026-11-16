@@ -179,6 +179,16 @@ func TestEveryReportedDocumentMatchesItsSchema(t *testing.T) {
 		assertDocument(t, "tobby media import", stdout, stderr)
 	})
 
+	t.Run("tobby scan exceptions", func(t *testing.T) {
+		cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+		vexPath := writeVEX(t)
+		if err := os.WriteFile(cfgPath, []byte(scanExceptionsConfig(vexPath)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		stdout, stderr := runJSON(t, "", "scan", "exceptions", "--config", cfgPath)
+		assertDocument(t, "tobby scan exceptions", stdout, stderr)
+	})
+
 	t.Run("tobby store verify", func(t *testing.T) {
 		f := checktest.New(t)
 		f.AddRecipe("alpha", f.KP)

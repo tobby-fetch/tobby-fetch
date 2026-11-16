@@ -46,6 +46,7 @@ var pageFiles = []string{
 	"admin-state",
 	"admin-network",
 	"admin-oci-layout",
+	"admin-policy",
 	"admin-store",
 	"admin-retriever",
 	"api-docs",

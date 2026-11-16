@@ -242,8 +242,9 @@ type TrustRoot struct {
 // TrustScope declares one relaxed verification perimeter (§12.3: "a named
 // low-assurance source restricted to specific repositories"). Scopes are
 // evaluated in declaration order; the first match applies; no match means
-// the strict default (signature required, any configured root). A scope
-// must relax or restrict something: AllowUnsigned, or a Roots restriction.
+// the strict default (signature required, verified against the default
+// set: the roots no scope lists — B-057). A scope must relax or restrict
+// something: AllowUnsigned, or a Roots restriction.
 type TrustScope struct {
 	Name string `yaml:"name"`
 	// Repositories are glob patterns matched against the recipe's nominal
@@ -266,7 +267,10 @@ type TrustScope struct {
 	// every surface (banner, logs, task report), never silent (FR-075).
 	AllowUnsigned bool `yaml:"allowUnsigned,omitempty"`
 	// Roots restricts verification to the named trust roots within the
-	// scope (defense in depth for multi-tenant cookbooks).
+	// scope (defense in depth for multi-tenant cookbooks). Listing a root
+	// also RESERVES it: a root some scope lists verifies only inside the
+	// scopes listing it, never under the strict default (B-057). A scope
+	// without Roots verifies against the default set.
 	Roots []string `yaml:"roots,omitempty"`
 }
 

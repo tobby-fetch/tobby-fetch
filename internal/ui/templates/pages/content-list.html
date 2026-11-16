@@ -12,6 +12,9 @@
   {{if .Err}}
   {{template "error-block" .}}
   {{else}}
+  {{/* FR-098: a read-only registry is stated where pushed content would
+       show, so a refused docker push is never read as a fault. */}}
+  {{if .Data.RegistryReadOnly}}<p class="t-muted t-note" data-hardening="disableRegistryPush">{{.T "hardening.registry_push_disabled"}}</p>{{end}}
   <form class="t-content-filters" method="get" action="/content" role="search"
         hx-get="/content" hx-push-url="true" hx-sync="this:replace"
         hx-target="#content-results" hx-swap="outerHTML"
@@ -76,6 +79,7 @@
       <tr>
         <th scope="col" class="t-col-path">{{$.T "content.th_path"}}</th>
         <th scope="col">{{$.T "content.th_kind"}}</th>
+        <th scope="col">{{$.T "provenance.label"}}</th>
         <th scope="col" class="t-num">{{$.T "content.th_tags"}}</th>
         <th scope="col" class="t-num">{{$.T "content.th_size"}}</th>
       </tr>
@@ -91,6 +95,8 @@
           </span>
         </td>
         <td><span class="t-badge t-badge--{{kindClass .Kind}}" translate="no" lang="en">{{.Kind}}</span></td>
+        {{/* FR-098: the provenance class, a fact about this store. */}}
+        <td><span class="t-badge" data-provenance="{{.Provenance.Class}}">{{$.T .ProvLabel}}</span>{{if .Provenance.Assurance}} {{template "assurance-badge" (withData $ .Provenance.Assurance)}}{{end}}</td>
         <td class="t-num">{{.Tags}}</td>
         <td class="t-num" title="{{.Size}}">{{$.FmtBytes .Size}}</td>
       </tr>

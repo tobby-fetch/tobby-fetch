@@ -5,7 +5,6 @@
 #
 # An entry is deleted as soon as its key is used, or removed from the
 # catalogs: i18ncheck fails on an entry that matches no unused key.
-ui login.idp_unavailable :: message prepared with the federated sign-in (milestone 6) for an unreachable identity provider; the login screen does not render it yet. Wire it into the login page or delete it from both catalogs: to be decided.
 
 # Milestone 7 labels reserved at the opening of the milestone (2026-11-16,
 # "Milestone 7" blocks of internal/ui/i18n/{en,fr}.yaml). Each track removes
@@ -14,6 +13,3 @@ ui login.idp_unavailable :: message prepared with the federated sign-in (milesto
 # Track A — consumption aids and UI polish (7.1).
 # Track B — operations and supervision.
 # Track C — content controls and hardening.
-ui hardening. :: reserved 2026-11-16, milestone 7 track C
-ui provenance. :: reserved 2026-11-16, milestone 7 track C
-ui scan.exception_ :: reserved 2026-11-16, milestone 7 track C (OpenVEX exceptions)

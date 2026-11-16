@@ -31,6 +31,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check"
@@ -42,6 +43,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/metrics"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
+	"github.com/tobby-fetch/tobby-fetch/internal/provenance"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/server"
@@ -128,6 +130,15 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		})
 	}
 
+	// OpenVEX documents (FR-031 amendment 2026-11-16, R-15): read and
+	// validated before anything is opened, so a document that cannot be
+	// used refuses the start (TBY-SCN-027) instead of an instance serving
+	// a policy narrower or wider than declared.
+	vexDocs, err := loadVEX(ctx, cfg, logger)
+	if err != nil {
+		return err
+	}
+
 	// Authentication state (R-01): without the explicit FR-075 opt-out, the
 	// instance refuses to start until a local account exists — no surface is
 	// ever exposed open.
@@ -193,6 +204,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	})
 	go sweepSessions(ctx, sessions)
 	srv := server.New(cfg.Server.Addr, time.Duration(cfg.Shutdown.GracePeriod), reg, logger)
+	// The one security-header middleware of the listener (NFR-022).
+	srv.SetHeaderPolicy(server.HeaderPolicy{HTML: ui.ContentSecurityPolicy(), SecureCookies: cfg.Server.SecureCookies})
 	if serveHook != nil {
 		serveHook(srv)
 	}
@@ -333,7 +346,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// first-class (ADR-0013). Reads need viewer, writes need operator
 	// (ADR-0009) — docker/helm/oras authenticate with the same accounts and
 	// tokens as the UI and the API (FR-076).
-	srv.Handle("/v2/", mediaGate.Guard("/v2/", mediagate.RegistryRefusal, authn.Registry(fileSetRefresh.Registry(st.APIHandler()))))
+	// FR-098 (R-17): the hardening switches, stated at startup and in the
+	// metrics; the registry guard sits inside authentication, so a refused
+	// push names who asked, and records what a client pushed as seeded.
+	hard := setupHardening(ctx, cfg, st, reg, logger)
+	srv.Handle("/v2/", mediaGate.Guard("/v2/", mediagate.RegistryRefusal, authn.Registry(hardening.Registry(hard, st, logger, fileSetRefresh.Registry(st.APIHandler())))))
 
 	// The persistent task queue lives inside the store (FR-050) and
 	// re-queues interrupted tasks at startup (FR-029). The unit-import
@@ -431,7 +448,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// The source policy every surface that can start an import runs
 	// under — the runner, the API and the UI. Built here rather than at
 	// each call site: that is what makes forgetting it impossible.
-	importPolicy := importer.WithSourcePolicy(cfg.Registries, allowlist, egress)
+	importPolicy := importer.Options(importer.WithSourcePolicy(cfg.Registries, allowlist, egress),
+		importer.WithUnitImportDisabled(hard.DisableUnitImport))
 	queue.Register(tasks.TypeUnitImport, importer.NewRunner(st, importPolicy, importer.WithResume(resumer)))
 
 	// The recipe engine (milestone 3): substitution-aware remote access
@@ -481,7 +499,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// Vulnerability scanning at retrieval (FR-031, FR-032, R-13): the
 	// pinned scanner, its database from the tobby-system delivery, the
 	// policy, the metrics — and the posture stated at startup.
-	scanning := setupScanning(ctx, cfg, st, eng, reg, logger)
+	scanning := setupScanning(ctx, cfg, st, eng, reg, logger, vexDocs, hard)
 	defer scanning.close()
 
 	// The promotion target (milestone 4, FR-013): built from the same
@@ -711,13 +729,15 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	fileSets := &fileserve.Surface{
 		Catalog: storeCatalog{st: st},
 		Packer: fileserve.NewPacker(st, cfg.Storage.BasePrefix, logger,
-			fileserve.WithPackRoots(cfg.Files.PackRoots)),
+			fileserve.WithPackRoots(cfg.Files.PackRoots),
+			fileserve.WithUnitImportDisabled(hard.DisableUnitImport)),
 		Served:      fsrv.Enabled,
 		Declared:    declaredFileSets(cfg),
 		BasePrefix:  cfg.Storage.BasePrefix,
 		PackEnabled: len(cfg.Files.PackRoots) > 0,
 		Packed:      fileSetRefresh.Refresh,
 	}
+	fileSets.UnitImportDisabled = hard.DisableUnitImport // FR-098
 
 	// The versioned REST API (FR-060), strict UI parity (FR-061). Content
 	// browsing reads the store through its accessors (FR-062), never the
@@ -736,6 +756,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	aids := consume.New(st, &aidSettings)
 
 	restAPI := api.New(authn, logger)
+	scanHistory := &provenance.History{Tasks: queue, Graph: st}
+	restAPI.SetControls(api.Controls{Hardening: hard, Scans: scanHistory})
 	api.RegisterContent(restAPI, st, occupancy)
 	api.RegisterTasks(restAPI, queue, st, time.Duration(cfg.Import.InspectTimeout), importPolicy)
 	api.RegisterAccounts(restAPI, accounts)
@@ -759,6 +781,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Scan: scanning.slipState,
 	})
 	api.RegisterIntegrity(restAPI, &api.IntegrityOptions{Verifier: integritySvc})
+	api.RegisterPolicy(restAPI, scanning.policy)
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{
 		Cert:     serverCert,
 		CertFile: cfg.Server.TLS.CertFile,
@@ -808,6 +831,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Federation:         fed,
 		Scan:               scanning.uiState,
 		Aids:               aids,
+		Hardening:          hard,
+		ScanHistory:        scanHistory,
+		Policy:             scanning.policy,
 	})
 	webUI.Mount(srv.Mux())
 	webUI.MountFederation(srv.Mux())

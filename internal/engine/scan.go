@@ -18,6 +18,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/scan"
+	"github.com/tobby-fetch/tobby-fetch/internal/scanpolicy"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -49,7 +50,9 @@ type ScanSettings struct {
 }
 
 // ScanSettingsFrom maps the configuration's scan section onto the engine's
-// settings. Exceptions are stamped with the instance level.
+// settings. Exceptions are stamped with the instance level and keep their
+// scope (R-15); the exceptions born of the scan.vex documents are added by
+// the caller, which reads the documents (internal/scan/vex).
 func ScanSettingsFrom(c *config.Scan, scanner scan.Scanner) ScanSettings {
 	s := ScanSettings{
 		Scanner:   scanner,
@@ -57,9 +60,7 @@ func ScanSettingsFrom(c *config.Scan, scanner scan.Scanner) ScanSettings {
 		Threshold: c.Threshold,
 		Freshness: scan.Freshness{MaxAge: time.Duration(c.MaxDBAge), Block: c.MaxDBAgeAction == config.ScanModeBlock},
 	}
-	for _, ex := range c.Exceptions {
-		s.Exceptions = append(s.Exceptions, scan.Exception{ID: ex.ID, Justification: ex.Justification, Expires: ex.Expires, Level: scan.LevelInstance})
-	}
+	s.Exceptions = scanpolicy.InstanceExceptions(c)
 	return s
 }
 
@@ -78,6 +79,18 @@ func (e *Engine) SetScan(s *ScanSettings) {
 // of the last run; before any run, the instance setting alone.
 func (e *Engine) ScanPolicyBlocking() bool {
 	return e.scan.Mode == scan.ModeBlock || e.zoneThresholdSet.Load()
+}
+
+// RetrieverExceptions returns the exceptions the last served Retriever
+// declared (spec.scanPolicy.exceptions), and whether a Retriever has been
+// served since this process started: before the first run they are not
+// known, which is not the same as "none" (R-15, the policy view).
+func (e *Engine) RetrieverExceptions() ([]scan.Exception, bool) {
+	p := e.zoneExceptions.Load()
+	if p == nil {
+		return nil, false
+	}
+	return append([]scan.Exception(nil), (*p)...), true
 }
 
 // zonePolicy is what the served Retriever's spec.scanPolicy declares
@@ -189,7 +202,14 @@ func (e *Engine) scanRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 			continue
 		}
 		ref := ing.Ref + "@" + ing.Digest
-		subj := scan.Subject{Reference: ref, Recipe: rid}
+		// The scope of an exception is matched against the nominal
+		// repository in its canonical form (ADR-0013) — without the base
+		// prefix, which is this instance's layout, not the source.
+		nominal, err := relocate.Path(ing.Ref)
+		if err != nil {
+			continue
+		}
+		subj := scan.Subject{Reference: ref, Recipe: rid, Digest: ing.Digest, Repository: nominal}
 		rep := e.scanIngredient(ctx, ing, repo, subj, &policy, system)
 		sink.update(func(t *tasks.Task) bool {
 			itemFor(t, itemName).Scan = rep
@@ -215,9 +235,35 @@ func (e *Engine) scanRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 				Outcome: audit.OutcomeDenied,
 				Origin:  audit.OriginLocal,
 			})
+			// Re-blocking is visible (FR-031 amendment 2026-11-16): an
+			// item refused because the exception that admitted it has
+			// expired says so in the trail, naming the exception.
+			for _, ex := range rep.Reblocked() {
+				audit.Log(ctx, logger, ReblockedEvent(ref, &ex))
+			}
 		}
 	}
 	return refusals
+}
+
+// ReblockedEvent is the scan.exception_expired audit record of one item
+// refused again because ex, which matched one of its violating findings,
+// has expired (R-15).
+func ReblockedEvent(ref string, ex *scan.Exception) *audit.Event {
+	source := ex.Source()
+	if ex.VEX != "" {
+		source += ":" + ex.VEX
+	}
+	return &audit.Event{
+		Actor:            audit.ActorLocal,
+		Action:           audit.ActionScanExceptionExpired,
+		Target:           ref,
+		Outcome:          audit.OutcomeDenied,
+		Origin:           audit.OriginLocal,
+		Exception:        ex.ID,
+		ExceptionSource:  source,
+		ExceptionExpires: ex.Expires.UTC().Format(time.RFC3339),
+	}
 }
 
 // scanIngredient produces one ingredient's report. A declared container
@@ -295,6 +341,27 @@ func logScanReport(ctx context.Context, logger *slog.Logger, ing *spec.Ingredien
 	}
 	if len(rep.Policy.Violations) > 0 {
 		attrs = append(attrs, slog.String("violations", strings.Join(rep.Policy.Violations, ",")))
+	}
+	// The exceptions involved, by identifier (R-15): what admitted a
+	// finding, what no longer does, and what was not meant for this item.
+	for _, l := range []struct {
+		key string
+		exs []scan.Exception
+	}{
+		{"exceptions_applied", rep.Policy.ExceptionsApplied},
+		{"exceptions_expired", rep.Policy.ExceptionsExpired},
+		{"exceptions_out_of_scope", rep.Policy.ExceptionsOutOfScope},
+	} {
+		if len(l.exs) > 0 {
+			ids := make([]string, 0, len(l.exs))
+			for _, ex := range l.exs {
+				ids = append(ids, ex.ID)
+			}
+			attrs = append(attrs, slog.String(l.key, strings.Join(ids, ",")))
+		}
+	}
+	if len(rep.Reblocked()) > 0 {
+		attrs = append(attrs, slog.Bool("reblocked", true))
 	}
 	codes := make([]string, 0, len(rep.Policy.Reasons))
 	for _, r := range rep.Policy.Reasons {

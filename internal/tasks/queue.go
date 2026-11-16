@@ -144,12 +144,11 @@ func Open(storeRoot string, logger *slog.Logger, opts ...QueueOption) (*Queue, e
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // G304: enumerated task files under the store
-		if err != nil {
+		t, err := readTaskFile(dir, e.Name())
+		if err != nil && !errors.Is(err, errTaskContent) {
 			return nil, fmt.Errorf("tasks: reading %s: %w", e.Name(), err)
 		}
-		var t Task
-		if err := json.Unmarshal(raw, &t); err != nil {
+		if err != nil {
 			logger.LogAttrs(context.Background(), slog.LevelWarn, "skipping unreadable task file",
 				slog.String("file", e.Name()), slog.String("error", err.Error()))
 			continue
@@ -159,7 +158,7 @@ func Open(storeRoot string, logger *slog.Logger, opts ...QueueOption) (*Queue, e
 			t.Resumed = true
 			resumed = append(resumed, t.ID)
 		}
-		q.tasks[t.ID] = &t
+		q.tasks[t.ID] = t
 	}
 	// Persist the resumed marker, oldest first, and hand the whole set to
 	// the worker's backlog — never to the channel (B-019): the worker
@@ -877,11 +876,68 @@ func (q *Queue) ReadLog(id string, from int64) (chunk []byte, next int64, err er
 			return nil, from, err
 		}
 	}
-	chunk, err = io.ReadAll(f)
+	// One bounded chunk per call (NFR-023): a follower polling a large
+	// log from zero gets it in pieces through the cursor, instead of the
+	// instance reading and encoding the whole file on every poll.
+	chunk, err = io.ReadAll(io.LimitReader(f, MaxLogChunk))
 	if err != nil {
 		return nil, from, err
 	}
 	return chunk, from + int64(len(chunk)), nil
+}
+
+// MaxLogChunk bounds what one ReadLog call returns.
+const MaxLogChunk = 1 << 20
+
+// maxTaskFile bounds a persisted task document: its fields are a handful
+// of identifiers, timestamps and a bounded item list.
+const maxTaskFile = 4 << 20
+
+// errTaskContent marks a task file whose content is refused — skipped
+// with a warning, like an undecodable one — as opposed to one that could
+// not be read at all.
+var errTaskContent = errors.New("unusable task file")
+
+// readTaskFile reads one persisted task, refusing a document over the
+// bound or whose identifier is not the one its file name gives: the
+// identifier is joined into the log path (LogPath), so a tampered
+// "id":"../x" must never be believed (NFR-023 — the store travels on a
+// medium).
+func readTaskFile(dir, file string) (*Task, error) {
+	f, err := os.Open(filepath.Join(dir, file)) //nolint:gosec // G304: enumerated task files under the store
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close() //nolint:errcheck // read-only file
+	raw, err := io.ReadAll(io.LimitReader(f, maxTaskFile+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > maxTaskFile {
+		return nil, fmt.Errorf("%w: over %d bytes", errTaskContent, maxTaskFile)
+	}
+	var t Task
+	if err := json.Unmarshal(raw, &t); err != nil {
+		return nil, fmt.Errorf("%w: %w", errTaskContent, err)
+	}
+	if want := strings.TrimSuffix(file, ".json"); t.ID != want || !validTaskID(t.ID) {
+		return nil, fmt.Errorf("%w: identifier %q does not match its file %q", errTaskContent, t.ID, file)
+	}
+	return &t, nil
+}
+
+// validTaskID reports whether id can name a file in the task directory:
+// non-empty, no separator, no dot segment, no control character.
+func validTaskID(id string) bool {
+	if id == "" || id == "." || id == ".." || len(id) > 128 {
+		return false
+	}
+	for _, r := range id {
+		if r == '/' || r == '\\' || r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 // ReadAll reads the persisted tasks of a store WITHOUT opening a queue:
@@ -904,15 +960,14 @@ func ReadAll(storeRoot string) ([]*Task, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // G304: enumerated task files under the store
-		if err != nil {
+		t, err := readTaskFile(dir, e.Name())
+		if err != nil && !errors.Is(err, errTaskContent) {
 			return nil, fmt.Errorf("tasks: reading %s: %w", e.Name(), err)
 		}
-		var t Task
-		if err := json.Unmarshal(raw, &t); err != nil {
+		if err != nil {
 			continue
 		}
-		out = append(out, &t)
+		out = append(out, t)
 	}
 	return out, nil
 }

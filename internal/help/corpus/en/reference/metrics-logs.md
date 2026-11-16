@@ -59,9 +59,13 @@ Domain metrics registered today:
 | `tobby_server_certificate_expiry_timestamp_seconds` | gauge | — | `NotAfter` of the certificate the listener presents (FR-082), self-signed fallback included. Read at each scrape, so a replacement is followed; absent while the listener serves plain HTTP. |
 | `tobby_clock_implausible` | gauge | `anchor` = `build` \| `medium` | `1` while the local clock is found earlier than the anchor beyond `clock.skewTolerance`, `0` otherwise (FR-096). `build` is checked at start, then every five minutes; `medium` is judged against the latest resolution time among the media opened since the start (a blocked one excluded), and is absent until one has been opened. |
 | `tobby_diagnostics_bundles_total` | counter | `outcome` = `written` \| `refused` \| `failed` | [Diagnostic bundles](../../passthrough/diagnostics/): written, refused by the redaction check (`TBY-DIA-002`), or failed (`TBY-DIA-001`). All three exist from the first scrape. |
+| `tobby_scan_exceptions` | gauge | `state` = `active` \| `expired`, `source` = `instance` \| `retriever` \| `vex` | Vulnerability exceptions in configuration (R-15): the instance's `scan.exceptions`, those born of the `scan.vex` OpenVEX documents, and those of the last served Retriever (none counted before the first run). An unbounded Retriever exception counts as `active` — it applies. Computed at every scrape from the configuration and the clock, so an expiry that passes on a running instance moves a series from `active` to `expired` without a restart. All six series exist from the first scrape. |
+| `tobby_scan_reblocked_items_total` | counter | — | Items refused by a blocking policy because an exception that matched one of their violating findings has expired (R-15) — each also a `scan.exception_expired` audit record. At zero from the first scrape. |
 | `tobby_integrity_verifications_total` | counter | `verdict` = `clean` \| `defects` | Completed on-demand store verifications ([`tobby store verify`](../cli/#tobby-store-verify), the Store integrity screen, `POST /api/v1/store/verify`). Orphaned content alone never makes a verdict `defects`. Both verdicts exist from the first scrape, at zero. |
 | `tobby_integrity_last_verification_timestamp_seconds` | gauge | — | End time of the last completed verification, in Unix seconds. **Absent until one has completed**: a value of `0` would read as 1970, a number where the truth is "never verified" — alert on absence, or on age. |
 | `tobby_assurance_reduced_recipes` | gauge | `scope` | Recipes currently held under [reduced assurance](../../security/reduced-assurance/), by the declared trust scope that admitted them. Computed at every scrape from the recipe graph, never counted by events. Every scope that allows unsigned recipes is present from the first scrape, at zero while it holds nothing, so clearing the last one is as visible as admitting the first. |
+| `tobby_store_unmanaged_repositories` | gauge | `class` = `unit-import` \| `seed` | Repositories of the store **not managed by a recipe** (FR-098), by provenance class: `unit-import` counts unit imports and FileSets packed on this instance, `seed` content pushed through `/v2/` (and repositories a store written before v1.0 never classified). Recipe-managed content — reduced assurance included, counted by `tobby_assurance_reduced_recipes` — is the managed side and is not counted. Read from the store at scrape time (at most every 10 seconds), never counted by events; both classes exist from the first scrape, at zero when the store holds none, and the family is absent from a scrape that could not read the store. |
+| `tobby_hardening_enabled` | gauge | `setting` = `disableUnitImport` \| `disableRegistryPush` | `1` for each [hardening switch](../configuration/#hardening) set, `0` otherwise. Both settings, always: "off" is a value an alert can read, never an absence. |
 | `tobby_auth_attempts_total` | counter | `method` = `basic` \| `token` \| `oidc` \| `saml`, `outcome` = `success` \| `failure` \| `expired` | Credential checks on the machine surfaces and sign-ins on the UI (R-14). `expired` is a token refused past its expiry. Every series exists from the first scrape. |
 | `tobby_auth_sessions_expired_total` | counter | `reason` = `idle` \| `lifetime` | UI sessions ended by `auth.session.idleTimeout` or `auth.sessionTTL` (R-14), each also a `session.expire` audit record. |
 | `tobby_auth_idp_reachable` | gauge | `method` = `oidc` \| `saml` | `1` while the identity provider answers the background probe, `0` while it does not (R-20). Absent until first probed, and absent for SAML with pinned metadata, which needs no server-to-server call. |
@@ -110,6 +114,7 @@ fixed by the log schema and safe to build extraction rules on:
 | `digest` | The content digest concerned. |
 | `assurance` | Present **only** on records concerning content admitted under a relaxed trust scope, with the value `reduced` ([reduced assurance](../../security/reduced-assurance/)). Filter on its presence to find them. |
 | `assurance_scope` | The declared trust scope behind `assurance`, on the same records and only there. |
+| `provenance` | The [provenance class](../../security/model/#hardening-switches) of the repository a record concerns — `recipe`, `unit-import` or `seed` — on the unit-import record (`unit import recorded`), the push and manifest-deletion records of the embedded registry (`manifest pushed`, `manifest deleted`), the FileSet packing record (`fileset packed`) and the removal record (`repository removed`). |
 
 Other fields are contextual per message (many notable lines carry a
 `requirement` field naming the SRS requirement they implement) and are not
@@ -151,6 +156,10 @@ The signals behind them, and a few more:
 - **`tobby_scan_db_stale == 1`** — the vulnerability database has not
   crossed recently enough; findings published since it was built are
   unknown to the scanner.
+- **`increase(tobby_scan_reblocked_items_total[…]) > 0`** — an exception
+  expired and content it admitted is refused again: renew it deliberately or
+  deal with the finding. **`tobby_scan_exceptions{state="expired"} > 0`**
+  says the same before the next synchronization does.
 - **`tobby_auth_idp_reachable == 0`** — the identity provider is
   unreachable: people sign in with the local break-glass account meanwhile
   (FR-078), which **`increase(tobby_auth_local_logins_under_federation_total[…]) > 0`**

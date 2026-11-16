@@ -23,7 +23,8 @@ procedure you can rehearse before the day you need it.
   cosign, outside Tobby, with a key the organization controls. The recipe
   is verified like any other, against a trust root.
 - **It is compartmented, by configuration.** The emergency key is trusted
-  for one cookbook path only, if you declare the scopes as shown below.
+  for one cookbook path only: a root a scope lists is reserved to that
+  scope (step 2).
 - **It is visible.** The scope name travels with the recipe on the API, the
   task reports, the plan and the recipes screen, and the scope is part of
   the effective configuration.
@@ -69,30 +70,35 @@ trust:
       keyFile: /etc/tobby/keys/emergency.pub
 
   scopes:
-    # 1. The emergency door: this cookbook, verified against the emergency
-    #    key only.
+    # The emergency door: this cookbook, verified against the emergency
+    # key only. Listing the key here also RESERVES it: it verifies
+    # nothing outside this scope.
     - name: emergency
       repositories: ["registry.example.com/emergency/**"]
       roots: [org-emergency-key]
-    # 2. Everything else keeps its normal key and cannot be verified by
-    #    the emergency one.
-    - name: standard
-      repositories: ["**"]
-      roots: [org-release-key]
 ```
 
-Why two scopes? Scopes are evaluated in declaration order and the first
-match wins. A repository that matches **no** scope falls back to the strict
-default, which accepts **any** configured root. Without the `standard`
-catch-all, the emergency key would be a valid signer for every recipe in
-every cookbook, not just the emergency one. With it, the emergency key
-verifies the emergency path and nothing else, and the order matters: keep
-`emergency` first.
+One scope is enough. A root that a scope lists is reserved to that scope:
+the emergency key verifies the emergency cookbook and nothing else, and
+everything outside the scope is verified against the **default set** — the
+roots no scope lists, here `org-release-key` alone. A recipe in the normal
+cookbook signed with the emergency key is refused with
+[`TBY-SIG-001`](../../reference/errors/#tby-sig-001), and the message names
+`org-emergency-key` and the `emergency` scope it is reserved to.
+
+:::caution[Changed in v1.0.0-rc.1]
+Up to v0.6.x, a repository that matched no scope was verified against
+**every** configured root, the emergency key included (B-057), and this
+page recommended a second, catch-all scope (`repositories: ["**"]`,
+`roots: [org-release-key]`) to fence the emergency key in. That scope is no
+longer needed. It still works, being first-match-wins after `emergency`,
+and can be removed.
+:::
 
 Patterns match the recipe's nominal cookbook path in canonical form: host
 in lowercase, a port's `:` written `_` (`registry.example.com_5000/…`). See
 [Signatures, trust roots and allowlist](../../security/content-trust/#relaxation-scopes--and-their-visibility).
-Neither scope sets `allowUnsigned`: the emergency path never admits
+The scope does not set `allowUnsigned`: the emergency path never admits
 unsigned content, so it carries no [reduced-assurance marker](../../security/reduced-assurance/)
 and raises no banner. Its visibility is the scope name, below.
 
@@ -218,8 +224,8 @@ tobby sync --wait
 If the signature does not verify against `org-emergency-key`, the recipe
 is refused with [`TBY-SIG-001`](../../reference/errors/#tby-sig-001), and
 the message names the scope that refused it. A signature made with
-the *standard* key does not verify here either: the scope's `roots` are a
-compartment.
+the normal `org-release-key` does not verify here either: the scope's
+`roots` are a compartment.
 
 ## Where the emergency stays visible
 

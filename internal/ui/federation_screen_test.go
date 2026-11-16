@@ -122,6 +122,53 @@ func TestLoginPageSaysProviderIsDown(t *testing.T) {
 	}
 }
 
+// TestLoginPageStatesTheOutageInPlainWords is the R-20 remainder: the
+// sign-in screen says, in the page's language and naming the provider,
+// that federated sign-in is unavailable and that local sign-in still
+// works (login.idp_unavailable) — not only the TBY-AUTH-016 code — and
+// the provider button stays usable, tied to that statement for assistive
+// technology. Before the provider is known down, nothing is said.
+func TestLoginPageStatesTheOutageInPlainWords(t *testing.T) {
+	dead := httptest.NewServer(http.NotFoundHandler())
+	dead.Close()
+	u, mux, _ := federatedUI(t, dead.URL)
+
+	get := func(lang string) string {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodGet, "/login", http.NoBody)
+		r.Header.Set("Accept-Language", lang)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		return w.Body.String()
+	}
+	messages := map[string]string{
+		"en": "Corp SSO cannot be reached: federated sign-in is unavailable. Local sign-in still works.",
+		"fr": "Corp SSO est injoignable : la connexion fédérée est indisponible. La connexion locale fonctionne toujours.",
+	}
+	for lang, msg := range messages {
+		if body := get(lang); strings.Contains(body, msg) {
+			t.Errorf("%s: the outage is stated before any probe failed", lang)
+		}
+	}
+
+	u.federation.Probe(context.Background())
+	for lang, msg := range messages {
+		body := get(lang)
+		if !strings.Contains(body, msg) {
+			t.Errorf("%s: the sign-in page does not state the outage in plain words (login.idp_unavailable): want %q", lang, msg)
+		}
+		if !strings.Contains(body, "TBY-AUTH-016") {
+			t.Errorf("%s: the statement lost its code", lang)
+		}
+		// The button stays a live link — it retries — and points at the
+		// statement that explains why it may fail.
+		if !strings.Contains(body, `aria-describedby="idp-unavailable-0"`) || !strings.Contains(body, `id="idp-unavailable-0"`) ||
+			strings.Contains(body, "aria-disabled") {
+			t.Errorf("%s: the provider button is not a usable link described by the outage statement", lang)
+		}
+	}
+}
+
 // TestFederatedCallbackRefusals: a callback that does not answer a sign-in
 // this browser started renders the sign-in page with TBY-AUTH-014, opens
 // no session, and is audited.

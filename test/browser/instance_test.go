@@ -33,6 +33,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
+	"github.com/tobby-fetch/tobby-fetch/internal/server"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/ui"
@@ -268,7 +269,10 @@ func newInstance(t *testing.T, opts ...option) *instance {
 	webUI := ui.New(authn, logger, uiOpts)
 	webUI.Mount(mux)
 	webUI.MountFederation(mux)
-	srv := httptest.NewServer(mux)
+	// Behind the listener's security-header middleware, as in production
+	// (NFR-022): the suite is what proves htmx and the inline scripts
+	// still run under the real CSP and referrer policy.
+	srv := httptest.NewServer(server.SecurityHeaders(mux, server.HeaderPolicy{HTML: ui.ContentSecurityPolicy()}))
 	t.Cleanup(srv.Close)
 	inst.URL = srv.URL
 	return inst

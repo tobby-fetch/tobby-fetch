@@ -24,6 +24,7 @@ import (
 	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -122,8 +123,32 @@ type Packer struct {
 	// operator already holds the host's filesystem rights.
 	roots      []string
 	restricted bool
-	logger     *slog.Logger
+	// unitImportDisabled is hardening.disableUnitImport (FR-098): every
+	// packing is refused, on every surface, before the tree is read.
+	unitImportDisabled bool
+	logger             *slog.Logger
 }
+
+// WithUnitImportDisabled carries hardening.disableUnitImport (FR-098,
+// R-17): a packed FileSet is a unit import of local origin, so the switch
+// that closes unit imports closes packing too — the CLI, the API and the
+// screen alike, since all three pack through a Packer.
+func WithUnitImportDisabled(disabled bool) PackerOption {
+	return func(p *Packer) { p.unitImportDisabled = disabled }
+}
+
+// UnitImportDisabled is a packing refused by hardening.disableUnitImport.
+// PackProblem maps it onto TBY-POL-005, naming the setting.
+type UnitImportDisabled struct{}
+
+func (UnitImportDisabled) Error() string {
+	return "packing is refused: this instance is hardened with " + settingDisableUnitImport
+}
+
+// settingDisableUnitImport is the configuration key the refusal names
+// (spelled in package hardening for every other surface; this package
+// stays free of the store's types, which that one imports).
+const settingDisableUnitImport = "hardening.disableUnitImport"
 
 // PackerOption configures a Packer.
 type PackerOption func(*Packer)
@@ -239,6 +264,11 @@ func (e *PackRootDenied) Error() string {
 // managers, while packing is an operator action and gets the full
 // what/cause/action treatment.
 func PackProblem(err error) *taxonomy.Error {
+	var hardened UnitImportDisabled
+	if errors.As(err, &hardened) {
+		return taxonomy.New(taxonomy.CodeUnitImportDisabled,
+			taxonomy.Params{"setting": settingDisableUnitImport}).WithCause(err)
+	}
 	var denied *PackRootDenied
 	if errors.As(err, &denied) {
 		return taxonomy.New(taxonomy.CodePackNotAllowed,
@@ -264,6 +294,9 @@ func PackProblem(err error) *taxonomy.Error {
 // into the store, where the commit verifies that digest. A tree mutated
 // between the two passes therefore cannot land half-described.
 func (p *Packer) Pack(ctx context.Context, req PackRequest) (*PackResult, error) {
+	if p.unitImportDisabled {
+		return nil, UnitImportDisabled{}
+	}
 	if err := validatePackName(req.Name); err != nil {
 		return nil, err
 	}
@@ -334,6 +367,7 @@ func (p *Packer) Pack(ctx context.Context, req PackRequest) (*PackResult, error)
 		slog.Int("directories", stats.dirs),
 		slog.Int("symlinks", stats.symlinks),
 		slog.Int64("bytes", stats.bytes),
+		slog.String(logging.KeyProvenance, FromUnitImport), // FR-098: a packed FileSet is a unit import of local origin
 		slog.String("requirement", "FR-048"))
 
 	return &PackResult{

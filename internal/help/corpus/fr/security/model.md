@@ -68,6 +68,34 @@ interrupteur global** qui désactive la vérification des signatures : le seul
 assouplissement est un périmètre, nommé, lié à des motifs de dépôt explicites.
 → [Authentification et RBAC](../auth-rbac/), [Secrets](../secrets/)
 
+### Interrupteurs de durcissement
+
+L'autre sens existe aussi : deux réglages, désactivés par défaut, qui
+**ferment une porte d'entrée** au lieu d'en ouvrir une (SRS FR-098).
+
+| Interrupteur | Ce qu'il ferme | Ce qui fonctionne toujours |
+| --- | --- | --- |
+| `hardening.disableUnitImport` | l'import unitaire et l'empaquetage de FileSets, à l'écran, par l'API **et** en ligne de commande — [TBY-POL-005](../../reference/errors/#tby-pol-005) | les synchronisations de recipes |
+| `hardening.disableRegistryPush` | toute écriture dans la registry embarquée, pour tous les clients et tous les rôles, administrateurs compris — `DENIED` OCI portant [TBY-POL-006](../../reference/errors/#tby-pol-006) | les pulls, les synchronisations de recipes |
+
+Avec les deux, le contenu n'entre dans le store que par des recipes
+vérifiées contre les trust roots de l'instance. Un interrupteur de
+durcissement ne demande aucun acquittement, mais il est signalé comme tout
+réglage de sécurité — le journal de démarrage, `tobby config dump`, l'écran
+dont il désactive l'action (affichée désactivée, en nommant le réglage), la
+métrique `tobby_hardening_enabled` — et chaque refus est un événement
+d'audit `hardening.refused` : un opérateur ne prend jamais un refus pour une
+panne. Alimenter l'instance par push (UC3) devient alors impossible, à
+dessein.
+
+Interrupteurs activés ou non, chaque dépôt porte sa **classe de
+provenance** — `recipe`, `unit-import` ou `seed` — dans le navigateur de
+contenu, l'API, les enregistrements de journal qui le concernent et la
+métrique `tobby_store_unmanaged_repositories` : le contenu qu'aucune recipe
+vérifiée ne garantit est toujours compté et toujours visible. La classe est
+un fait propre à ce store ; elle n'est jamais écrite dans aucune registry et
+ne décide rien de la confiance. → [Configuration](../../reference/configuration/#durcissement)
+
 ## 4. Aucune connexion qui n'ait été configurée
 
 Tobby n'ouvre aucune connexion réseau que l'opérateur n'a pas configurée :
@@ -179,7 +207,16 @@ niveaux requis est généré à partir des routes que le serveur monte réelleme
 et il est vérifié par un test : une route ne peut pas être livrée sans niveau
 revu. Le dernier administrateur ne peut être ni supprimé ni rétrogradé. Les
 échecs d'authentification sont limités par origine.
+
+Une session de navigateur n'autorise rien par son seul cookie. Toute requête
+qui modifie l'état et qu'elle authentifie, dans l'interface comme dans l'API,
+porte le jeton anti-falsification de la session, et la requête est refusée
+quand le navigateur indique qu'elle vient d'une autre origine. Chaque réponse
+de l'écouteur porte les en-têtes de sécurité du navigateur, et chaque page
+HTML une Content-Security-Policy qui n'autorise aucun script sans empreinte.
 → [Authentification, comptes et RBAC](../auth-rbac/), [Identité d'entreprise](../enterprise-identity/)
+
+Chaque entrée qui franchit une frontière de confiance est bornée, décodée strictement et contrôlée selon sa grammaire → [Validation des entrées](../input-validation/)
 
 ## 9. Audit
 
@@ -189,7 +226,7 @@ origine), sous forme d'enregistrements de journal structurés séparables par un
 seul champ marqueur. L'origine est l'adresse réseau du client ; les en-têtes de
 transfert ne sont pas crus. Connexions et refus, changements de comptes et de
 jetons, actions qui touchent au contenu, expirations de sessions et de jetons,
-refus d'analyse et vérification du store sont consignés, et chaque
+refus d'analyse, refus de durcissement et vérification du store sont consignés, et chaque
 synchronisation porte un identifiant de run qui la suit dans les journaux, les
 tâches et les rapports.
 → [Journal d'audit](../audit-log/), [Métriques et journaux](../../reference/metrics-logs/)

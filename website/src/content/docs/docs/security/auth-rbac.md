@@ -69,9 +69,28 @@ surfaced by a permanent banner (FR-047). `/healthz`, `/readyz`, and
 `/metrics` are unauthenticated: the orchestrator's contract, no instance
 content.
 
+**Cross-site request forgery (NFR-012).** The session cookie is ambient: the
+browser attaches it on its own. Every request it authenticates whose method
+is not `GET`, `HEAD` or `OPTIONS` must therefore carry the session's
+anti-forgery token: the `csrf` field of the interface's forms, or the
+`X-CSRF-Token` header on an API call made from a signed-in page. With the
+token, an API call is served as the session's identity, and the
+per-endpoint floor still applies. Without it, the cookie alone authorizes
+no API mutation. As defense in depth, such a request is also refused when
+the browser says it comes from another origin. That verdict comes from
+`Sec-Fetch-Site` when the browser sends it, and otherwise from `Origin`.
+`Origin` is compared with the request's `Host`, or with `X-Forwarded-Host`
+behind a reverse proxy that rewrites `Host`; the scheme is not compared,
+so TLS can be terminated in front. Basic and Bearer credentials carry no
+ambient authority and are exempt. So are the federated callbacks under
+`/auth/`, which carry their own `state` and `InResponseTo` checks. The
+sign-in form and, under the FR-075 override, every state-changing request
+without a credential are refused on a cross-origin verdict alone.
+
 Refusals are coded, not just numbered: no credential → `TBY-AUTH-002`;
 role below the floor → `TBY-AUTH-003` naming the required role; missing
-anti-forgery token → `TBY-AUTH-004` (NFR-012); expired session →
+or forged anti-forgery token, or cross-origin state change →
+`TBY-AUTH-004` (NFR-012); expired session →
 `TBY-AUTH-005`; expired token → `TBY-AUTH-013`; federated sign-in refused
 → `TBY-AUTH-014` (OIDC), `TBY-AUTH-015` (SAML), provider unreachable →
 `TBY-AUTH-016`, no mapped group → `TBY-AUTH-017`. See [errors](../../reference/errors/).

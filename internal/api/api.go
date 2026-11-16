@@ -30,6 +30,10 @@ type API struct {
 	// OpenAPI cross-check (FR-060) and the RBAC matrix (FR-074), which
 	// fails on any endpoint shipped without a documented role floor.
 	routes []string
+	// controls carries the FR-098 inputs of the content and import
+	// endpoints (provenance.go): the hardening switches and the scan
+	// history. Set once at wiring time, before the listener serves.
+	controls Controls
 }
 
 // New builds the API surface.
@@ -58,9 +62,10 @@ func (a *API) Routes() []string {
 	return out
 }
 
-// Handler returns the authenticated handler to mount at /api/v1/.
+// Handler returns the authenticated handler to mount at /api/v1/, every
+// request body bounded at maxAPIRequestBody (NFR-023, body.go).
 func (a *API) Handler() http.Handler {
-	return a.authn.API(a.mux)
+	return boundBodies(a.authn.API(a.mux))
 }
 
 // lang negotiates the problem-document language from Accept-Language: the

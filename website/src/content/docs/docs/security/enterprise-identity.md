@@ -184,8 +184,10 @@ Federation never becomes a single point of failure (R-20, FR-078):
   startup contacts it.
 - A background probe watches the provider (OIDC discovery; the metadata
   URL for SAML when one is configured). While it does not answer, the
-  sign-in page states it with **TBY-AUTH-016** naming the provider, and
-  keeps the local form. The button stays: it retries.
+  sign-in page states it in plain words — *"\<provider\> cannot be
+  reached: federated sign-in is unavailable. Local sign-in still works."* —
+  with **TBY-AUTH-016**, and keeps the local form. The button stays
+  usable, described by that statement: it retries.
 - **Existing sessions** continue; **static tokens** keep authorizing
   `/api/v1`, `/v2/` and `/files/`; **local accounts** sign in.
 - Every local-account sign-in while a federated method is enabled is

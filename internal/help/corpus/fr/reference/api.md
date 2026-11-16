@@ -101,6 +101,7 @@ La surface actuelle (d'après le document OpenAPI servi) :
 | FileSets | `GET /api/v1/filesets`, `POST /api/v1/filesets/pack` |
 | Interopérabilité et store | `POST /api/v1/oci-layout/plan`, `POST /api/v1/oci-layout/export`, `POST /api/v1/oci-layout/import`, `POST /api/v1/store/reset` |
 | Intégrité du store | `POST /api/v1/store/verify`, `POST /api/v1/store/verify/cancel`, `GET /api/v1/store/verification` |
+| Politique de contenu | `GET /api/v1/policy` — la politique d'analyse effective : mode, seuil, chaque exception avec son origine, sa portée, son échéance et son état, les documents OpenVEX, les interrupteurs de durcissement ([ce qu'elle dit](../../security/vulnerability-scanning/#la-politique-effective)) |
 | Comptes et tokens | `POST /api/v1/account/password`, `GET/POST /api/v1/accounts`, `PATCH/DELETE /api/v1/accounts/{name}`, `GET/POST /api/v1/tokens`, `POST /api/v1/tokens/{name}/revoke` |
 | Réseau | `GET /api/v1/network`, `PUT /api/v1/network/certificate` |
 | Exploitation | `POST /api/v1/diagnostics/bundle`, `GET /api/v1/clock`, `GET /api/v1/state` |

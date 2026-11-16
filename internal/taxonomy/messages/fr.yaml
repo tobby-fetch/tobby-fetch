@@ -16,8 +16,8 @@
 "TBY-AUTH-003.action": "Connectez-vous avec un compte disposant du rôle {{.role}}, ou demandez à un administrateur de vous l'accorder."
 
 "TBY-AUTH-004.what": "Le formulaire n'a pas pu être soumis en toute sécurité."
-"TBY-AUTH-004.cause": "Le jeton anti-falsification est absent ou a expiré — la page est probablement restée ouverte longtemps."
-"TBY-AUTH-004.action": "Le formulaire a été rechargé avec un jeton neuf : soumettez-le à nouveau."
+"TBY-AUTH-004.cause": "Le jeton anti-falsification est absent, erroné ou expiré, ou la requête vient d'une page d'un autre site — la page est probablement restée ouverte longtemps."
+"TBY-AUTH-004.action": "Rechargez la page et soumettez à nouveau. Un script ou un outil qui appelle l'API s'authentifie par un jeton (Authorization: Bearer), pas par la session du navigateur."
 
 "TBY-AUTH-005.what": "Votre session a expiré."
 "TBY-AUTH-005.cause": "Aucune activité pendant plus que le délai d'inactivité, la session a atteint sa durée de vie maximale, ou l'instance a redémarré."
@@ -164,8 +164,8 @@
 "TBY-POL-006.action": "Tirez depuis ce registre, ou poussez vers la registry de la zone. Alimenter cette instance par push exige qu'un administrateur retire {{.setting}} et la redémarre."
 
 "TBY-SIG-001.what": "La signature de la recipe n'a pas pu être vérifiée."
-"TBY-SIG-001.cause": "{{if .scope}}Aucune clé de confiance autorisée par le périmètre de confiance {{.scope}} ne valide la signature de {{.recipe}} (clés essayées : {{.fingerprints}}). Une clé valide pour un autre périmètre ne s'applique pas dans celui-ci.{{else}}Aucune clé de confiance configurée ne valide la signature de {{.recipe}} (clés essayées : {{.fingerprints}}).{{end}}"
-"TBY-SIG-001.action": "{{if .scope}}Vérifiez les clés listées par le périmètre {{.scope}} (trust.scopes[].roots) : elles doivent inclure la clé qui a signé cette recipe, ou la recipe relève d'un autre périmètre.{{else}}Vérifiez que les clés de confiance de la zone incluent la clé qui a signé cette recipe.{{end}} Une recipe non vérifiée n'est jamais admise."
+"TBY-SIG-001.cause": "{{if .scope}}Aucune clé de confiance autorisée par le périmètre de confiance {{.scope}} ne valide la signature de {{.recipe}} (clés essayées : {{.fingerprints}}). Une clé valide pour un autre périmètre ne s'applique pas dans celui-ci.{{else}}Aucune clé de confiance de l'ensemble par défaut ne valide la signature de {{.recipe}} (clés essayées : {{.fingerprints}}). Une clé de confiance listée par un périmètre est réservée à ce périmètre et ne vérifie rien en dehors.{{end}}{{if .reserved}} La signature est pourtant valide pour la clé de confiance {{.reserved}}, {{if .reservedto}}réservée au périmètre de confiance {{.reservedto}}{{else}}une clé de l'ensemble par défaut, qui ne s'applique pas dans ce périmètre{{end}}.{{end}}"
+"TBY-SIG-001.action": "{{if .reservedto}}La clé qui a signé cette recipe est réservée au périmètre de confiance {{.reservedto}} : si la recipe doit être admise sous cette clé, ajoutez son repository aux repositories de ce périmètre (trust.scopes[].repositories) ; sinon faites-la re-signer avec une clé qui s'applique ici.{{else if .reserved}}La clé qui a signé cette recipe appartient à l'ensemble par défaut : listez-la dans les roots du périmètre {{.scope}} (trust.scopes[].roots), ou sortez la recipe de ce périmètre.{{else if .scope}}Vérifiez les clés listées par le périmètre {{.scope}} (trust.scopes[].roots) : elles doivent inclure la clé qui a signé cette recipe, ou la recipe relève d'un autre périmètre.{{else}}Vérifiez que les clés de confiance de la zone incluent la clé qui a signé cette recipe, et qu'aucun périmètre de confiance ne la liste : une clé listée par un périmètre lui est réservée.{{end}} Une recipe non vérifiée n'est jamais admise."
 
 "TBY-SIG-002.what": "Un digest épinglé ne correspond pas au contenu récupéré."
 "TBY-SIG-002.cause": "{{.reference}} épingle {{.expected}} mais le registre a servi {{.actual}} — le contenu a changé ou a été altéré."
@@ -461,6 +461,10 @@
 "TBY-SRV-003.what": "L'instance est injoignable."
 "TBY-SRV-003.cause": "La connexion réseau est tombée, ou l'instance redémarre."
 "TBY-SRV-003.action": "Vérifiez votre liaison réseau et réessayez ; la page reprend dès que l'instance répond."
+
+"TBY-SRV-004.what": "La requête est trop volumineuse."
+"TBY-SRV-004.cause": "Son corps dépasse les {{.limit}} octets que ce point d'accès accepte ; elle a été refusée avant d'être lue."
+"TBY-SRV-004.action": "Envoyez un corps plus petit. Un document au-delà de la borne n'est pas de ceux que ce point d'accès traite : vérifiez que le bon fichier a été envoyé."
 
 # Table des codes de sortie (FR-066, amendement R-08). Ce ne sont pas des
 # codes d'erreur : ce sont les lignes du contrat de ligne de commande

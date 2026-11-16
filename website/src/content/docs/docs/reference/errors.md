@@ -69,10 +69,15 @@ its published rendering.
 ### TBY-AUTH-004
 
 - **What happened:** the form could not be submitted safely.
-- **Probable cause:** the anti-forgery token is missing or has expired —
-  the page was probably left open for a long time.
-- **Corrective action:** the form has been reloaded with a fresh token:
-  submit it again.
+- **Probable cause:** the anti-forgery token is missing, wrong or expired,
+  or the request came from a page of another site — the page was probably
+  left open for a long time. Every state-changing request authenticated by
+  the browser session carries the token, UI forms and API calls alike
+  (`X-CSRF-Token` header on the API), and is refused when the browser says
+  it comes from another origin.
+- **Corrective action:** reload the page and submit again. A script or
+  tool calling the API authenticates with a token (`Authorization:
+  Bearer`), not with the browser session.
 - **Fixable offline:** yes · **Blocks:** the submitted request only
 
 ### TBY-AUTH-005
@@ -447,29 +452,40 @@ its published rendering.
 - **What happened:** This instance does not accept unit imports.
 - **Probable cause:** It is hardened with `<setting>`: content enters its store through verified recipes only, and a unit import or a local packing would be content no recipe vouches for.
 - **Corrective action:** Deliver the content through a signed recipe. If unit imports are needed on this instance, an administrator removes `<setting>` from its configuration and restarts it.
-- **Fixable offline:** yes · **Blocks:** the import or packing; recipe synchronizations are unaffected · **Status:** reserved — emitted from milestone 7
+- **Where:** the import screen and `POST /api/v1/import` with its inspection (HTTP 403), FileSet packing on the screen, the API and `tobby fileset pack` (policy class, exit 3); each refusal is a `hardening.refused` audit event naming the setting
+- **Fixable offline:** yes · **Blocks:** the import or packing; recipe synchronizations are unaffected
 
 ### TBY-POL-006
 
 - **What happened:** This registry is read-only: pushes are refused.
 - **Probable cause:** The instance is hardened with `<setting>`: its embedded registry serves content and accepts none from clients, whatever their role. Recipe synchronizations still write to the store.
 - **Corrective action:** Pull from this registry, or push to the zone registry instead. Seeding this instance by push requires an administrator to remove `<setting>` and restart it.
-- **Fixable offline:** yes · **Blocks:** the push; pulls and recipe synchronizations are unaffected · **Status:** reserved — emitted from milestone 7
+- **Where:** every write to `/v2/` — blob upload, chunk, commit, mount, manifest put, deletion — for every client and role, administrators included, as the OCI `DENIED` error (HTTP 403) whose message starts with the code, which `docker`, `helm`, `oras` and `skopeo` print; each refusal is a `hardening.refused` audit event naming the setting
+- **Fixable offline:** yes · **Blocks:** the push; pulls and recipe synchronizations are unaffected
 
 ## Signature and digest verification (TBY-SIG)
 
 ### TBY-SIG-001
 
 - **What happened:** the recipe signature could not be verified.
-- **Probable cause:** no configured trust root validates the signature of
-  *\<recipe\>* (the tried key fingerprints are listed). When a declared
-  trust scope matched the recipe, the message **names that scope**
+- **Probable cause:** no trust root that applies to *\<recipe\>*
+  validates its signature (the tried key fingerprints are listed). When a
+  declared trust scope matched the recipe, the message **names that scope**
   (*\<scope\>*) and the keys tried are the ones the scope allows: a key
   that is a valid trust root elsewhere, but is not listed by the scope's
-  `roots`, does not apply inside it.
+  `roots`, does not apply inside it. Outside every scope, the keys tried
+  are the **default set** — the roots no scope lists: a root that a scope
+  lists is reserved to that scope and verifies nothing outside it. When
+  every configured root is reserved, nothing is tried and the message says
+  so. When the signature does verify against a root that does not apply
+  here, the message names it — root name and fingerprint (*\<reserved\>*)
+  and the scope it is reserved to (*\<reservedto\>*).
 - **Corrective action:** check that the zone's trust roots include the key
   that signed this recipe — or, when a scope is named, that the scope's
-  `roots` list it, or that the recipe belongs under another scope (see
+  `roots` list it, or that the recipe belongs under another scope. When a
+  reserved root is named, either extend that scope's `repositories` to
+  cover the recipe, or have the recipe re-signed with a key that applies
+  where it is (see
   [Signatures, trust roots and allowlist](../../security/content-trust/)). An
   unverified recipe is never admitted.
 - **Ingredients:** an ingredient's own signature raises this code only on
@@ -610,21 +626,21 @@ Reserved at the opening of milestone 6 (FR-031, FR-032): the policy is advisory 
 - **What happened:** The exception for `<id>` does not cover `<reference>`.
 - **Probable cause:** The exception is scoped to `<scope>`, and this item lies outside that scope: the finding is judged as if no exception existed.
 - **Corrective action:** Nothing to do if the scope is right. If this item was meant to be covered, widen the exception's scope in the configuration — it stays bounded by its expiry.
-- **Fixable offline:** yes · **Blocks:** nothing by itself — the finding is judged without the exception · **Status:** reserved — emitted from milestone 7
+- **Fixable offline:** yes · **Blocks:** nothing by itself — the finding is judged without the exception
 
 ### TBY-SCN-027
 
 - **What happened:** The OpenVEX document `<path>` cannot be used.
 - **Probable cause:** `<detail>`
 - **Corrective action:** Fix or remove the document listed under scan.vex, then restart. Tobby reads OpenVEX documents and never fetches them: the file must be a valid local document.
-- **Fixable offline:** yes · **Blocks:** the start of the instance · **Status:** reserved — emitted from milestone 7
+- **Fixable offline:** yes · **Blocks:** the start of the instance
 
 ### TBY-SCN-028
 
 - **What happened:** The Retriever exception for `<id>` has no expiry.
 - **Probable cause:** It applies, but it is unbounded in time: exceptions declared by an instance must carry an expiry, and Retrievers will too from the v1 format on.
 - **Corrective action:** Ask the owner of the zone's Retriever to give the exception an expires date and a justification.
-- **Fixable offline:** yes · **Blocks:** nothing — the exception applies and is reported as unbounded · **Status:** reserved — emitted from milestone 7
+- **Fixable offline:** yes · **Blocks:** nothing — the exception applies and is reported as unbounded
 
 ## Destination limits (TBY-DST)
 
@@ -1228,3 +1244,14 @@ FR-097: the normative state directory — the backup target of an instance besid
 - **Corrective action:** check your network link and retry; the page
   resumes as soon as the instance answers.
 - **Fixable offline:** yes · **Blocks:** the browser session's view only
+
+### TBY-SRV-004
+
+- **What happened:** the request is too large.
+- **Probable cause:** its body exceeds the `<limit>` bytes this endpoint
+  accepts; it was refused before being read (NFR-023). Every API endpoint
+  has a bound sized to its largest legitimate document; see the
+  [input validation](../../security/input-validation/) table.
+- **Corrective action:** send a smaller body. A document over the bound is
+  not one this endpoint was built for: check that the right file was sent.
+- **Fixable offline:** yes · **Blocks:** the request only

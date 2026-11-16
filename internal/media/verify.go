@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -62,6 +63,64 @@ type TrustDecision struct {
 	// and no allowUnsigned scope covers the ingredient, so it must carry
 	// a signature Keys verifies or its recipe is blocked (B-062).
 	RequireSignature bool
+	// Excluded lists, in configuration order, the configured trust roots
+	// this decision does NOT apply: the roots reserved to other scopes
+	// and, inside a scope that lists its own roots, the roots of the
+	// default set. They never admit anything here. They are tried only
+	// after a refusal, to tell the operator which root the signature does
+	// verify against (B-057: an actionable refusal) — see
+	// SignatureElsewhere.
+	Excluded []ExcludedRoot
+}
+
+// ExcludedRoot is one configured trust root a decision does not apply.
+type ExcludedRoot struct {
+	// Name is the root's configured name (trust.roots[].name).
+	Name string
+	// Scopes names the declared scopes that list the root, which reserves
+	// it to them. Empty for a root of the default set (no scope lists it).
+	Scopes []string
+	// Keys is the root's key material.
+	Keys *sigverify.Keys
+}
+
+// NoKeyDetail is the "fingerprints" detail of a TBY-SIG-001 raised with no
+// key to try. It must not claim that no trust root is configured when
+// roots are configured but every one is reserved to a scope (B-057).
+func NoKeyDetail(d TrustDecision) string {
+	if len(d.Excluded) > 0 {
+		return "none — every configured trust root is reserved to a trust scope"
+	}
+	return "none — no trust root is configured"
+}
+
+// SignatureElsewhere names the excluded trust root that verifies the
+// subject's signature, for the refusal message only: it returns the
+// "reserved" (root name and key fingerprint) and "reservedto" (the scopes
+// the root is reserved to, empty for a root of the default set)
+// parameters of TBY-SIG-001, both empty when no excluded root verifies.
+//
+// It never changes a verdict: the caller has already refused. Any error
+// here — no signature, a transport failure — only means there is nothing
+// more to say.
+func SignatureElsewhere(ctx context.Context, src sigverify.Manifests, repo, manifestDigest string, d TrustDecision) (reserved, reservedTo string) {
+	if len(d.Excluded) == 0 {
+		return "", ""
+	}
+	sets := make([]*sigverify.Keys, 0, len(d.Excluded))
+	for _, r := range d.Excluded {
+		sets = append(sets, r.Keys)
+	}
+	fp, err := sigverify.Verify(ctx, src, repo, manifestDigest, sigverify.Union(sets...))
+	if err != nil {
+		return "", ""
+	}
+	for _, r := range d.Excluded {
+		if r.Keys != nil && slices.Contains(r.Keys.Fingerprints(), fp) {
+			return r.Name + " (" + fp + ")", strings.Join(r.Scopes, ", ")
+		}
+	}
+	return "", ""
 }
 
 // Trust is the destination instance's trust policy.
@@ -227,6 +286,11 @@ func readManifest(root *os.Root) (*Manifest, *Block) {
 		// cannot vouch for, and the format version below is how a future
 		// layout announces itself.
 		return nil, unreadable(err.Error())
+	}
+	// One document, nothing after it (NFR-023): bytes no decoder reads
+	// are bytes no verification vouches for.
+	if _, terr := dec.Token(); !errors.Is(terr, io.EOF) {
+		return nil, unreadable("unexpected data after the manifest document")
 	}
 	if err := validate(&m); err != nil {
 		return nil, unreadable(err.Error())
@@ -480,19 +544,24 @@ func decide(ctx context.Context, src Reader, r *Recipe, v *RecipeVerdict, trust 
 	}
 	v.TrustScope = d.Scope
 
+	sigSrc := &manifestSource{src: src, repo: r.ArtifactRepo}
+	refuse := func(fingerprints string) {
+		params := map[string]string{"recipe": nominal, "fingerprints": fingerprints, "scope": d.Scope}
+		if reserved, reservedTo := SignatureElsewhere(ctx, sigSrc, r.ArtifactRepo, r.Digest, d); reserved != "" {
+			params["reserved"], params["reservedto"] = reserved, reservedTo
+		}
+		v.Reason = &Reason{Code: taxonomy.CodeSignature, Params: params}
+	}
 	if d.Keys == nil {
 		if d.AllowUnsigned {
 			v.Pushable, v.Unsigned = true, true
 			v.Assurance = assurance.ForUnsigned(d.Scope)
 			return
 		}
-		v.Reason = &Reason{Code: taxonomy.CodeSignature, Params: map[string]string{
-			"recipe": nominal, "fingerprints": "none — no trust root is configured",
-			"scope": d.Scope,
-		}}
+		refuse(NoKeyDetail(d))
 		return
 	}
-	fingerprint, err := sigverify.Verify(ctx, &manifestSource{src: src, repo: r.ArtifactRepo}, r.ArtifactRepo, r.Digest, d.Keys)
+	fingerprint, err := sigverify.Verify(ctx, sigSrc, r.ArtifactRepo, r.Digest, d.Keys)
 	switch {
 	case err == nil:
 		v.Pushable, v.KeyFingerprint = true, fingerprint
@@ -500,10 +569,7 @@ func decide(ctx context.Context, src Reader, r *Recipe, v *RecipeVerdict, trust 
 		v.Pushable, v.Unsigned = true, true
 		v.Assurance = assurance.ForUnsigned(d.Scope)
 	default:
-		v.Reason = &Reason{Code: taxonomy.CodeSignature, Params: map[string]string{
-			"recipe": nominal, "fingerprints": fingerprintsOf(err),
-			"scope": d.Scope,
-		}}
+		refuse(fingerprintsOf(err))
 	}
 }
 

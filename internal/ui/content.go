@@ -13,9 +13,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/provenance"
+	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -30,8 +33,15 @@ func storeErr(err error) *taxonomy.Error {
 // relocated path's first segment is the canonical source host).
 type contentGroup struct {
 	Host  string
-	Repos []store.RepoSummary
+	Repos []contentRow
 	Size  int64
+}
+
+// contentRow is one repository of the listing with its provenance class
+// (FR-098): the listing's provenance column.
+type contentRow struct {
+	store.RepoSummary
+	Provenance store.Classification
 }
 
 // contentListData feeds the /content page.
@@ -45,6 +55,10 @@ type contentListData struct {
 	// "no result for these filters" (UI-SPEC §5.3).
 	StoreEmpty         bool
 	PrevHref, NextHref string
+	// RegistryReadOnly is hardening.disableRegistryPush (FR-098): the
+	// listing states that nothing can be pushed here, so an operator never
+	// reads a refused docker push as a fault.
+	RegistryReadOnly bool
 }
 
 // KindOn reports whether k is among the active kind filters (checkbox
@@ -72,11 +86,18 @@ func (u *UI) contentList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := &contentListData{
-		Query:      query,
-		Total:      page.Total,
-		Page:       page.Page,
-		TotalPages: page.TotalPages,
-		StoreEmpty: page.Total == 0 && !query.HasFilter(),
+		Query:            query,
+		Total:            page.Total,
+		Page:             page.Page,
+		TotalPages:       page.TotalPages,
+		StoreEmpty:       page.Total == 0 && !query.HasFilter(),
+		RegistryReadOnly: u.hardening.DisableRegistryPush,
+	}
+	// One snapshot of the ledgers for the whole page (FR-098).
+	classifier, err := u.store.Classifier()
+	if err != nil {
+		u.contentError(w, r, "content-list", &contentListData{Query: query}, storeErr(err))
+		return
 	}
 	for _, repo := range page.Repos {
 		host := repo.Name
@@ -87,7 +108,7 @@ func (u *UI) contentList(w http.ResponseWriter, r *http.Request) {
 			data.Groups = append(data.Groups, contentGroup{Host: host})
 		}
 		g := &data.Groups[len(data.Groups)-1]
-		g.Repos = append(g.Repos, repo)
+		g.Repos = append(g.Repos, contentRow{RepoSummary: repo, Provenance: classifier.Classify(repo.Name)})
 		g.Size += repo.Size
 	}
 	if page.Page > 1 {
@@ -189,7 +210,7 @@ func crumbs(repo, last string) []crumb {
 type contentRepoData struct {
 	Name        string
 	Kind        store.Kind
-	Tags        []store.TagInfo
+	Tags        []contentTagRow
 	Size        int64
 	Crumbs      []crumb
 	PullCommand string
@@ -198,7 +219,36 @@ type contentRepoData struct {
 	// recipes so the disabled action explains itself, never hides.
 	ProvClass store.ProvenanceClass
 	ManagedBy []string
+	// Provenance is the whole FR-098 classification: origin, managing
+	// recipes and their assurance.
+	Provenance store.Classification
+	// LastScan is the most recent scan among the tags (FR-098).
+	LastScan *provenance.Scan
+	// UnitImportDisabled and RegistryReadOnly are the FR-098 switches,
+	// stated on the page of the content they would have let in.
+	UnitImportDisabled bool
+	RegistryReadOnly   bool
 }
+
+// contentTagRow is one tag of the repository page with its last scan.
+type contentTagRow struct {
+	store.TagInfo
+	// Scan is the tag's last vulnerability scan; nil when never scanned
+	// on this instance (FR-098, FR-031).
+	Scan *provenance.Scan
+}
+
+// ScanDBAge renders the age of the database the tag was scanned with.
+func (t *contentTagRow) ScanDBAge() string {
+	if t.Scan == nil || t.Scan.DatabaseBuiltAt.IsZero() {
+		return ""
+	}
+	return scan.FormatAge(time.Duration(t.Scan.DatabaseAgeSeconds) * time.Second)
+}
+
+// ProvLabel is the i18n key of the class label (FR-098), refined by the
+// origin and the assurance of the managing recipes.
+func (d *contentRepoData) ProvLabel() string { return provenanceLabel(&d.Provenance) }
 
 // CanDelete reports whether the removal action is live: unit-import
 // provenance and no managing recipe (FR-044 amendment). The admin role
@@ -213,23 +263,32 @@ func (d *contentRepoData) ManagedByList() string {
 	return strings.Join(d.ManagedBy, ", ")
 }
 
-// repoProvenance resolves the displayed provenance of one repository: the
-// live recipe graph wins (a repo listed among any recipe's ingredients is
-// recipe-managed), then the recorded ledger class, then seed — content
-// pushed through /v2/ by a standard client leaves no record.
+// repoProvenance resolves the displayed provenance of one repository
+// through the store's one classification rule (FR-098, store/provenance.go):
+// the live recipe graph wins, then the recorded ledger class, then seed.
 func (u *UI) repoProvenance(name string) (class store.ProvenanceClass, managedBy []string) {
-	managed := u.store.ManagingRecipes(name)
-	if len(managed) > 0 {
-		return store.ProvenanceRecipe, managed
-	}
-	if p, ok := u.store.ProvenanceOf(name); ok {
-		if p.Class == store.ProvenanceRecipe && p.Recipe != "" {
-			return p.Class, []string{p.Recipe + "@" + p.RecipeVersion}
-		}
-		return p.Class, nil
-	}
-	return store.ProvenanceSeed, nil
+	c := u.store.Classify(name)
+	return c.Class, c.Recipes
 }
+
+// provenanceLabel is the i18n key naming a classification (FR-098).
+func provenanceLabel(c *store.Classification) string {
+	switch {
+	case c.Class == store.ProvenanceRecipe && c.Assurance.Reduced():
+		return "provenance.recipe_reduced"
+	case c.Class == store.ProvenanceRecipe:
+		return "provenance.recipe"
+	case c.Class == store.ProvenanceUnitImport && c.Origin == store.OriginLocalPack:
+		return "provenance.local_pack"
+	case c.Class == store.ProvenanceUnitImport:
+		return "provenance.unit_import"
+	default:
+		return "provenance.seed"
+	}
+}
+
+// ProvLabel is the i18n key of the row's provenance label.
+func (r *contentRow) ProvLabel() string { return provenanceLabel(&r.Provenance) }
 
 // contentRepo serves the repository detail: navigable breadcrumb, kind
 // badge, contextualized pull command on the request host, tag table
@@ -245,13 +304,30 @@ func (u *UI) contentRepo(w http.ResponseWriter, r *http.Request, name string) {
 		return
 	}
 	data := contentRepoData{
-		Name:   name,
-		Kind:   info.Kind,
-		Tags:   info.Tags,
-		Size:   info.Size,
-		Crumbs: crumbs(name, ""),
+		Name:               name,
+		Kind:               info.Kind,
+		Size:               info.Size,
+		Crumbs:             crumbs(name, ""),
+		UnitImportDisabled: u.hardening.DisableUnitImport,
+		RegistryReadOnly:   u.hardening.DisableRegistryPush,
 	}
-	data.ProvClass, data.ManagedBy = u.repoProvenance(name)
+	digests := make([]string, 0, len(info.Tags))
+	for _, t := range info.Tags {
+		digests = append(digests, t.Digest)
+	}
+	scans := u.scanHistory.LastScans(name, digests)
+	for _, t := range info.Tags {
+		row := contentTagRow{TagInfo: t}
+		if sc, ok := scans[t.Digest]; ok {
+			row.Scan = &sc
+		}
+		data.Tags = append(data.Tags, row)
+	}
+	if last, ok := provenance.Latest(scans); ok {
+		data.LastScan = &last
+	}
+	data.Provenance = u.store.Classify(name)
+	data.ProvClass, data.ManagedBy = data.Provenance.Class, data.Provenance.Recipes
 	if len(info.Tags) > 0 {
 		data.PullCommand = pullByTag(info.Kind, r.Host, name, info.Tags[0].Tag)
 	}

@@ -16,8 +16,8 @@
 "TBY-AUTH-003.action": "Sign in with an account holding the {{.role}} role, or ask an administrator to grant it."
 
 "TBY-AUTH-004.what": "The form could not be submitted safely."
-"TBY-AUTH-004.cause": "The anti-forgery token is missing or has expired — the page was probably left open for a long time."
-"TBY-AUTH-004.action": "The form has been reloaded with a fresh token: submit it again."
+"TBY-AUTH-004.cause": "The anti-forgery token is missing, wrong or expired, or the request came from a page of another site — the page was probably left open for a long time."
+"TBY-AUTH-004.action": "Reload the page and submit again. A script or tool calling the API authenticates with a token (Authorization: Bearer), not with the browser session."
 
 "TBY-AUTH-005.what": "Your session has expired."
 "TBY-AUTH-005.cause": "No activity for longer than the idle timeout, the session reached its maximum lifetime, or the instance restarted."
@@ -164,8 +164,8 @@
 "TBY-POL-006.action": "Pull from this registry, or push to the zone registry instead. Seeding this instance by push requires an administrator to remove {{.setting}} and restart it."
 
 "TBY-SIG-001.what": "The recipe signature could not be verified."
-"TBY-SIG-001.cause": "{{if .scope}}No trust root allowed by the trust scope {{.scope}} validates the signature of {{.recipe}} (keys tried: {{.fingerprints}}). A key that is valid for another scope does not apply inside this one.{{else}}No configured trust root validates the signature of {{.recipe}} (keys tried: {{.fingerprints}}).{{end}}"
-"TBY-SIG-001.action": "{{if .scope}}Check the roots listed by the scope {{.scope}} (trust.scopes[].roots): they must include the key that signed this recipe, or the recipe belongs under another scope.{{else}}Check that the zone's trust roots include the key that signed this recipe.{{end}} An unverified recipe is never admitted."
+"TBY-SIG-001.cause": "{{if .scope}}No trust root allowed by the trust scope {{.scope}} validates the signature of {{.recipe}} (keys tried: {{.fingerprints}}). A key that is valid for another scope does not apply inside this one.{{else}}No trust root of the default set validates the signature of {{.recipe}} (keys tried: {{.fingerprints}}). A trust root that a scope lists is reserved to that scope and verifies nothing outside it.{{end}}{{if .reserved}} The signature does verify against the trust root {{.reserved}}, {{if .reservedto}}reserved to the trust scope {{.reservedto}}{{else}}a root of the default set, which does not apply inside this scope{{end}}.{{end}}"
+"TBY-SIG-001.action": "{{if .reservedto}}The key that signed this recipe is reserved to the trust scope {{.reservedto}}: if the recipe must be admitted under that key, add its repository to that scope's repositories (trust.scopes[].repositories); otherwise have it re-signed with a key that applies here.{{else if .reserved}}The key that signed this recipe belongs to the default set: list that root in the roots of the scope {{.scope}} (trust.scopes[].roots), or move the recipe out of that scope.{{else if .scope}}Check the roots listed by the scope {{.scope}} (trust.scopes[].roots): they must include the key that signed this recipe, or the recipe belongs under another scope.{{else}}Check that the zone's trust roots include the key that signed this recipe, and that no trust scope lists it: a root that a scope lists is reserved to that scope.{{end}} An unverified recipe is never admitted."
 
 "TBY-SIG-002.what": "A pinned digest does not match the fetched content."
 "TBY-SIG-002.cause": "{{.reference}} pins {{.expected}} but the registry served {{.actual}} — the content changed or was tampered with."
@@ -461,6 +461,10 @@
 "TBY-SRV-003.what": "The instance is unreachable."
 "TBY-SRV-003.cause": "The network connection dropped, or the instance is restarting."
 "TBY-SRV-003.action": "Check your network link and retry; the page resumes as soon as the instance answers."
+
+"TBY-SRV-004.what": "The request is too large."
+"TBY-SRV-004.cause": "Its body exceeds the {{.limit}} bytes this endpoint accepts; it was refused before being read."
+"TBY-SRV-004.action": "Send a smaller body. A document over the bound is not one this endpoint was built for: check that the right file was sent."
 
 # Exit-code table (FR-066 amendment R-08). Not error codes: the rows of
 # the published command-line contract, rendered by ExitCodeTable into the

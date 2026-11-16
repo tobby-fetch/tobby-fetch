@@ -21,8 +21,10 @@ import (
 // ctxKey scopes the identity in a request context.
 type ctxKey struct{}
 
-// WithIdentity attaches id to ctx.
+// WithIdentity attaches id to ctx, and sets the listener's authentication
+// marker if ctx carries one (WithAuthMark, NFR-022).
 func WithIdentity(ctx context.Context, id Identity) context.Context {
+	markAuthenticated(ctx)
 	return context.WithValue(ctx, ctxKey{}, id)
 }
 
@@ -195,7 +197,7 @@ func (a *Authenticator) authenticate(r *http.Request) (Identity, authResult) {
 		return a.checkToken(strings.TrimPrefix(header, "Bearer "))
 	case strings.HasPrefix(header, "Basic "):
 		name, pass, ok := r.BasicAuth()
-		if !ok {
+		if !ok || !ValidPresentedName(name) {
 			return Identity{}, refused
 		}
 		// A token secret is accepted as the Basic password so docker/helm
@@ -313,7 +315,7 @@ func (a *Authenticator) Registry(next http.Handler) http.Handler {
 				// refused access is the record. A wrong credential already
 				// has its own auth.authenticate failure — one refusal must
 				// not produce two lines.
-				a.deny(r, audit.ActionRegistryAccess, audit.OutcomeDenied, "")
+				a.deny(r, audit.ActionRegistryAccess, "")
 			}
 			w.Header().Set("WWW-Authenticate", `Basic realm="tobby"`)
 			http.Error(w, "authentication required", http.StatusUnauthorized)
@@ -326,7 +328,7 @@ func (a *Authenticator) Registry(next http.Handler) http.Handler {
 			floor = RoleOperator
 		}
 		if !id.Role.AtLeast(floor) {
-			a.deny(r, audit.ActionRegistryAccess, audit.OutcomeDenied, id.Name)
+			a.deny(r, audit.ActionRegistryAccess, id.Name)
 			http.Error(w, "insufficient role", http.StatusForbidden)
 			return
 		}
@@ -478,6 +480,9 @@ func credentialPresented(r *http.Request) bool {
 // failed-authentication record. Only the name is read — never the secret.
 func presentedName(r *http.Request) string {
 	if name, _, ok := r.BasicAuth(); ok && name != "" {
+		if !ValidPresentedName(name) {
+			return InvalidActor
+		}
 		return name
 	}
 	return "unauthenticated"
@@ -487,7 +492,7 @@ func presentedName(r *http.Request) string {
 // surface — the caller was identified (or not) and the request was
 // nevertheless blocked. Permitted requests are not audited here: see
 // authenticateAudited for the event-versus-traffic rule.
-func (a *Authenticator) deny(r *http.Request, action, outcome, actor string) {
+func (a *Authenticator) deny(r *http.Request, action, actor string) {
 	if actor == "" {
 		actor = "unauthenticated"
 	}
@@ -495,7 +500,7 @@ func (a *Authenticator) deny(r *http.Request, action, outcome, actor string) {
 		Actor:   actor,
 		Action:  action,
 		Target:  r.URL.Path,
-		Outcome: outcome,
+		Outcome: audit.OutcomeDenied,
 		Origin:  ClientOrigin(r),
 	})
 }
@@ -515,12 +520,29 @@ func ClientOrigin(r *http.Request) string {
 // session additionally authenticates GET and HEAD — read-only, so no CSRF
 // exposure — which keeps browser-clickable API links (log download,
 // OpenAPI document) working from a signed-in page: one URL serves both
-// surfaces (FR-061). Mutating API calls always require Basic or Bearer.
+// surfaces (FR-061).
+//
+// A mutating call that presents a session cookie and no Basic or Bearer
+// credential is the case NFR-012 is about (amendment 2026-11-16): it is
+// authenticated as the session's identity ONLY when it carries that
+// session's anti-forgery token in the X-CSRF-Token header and passes the
+// origin check (SameOrigin); otherwise it is refused with TBY-AUTH-004,
+// before anything renews the session. The token is the one embedded in
+// every page of the session, so a page of this instance can call the API
+// — and nothing else can: the cookie alone authorizes nothing. Under the
+// FR-075 override, where every request is the anonymous administrator, a
+// mutating call without an explicit credential is refused with the same
+// code when the browser says it comes from another origin.
+//
 // Failures answer RFC 9457 problem documents in the negotiated language —
 // the same taxonomy entry the UI renders. Role enforcement is
 // per-endpoint, in the api package.
 func (a *Authenticator) API(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a.Disabled && ForgeryExposed(r) && !SameOrigin(r) {
+			a.forgeryRefused(w, r, AnonymousIdentity.Name)
+			return
+		}
 		id, v := a.authenticateAudited(r, audit.SurfaceAPI)
 		if v == VerdictThrottled {
 			// Same taxonomy entry the UI renders for the same condition
@@ -539,16 +561,28 @@ func (a *Authenticator) API(next http.Handler) http.Handler {
 		}
 		ok := v == VerdictOK
 		sessState := SessionUnknown
-		if !ok && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		switch {
+		case ok:
+		case r.Method == http.MethodGet || r.Method == http.MethodHead:
 			// A UI session reaching a read-only API path is not a new
 			// authentication: session.login already recorded it, and the
 			// browser sends the cookie on every fragment poll.
 			id, sessState = a.sessionIdentity(r)
 			ok = sessState == SessionLive
+		case v == VerdictNone && ForgeryExposed(r):
+			// No explicit credential: the session cookie, if any, is the
+			// only one — ambient, so it must come with its token.
+			var forged bool
+			id, sessState, forged = a.sessionMutation(r)
+			if forged {
+				a.forgeryRefused(w, r, id.Name)
+				return
+			}
+			ok = sessState == SessionLive
 		}
 		if !ok {
 			if v == VerdictNone {
-				a.deny(r, audit.ActionAPIAccess, audit.OutcomeDenied, "")
+				a.deny(r, audit.ActionAPIAccess, "")
 			}
 			if sessState == SessionIdle || sessState == SessionLifetime {
 				// The cookie was a session that just expired: say so, with
@@ -564,6 +598,39 @@ func (a *Authenticator) API(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(WithIdentity(r.Context(), id)))
 	})
+}
+
+// sessionMutation resolves the session cookie of a mutating API call. The
+// session is PEEKED first — a forged request must not renew the victim's
+// session — and is accepted only with its anti-forgery token in the
+// CSRFHeader and a same-origin provenance (NFR-012). forged reports a
+// live session presented without them; the identity is then returned for
+// the audit record only, and must not be used to serve the request.
+func (a *Authenticator) sessionMutation(r *http.Request) (id Identity, st SessionState, forged bool) {
+	if a.Sessions == nil {
+		return Identity{}, SessionUnknown, false
+	}
+	c, err := r.Cookie(SessionCookie)
+	if err != nil || c.Value == "" {
+		return Identity{}, SessionUnknown, false
+	}
+	sess, st := a.Sessions.Peek(c.Value, ClientOrigin(r), a.now())
+	if st != SessionLive {
+		return Identity{}, st, false
+	}
+	if !SameOrigin(r) || !sess.CheckCSRF(r.Header.Get(CSRFHeader)) {
+		return Identity{Name: sess.Account}, SessionLive, true
+	}
+	id, st = a.sessionIdentity(r)
+	return id, st, false
+}
+
+// forgeryRefused answers and audits a refused cookie-authenticated (or
+// override-anonymous) mutation: TBY-AUTH-004, the code the UI renders for
+// the same condition (FR-061).
+func (a *Authenticator) forgeryRefused(w http.ResponseWriter, r *http.Request, actor string) {
+	a.deny(r, audit.ActionAPIAccess, actor)
+	taxonomy.WriteProblem(w, r.Header.Get("Accept-Language"), taxonomy.New(taxonomy.CodeCSRF, nil))
 }
 
 // sessionIdentity resolves a UI session cookie into an identity, for the

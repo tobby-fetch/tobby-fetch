@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"@context\":\"https://openvex.dev/ns/v0.2.0\",\"@id\":\"https://vex.example/seed\",\"author\":\"Site security\",\"timestamp\":\"2026-11-16T10:00:00Z\",\"version\":1,\"statements\":[{\"vulnerability\":{\"name\":\"CVE-2024-12345\"},\"products\":[{\"@id\":\"pkg:oci/nginx@sha256%3Aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa?repository_url=docker.io/library/nginx\",\"subcomponents\":[{\"@id\":\"pkg:deb/debian/libxml2@2.9.14\"}]}],\"status\":\"not_affected\",\"justification\":\"component_not_present\"}]}")

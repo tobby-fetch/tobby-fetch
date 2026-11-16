@@ -89,6 +89,7 @@ possible at all.
 | `POST /admin/diagnostics/bundle` | admin | Gathers configuration, recent logs and task reports into one archive; redaction fails closed (`TBY-DIA-002`). Audited with the requester (FR-094). |
 | `GET /admin/state` | admin | The state-directory inventory (FR-097, R-27): every entry of the instance's identity, its class and permissions — never contents. |
 | `GET /admin/store` | admin | What the store holds, and the reset that empties it (FR-046). |
+| `GET /admin/policy` | admin | The effective content policy (FR-031 amendment R-15, FR-098): mode, threshold, every exception with its origin, scope, justification, expiry and state, the OpenVEX documents, the hardening switches. Read-only — the policy lives in the configuration file and the Retriever — and placed among the administration screens it describes. |
 | `POST /admin/store/reset` | admin | Full store reset, restricted to the admin role by FR-046, behind a typed confirmation and audited (FR-094). |
 | `GET /help`, `GET /about`, `GET /about/third-party`, `GET /api-docs` | viewer | |
 | `GET /help/{page...}`, `GET /help/-/assets/{name}` | viewer | The operations guides embedded in the binary and their screenshots (NFR-003, amendment 2026-08-11). Readable by whoever operates the instance — and by nobody who has not signed in (R-01). |
@@ -129,6 +130,7 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `GET /api/v1/media/slip` | viewer | `GET /media/slip` (`format=html\|text\|json`, `lang=en\|fr`, `download=1`) |
 | `POST /api/v1/media/verify` | operator | `POST /media/verify` |
 | `POST /api/v1/media/import` | operator | `POST /media/import` |
+| `GET /api/v1/policy` | viewer | the document behind `GET /admin/policy`. Viewer, deliberately below the screen: it gathers the exceptions every item report already shows a viewer (FR-031), holds no secret, and is what `tobby scan exceptions --instance` and monitoring read with a viewer token |
 | `GET /api/v1/store/verification` | viewer | the last store verification report — what `GET /integrity` polls |
 | `POST /api/v1/store/verify` | operator | `POST /integrity/verify` |
 | `POST /api/v1/store/verify/cancel` | operator | `POST /integrity/cancel` |

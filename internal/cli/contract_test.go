@@ -118,6 +118,9 @@ func fixtures() []commandFixture {
 		{path: "tobby consumption registries-yaml", args: func(t *testing.T) []string {
 			return []string{"--storage-root", tmp(t), "--destination", "reg.zone.example"}
 		}},
+		{path: "tobby scan exceptions", args: func(t *testing.T) []string {
+			return []string{"--config", filepath.Join(tmp(t), "absent.yaml")}
+		}},
 		{path: "tobby serve", args: func(*testing.T) []string {
 			return []string{"--mode", "sideways"}
 		}},

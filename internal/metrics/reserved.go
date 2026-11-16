@@ -89,7 +89,9 @@ const (
 	// outcome = written | refused (redaction failed closed) | failed.
 	MetricDiagnosticsBundles = "tobby_diagnostics_bundles_total"
 
-	// Track C — provenance and hardening (R-17, FR-098).
+	// Track C — provenance and hardening (R-17, FR-098): registered by
+	// RegisterUnmanaged and RegisterHardening (provenance.go) and no
+	// longer listed by ReservedFamilies.
 
 	// MetricStoreUnmanaged is the number of repositories not managed by a
 	// verified recipe: gauge, label class = unit-import | seed.
@@ -99,7 +101,9 @@ const (
 	// disableRegistryPush.
 	MetricHardeningEnabled = "tobby_hardening_enabled"
 
-	// Track C — scoped and bounded exceptions (R-15).
+	// Track C — scoped and bounded exceptions (R-15): registered by
+	// RegisterScanExceptions (exceptions.go) and newScanMetrics (scan.go),
+	// and no longer listed by ReservedFamilies.
 
 	// MetricScanExceptions is the number of exceptions in configuration,
 	// VEX-born ones included: gauge, labels state = active | expired and
@@ -119,10 +123,5 @@ func ReservedFamilies() []string {
 		// (scan.go, auth.go, integrity.go): nothing of it stays reserved.
 
 		// Milestone 7.
-		// Track B (R-11, R-32, R-30) registers its families now (ops.go).
-		MetricStoreUnmanaged,
-		MetricHardeningEnabled,
-		MetricScanExceptions,
-		MetricScanReblocked,
 	}
 }

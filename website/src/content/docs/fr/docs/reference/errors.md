@@ -100,10 +100,16 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 ### TBY-AUTH-004
 
 - **Quoi :** le formulaire n'a pas pu être soumis en toute sécurité.
-- **Cause probable :** le jeton anti-falsification est absent ou a expiré —
-  la page est probablement restée ouverte longtemps.
-- **Action corrective :** le formulaire a été rechargé avec un jeton neuf :
-  soumettez-le à nouveau.
+- **Cause probable :** le jeton anti-falsification est absent, erroné ou
+  expiré, ou la requête vient d'une page d'un autre site — la page est
+  probablement restée ouverte longtemps. Toute requête qui modifie l'état
+  et que la session du navigateur authentifie porte le jeton, formulaires
+  de l'interface comme appels d'API (en-tête `X-CSRF-Token` sur l'API), et
+  elle est refusée quand le navigateur indique qu'elle vient d'une autre
+  origine.
+- **Action corrective :** rechargez la page et soumettez à nouveau. Un
+  script ou un outil qui appelle l'API s'authentifie par un jeton
+  (`Authorization: Bearer`), pas par la session du navigateur.
 - **Remédiable hors-ligne :** oui · **Bloque :** la requête soumise seulement
 
 ### TBY-AUTH-005
@@ -489,30 +495,41 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 - **Quoi :** Cette instance n'accepte pas d'import unitaire.
 - **Cause probable :** Elle est durcie par `<setting>` : le contenu n'entre dans son store que par des recipes vérifiées, et un import unitaire ou un empaquetage local serait un contenu qu'aucune recipe ne garantit.
 - **Action corrective :** Livrez ce contenu par une recipe signée. Si l'import unitaire est nécessaire sur cette instance, un administrateur retire `<setting>` de sa configuration et la redémarre.
-- **Remédiable hors-ligne :** oui · **Bloque :** l'import ou l'empaquetage ; les synchronisations de recipes ne sont pas concernées · **Statut :** réservé — émis à partir du jalon 7
+- **Où :** l'écran d'import et `POST /api/v1/import` avec son inspection (HTTP 403), l'empaquetage de FileSets à l'écran, par l'API et par `tobby fileset pack` (classe politique, sortie 3) ; chaque refus est un événement d'audit `hardening.refused` qui nomme le réglage
+- **Remédiable hors-ligne :** oui · **Bloque :** l'import ou l'empaquetage ; les synchronisations de recipes ne sont pas concernées
 
 ### TBY-POL-006
 
 - **Quoi :** Ce registre est en lecture seule : les push sont refusés.
 - **Cause probable :** L'instance est durcie par `<setting>` : sa registry embarquée sert du contenu et n'en accepte d'aucun client, quel que soit son rôle. Les synchronisations de recipes écrivent toujours dans le store.
 - **Action corrective :** Tirez depuis ce registre, ou poussez vers la registry de la zone. Alimenter cette instance par push exige qu'un administrateur retire `<setting>` et la redémarre.
-- **Remédiable hors-ligne :** oui · **Bloque :** le push ; les tirages et les synchronisations de recipes ne sont pas concernés · **Statut :** réservé — émis à partir du jalon 7
+- **Où :** toute écriture sur `/v2/` — upload de blob, morceau, validation, montage, push de manifeste, suppression — pour tous les clients et tous les rôles, administrateurs compris, sous la forme de l'erreur OCI `DENIED` (HTTP 403) dont le message commence par le code, que `docker`, `helm`, `oras` et `skopeo` affichent ; chaque refus est un événement d'audit `hardening.refused` qui nomme le réglage
+- **Remédiable hors-ligne :** oui · **Bloque :** le push ; les tirages et les synchronisations de recipes ne sont pas concernés
 
 ## Vérification des signatures et digests (TBY-SIG)
 
 ### TBY-SIG-001
 
 - **Quoi :** la signature de la recipe n'a pas pu être vérifiée.
-- **Cause probable :** aucune clé de confiance configurée ne valide la
-  signature de *\<recipe\>* (les empreintes essayées sont listées). Quand un
-  périmètre de confiance déclaré correspond à la recipe, le message **nomme ce
-  périmètre** (*\<périmètre\>*) et les clés essayées sont celles qu'il
-  autorise : une clé valide ailleurs, mais absente des `roots` du périmètre,
-  ne s'applique pas dedans.
+- **Cause probable :** aucune clé de confiance qui s'applique à
+  *\<recipe\>* ne valide sa signature (les empreintes essayées sont
+  listées). Quand un périmètre de confiance déclaré correspond à la recipe, le
+  message **nomme ce périmètre** (*\<périmètre\>*) et les clés essayées sont
+  celles qu'il autorise : une clé valide ailleurs, mais absente des `roots` du
+  périmètre, ne s'applique pas dedans. Hors de tout périmètre, les clés
+  essayées sont l'**ensemble par défaut** — les clés qu'aucun périmètre ne
+  liste : une clé listée par un périmètre est réservée à ce périmètre et ne
+  vérifie rien en dehors. Quand toutes les clés configurées sont réservées,
+  rien n'est essayé et le message le dit. Quand la signature est valide pour
+  une clé qui ne s'applique pas ici, le message la nomme — nom et empreinte
+  (*\<réservée\>*) et le périmètre auquel elle est réservée
+  (*\<réservée-à\>*).
 - **Action corrective :** vérifiez que les clés de confiance de la zone
   incluent la clé qui a signé cette recipe — ou, quand un périmètre est nommé,
-  que ses `roots` la listent, ou que la recipe relève d'un autre périmètre
-  (voir
+  que ses `roots` la listent, ou que la recipe relève d'un autre périmètre.
+  Quand une clé réservée est nommée, étendez les `repositories` de ce
+  périmètre pour couvrir la recipe, ou faites re-signer la recipe avec une
+  clé qui s'applique là où elle est (voir
   [Signatures, clés de confiance et liste blanche](../../security/content-trust/)).
   Une recipe non vérifiée n'est jamais admise.
 - **Ingrédients :** la signature propre d'un ingrédient ne lève ce code que
@@ -653,21 +670,21 @@ Réservés à l'ouverture du jalon 6 (FR-031, FR-032) : la politique est consult
 - **Quoi :** La dérogation pour `<id>` ne couvre pas `<reference>`.
 - **Cause probable :** La dérogation est limitée à `<scope>`, et cet élément est hors de cette portée : la vulnérabilité est jugée comme si aucune dérogation n'existait.
 - **Action corrective :** Rien à faire si la portée est la bonne. Si cet élément devait être couvert, élargissez la portée de la dérogation dans la configuration — elle reste bornée par son expiration.
-- **Remédiable hors-ligne :** oui · **Bloque :** rien par lui-même — la vulnérabilité est jugée sans la dérogation · **Statut :** réservé — émis à partir du jalon 7
+- **Remédiable hors-ligne :** oui · **Bloque :** rien par lui-même — la vulnérabilité est jugée sans la dérogation
 
 ### TBY-SCN-027
 
 - **Quoi :** Le document OpenVEX `<path>` est inutilisable.
 - **Cause probable :** `<detail>`
 - **Action corrective :** Corrigez ou retirez le document listé sous scan.vex, puis redémarrez. Tobby lit les documents OpenVEX et ne les télécharge jamais : le fichier doit être un document local valide.
-- **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance · **Statut :** réservé — émis à partir du jalon 7
+- **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance
 
 ### TBY-SCN-028
 
 - **Quoi :** La dérogation du Retriever pour `<id>` n'a pas d'expiration.
 - **Cause probable :** Elle s'applique, mais sans limite dans le temps : les dérogations déclarées par une instance doivent porter une expiration, et celles des Retrievers le devront aussi à partir du format v1.
 - **Action corrective :** Demandez au responsable du Retriever de la zone de donner à la dérogation une date expires et une justification.
-- **Remédiable hors-ligne :** oui · **Bloque :** rien — la dérogation s'applique et est signalée sans limite · **Statut :** réservé — émis à partir du jalon 7
+- **Remédiable hors-ligne :** oui · **Bloque :** rien — la dérogation s'applique et est signalée sans limite
 
 ## Limites de la destination (TBY-DST)
 
@@ -1300,3 +1317,16 @@ FR-097 : le répertoire d'état normé — la cible de sauvegarde d'une instance
 - **Action corrective :** vérifiez votre liaison réseau et réessayez ; la
   page reprend dès que l'instance répond.
 - **Remédiable hors-ligne :** oui · **Bloque :** l'affichage de la session de navigation seulement
+
+### TBY-SRV-004
+
+- **Quoi :** la requête est trop volumineuse.
+- **Cause probable :** son corps dépasse les `<limit>` octets que ce point
+  d'accès accepte ; elle a été refusée avant d'être lue (NFR-023). Chaque
+  point d'accès de l'API a une borne dimensionnée sur son plus grand
+  document légitime ; voir le tableau de
+  [validation des entrées](../../security/input-validation/).
+- **Action corrective :** envoyez un corps plus petit. Un document au-delà
+  de la borne n'est pas de ceux que ce point d'accès traite : vérifiez que
+  le bon fichier a été envoyé.
+- **Remédiable hors-ligne :** oui · **Bloque :** la requête seulement

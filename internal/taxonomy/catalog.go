@@ -180,17 +180,21 @@ const (
 	// any change, even a single digest, requires a new metadata.version).
 	CodeTagImmutable Code = "TBY-POL-004"
 	// CodeUnitImportDisabled refuses a unit import or a local packing on an
-	// instance hardened with hardening.disableUnitImport (FR-098, R-17).
-	// Reserved: emitter lands with R-17 (milestone 7, track C).
+	// instance hardened with hardening.disableUnitImport (FR-098, R-17):
+	// the import screen and API, and every packing surface, the command
+	// line included (package hardening, fileserve.PackProblem).
 	CodeUnitImportDisabled Code = "TBY-POL-005"
 	// CodeRegistryPushDisabled refuses a push to the embedded registry on an
 	// instance hardened with hardening.disableRegistryPush (FR-098), in the
-	// OCI DENIED envelope on /v2/. Reserved: emitter lands with R-17
-	// (milestone 7, track C).
+	// OCI DENIED envelope on /v2/ (hardening.Registry).
 	CodeRegistryPushDisabled Code = "TBY-POL-006"
 
-	// CodeSignature is a recipe signature that no configured trust root
-	// validates (FR-033).
+	// CodeSignature is a recipe signature that no trust root applying to
+	// the recipe validates (FR-033). Optional parameters (B-057):
+	// "reserved" names a configured root that does verify the signature
+	// but does not apply here (name and fingerprint), "reservedto" the
+	// scopes that root is reserved to (empty for a root of the default
+	// set).
 	CodeSignature Code = "TBY-SIG-001"
 	// CodeDigestMismatch is fetched content not matching its pinned digest
 	// (FR-033). Reserved: emitter lands at milestone 3.
@@ -453,17 +457,16 @@ const (
 	// matches a finding but whose scope (digest, repository, recipe)
 	// excludes the item: it does not apply here, and the report says why
 	// the item is still judged on the finding (FR-031 amendment, R-15).
-	// Non-blocking by itself. Reserved: emitter lands with R-15
-	// (milestone 7, track C).
+	// Non-blocking by itself.
 	CodeScanExceptionOutOfScope Code = "TBY-SCN-026"
 	// CodeScanVEXInvalid is a configured OpenVEX document that cannot be
 	// read or validated: the instance refuses to start (FR-031 amendment,
-	// R-15). Reserved: emitter lands with R-15 (milestone 7, track C).
+	// R-15), naming the file. Also the refusal of `tobby scan exceptions`
+	// reading the same configuration.
 	CodeScanVEXInvalid Code = "TBY-SCN-027"
 	// CodeScanExceptionUnbounded reports a Retriever exception without
 	// expiry, applied but stated as unbounded until the v1 format makes the
 	// expiry mandatory there too (FR-031 amendment, R-15). Non-blocking.
-	// Reserved: emitter lands with R-15 (milestone 7, track C).
 	CodeScanExceptionUnbounded Code = "TBY-SCN-028"
 
 	// On-demand store integrity verification (FR-057, R-31 — milestone
@@ -542,6 +545,10 @@ const (
 	// rendered by the UI shell on transport failure; catalogued so the
 	// troubleshooting guide documents it. Never served by the instance.
 	CodeUnreachable Code = "TBY-SRV-003"
+	// CodeRequestTooLarge is a request body over its endpoint's bound,
+	// refused before it is parsed (NFR-023): limit is the bound, in
+	// bytes.
+	CodeRequestTooLarge Code = "TBY-SRV-004"
 )
 
 var catalog = map[Code]Entry{
@@ -601,7 +608,7 @@ var catalog = map[Code]Entry{
 	// source does not publish.
 	CodePlatformMissing: {Code: CodePlatformMissing, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "platforms", "available"}},
 
-	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "fingerprints", "scope"}},
+	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "fingerprints", "scope", "reserved", "reservedto"}},
 	CodeDigestMismatch: {Code: CodeDigestMismatch, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "expected", "actual"}},
 	CodeArtifactType:   {Code: CodeArtifactType, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "expected", "actual"}},
 
@@ -695,8 +702,9 @@ var catalog = map[Code]Entry{
 	CodeIntegrityCancelled:  {Code: CodeIntegrityCancelled, Class: ClassOperational, Params: []string{"task"}},
 	CodeIntegrityUnreadable: {Code: CodeIntegrityUnreadable, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
 
-	// Milestone 7 — reserved (see the declarations). Startup refusals and
-	// non-blocking notes carry no status: they are never a response body.
+	// Milestone 7 (see the declarations; TBY-SCN-026..028 are emitted
+	// since R-15). Startup refusals and non-blocking notes carry no
+	// status: they are never a response body.
 	CodeUnitImportDisabled:      {Code: CodeUnitImportDisabled, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"setting"}},
 	CodeRegistryPushDisabled:    {Code: CodeRegistryPushDisabled, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"setting"}},
 	CodeScanExceptionOutOfScope: {Code: CodeScanExceptionOutOfScope, Class: ClassOperational, Params: []string{"id", "reference", "scope"}},
@@ -719,4 +727,6 @@ var catalog = map[Code]Entry{
 	CodeInternal:    {Code: CodeInternal, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError},
 	CodeNotFound:    {Code: CodeNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound},
 	CodeUnreachable: {Code: CodeUnreachable, Class: ClassOperational},
+
+	CodeRequestTooLarge: {Code: CodeRequestTooLarge, Class: ClassOperational, HTTPStatus: http.StatusRequestEntityTooLarge, Params: []string{"limit"}},
 }

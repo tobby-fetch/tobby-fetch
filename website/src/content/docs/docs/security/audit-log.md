@@ -42,6 +42,12 @@ Six fields on every record, plus the marker and the schema version:
   `local`. Forwarding headers are deliberately not trusted for the
   origin: they are client-supplied.
 
+Optional fields join them when they apply: `actor_name`, the readable
+name of a federated identity; `setting`, the configuration key that
+decided the outcome of a `hardening.refused` event; and `exception`,
+`exception_source` and `exception_expires`, the scan exception a
+`scan.exception_expired` event is about.
+
 The schema is versioned through `audit_schema` and evolves additively
 only, with the same compatibility discipline as the REST API
 ([release and compatibility](../../project/release-compatibility/)).
@@ -72,6 +78,8 @@ only, with the same compatibility discipline as the REST API
 | `diagnostics.bundle` | a [diagnostic bundle](../../passthrough/diagnostics/) produced or refused (FR-095): the requester, `local` for the command line on the host; the outcome is `failure` when it was not written, and the detail carries the code (`TBY-DIA-001`, or `TBY-DIA-002` with the member that still held a secret — never the secret) | v1.0.0-rc.1 |
 | `clock.implausible` | the local clock found earlier than the build time of the binary or the resolution time of a medium beyond `clock.skewTolerance` (FR-096); the target is `build` or the medium, the detail the gap, the tolerance and the code (`TBY-CLK-001`/`002`) — the [clock check](../../air-gap/clock-check/) records and warns, it corrects nothing | v1.0.0-rc.1 |
 | `scan.block` | an item refused by the vulnerability policy — violation, not scanned under a blocking policy, or stale database under the block action (FR-031); the target is the item's `reference@digest`, the outcome `denied` | v0.6.x |
+| `scan.exception_expired` | an item refused again because a scan exception that matched one of its violating findings has expired (FR-031 amendment, R-15) — one record per refused item and expired exception, beside the `scan.block` record of the same refusal. The target is the item's `reference@digest`, the outcome `denied`; `exception` names the vulnerability, `exception_source` where the exception was written (`instance`, `retriever`, or `vex:<document path>`), `exception_expires` its expiry (RFC 3339) | v1.0.x |
+| `hardening.refused` | a write refused by a hardening switch (FR-098): a unit import or its inspection, a FileSet packing (screen, API or `tobby fileset pack`), or a `/v2/` write — blob upload, mount, manifest put, deletion — by any client and role. The target is the reference, the packed FileSet or the repository; the outcome `denied`; the additional `setting` field names the switch (`hardening.disableUnitImport` or `hardening.disableRegistryPush`). One refusal, one record: no second denial is written beside it | v1.0.x |
 | `scan.scanner.repaired` | a scanner binary delivered by tobby-system, found changed on disk since it was verified and unpacked again from the verified delivery, without being run (FR-031); the target is the binary's path, the outcome `success`, or `failure` when the delivery could not be unpacked again (the scanner is then unavailable). A WARN record beside it names the expected and the found digests | v0.6.x |
 
 The media events joined the catalogue with v0.5.0: the two audited waivers

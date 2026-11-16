@@ -12,20 +12,32 @@
 # (TBY-SIG-001, parameter "scope") — so an operator reads which perimeter to
 # fix instead of hunting through every root.
 #
-#   1. Two keys, A and B, both configured as trust roots. Two scopes: tenant-a
-#      lists only root A, tenant-b lists only root B.
-#   2. Three recipes, all signed by key B:
-#        tenant-a-app   inside scope tenant-a  — B is a valid root, but not
-#                       one this scope lists: REFUSED, naming tenant-a;
-#        tenant-b-app   inside scope tenant-b  — B is listed: admitted;
-#        other-app      under no scope (signed by A, a root) — admitted.
+# Since B-057 the compartment holds in the other direction too: a root that
+# a scope lists is RESERVED to that scope, and verifies nothing outside it.
+# The default set — what applies outside every scope — is the roots no
+# scope lists.
+#
+#   1. Three keys, A, B and C, all configured as trust roots. Two scopes:
+#      tenant-a lists only root A, tenant-b lists only root B; C is listed by
+#      no scope — it is the default set.
+#   2. Four recipes:
+#        tenant-a-app   inside scope tenant-a, signed by B — B is a valid
+#                       root, but not one this scope lists: REFUSED, naming
+#                       tenant-a;
+#        tenant-b-app   inside scope tenant-b, signed by B — listed: admitted;
+#        other-app      under no scope, signed by C — admitted;
+#        stray-app      under no scope, signed by B — B is reserved to
+#                       tenant-b: REFUSED (B-057), naming root b and the
+#                       scope tenant-b it is reserved to.
 #      The manipulation is checked before the verdict is asked: cosign, a
-#      tool nobody here wrote, agrees that tenant-a-app verifies under B and
-#      NOT under A — so the refusal can only come from the scope.
-#   3. A manual synchronization: the refused recipe fails with TBY-SIG-001
-#      carrying scope "tenant-a" on its task item, the others land, and the
-#      refused recipe's content is absent from the store. The task page
-#      renders the scope in the message.
+#      tool nobody here wrote, agrees that tenant-a-app and stray-app verify
+#      under B, and that tenant-a-app does NOT verify under A — so each
+#      refusal can only come from the scopes.
+#   3. A manual synchronization: the refused recipes fail with TBY-SIG-001
+#      (tenant-a-app carrying scope "tenant-a", stray-app carrying the
+#      reserved root and its scope) on their task items, the others land,
+#      and the refused recipes' content is absent from the store. The task
+#      page renders the scope in the message.
 #
 # Topology:
 #   tbc-m6s-source (container, tbc-net)  source registry + cookbook
@@ -64,12 +76,15 @@ c_serve_source "$SOURCE"
 
 c_keypair a
 c_keypair b
+c_keypair c
 IMG_TENANT_A=$(c_seed_image "$SOURCE_IP:8080/library/tenant-a:1.0.0")
 IMG_TENANT_B=$(c_seed_image "$SOURCE_IP:8080/library/tenant-b:1.0.0")
 IMG_OTHER=$(c_seed_image "$SOURCE_IP:8080/library/other:1.0.0")
+IMG_STRAY=$(c_seed_image "$SOURCE_IP:8080/library/stray:1.0.0")
 D_TENANT_A=$(c_publish "$SOURCE_IP:8080" tenant-a-app tenant-a "$SOURCE_IP:8080/library/tenant-a" "$IMG_TENANT_A" b)
 c_publish "$SOURCE_IP:8080" tenant-b-app tenant-b "$SOURCE_IP:8080/library/tenant-b" "$IMG_TENANT_B" b >/dev/null
-c_publish "$SOURCE_IP:8080" other-app other "$SOURCE_IP:8080/library/other" "$IMG_OTHER" a >/dev/null
+c_publish "$SOURCE_IP:8080" other-app other "$SOURCE_IP:8080/library/other" "$IMG_OTHER" c >/dev/null
+D_STRAY=$(c_publish "$SOURCE_IP:8080" stray-app stray "$SOURCE_IP:8080/library/stray" "$IMG_STRAY" b)
 
 # The manipulation, proved before a verdict is asked for: tenant-a-app is
 # validly signed by B, and A does not verify it. Whatever refuses it, then,
@@ -80,6 +95,9 @@ if c_verifies a "$SOURCE_IP:8080/cookbook/tenant-a-app@$D_TENANT_A"; then
     fail "tenant-a-app verifies under key A: the refusal could not be the scope's"
 fi
 check "tenant-a-app is signed by B, valid for the zone, and cosign confirms A does not verify it"
+c_verifies b "$SOURCE_IP:8080/cookbook/stray-app@$D_STRAY" ||
+    fail "stray-app does not verify under key B: the fixture is wrong"
+check "stray-app, under no scope, is validly signed by B (cosign confirms)"
 
 cat >"$WORK/retriever.yaml" <<EOF
 apiVersion: recipe.tobby.dev/v1alpha1
@@ -95,10 +113,13 @@ spec:
       version: "1.0.0"
     - name: other-app
       version: "1.0.0"
+    - name: stray-app
+      version: "1.0.0"
 EOF
 inc file push "$WORK/retriever.yaml" "$NODE/etc/tobby/retriever.yaml" --create-dirs >/dev/null
 inc file push "$WORK/a.pub" "$NODE/etc/tobby/a.pub" --create-dirs >/dev/null
 inc file push "$WORK/b.pub" "$NODE/etc/tobby/b.pub" --create-dirs >/dev/null
+inc file push "$WORK/c.pub" "$NODE/etc/tobby/c.pub" --create-dirs >/dev/null
 
 # Scopes match the CANONICAL nominal repository (ADR-0013): the port's colon
 # is written "_" because ":" cannot appear in a repository path.
@@ -108,6 +129,8 @@ TRUST="  roots:
       keyFile: /etc/tobby/a.pub
     - name: b
       keyFile: /etc/tobby/b.pub
+    - name: c
+      keyFile: /etc/tobby/c.pub
   scopes:
     - name: tenant-a
       repositories: [\"$CANON/cookbook/tenant-a-*\"]
@@ -122,7 +145,7 @@ inc exec "$NODE" -- sh -c 'grep -q "name: tenant-a" /etc/tobby/config.yaml && gr
     fail "scope tenant-a is not configured with root a only"
 inc exec "$NODE" -- sh -c 'grep -q "name: tenant-b" /etc/tobby/config.yaml && grep -q "roots: \[b\]" /etc/tobby/config.yaml' ||
     fail "scope tenant-b is not configured with root b only"
-check "two scopes declared: tenant-a lists root a only, tenant-b lists root b only; both keys are configured roots"
+check "two scopes declared: tenant-a lists root a only, tenant-b lists root b only; root c is listed by no scope"
 
 # -- 2. The synchronization ---------------------------------------------------------
 c_start "$NODE"
@@ -144,8 +167,17 @@ check "plan §2.6: content signed by a key valid for another scope is refused wi
 jq -e '[.task.items[] | select(.name | startswith("tenant-b-app@1.0.0/")) | .status] | all(. == "done")' "$WORK/sync.json" >/dev/null ||
     fail "tenant-b-app, signed by the root its scope lists, was not admitted"
 jq -e '[.task.items[] | select(.name | startswith("other-app@1.0.0/")) | .status] | all(. == "done")' "$WORK/sync.json" >/dev/null ||
-    fail "other-app, under no scope, was not admitted"
-check "the scope listing key B admits tenant-b-app; the unscoped recipe is admitted: the refusal is the compartment's, not a general one"
+    fail "other-app, under no scope and signed by the unreserved root c, was not admitted"
+check "the scope listing key B admits tenant-b-app; the unscoped recipe signed by the default set is admitted: the refusal is the compartment's, not a general one"
+
+# B-057: a root a scope lists is reserved to it. Outside every scope, key B
+# verifies nothing — and the refusal says which root does verify, and the
+# scope it is reserved to.
+jq -e '[.task.items[] | select(.name == "stray-app@1.0.0" and .status == "failed")] | length == 1' "$WORK/sync.json" >/dev/null ||
+    fail "B-057: stray-app, under no scope, was admitted by key B, which the scope tenant-b reserves: $(jq -c '[.task.items[] | {name, status}]' "$WORK/sync.json")"
+jq -e '.task.items[] | select(.name == "stray-app@1.0.0") | .error.code == "TBY-SIG-001" and (.error.params.scope // "") == "" and (.error.params.reserved | startswith("b (sha256:")) and .error.params.reservedto == "tenant-b"' "$WORK/sync.json" >/dev/null ||
+    fail "B-057: the refusal does not name the reserved root b and its scope tenant-b: $(jq -c '.task.items[] | select(.name == "stray-app@1.0.0") | .error' "$WORK/sync.json")"
+check "B-057: a recipe outside every scope, signed by a key reserved to tenant-b, is refused with TBY-SIG-001 naming root b and the scope tenant-b"
 
 # Nothing of the refused recipe landed.
 c_api "$NODE_IP" GET /api/v1/recipes >"$WORK/recipes.json"
@@ -153,7 +185,9 @@ jq -e '[.recipes[].name] | sort == ["other-app", "tenant-b-app"]' "$WORK/recipes
     fail "the recipe graph holds $(jq -c '[.recipes[].name] | sort' "$WORK/recipes.json"), want only the two admitted recipes"
 inc exec "$NODE" -- sh -c "! find $STORE/docker/registry/v2/repositories -type d -path '*cookbook/tenant-a-app*' | grep -q ." ||
     fail "the refused recipe's artifact was stored anyway"
-check "the refused recipe left nothing in the store or the recipe graph"
+inc exec "$NODE" -- sh -c "! find $STORE/docker/registry/v2/repositories -type d -path '*cookbook/stray-app*' | grep -q ." ||
+    fail "the refused stray-app artifact was stored anyway"
+check "the refused recipes left nothing in the store or the recipe graph"
 
 # The operator reads it on the task page, in words.
 TASK_ID=$(jq -r '.task.id' "$WORK/sync.json")

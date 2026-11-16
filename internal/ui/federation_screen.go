@@ -62,7 +62,7 @@ func (u *UI) MountFederation(rt Router) {
 	if !u.federation.Enabled() {
 		return
 	}
-	mux := securedRouter{r: rt}
+	mux := boundedRouter{r: rt}
 	mux.HandleFunc("GET "+federation.PathOIDCLogin, u.oidcLogin)
 	mux.HandleFunc("GET "+federation.PathOIDCCallback, u.oidcCallback)
 	mux.HandleFunc("GET "+federation.PathSAMLLogin, u.samlLogin)

@@ -116,5 +116,28 @@ unitaires sont exclus du prune par défaut, qui ne touche que le contenu
 géré par des recipes (FR-045). Le modèle complet est décrit dans
 [confiance dans le contenu](../../security/content-trust/).
 
+Le navigateur de contenu et l'API le disent aussi : un dépôt importé porte
+la classe de provenance `unit-import` — une FileSet empaquetée sur cette
+instance apparaît comme *Empaqueté sur cette instance*, classe
+`unit-import` d'origine `local-pack` — et il compte dans la métrique
+`tobby_store_unmanaged_repositories{class="unit-import"}` (FR-098).
+Importer dans un dépôt qui détient déjà du contenu poussé par `/v2/` le
+laisse en classe `seed` : la classe ne devient jamais plus facile à
+retirer que ce que le dépôt détenait déjà.
+
+## Quand l'instance refuse les imports
+
+Une instance durcie par `hardening.disableUnitImport` n'accepte de contenu
+que par des recipes vérifiées. L'écran d'import affiche alors son
+formulaire désactivé, en nommant le réglage ; `POST /api/v1/import`, son
+inspection et l'empaquetage de FileSets — le formulaire de `/filesets`,
+`POST /api/v1/filesets/pack` et `tobby fileset pack`, qui lit le même
+fichier de configuration — répondent
+[TBY-POL-005](../../reference/errors/#tby-pol-005), et chaque refus est un
+événement d'audit `hardening.refused`. C'est une décision de
+l'administrateur de l'instance, pas une panne : livrez le contenu par une
+recipe signée, ou demandez le retrait du réglage. Voir la
+[référence de configuration](../../reference/configuration/#durcissement).
+
 Dernière étape de la section :
 [exploiter dans la durée](../../passthrough/operate/).

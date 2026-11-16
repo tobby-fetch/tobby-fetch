@@ -98,6 +98,7 @@ The surface today (from the served OpenAPI document):
 | FileSets | `GET /api/v1/filesets`, `POST /api/v1/filesets/pack` |
 | Interoperability and store | `POST /api/v1/oci-layout/plan`, `POST /api/v1/oci-layout/export`, `POST /api/v1/oci-layout/import`, `POST /api/v1/store/reset` |
 | Store integrity | `POST /api/v1/store/verify`, `POST /api/v1/store/verify/cancel`, `GET /api/v1/store/verification` |
+| Content policy | `GET /api/v1/policy` — the effective scan policy: mode, threshold, every exception with its origin, scope, expiry and state, the OpenVEX documents, the hardening switches ([what it says](../../security/vulnerability-scanning/#the-effective-policy)) |
 | Accounts and tokens | `POST /api/v1/account/password`, `GET/POST /api/v1/accounts`, `PATCH/DELETE /api/v1/accounts/{name}`, `GET/POST /api/v1/tokens`, `POST /api/v1/tokens/{name}/revoke` |
 | Network | `GET /api/v1/network`, `PUT /api/v1/network/certificate` |
 | Operations | `POST /api/v1/diagnostics/bundle`, `GET /api/v1/clock`, `GET /api/v1/state` |

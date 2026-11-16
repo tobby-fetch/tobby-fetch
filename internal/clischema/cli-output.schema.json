@@ -405,6 +405,223 @@
       }
     },
 
+    "tobby scan exceptions": {
+      "title": "tobby scan exceptions --output json",
+      "description": "The effective scan policy (FR-031 amendment R-15): the GET /api/v1/policy document, and where it was read from.",
+      "type": "object",
+      "required": [
+        "source",
+        "evaluated_at",
+        "mode",
+        "threshold",
+        "blocking",
+        "retriever_known",
+        "exceptions",
+        "vex_documents",
+        "hardening"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "configuration",
+            "instance"
+          ],
+          "description": "configuration: this host's configuration file and its scan.vex documents, read here — the Retriever's exceptions are not known. instance: a running instance's GET /api/v1/policy."
+        },
+        "instance": {
+          "type": "string",
+          "description": "The base URL queried, for source instance."
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "warn",
+            "block"
+          ]
+        },
+        "threshold": {
+          "type": "number"
+        },
+        "blocking": {
+          "type": "boolean"
+        },
+        "retriever_known": {
+          "type": "boolean",
+          "description": "False when the Retriever's exceptions are not listed: always for source configuration, and on an instance that has served no Retriever yet."
+        },
+        "exceptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "origin",
+              "state"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "instance",
+                  "retriever",
+                  "vex"
+                ]
+              },
+              "document": {
+                "type": "string",
+                "description": "The OpenVEX document path, for origin vex."
+              },
+              "justification": {
+                "type": "string"
+              },
+              "scope": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Narrows the exception (R-15); the criteria present combine with AND. Absent: every item of its level.",
+                "properties": {
+                  "digest": {
+                    "type": "string"
+                  },
+                  "repository": {
+                    "type": "string"
+                  },
+                  "recipe": {
+                    "type": "string"
+                  },
+                  "packages": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "expires": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Absent for an unbounded Retriever exception."
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "expired",
+                  "unbounded"
+                ]
+              }
+            }
+          }
+        },
+        "vex_documents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "document_id",
+              "expires",
+              "state",
+              "statements",
+              "admitted",
+              "ignored",
+              "exceptions"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "document_id": {
+                "type": "string"
+              },
+              "expires": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "expired"
+                ]
+              },
+              "statements": {
+                "type": "integer"
+              },
+              "admitted": {
+                "type": "integer"
+              },
+              "ignored": {
+                "type": "integer"
+              },
+              "exceptions": {
+                "type": "integer"
+              },
+              "notes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "statement",
+                    "vulnerability",
+                    "reason"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "statement": {
+                      "type": "integer"
+                    },
+                    "vulnerability": {
+                      "type": "string"
+                    },
+                    "product": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "status",
+                        "impact-statement-only",
+                        "unbounded-product"
+                      ]
+                    },
+                    "detail": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "hardening": {
+          "type": "object",
+          "required": [
+            "disableUnitImport",
+            "disableRegistryPush"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "disableUnitImport": {
+              "type": "boolean"
+            },
+            "disableRegistryPush": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
     "tobby store verify": {
       "oneOf": [{ "$ref": "#/$defs/storeVerifyReport" }, { "$ref": "#/$defs/storeVerifyTrigger" }]
     },

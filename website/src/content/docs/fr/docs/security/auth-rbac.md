@@ -70,9 +70,29 @@ anonyme pour l'amorçage d'un hôte nu — signalés par un bandeau permanent
 (FR-047). `/healthz`, `/readyz` et `/metrics` ne sont pas authentifiés : c'est
 le contrat de l'orchestrateur, sans contenu de l'instance.
 
+**Falsification de requête intersite (NFR-012).** Le cookie de session est
+ambiant : le navigateur le joint de lui-même. Toute requête qu'il authentifie
+et dont la méthode n'est ni `GET`, ni `HEAD`, ni `OPTIONS` doit donc porter le
+token anti-falsification de la session : le champ `csrf` des formulaires de
+l'interface, ou l'en-tête `X-CSRF-Token` pour un appel d'API fait depuis une
+page connectée. Avec le token, un appel d'API est servi sous l'identité de la
+session, et le seuil propre au point d'accès s'applique toujours. Sans lui,
+le cookie seul n'autorise aucune modification par l'API. En défense en
+profondeur, une telle requête est aussi refusée quand le navigateur indique
+qu'elle vient d'une autre origine. Ce verdict vient de `Sec-Fetch-Site`
+quand le navigateur l'envoie, et sinon d'`Origin`. `Origin` est comparé à
+l'en-tête `Host` de la requête, ou à `X-Forwarded-Host` derrière un proxy
+inverse qui réécrit `Host` ; le schéma n'est pas comparé, afin que TLS puisse
+être terminé en amont. Les identifiants Basic et Bearer ne portent aucune
+autorité ambiante et en sont exemptés. Les retours fédérés sous `/auth/` le
+sont aussi : ils portent leurs propres contrôles `state` et `InResponseTo`.
+Le formulaire de connexion et, sous la dérogation FR-075, toute requête qui
+modifie l'état sans identifiant sont refusés sur le seul verdict d'origine.
+
 Les refus sont codés, pas seulement numérotés : aucun identifiant →
 `TBY-AUTH-002` ; rôle sous le seuil → `TBY-AUTH-003`, qui nomme le rôle requis ;
-token anti-falsification absent → `TBY-AUTH-004` (NFR-012) ; session expirée →
+token anti-falsification absent ou falsifié, ou modification depuis une autre
+origine → `TBY-AUTH-004` (NFR-012) ; session expirée →
 `TBY-AUTH-005` ; token expiré → `TBY-AUTH-013` ; connexion fédérée refusée →
 `TBY-AUTH-014` (OIDC), `TBY-AUTH-015` (SAML), fournisseur injoignable →
 `TBY-AUTH-016`, aucun groupe associé → `TBY-AUTH-017`. Voir les

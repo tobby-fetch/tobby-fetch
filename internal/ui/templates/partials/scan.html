@@ -47,7 +47,7 @@
   {{end}}
   {{if $r.Applied}}
   <p class="t-note">{{.T "scan.exceptions_applied"}} :
-    {{range $i, $e := $r.Applied}}{{if $i}}, {{end}}<span class="t-mono" translate="no">{{$e.ID}}</span> ({{$.T (printf "scan.level_%s" $e.Level)}}{{if $e.Justification}} — {{$e.Justification}}{{end}}){{end}}</p>
+    {{range $i, $e := $r.Applied}}{{if $i}}, {{end}}<span class="t-mono" translate="no">{{$e.ID}}</span> ({{$.T (printf "scan.level_%s" $e.Level)}}{{if $e.Justification}} — {{$e.Justification}}{{end}}{{with $e.VEX}} — {{$.T "scan.exception_vex" "Document" .}}{{end}}{{if $e.Expires.IsZero}} — {{$.T "scan.exception_unbounded" "ID" $e.ID}}{{end}}){{end}}</p>
   {{end}}
   {{if $r.Expired}}
   <p class="t-note">{{.T "scan.exceptions_expired"}} :
@@ -69,7 +69,11 @@
     <tbody>
       {{range $r.Findings}}
       <tr{{if .Violates}} data-scan-violation{{end}}>
-        <td class="t-mono" translate="no">{{.ID}}{{if .Violates}} <span class="t-badge t-badge--failed">{{$.T "scan.finding_violates"}}</span>{{else if .Excepted}} <span class="t-badge t-badge--pending">{{$.T "scan.finding_excepted"}}</span>{{end}}</td>
+        <td class="t-mono" translate="no">{{.ID}}{{if .Violates}} <span class="t-badge t-badge--failed">{{$.T "scan.finding_violates"}}</span>{{else if .Excepted}} <span class="t-badge t-badge--pending">{{$.T "scan.finding_excepted"}}</span>{{end}}
+          {{- if .OutOfScope}}<br><span class="t-note" data-scan-marker="out-of-scope" translate="yes">{{$.T "scan.exception_out_of_scope" "ID" .ID}}</span>{{end}}
+          {{- if .Expired}}<br><span class="t-note" data-scan-marker="expired" translate="yes">{{$.T "scan.exception_expired_marker" "ID" .ID}}</span>{{end}}
+          {{- with .VEXDocument}}<br><span class="t-note" data-scan-marker="vex" translate="yes">{{$.T "scan.exception_vex" "Document" .}}</span>{{end}}
+          {{- if .Unbounded}}<br><span class="t-note" data-scan-marker="unbounded" translate="yes">{{$.T "scan.exception_unbounded" "ID" .ID}}</span>{{end}}</td>
         <td translate="no">{{.Severity}}</td>
         <td class="t-num">{{with .Score}}{{.}}{{else}}—{{end}}</td>
         <td class="t-mono" translate="no">{{.Package}}</td>

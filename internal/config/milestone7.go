@@ -66,15 +66,17 @@ type Clock struct {
 // Hardening holds the per-instance switches that remove a way in
 // (FR-098). Both default to false. They are hardening, not relaxation: no
 // acknowledgement is needed, but each is reported like every security
-// setting. Track C.
+// setting — which is why neither is omitempty: the configuration dump
+// shows both, false included, so "off" is read rather than inferred.
+// Track C.
 type Hardening struct {
 	// DisableUnitImport refuses unit imports (FR-023) and local FileSet
 	// packing (FR-048) on every surface, the command line included.
-	DisableUnitImport bool `yaml:"disableUnitImport,omitempty"`
+	DisableUnitImport bool `yaml:"disableUnitImport"`
 	// DisableRegistryPush makes the embedded registry read-only for every
 	// client and every role. Recipe-driven writes (FR-027) are unaffected;
 	// seeding (UC3) becomes impossible on this instance.
-	DisableRegistryPush bool `yaml:"disableRegistryPush,omitempty"`
+	DisableRegistryPush bool `yaml:"disableRegistryPush"`
 }
 
 // ExceptionScope narrows a scan exception to the items it was meant for
@@ -138,19 +140,7 @@ type reservedOptIn struct {
 // milestone7Reserved lists the guarded settings. A track that implements
 // one removes its entry — and the corresponding case of
 // TestMilestone7ReservedOptInsAreRefused — in the same change.
-var milestone7Reserved = []reservedOptIn{
-	{"hardening.disableUnitImport", func(c *Config) bool { return c.Hardening.DisableUnitImport }, "per-content provenance and hardening (R-17)"},
-	{"hardening.disableRegistryPush", func(c *Config) bool { return c.Hardening.DisableRegistryPush }, "per-content provenance and hardening (R-17)"},
-	{"scan.vex", func(c *Config) bool { return len(c.Scan.VEX) > 0 }, "scoped and bounded exceptions (R-15)"},
-	{"scan.exceptions[].scope", func(c *Config) bool {
-		for _, ex := range c.Scan.Exceptions {
-			if !ex.Scope.IsZero() {
-				return true
-			}
-		}
-		return false
-	}, "scoped and bounded exceptions (R-15)"},
-}
+var milestone7Reserved = []reservedOptIn{}
 
 // validateMilestone7 checks the milestone-7 surface.
 func (c *Config) validateMilestone7(scope Scope) []error {

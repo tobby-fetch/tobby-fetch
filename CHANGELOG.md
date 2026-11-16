@@ -18,12 +18,28 @@ scoped and bounded vulnerability exceptions with OpenVEX input, provenance
 shown per repository with two hardening switches, the 7.3 hardening, and
 the complete bilingual documentation.
 
-**Announced breaking change, landing in this release:** every
-`scan.exceptions[]` entry of the instance configuration will need an
-`expires` timestamp and a `justification`; an instance whose configuration
-lists an exception without them will refuse to start, naming the entry.
-To prepare, give every exception both fields now — v0.6.0 already reads
-them.
+**Breaking changes in this release:**
+
+- **Scan exceptions are bounded** (R-15): every `scan.exceptions[]` entry
+  of the instance configuration needs an `expires` timestamp and a
+  `justification`; an instance whose configuration lists an exception
+  without them refuses to start, naming the entry
+  (`scan.exceptions[i] (CVE-…): expires is required …`). To upgrade, give
+  every exception both fields — v0.6.0 already reads them. Exceptions
+  carried by a Retriever (`v1alpha1`) may still omit `expires`: they apply
+  and are reported as unbounded (`TBY-SCN-028`).
+- **A trust root listed by a scope is reserved to it** (B-057): a root
+  that at least one `trust.scopes[].roots` lists verifies only inside the
+  scopes listing it. Outside every scope, and in a scope without `roots`,
+  recipes verify against the default set — the roots no scope lists. A
+  recipe outside every scope signed only by a key a scope lists is now
+  refused with `TBY-SIG-001`, which names that root and its scope: add a
+  root no scope lists for that content, or extend the scope's
+  `repositories`. The former workaround, a catch-all `**` scope listing
+  only the normal keys, is no longer needed.
+- **API request bodies are decoded strictly** (NFR-023): unknown members
+  and data after the JSON document are refused, and a body over its bound
+  answers 413 `TBY-SRV-004` before it is parsed.
 
 ### Added
 
@@ -53,12 +69,53 @@ them.
   `tobby consumption table|registries-yaml`. `consumption.registry` and
   `consumption.caFile` are live; without a registry the aids answer
   `TBY-AID-001`.
-- **Milestone-7 configuration keys, reserved**: `hardening.disableUnitImport`,
-  `hardening.disableRegistryPush`, `scan.vex[]` and
-  `scan.exceptions[].scope` are part of the documented surface and refused
-  at startup until their feature lands — never silently ignored;
-  `diagnostics.logRecords` (2000), `diagnostics.tasks` (20) and
-  `clock.skewTolerance` (1h) are accepted with their defaults.
+- **Scoped and bounded vulnerability exceptions** (R-15):
+  `scan.exceptions[].scope` narrows an exception to a digest, a source
+  repository (trust-scope globs, canonical form) and a recipe (`name` or
+  `name@version`), criteria AND-combined; an exception whose scope
+  excludes an item does not apply, and the report says so beside the
+  finding (`TBY-SCN-026`). An expired exception re-blocks visibly: the
+  report names it (`TBY-SCN-021`), a `scan.exception_expired` audit record
+  names the item and the exception, and `tobby_scan_reblocked_items_total`
+  counts it; `tobby_scan_exceptions{state,source}` counts active and
+  expired exceptions at every scrape.
+- **OpenVEX input** (R-15): `scan.vex[]` declares local OpenVEX v0.2.0
+  documents with a mandatory `expires`; justified `not_affected`
+  statements become exceptions scoped by their products (a product that
+  cannot be bounded is skipped, never widened); an impact statement alone
+  adds nothing; a document that cannot be read or validated refuses the
+  start (`TBY-SCN-027`). The parser is strict, bounded and fuzzed
+  (`FuzzParse`, run in CI with the other fuzz targets). Tobby reads VEX,
+  it never produces or signs any.
+- **The effective policy** (R-15): `GET /api/v1/policy`, the read-only
+  `/admin/policy` screen and `tobby scan exceptions` (offline from the
+  configuration, or `--instance` for a running instance's view, the
+  Retriever's exceptions included) state the mode, the threshold, every
+  exception with its origin, scope, justification, expiry and state
+  (`active`, `expired`, `unbounded`), the VEX documents and the hardening
+  switches.
+- **Provenance per repository** (R-17, FR-098): every repository shows its
+  class — `recipe` (with the managing recipes and the reduced-assurance
+  marker), `unit-import` (a packed FileSet shown as packed on this
+  instance) or `seed` (pushed through `/v2/`) — in the content browser and
+  the API, and each tag its last vulnerability scan with the database age.
+  `tobby_store_unmanaged_repositories{class}` counts the repositories no
+  recipe manages; log records about a repository carry a `provenance`
+  field.
+- **Two hardening switches**, off by default (R-17):
+  `hardening.disableUnitImport` refuses unit imports and FileSet packing on
+  every surface, `tobby fileset pack` included (`TBY-POL-005`);
+  `hardening.disableRegistryPush` makes the embedded registry read-only
+  for every client and role, answering `DENIED` with `TBY-POL-006`. Both
+  are stated at startup, in `tobby config dump`, on the screens they
+  disable and in `tobby_hardening_enabled{setting}`; each refusal is a
+  `hardening.refused` audit event naming the setting.
+- **Input-validation reference** (NFR-023): every trust-boundary entry
+  point with its bound, its decoder and its grammar check, in English and
+  French; `TBY-SRV-004` refuses a body over its bound with 413.
+- **Mutating API calls from a signed-in page** are accepted with the
+  session cookie when they carry the session's anti-forgery token in
+  `X-CSRF-Token` from the instance's own origin (NFR-012).
 - **`trust.requireIngredientSignatures`** (FR-033, opt-in, off by default):
   every ingredient must carry a signature the applicable trust roots
   verify — the same scope resolution as a recipe, on the ingredient's
@@ -135,6 +192,19 @@ them.
 - **The kind a recipe declares prevails in the content browser**: a
   FileSet or OCI artifact a recipe declares reads as such in the listing, the
   filter and the detail screens, whatever the manifest looks like.
+- **`TBY-SIG-001` explains a reserved key**: it names the configured root
+  the signature does verify against, with its fingerprint, and the scope
+  it is reserved to (optional parameters `reserved` and `reservedto`);
+  with every root reserved it says so instead of "no trust root is
+  configured".
+- **The sign-in page states an unreachable identity provider** in plain
+  words beside `TBY-AUTH-016`; local sign-in still works and the provider
+  button stays a link that retries (R-20).
+- `Referrer-Policy` is now `no-referrer` and the UI's CSP uses
+  `base-uri 'none'`. A mutating API call with only a session cookie
+  answers 403 `TBY-AUTH-004` instead of 401. Invalid token-creation and
+  password-change bodies answer 422 `TBY-VAL-001` instead of 500. The task
+  log follow returns at most 1 MiB per call.
 
 ### Fixed
 
@@ -238,6 +308,13 @@ them.
   retried after a backoff (10 s doubling up to 10 min) rather than on every
   miss — new content arriving by a task, a pack or a push still retries at
   once — and at most 64 requests wait on a resolution at a time.
+- **B-057**: a trust root reserved to a scope verified recipes outside
+  that scope too — `TrustPolicy.Decide` used the union of every root for a
+  repository no scope covers.
+- **A unit import records its provenance**: it was classed as seeded
+  content, so its repository page and `DELETE /api/v1/content/{repo}`
+  refused to remove it. Repositories imported by an earlier version stay
+  classed `seed`.
 
 ### Security
 
@@ -292,6 +369,27 @@ them.
   directions. The verification now summarizes it (`TBY-MED-023`: files and
   bytes, ignored and rebuilt) and reports as uncovered (`TBY-MED-020`)
   every entry that does not have the shape of an extraction.
+- **Trust-scope partitioning holds both ways** (B-057): a key declared
+  for a scope, such as an emergency key, no longer admits recipes outside
+  that scope — on synchronization, plan, pre-push re-verification,
+  destination media verification or the store integrity check. The
+  reservation follows the key: the same public key configured again under
+  a name no scope lists stays reserved.
+- **One listener-wide security-header middleware** (NFR-022): nosniff,
+  no-referrer, frame denial, HSTS under TLS or `server.secureCookies`, a
+  CSP on every response and `Cache-Control: no-store` on authenticated
+  ones; `/api/v1`, `/v2/`, `/files/` and the probes carried none before.
+- **FileSet files served from `/files/` are sandboxed** by their CSP: an
+  HTML or SVG file in a FileSet could run script on the UI's origin.
+- **CSRF and origin check on every cookie-authenticated change**, UI and
+  API (NFR-012): refused cross-origin even with a valid token; sign-in and
+  the FR-075 override refuse cross-origin changes too; a forged request
+  never renews the victim's session.
+- **Bounded inputs** (NFR-023): claimed user names are bounded before
+  verification and audit, identity-provider responses to 2 MiB, OIDC
+  subjects and SAML NameIDs grammar-checked; a task record whose
+  identifier does not match its file name and a media manifest with
+  trailing data are refused.
 
 ### Documentation
 

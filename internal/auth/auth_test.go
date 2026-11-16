@@ -298,8 +298,9 @@ func TestRegistryMiddleware(t *testing.T) {
 }
 
 // TestAPISessionReadOnly locks the browser-clickable API contract: a valid
-// UI session authenticates GET on /api/v1 (log download, OpenAPI), but
-// never a mutation — those require Basic or Bearer.
+// UI session authenticates GET on /api/v1 (log download, OpenAPI), but a
+// mutation only with its anti-forgery token (NFR-012) — the cookie alone
+// is refused with TBY-AUTH-004 (csrf_test.go covers the token cases).
 func TestAPISessionReadOnly(t *testing.T) {
 	s := newStore(t)
 	if err := s.AddAccount("op", RoleOperator, "pw", t0); err != nil {
@@ -330,8 +331,11 @@ func TestAPISessionReadOnly(t *testing.T) {
 	if got := req(http.MethodGet, false); got != http.StatusUnauthorized {
 		t.Errorf("GET without credentials = %d, want 401", got)
 	}
-	if got := req(http.MethodPost, true); got != http.StatusUnauthorized {
-		t.Errorf("POST with session only = %d, want 401 (mutations need Basic/Bearer)", got)
+	if got := req(http.MethodPost, true); got != http.StatusForbidden {
+		t.Errorf("POST with session only = %d, want 403 TBY-AUTH-004 (the cookie alone authorizes no mutation)", got)
+	}
+	if got := req(http.MethodPost, false); got != http.StatusUnauthorized {
+		t.Errorf("POST without credentials = %d, want 401", got)
 	}
 }
 

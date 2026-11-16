@@ -28,12 +28,14 @@
 package ui
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
@@ -43,6 +45,9 @@ type fileSetsData struct {
 	// PackEnabled says files.packRoots names at least one directory. When
 	// false the form is disabled and explains itself.
 	PackEnabled bool
+	// UnitImportDisabled is hardening.disableUnitImport (FR-098): the form
+	// is disabled naming the setting, whatever files.packRoots says.
+	UnitImportDisabled bool
 	// Source, Name and Version are preserved across a refusal so a
 	// rejected submission is edited rather than retyped.
 	Source  string
@@ -90,6 +95,7 @@ func (u *UI) fileSetsScreenData(r *http.Request) (*fileSetsData, error) {
 		return d, nil
 	}
 	d.PackEnabled = u.fileSets.PackEnabled
+	d.UnitImportDisabled = u.fileSets.UnitImportDisabled
 	entries, err := u.fileSets.Inventory(r.Context())
 	if err != nil {
 		return d, err
@@ -116,6 +122,13 @@ func (u *UI) filesetsPack(w http.ResponseWriter, r *http.Request) {
 	res, err := u.fileSets.Pack(r.Context(), fileserve.PackRequest{
 		Source: source, Name: name, Version: version,
 	})
+	var hardened fileserve.UnitImportDisabled
+	if errors.As(err, &hardened) {
+		// One refusal, one record: the hardening event names the setting.
+		hardening.AuditRefused(r.Context(), u.logger, id.Name, auth.ClientOrigin(r), target, hardening.SettingDisableUnitImport)
+		u.packRefusal(w, r, source, name, version, fileserve.PackProblem(err))
+		return
+	}
 	if err != nil {
 		e := fileserve.PackProblem(err)
 		u.auditPack(r, id.Name, target, publishOutcome(e))

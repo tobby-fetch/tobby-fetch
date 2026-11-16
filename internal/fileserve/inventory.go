@@ -118,6 +118,10 @@ type Surface struct {
 	// packed from the screen or the API is served the moment the call
 	// answers rather than at the next restart (B-058). Nil does nothing.
 	Packed func(ctx context.Context)
+	// UnitImportDisabled is hardening.disableUnitImport (FR-098): the
+	// Packer refuses, and the screen and the API say why before anyone
+	// tries.
+	UnitImportDisabled bool
 }
 
 // Inventory lists what this instance holds and what it serves.
@@ -131,6 +135,12 @@ func (s *Surface) Inventory(ctx context.Context) ([]Entry, error) {
 
 // Pack packages a local directory through the surface's confined packer.
 func (s *Surface) Pack(ctx context.Context, req PackRequest) (*PackResult, error) {
+	// The Packer refuses too when built with WithUnitImportDisabled; the
+	// surface checks on its own so that a wiring which set one and not
+	// the other still refuses (FR-098).
+	if s.UnitImportDisabled {
+		return nil, UnitImportDisabled{}
+	}
 	res, err := s.Packer.Pack(ctx, req)
 	if err == nil && s.Packed != nil {
 		s.Packed(ctx)
