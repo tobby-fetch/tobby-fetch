@@ -59,6 +59,7 @@ L'API reflète l'interface action pour action avec des seuils identiques
 | Comptes, rôles, tokens | `/admin/accounts` + routes `POST` | `/api/v1/accounts…`, `/api/v1/tokens…` | admin |
 | Source et intervalle du Retriever | `/admin/retriever…` | `/api/v1/retriever…` | admin |
 | Écran réseau, remplacement du certificat | `/admin/network…` | `/api/v1/network…` | admin |
+| Politique de contenu effective (exceptions, documents OpenVEX, interrupteurs de durcissement) | `GET /admin/policy` | `GET /api/v1/policy` | admin |
 
 La registry embarquée (`/v2/`) est contrôlée **par méthode HTTP**, non par
 chemin, afin que les clients standard fonctionnent sans modification (FR-076) :

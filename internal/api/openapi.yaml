@@ -1191,7 +1191,8 @@ paths:
         Retriever) with its origin, scope, justification, expiry and state
         at the instant of the request, the OpenVEX documents with their
         statement counts, and the two hardening switches. Read-only. Role
-        viewer.
+        admin, like the screen: the document describes the instance's
+        configuration, local OpenVEX document paths included.
       responses:
         "200":
           description: The effective policy.

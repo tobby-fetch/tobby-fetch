@@ -58,6 +58,7 @@ so they share one table.
 | Accounts, roles, tokens | `/admin/accounts` + `POST` routes | `/api/v1/accounts…`, `/api/v1/tokens…` | admin |
 | Retriever source and interval | `/admin/retriever…` | `/api/v1/retriever…` | admin |
 | Network screen, certificate replacement | `/admin/network…` | `/api/v1/network…` | admin |
+| Effective content policy (exceptions, OpenVEX documents, hardening switches) | `GET /admin/policy` | `GET /api/v1/policy` | admin |
 
 The embedded registry (`/v2/`) is gated **by HTTP method**, not by path,
 so standard clients work unmodified (FR-076): `GET`/`HEAD` (pull,

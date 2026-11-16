@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,7 +20,8 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/scanpolicy"
 )
 
-// TestPolicyEndpoint serves the effective policy to a viewer: every
+// TestPolicyEndpoint serves the effective policy to an administrator —
+// and to nobody below, like the /admin/policy screen it mirrors: every
 // exception with its origin, scope and state at the instant of the
 // request — an expiry that passed on the running instance shows at once —
 // the Retriever's unbounded exception as such, and both hardening
@@ -30,6 +32,9 @@ func TestPolicyEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := accounts.AddAccount("lecteur", auth.RoleViewer, "pw-view", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := accounts.AddAccount("chef", auth.RoleAdmin, "pw-admin", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	authn := &auth.Authenticator{Store: accounts, Sessions: auth.NewSessions(time.Hour), Logger: slog.New(slog.DiscardHandler)}
@@ -53,9 +58,19 @@ func TestPolicyEndpoint(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/", a.Handler())
 
+	// A viewer: refused, naming the role — the document carries the local
+	// paths of the OpenVEX documents, configuration the admin floor guards.
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/policy", http.NoBody)
 	r.SetBasicAuth("lecteur", "pw-view")
 	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "TBY-AUTH-003") {
+		t.Errorf("viewer GET /api/v1/policy = %d %s, want 403 TBY-AUTH-003", w.Code, w.Body)
+	}
+
+	r = httptest.NewRequest(http.MethodGet, "/api/v1/policy", http.NoBody)
+	r.SetBasicAuth("chef", "pw-admin")
+	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("GET /api/v1/policy = %d: %s", w.Code, w.Body)

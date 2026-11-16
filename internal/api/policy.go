@@ -22,12 +22,14 @@ type PolicyViewer interface {
 	View() *scanpolicy.View
 }
 
-// RegisterPolicy mounts GET /api/v1/policy. A viewer's business: the
-// exceptions say which vulnerabilities this instance tolerates and why,
-// which every role that reads the scan reports already sees per item; no
-// secret is in it.
+// RegisterPolicy mounts GET /api/v1/policy. Admin, like the
+// /admin/policy screen it mirrors (FR-061): the document describes the
+// instance's configuration — the local paths of its OpenVEX documents
+// among it — and that is what the admin floor guards (ADR-0009). The
+// exceptions applied to an item stay visible to a viewer in its scan
+// report.
 func RegisterPolicy(a *API, p PolicyViewer) {
-	a.Handle(RoutePolicy, a.RequireRole(auth.RoleViewer, func(w http.ResponseWriter, r *http.Request) {
+	a.Handle(RoutePolicy, a.RequireRole(auth.RoleAdmin, func(w http.ResponseWriter, r *http.Request) {
 		if p == nil {
 			a.Problem(w, r, taxonomy.New(taxonomy.CodeConfigInvalid, taxonomy.Params{
 				"detail": "this instance was wired without its scan policy",

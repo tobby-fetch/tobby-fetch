@@ -631,7 +631,7 @@ du Retriever comprises ; le document JSON dit laquelle (`"source":
 |---|---|
 | `--config` | Le fichier de configuration à lire (forme hors ligne). |
 | `--output text\|json` | `json` écrit le document de politique sur stdout (`source`, `evaluated_at`, `mode`, `threshold`, `blocking`, `retriever_known`, `exceptions[]`, `vex_documents[]`, `hardening`). |
-| `--instance` | URL de base de l'instance en marche à lire ; jeton (rôle viewer au moins) depuis `TOBBY_API_TOKEN` ou `--token-file`, envoyé en `http://` seulement vers cet hôte sauf `--allow-plaintext-token`. |
+| `--instance` | URL de base de l'instance en marche à lire ; jeton (rôle **admin**, le seuil de `GET /api/v1/policy` et de son écran) depuis `TOBBY_API_TOKEN` ou `--token-file`, envoyé en `http://` seulement vers cet hôte sauf `--allow-plaintext-token`. |
 
 ```sh
 tobby scan exceptions

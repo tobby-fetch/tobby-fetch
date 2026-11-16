@@ -612,7 +612,7 @@ exceptions included; the JSON document says which (`"source":
 |---|---|
 | `--config` | The configuration file to read (offline form). |
 | `--output text\|json` | `json` emits the policy document on stdout (`source`, `evaluated_at`, `mode`, `threshold`, `blocking`, `retriever_known`, `exceptions[]`, `vex_documents[]`, `hardening`). |
-| `--instance` | Base URL of the running instance to read; token (viewer role at least) from `TOBBY_API_TOKEN` or `--token-file`, sent over `http://` only to this host unless `--allow-plaintext-token`. |
+| `--instance` | Base URL of the running instance to read; token (**admin** role, the floor of `GET /api/v1/policy` and of its screen) from `TOBBY_API_TOKEN` or `--token-file`, sent over `http://` only to this host unless `--allow-plaintext-token`. |
 
 ```sh
 tobby scan exceptions
