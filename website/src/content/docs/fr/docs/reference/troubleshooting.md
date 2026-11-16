@@ -138,6 +138,7 @@ chaque recipe bloquée et le fichier en cause.
 | « plus ancien que le dernier importé » | [`TBY-MED-007`](../errors/#tby-med-007) | Vérifier que c'est le média courant. Un administrateur peut passer outre, par exemple pour restaurer volontairement une livraison plus ancienne. |
 | Un fichier est absent, de mauvaise taille, ou ne correspond pas à son digest | [`TBY-MED-010`](../errors/#tby-med-010), [`TBY-MED-011`](../errors/#tby-med-011), [`TBY-MED-012`](../errors/#tby-med-012), [`TBY-MED-015`](../errors/#tby-med-015) | Recopier le store depuis la source. La recipe qui atteint le fichier est bloquée ; aucune dérogation n'existe. |
 | Un fichier ou un manifeste n'est pas couvert, ou illisible | [`TBY-MED-013`](../errors/#tby-med-013), [`TBY-MED-014`](../errors/#tby-med-014), [`TBY-MED-005`](../errors/#tby-med-005) | L'inventaire ne correspond pas au contenu : recopier depuis la source. |
+| Le graphe de recipes du support liste un ingrédient que la recipe signée n'épingle pas | [`TBY-MED-016`](../errors/#tby-med-016) | La comptabilité a été modifiée : n'importez pas ; reproduisez le support depuis la source. Aucune dérogation n'existe. |
 | Un fichier qu'aucune recipe n'atteint | [`TBY-MED-020`](../errors/#tby-med-020), [`TBY-MED-021`](../errors/#tby-med-021), [`TBY-MED-022`](../errors/#tby-med-022) | Signalé, jamais poussé. Le plus souvent des restes d'une livraison précédente : [repartir d'un média propre](../../air-gap/manage-media/). |
 
 ## Le store semble endommagé

@@ -488,7 +488,7 @@ func verifyRecipes(ctx context.Context, src Reader, c *checker, m *Manifest, opt
 			SourceAssurance: r.Assurance,
 		}
 		w := &walk{c: c, recipe: id, seen: map[string]bool{}, served: newServed()}
-		w.delivery(r)
+		signed := w.delivery(r)
 		v.Files, v.Bytes = w.files, w.bytes
 		if w.reason != nil {
 			v.Reason = w.reason
@@ -509,7 +509,7 @@ func verifyRecipes(ctx context.Context, src Reader, c *checker, m *Manifest, opt
 			// trust.requireIngredientSignatures — the rule the import's
 			// promotion applies again before any push (B-062, R-19).
 			var refusal *Reason
-			v.Ingredients, refusal = checkIngredients(ctx, src, r, opts.Trust)
+			v.Ingredients, refusal = checkIngredients(ctx, src, id, signed, opts.Trust)
 			if refusal != nil {
 				v.Pushable, v.Reason = false, refusal
 			}
@@ -932,14 +932,29 @@ type walk struct {
 // artifact, its signature artifacts, its ingredients, the ingredients' own
 // signature artifacts (B-062: copied along so a consumer in the zone can
 // verify an upstream-signed image), and everything those reach.
-func (w *walk) delivery(r *Recipe) {
+//
+// The ingredients are the ones the recipe document inside the artifact
+// pins, read once the artifact has checked out, and the medium's
+// bookkeeping must agree with them (B-066): an ingredient only the
+// unsigned recipe graph names is never walked, never checked for a
+// signature, and never served. It returns that list.
+func (w *walk) delivery(r *Recipe) []signedIngredient {
 	w.root(r.ArtifactRepo, r.Digest, r.ArtifactTag)
 	w.signatures(r.ArtifactRepo, r.Digest)
-	for i := range r.Ingredients {
-		ing := &r.Ingredients[i]
+	if w.reason != nil {
+		return nil
+	}
+	signed, reason := w.signedIngredients(r)
+	if reason != nil {
+		w.fail(reason)
+		return nil
+	}
+	for i := range signed {
+		ing := &signed[i]
 		w.root(ing.Repo, ing.Digest, ing.Tag)
 		w.signatures(ing.Repo, ing.Digest)
 	}
+	return signed
 }
 
 // root walks one required manifest root and its tag references.

@@ -19,6 +19,7 @@
 package mediagate
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -30,6 +31,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/opencontainers/go-digest"
+	"github.com/tobby-fetch/recipe-spec/cookbook"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
@@ -107,7 +111,7 @@ func newMedium(t *testing.T) *medium {
 	// One delivery reaching the FileSet, so a verification has something
 	// to clear: the served set is the reach of the pushable recipes, and a
 	// medium without recipe clears nothing (B-063).
-	if err := st.PutRecipeRecord(deliveryOf(res)); err != nil {
+	if err := st.PutRecipeRecord(deliveryOf(t, st, res)); err != nil {
 		t.Fatalf("recording the delivery: %v", err)
 	}
 	if _, err := media.Write(ctx, st, media.WriteOptions{
@@ -118,13 +122,41 @@ func newMedium(t *testing.T) *medium {
 	return &medium{root: root, store: st, pack: res, files: files, logger: logger}
 }
 
-// deliveryOf is a recipe whose artifact and only ingredient are the packed
-// FileSet: unsigned, admitted by the allowUnsigned trust below.
-func deliveryOf(res *fileserve.PackResult) *store.RecipeRecord {
+// fixtureCookbook is where the fixture's recipe artifact is published.
+const fixtureCookbook = "localhost/cookbook/site"
+
+// deliveryOf publishes, as the RECIPE-SPEC §11.2 artifact, a recipe whose
+// only ingredient is the packed FileSet pinned by digest — unsigned,
+// admitted by the allowUnsigned trust below — and returns its recipe graph
+// entry. The verification reads the ingredient list out of that document
+// (B-066), so the artifact has to be a real one.
+func deliveryOf(t *testing.T, st *store.Store, res *fileserve.PackResult) *store.RecipeRecord {
+	t.Helper()
+	ref, _, _ := strings.Cut(res.Reference, "@")
+	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+		ref = ref[:i]
+	}
+	doc := "apiVersion: recipe.tobby.dev/v1alpha1\nkind: Recipe\nmetadata:\n  name: site\n  version: " + fileSetTag +
+		"\nspec:\n  ingredients:\n    - name: " + fileSetName + "\n      kind: FileSet\n      ref: " + ref +
+		"\n      version: " + fileSetTag + "\n      digest: " + res.Digest + "\n"
+	art, err := cookbook.Build([]byte(doc), "site", fileSetTag)
+	if err != nil {
+		t.Fatalf("building the fixture recipe: %v", err)
+	}
+	ctx := context.Background()
+	for _, b := range []cookbook.Blob{art.Config, art.Document} {
+		if err := st.WriteBlob(ctx, fixtureCookbook, digest.Digest(b.Digest), bytes.NewReader(b.Content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d, err := st.PutManifest(ctx, fixtureCookbook, art.Manifest.MediaType, art.Manifest.Content, fileSetTag)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return &store.RecipeRecord{
 		Name: "site", Version: fileSetTag,
-		CookbookRepo: res.Repository, ArtifactRepo: res.Repository, ArtifactTag: fileSetTag,
-		Digest: res.Digest, Zone: testZone, ResolvedAt: time.Now().UTC(),
+		CookbookRepo: fixtureCookbook, ArtifactRepo: fixtureCookbook, ArtifactTag: fileSetTag,
+		Digest: d.String(), Zone: testZone, ResolvedAt: time.Now().UTC(),
 		Ingredients: []store.IngredientRecord{{
 			Name: fileSetName, Kind: "FileSet", Repo: res.Repository, Tag: fileSetTag, Digest: res.Digest,
 		}},

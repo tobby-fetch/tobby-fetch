@@ -322,6 +322,14 @@ const (
 	// digest its own path claims — content-addressed storage disagreeing
 	// with itself, independently of what the inventory says.
 	CodeMediaContentAddress Code = "TBY-MED-015"
+	// CodeMediaIngredientsDisagree is a recipe whose ingredient list in
+	// the medium's bookkeeping (meta/recipes.json, meta/media.json) is not
+	// the one its signed recipe document pins: an ingredient the document
+	// does not name, a different digest or location, or a document of
+	// another recipe. The bookkeeping is unsigned (ADR-0006), so only the
+	// signed document decides what a delivery is; the recipe is blocked
+	// whole, no override (R-19).
+	CodeMediaIngredientsDisagree Code = "TBY-MED-016"
 
 	// CodeMediaUncovered reports a file under manifest coverage that the
 	// inventory does not list. Non-blocking: it is never pushed (FR-054).
@@ -644,12 +652,13 @@ var catalog = map[Code]Entry{
 	CodeMediaZoneMismatch:       {Code: CodeMediaZoneMismatch, Class: ClassPolicy, HTTPStatus: http.StatusConflict, Params: []string{"expected", "found"}},
 	CodeMediaStale:              {Code: CodeMediaStale, Class: ClassPolicy, HTTPStatus: http.StatusConflict, Params: []string{"zone", "resolved", "recorded", "media"}},
 
-	CodeMediaFileMissing:       {Code: CodeMediaFileMissing, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "recipe"}},
-	CodeMediaFileSize:          {Code: CodeMediaFileSize, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
-	CodeMediaFileDigest:        {Code: CodeMediaFileDigest, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
-	CodeMediaFileUninventoried: {Code: CodeMediaFileUninventoried, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "recipe"}},
-	CodeMediaContentUnreadable: {Code: CodeMediaContentUnreadable, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
-	CodeMediaContentAddress:    {Code: CodeMediaContentAddress, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
+	CodeMediaFileMissing:         {Code: CodeMediaFileMissing, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "recipe"}},
+	CodeMediaFileSize:            {Code: CodeMediaFileSize, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
+	CodeMediaFileDigest:          {Code: CodeMediaFileDigest, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
+	CodeMediaFileUninventoried:   {Code: CodeMediaFileUninventoried, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "recipe"}},
+	CodeMediaContentUnreadable:   {Code: CodeMediaContentUnreadable, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
+	CodeMediaContentAddress:      {Code: CodeMediaContentAddress, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
+	CodeMediaIngredientsDisagree: {Code: CodeMediaIngredientsDisagree, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "detail"}},
 
 	CodeMediaUncovered:       {Code: CodeMediaUncovered, Class: ClassOperational, Params: []string{"path"}},
 	CodeMediaUnreachable:     {Code: CodeMediaUnreachable, Class: ClassOperational, Params: []string{"path"}},

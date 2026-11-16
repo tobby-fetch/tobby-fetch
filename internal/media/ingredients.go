@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -84,26 +83,26 @@ func ingredientFingerprints(in sigverify.Inspection, d TrustDecision) string {
 }
 
 // checkIngredients applies CheckIngredientSignature to every ingredient of
-// a delivery whose recipe has just verified, reading the medium. It
-// returns the verdicts and the first refusal, in manifest order.
-func checkIngredients(ctx context.Context, src Reader, r *Recipe, trust Trust) ([]IngredientVerdict, *Reason) {
-	if len(r.Ingredients) == 0 {
+// a delivery whose recipe has just verified, reading the medium. The list
+// is the one the signed recipe document pins (B-066), each decided on its
+// canonical nominal repository. It returns the verdicts and the first
+// refusal, in document order.
+func checkIngredients(ctx context.Context, src Reader, id string, signed []signedIngredient, trust Trust) ([]IngredientVerdict, *Reason) {
+	if len(signed) == 0 {
 		return nil, nil
 	}
-	id := r.Name + "@" + r.Version
-	out := make([]IngredientVerdict, 0, len(r.Ingredients))
+	out := make([]IngredientVerdict, 0, len(signed))
 	var first *Reason
-	for i := range r.Ingredients {
-		ing := &r.Ingredients[i]
-		nominal := ingredientNominal(r, ing.Repo)
+	for i := range signed {
+		ing := &signed[i]
 		var d TrustDecision
 		if trust != nil {
-			d = trust.DecideIngredient(nominal)
+			d = trust.DecideIngredient(ing.Nominal)
 		}
 		in, refusal := CheckIngredientSignature(ctx, &manifestSource{src: src, repo: ing.Repo},
-			ing.Repo, ing.Digest, IngredientSubject(ing.Name, id, nominal, ing.Digest), d)
+			ing.Repo, ing.Digest, IngredientSubject(ing.Name, id, ing.Nominal, ing.Digest), d)
 		out = append(out, IngredientVerdict{
-			Name: ing.Name, Repo: nominal, Digest: ing.Digest,
+			Name: ing.Name, Repo: ing.Nominal, Digest: ing.Digest,
 			Signature: in, TrustScope: d.Scope, Required: d.RequireSignature,
 		})
 		if refusal != nil && first == nil {
@@ -111,32 +110,4 @@ func checkIngredients(ctx context.Context, src Reader, r *Recipe, trust Trust) (
 		}
 	}
 	return out, first
-}
-
-// ingredientNominal recovers an ingredient's canonical nominal repository
-// from where it sits on the medium.
-//
-// The medium places every ingredient under the producing instance's base
-// prefix (FR-035), and that prefix is written down nowhere — but the
-// recipe artifact sits under the same one, beside its nominal cookbook
-// repository, so the prefix is the difference between the two. Stripping
-// it gives exactly relocate.Path of the ingredient's nominal reference:
-// the repository the promotion decides on for the same ingredient. A
-// medium on which the two do not line up keeps the path as it is, which
-// matches no scope written for the nominal form and gets the strict
-// default — and the promotion, deciding on the signed recipe's own
-// references, applies the same rule again before any push.
-func ingredientNominal(r *Recipe, repo string) string {
-	cookbook, err := relocate.Path(r.CookbookRepo)
-	if err != nil || !strings.HasSuffix(r.ArtifactRepo, cookbook) {
-		return repo
-	}
-	prefix := strings.TrimSuffix(r.ArtifactRepo, cookbook)
-	switch {
-	case prefix == "":
-		return repo
-	case strings.HasSuffix(prefix, "/") && strings.HasPrefix(repo, prefix):
-		return strings.TrimPrefix(repo, prefix)
-	}
-	return repo
 }

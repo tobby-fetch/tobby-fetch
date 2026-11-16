@@ -9,14 +9,17 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/opencontainers/go-digest"
+	"github.com/tobby-fetch/recipe-spec/cookbook"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
@@ -201,12 +204,25 @@ func (f *fixture) sign(repo, subject string) {
 // recipe artifact, its signature, and the store's recipe graph entry.
 func (f *fixture) addRecipe(name, version string, signIt bool) store.RecipeRecord {
 	f.t.Helper()
+	return f.addRecipeWith(name, version, signIt)
+}
+
+// addRecipeWith is addRecipe with more ingredients than the default one,
+// each already stored on the medium. Every ingredient is pinned by the
+// recipe document the artifact carries AND listed by the recipe graph, as
+// a synchronization writes them both (B-066: the verification reads the
+// former and holds the latter to it).
+func (f *fixture) addRecipeWith(name, version string, signIt bool, extra ...store.IngredientRecord) store.RecipeRecord {
+	f.t.Helper()
 	ingredientRepo := "docker.io/library/" + name
 	ingredientDigest := f.putImage(ingredientRepo, "1.0", []byte("layer bytes of "+name))
+	ingredients := append([]store.IngredientRecord{{
+		Name: name, Kind: "ContainerImage", Repo: ingredientRepo, Tag: "1.0", Digest: ingredientDigest,
+	}}, extra...)
 
-	cookbook := "registry.example.com/cookbook"
-	artifactRepo := cookbook + "/" + name
-	artifactDigest := f.putImage(artifactRepo, version, []byte("recipe document of "+name))
+	cookbookRoot := "registry.example.com/cookbook"
+	artifactRepo := cookbookRoot + "/" + name
+	artifactDigest := f.putRecipeArtifact(artifactRepo, name, version, ingredients)
 	if signIt {
 		f.sign(artifactRepo, artifactDigest)
 	}
@@ -215,9 +231,7 @@ func (f *fixture) addRecipe(name, version string, signIt bool) store.RecipeRecor
 		Name: name, Version: version,
 		CookbookRepo: artifactRepo, ArtifactRepo: artifactRepo, ArtifactTag: version,
 		Digest: artifactDigest, Zone: "zone-a", ResolvedAt: time.Now().UTC(), Verified: signIt,
-		Ingredients: []store.IngredientRecord{{
-			Name: name, Kind: "Image", Repo: ingredientRepo, Tag: "1.0", Digest: ingredientDigest,
-		}},
+		Ingredients: ingredients,
 	}
 	if err := f.st.PutRecipeRecord(&rec); err != nil {
 		f.t.Fatalf("recording the recipe graph: %v", err)
@@ -231,6 +245,31 @@ func (f *fixture) addRecipe(name, version string, signIt bool) store.RecipeRecor
 		f.t.Fatalf("recording provenance: %v", err)
 	}
 	return rec
+}
+
+// putRecipeArtifact publishes the RECIPE-SPEC §11.2 artifact of a cooked
+// recipe pinning the given ingredients (their Repo is the nominal ref: the
+// fixture uses no base prefix) and returns its manifest digest.
+func (f *fixture) putRecipeArtifact(repo, name, version string, ingredients []store.IngredientRecord) string {
+	f.t.Helper()
+	var doc strings.Builder
+	fmt.Fprintf(&doc, "apiVersion: recipe.tobby.dev/v1alpha1\nkind: Recipe\nmetadata:\n  name: %s\n  version: %s\nspec:\n  ingredients:\n", name, version)
+	for _, ing := range ingredients {
+		fmt.Fprintf(&doc, "    - name: %s\n      kind: ContainerImage\n      ref: %s\n      version: %q\n      digest: %s\n",
+			ing.Name, ing.Repo, ing.Tag, ing.Digest)
+	}
+	segments := strings.Split(repo, "/")
+	art, err := cookbook.Build([]byte(doc.String()), segments[len(segments)-1], version)
+	if err != nil {
+		f.t.Fatalf("building the recipe artifact: %v", err)
+	}
+	f.putBlob(repo, art.Config.Content)
+	f.putBlob(repo, art.Document.Content)
+	d, err := f.st.PutManifest(context.Background(), repo, art.Manifest.MediaType, art.Manifest.Content, version)
+	if err != nil {
+		f.t.Fatalf("storing the recipe artifact in %s: %v", repo, err)
+	}
+	return d.String()
 }
 
 // write writes the media manifest, as the end of a mirror synchronization
@@ -325,6 +364,6 @@ func (f *fixture) layerDigestOf(repo string) string {
 }
 
 // storeIngredient builds one recipe-graph ingredient row.
-func storeIngredient(repo, tag, dgst string) store.IngredientRecord {
-	return store.IngredientRecord{Name: repo, Kind: "Image", Repo: repo, Tag: tag, Digest: dgst}
+func storeIngredient(name, repo, tag, dgst string) store.IngredientRecord {
+	return store.IngredientRecord{Name: name, Kind: "ContainerImage", Repo: repo, Tag: tag, Digest: dgst}
 }

@@ -103,10 +103,15 @@ Per-recipe refusals, none of them waivable by anyone:
 | [`TBY-MED-013`](../../reference/errors/#tby-med-013) | a file the recipe reaches that the inventory does not list |
 | [`TBY-MED-014`](../../reference/errors/#tby-med-014) | a reachable manifest or index that cannot be parsed |
 | [`TBY-MED-015`](../../reference/errors/#tby-med-015) | a blob whose bytes do not hash to the digest its own path claims |
+| [`TBY-MED-016`](../../reference/errors/#tby-med-016) | the medium's recipe graph lists an ingredient, digest or location the signed recipe document does not pin |
 
-The last one is what keeps the unsigned inventory from being load-bearing:
-an attacker who corrupts a blob and rewrites the inventory to agree defeats
-the inventory and is still caught by the content address.
+The last two are what keep the unsigned bookkeeping from being
+load-bearing. An attacker who corrupts a blob and rewrites the inventory to
+agree defeats the inventory and is still caught by the content address. An
+attacker who adds an ingredient to the recipe graph, or changes one's
+digest, is caught by the signed recipe document: what a recipe delivers,
+and what an open gate serves, is read from that document and never from the
+medium's own list.
 
 ### Four refusals stay medium-wide
 
