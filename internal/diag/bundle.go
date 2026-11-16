@@ -69,9 +69,43 @@ type Bundle struct {
 	files    []File
 }
 
-// maxMember bounds one member; a collector that returns more is cut. A
-// bundle is read by a person, and is meant to attach to a ticket.
-const maxMember = 32 << 20
+// maxMember bounds one member; a collector that returns more is cut —
+// after it was scrubbed and searched whole, so the cut can never leave
+// part of a secret behind it. A bundle is read by a person, and is meant
+// to attach to a ticket. A variable for the tests only.
+var maxMember = 32 << 20
+
+// memberCut is appended to a member the bundle cut.
+const memberCut = "\n[truncated by the bundle: member exceeded the size bound]\n"
+
+// MaxArchive bounds the archive a bundle of tasks task reports can be: the
+// bound a client downloading one applies (every member at its own bound,
+// plus the manifest and the tar framing).
+func MaxArchive(tasks int) int64 {
+	return int64(len(Members())+max(tasks, 1)) * (int64(maxMember) + int64(len(memberCut)) + 1<<10)
+}
+
+// cutsOf returns the offsets in data where a truncation happened: where a
+// cut mark begins.
+func cutsOf(data []byte) []int {
+	var cuts []int
+	for _, mark := range [][]byte{[]byte(windowCut), []byte(memberCut)} {
+		for off := 0; ; {
+			i := bytes.Index(data[off:], mark)
+			if i < 0 {
+				break
+			}
+			cuts = append(cuts, off+i)
+			off += i + len(mark)
+		}
+	}
+	sort.Ints(cuts)
+	return cuts
+}
+
+// tailMember says the member is the end of a longer document: its first
+// bytes may be the end of something cut away.
+func tailMember(name string) bool { return name == MemberMediaLog }
 
 // freeForm are the members that carry text some other component wrote: an
 // unknown secret may be in them, so they are scrubbed before the check.
@@ -121,9 +155,6 @@ func Build(opts Options, src *Sources) (*Bundle, error) {
 		case err != nil:
 			return fmt.Errorf("collecting %s: %w", name, err)
 		}
-		if len(data) > maxMember {
-			data = append(data[:maxMember:maxMember], []byte("\n[truncated by the bundle: member exceeded the size bound]\n")...)
-		}
 		files = append(files, File{Name: name, Data: data})
 		return nil
 	}
@@ -159,15 +190,27 @@ func Build(opts Options, src *Sources) (*Bundle, error) {
 	}
 
 	// Scrub the free-form members, then search EVERY member: this second
-	// step is the one that fails closed.
+	// step is the one that fails closed. Both run on the member whole,
+	// before the size bound cuts it, and both judge the marks where the
+	// log window cut a record: a secret cut in two is still a secret.
 	for i := range files {
-		if freeForm(files[i].Name) {
-			files[i].Data = opts.Secrets.Scrub(files[i].Data, true)
+		f := &files[i]
+		if freeForm(f.Name) {
+			f.Data = opts.Secrets.scrub(f.Data, cutsOf(f.Data), tailMember(f.Name), true)
 		}
-	}
-	for i := range files {
-		if reason := opts.Secrets.Find(files[i].Data); reason != "" {
-			return nil, taxonomy.New(taxonomy.CodeDiagnosticsRedaction, taxonomy.Params{"member": files[i].Name})
+		if reason := opts.Secrets.find(f.Data, cutsOf(f.Data), tailMember(f.Name)); reason != "" {
+			return nil, taxonomy.New(taxonomy.CodeDiagnosticsRedaction, taxonomy.Params{"member": f.Name})
+		}
+		if len(f.Data) > maxMember {
+			f.Data = append(f.Data[:maxMember:maxMember], memberCut...)
+			if freeForm(f.Name) {
+				// Scrubbed whole already: only what the new cut left of a
+				// known value can remain.
+				f.Data = opts.Secrets.scrubKnown(f.Data, cutsOf(f.Data), false)
+			}
+			if reason := opts.Secrets.find(f.Data, cutsOf(f.Data), tailMember(f.Name)); reason != "" {
+				return nil, taxonomy.New(taxonomy.CodeDiagnosticsRedaction, taxonomy.Params{"member": f.Name})
+			}
 		}
 	}
 

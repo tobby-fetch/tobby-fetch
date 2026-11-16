@@ -38,13 +38,25 @@ func TestMonitorKeepsTheLatestVerdictPerAnchorAndNotifiesOnlyImplausibleOnes(t *
 	if !strings.Contains(taxonomy.Text("en", te), "med_2") {
 		t.Error("the message does not name the medium")
 	}
-	// A later plausible verdict replaces it: the banner goes away by itself.
-	m.CheckMedium("med_3", now)
-	if len(m.Implausible()) != 0 {
-		t.Error("the banner survived a plausible verdict")
+	// An earlier medium opened next proves nothing new: the later anchor
+	// stays, and so does the banner — the clock is still behind it.
+	if r := m.CheckMedium("med_3", now); r.Implausible {
+		t.Errorf("med_3 judged on its own date: %+v", r)
 	}
-	if len(m.Records()) != 1 || m.Records()[0].Medium != "med_3" {
+	if imp := m.Implausible(); len(imp) != 1 || imp[0].Medium != "med_2" {
+		t.Errorf("the later anchor was displaced by an earlier one: %+v", imp)
+	}
+	// The clock put right: the next re-judgment clears the banner by itself.
+	now = now.Add(73 * time.Hour)
+	m.Recheck()
+	if len(m.Implausible()) != 0 {
+		t.Error("the banner survived a clock put right")
+	}
+	if len(m.Records()) != 1 || m.Records()[0].Medium != "med_2" {
 		t.Errorf("Records = %+v", m.Records())
+	}
+	if len(seen) != 1 {
+		t.Errorf("observers called %d times, want once", len(seen))
 	}
 }
 
@@ -77,5 +89,51 @@ func TestCheckBuildProvesNothingWithoutABuildTime(t *testing.T) {
 	}
 	if len(m.Records()) != 0 {
 		t.Error("a development build recorded a verdict it cannot have")
+	}
+}
+
+// TestAnEarlierOrUndatedMediumDoesNotMaskAVerdict (adversarial review of
+// milestone 7, A5): the gap found against medium A stays when medium B —
+// older, or carrying no date at all — is opened next.
+func TestAnEarlierOrUndatedMediumDoesNotMaskAVerdict(t *testing.T) {
+	now := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC) // a clock set back
+	m := NewMonitor(time.Hour)
+	m.Now = func() time.Time { return now }
+	m.CheckMedium("A", time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC))
+	if len(m.Implausible()) != 1 {
+		t.Fatal("setup: medium A raised nothing")
+	}
+	m.CheckMedium("B-undated", time.Time{})
+	m.CheckMedium("C-older", time.Date(2019, 6, 1, 0, 0, 0, 0, time.UTC))
+	imp := m.Implausible()
+	if len(imp) != 1 || imp[0].Medium != "A" {
+		t.Errorf("the verdict against A was masked: %+v", m.Records())
+	}
+	// A later medium becomes the anchor.
+	m.CheckMedium("D-later", time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC))
+	if imp := m.Implausible(); len(imp) != 1 || imp[0].Medium != "D-later" {
+		t.Errorf("the latest anchor is not kept: %+v", imp)
+	}
+}
+
+// TestRecheckCatchesAClockSetBackWhileRunning: the build anchor is judged
+// again, and a verdict that turns implausible is announced once.
+func TestRecheckCatchesAClockSetBackWhileRunning(t *testing.T) {
+	anchor := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	now := anchor.Add(24 * time.Hour)
+	m := NewMonitor(time.Hour)
+	m.Now = func() time.Time { return now }
+	var seen int
+	m.Observe(func(*Record) { seen++ })
+	m.record(&Record{Verdict: Check(AnchorBuild, anchor, now, time.Hour), Tolerance: time.Hour}, true)
+	m.Recheck()
+	if seen != 0 || len(m.Implausible()) != 0 {
+		t.Fatal("a good clock raised something")
+	}
+	now = anchor.Add(-48 * time.Hour)
+	m.Recheck()
+	m.Recheck()
+	if seen != 1 || len(m.Implausible()) != 1 {
+		t.Errorf("clock set back: %d notifications, %d implausible; want 1 and 1", seen, len(m.Implausible()))
 	}
 }

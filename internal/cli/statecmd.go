@@ -79,11 +79,15 @@ func inventoryVerdict(inv *statedir.Inventory) error {
 		_, err := statedir.Prepare(inv.Root, statedir.Expect{}, "")
 		return err
 	}
+	refused := len(inv.OpenDirs) > 0
 	for i := range inv.Items {
-		if it := &inv.Items[i]; it.Present && it.Secret && it.Access == statedir.AccessBroad {
-			_, err := statedir.Prepare(inv.Root, statedir.Expect{}, "")
-			return err
+		if it := &inv.Items[i]; it.Present && it.Secret && it.Access.Refused() {
+			refused = true
 		}
+	}
+	if refused {
+		_, err := statedir.Prepare(inv.Root, statedir.Expect{}, "")
+		return err
 	}
 	return nil
 }
@@ -107,12 +111,20 @@ func writeInventory(cmd *cobra.Command, report *reportFlag, inv *statedir.Invent
 			class = "(undocumented)"
 		}
 		access := string(it.Access)
-		if it.Access == statedir.AccessBroad {
+		switch {
+		case it.Secret && it.Access == statedir.AccessBroad:
 			access = "BROAD — refuses the start"
+		case it.Secret && it.Access == statedir.AccessUnknown:
+			access = "UNKNOWN — refuses the start"
+		case it.Access == statedir.AccessBroad:
+			access = "BROAD"
 		}
 		_, _ = fmt.Fprintf(tw, "%s\t%s\t%t\t%t\t%d\t%s\t%s\n", it.Name, class, it.Secret, it.Present, it.Size, it.Mode, access)
 	}
 	_ = tw.Flush()
+	for _, d := range inv.OpenDirs {
+		_, _ = fmt.Fprintf(w, "directory %s holds a secret and is open to other users (%s) — refuses the start\n", d.Path, d.Mode)
+	}
 	_, _ = fmt.Fprintln(w, "back up the identity entries, the configuration file and the secret files it references; the store has its own copy (FR-097)")
 	return nil
 }

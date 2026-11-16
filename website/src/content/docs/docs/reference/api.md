@@ -143,8 +143,10 @@ would guess from the path.
   administrator only. It is built and checked before the first byte is sent:
   a bundle that would carry a secret is a problem document
   ([`TBY-DIA-002`](../../reference/errors/#tby-dia-002)), never a partial
-  download. The request is audited. See
-  [Collect a diagnostic bundle](../../passthrough/diagnostics/).
+  download; the checked archive is then streamed, without a `Content-Length`.
+  One bundle is built at a time: a concurrent request is answered 409
+  ([`TBY-DIA-003`](../../reference/errors/#tby-dia-003)). The request is
+  audited. See [Collect a diagnostic bundle](../../passthrough/diagnostics/).
 - **`GET /api/v1/clock` and `GET /api/v1/state` are reports.** The first
   returns the latest [clock verdict](../../air-gap/clock-check/) of each
   anchor, for any role; the second the state-directory inventory, names, sizes

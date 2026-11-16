@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // Redacted replaces what the scrub removes.
@@ -48,10 +49,14 @@ const (
 // It never stores or reports a value in any output: Count and Describe
 // say how many and from where, nothing more.
 type Secrets struct {
-	exact    [][]byte // substring-matched
-	bounded  [][]byte // boundary-matched (short values)
+	forms    [][]byte // every search string, variants included
+	short    []bool   // forms[i] is boundary-matched (shorter than substringSecret)
+	seen     map[string]bool
 	origins  []string
 	patterns []pattern
+
+	mu sync.Mutex
+	m  *matcher // built on first use, dropped by Add
 }
 
 // pattern is a shape that is a credential wherever it appears, and what it
@@ -67,14 +72,15 @@ type pattern struct {
 func NewSecrets() *Secrets { return &Secrets{patterns: genericPatterns} }
 
 // Count is the number of distinct search strings, variants included.
-func (s *Secrets) Count() int { return len(s.exact) + len(s.bounded) }
+func (s *Secrets) Count() int { return len(s.forms) }
 
 // Describe lists where the values came from (config key, file path,
 // environment variable name) — never a value.
 func (s *Secrets) Describe() []string { return append([]string(nil), s.origins...) }
 
 // Add registers a secret value read from origin and every encoding it is
-// likely to appear in: base64 (standard, raw, URL), hex, URL-escaped,
+// likely to appear in: base64 (standard, raw, URL) at each of the three
+// alignments it can take inside a longer encoded string, hex, URL-escaped,
 // JSON-escaped.
 func (s *Secrets) Add(origin, value string) {
 	value = strings.TrimSpace(value)
@@ -88,21 +94,58 @@ func (s *Secrets) Add(origin, value string) {
 		base64.StdEncoding.EncodeToString(raw), base64.RawStdEncoding.EncodeToString(raw),
 		base64.URLEncoding.EncodeToString(raw), base64.RawURLEncoding.EncodeToString(raw),
 		hex.EncodeToString(raw), url.QueryEscape(value), url.PathEscape(value))
+	forms = append(forms, base64Fragments(raw)...)
 	if j, err := json.Marshal(value); err == nil && len(j) > 2 {
 		forms = append(forms, string(j[1:len(j)-1]))
 	}
-	seen := map[string]bool{}
+	if s.seen == nil {
+		s.seen = map[string]bool{}
+	}
 	for _, f := range forms {
-		if len(f) < minSecret || seen[f] {
+		if len(f) < minSecret || s.seen[f] {
 			continue
 		}
-		seen[f] = true
-		if len(f) < substringSecret {
-			s.bounded = append(s.bounded, []byte(f))
-		} else {
-			s.exact = append(s.exact, []byte(f))
+		s.seen[f] = true
+		s.forms = append(s.forms, []byte(f))
+		s.short = append(s.short, len(f) < substringSecret)
+	}
+	s.mu.Lock()
+	s.m = nil
+	s.mu.Unlock()
+}
+
+// base64Fragments are the characters of the base64 encoding of raw that
+// do not depend on what surrounds it, for each of the three byte
+// alignments raw can have inside a longer encoded payload — the password
+// of base64("user:"+password), an HTTP Basic credential without its
+// "Basic" word, a secret in an encoded JSON document. Fragments shorter
+// than substringSecret are left out: a few base64 characters match inside
+// any other base64 string and prove nothing.
+func base64Fragments(raw []byte) []string {
+	var out []string
+	for off := range 3 {
+		buf := append(make([]byte, off, off+len(raw)), raw...)
+		for _, enc := range []*base64.Encoding{base64.RawStdEncoding, base64.RawURLEncoding} {
+			e := enc.EncodeToString(buf)
+			// Character i covers bits [6i, 6i+6); keep those inside raw.
+			from := (8*off + 5) / 6
+			to := 8 * (off + len(raw)) / 6
+			if to-from >= substringSecret && to <= len(e) {
+				out = append(out, e[from:to])
+			}
 		}
 	}
+	return out
+}
+
+// automaton returns the matcher over the current forms.
+func (s *Secrets) automaton() *matcher {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.m == nil {
+		s.m = newMatcher(s.forms, s.short)
+	}
+	return s.m
 }
 
 // AddValues walks v (a configuration, typically) and registers every
@@ -243,16 +286,29 @@ func (s *Secrets) AddContent(origin string, content []byte) {
 // Find returns the first reason data still carries a secret, or "". The
 // reason names the kind (known value, private key, credential), never the
 // value.
-func (s *Secrets) Find(data []byte) string {
-	for _, v := range s.exact {
-		if bytes.Contains(data, v) {
-			return "a secret value the instance knows"
+func (s *Secrets) Find(data []byte) string { return s.find(data, nil, false) }
+
+// find is Find for a member that was cut: cuts are the offsets where a
+// truncation happened, and tail says the member begins where an earlier
+// part was dropped. A prefix of a known value at least substringSecret
+// bytes long that runs into a cut, or such a suffix at the start of a
+// tail, is a leak as surely as the whole value.
+func (s *Secrets) find(data []byte, cuts []int, tail bool) string {
+	reason := ""
+	s.automaton().scan(data, cuts, substringSecret, func(h hit) bool {
+		switch {
+		case h.partial:
+			reason = "part of a secret value the instance knows, at a truncation"
+		default:
+			reason = "a secret value the instance knows"
 		}
+		return false
+	})
+	if reason != "" {
+		return reason
 	}
-	for _, v := range s.bounded {
-		if containsBounded(data, v) {
-			return "a short secret value the instance knows"
-		}
+	if tail && s.automaton().suffixAtStart(data, substringSecret) > 0 {
+		return "part of a secret value the instance knows, at a truncation"
 	}
 	for _, p := range s.patterns {
 		if p.re.Match(data) {
@@ -268,13 +324,14 @@ func (s *Secrets) Find(data []byte) string {
 // logs, task reports, metrics — where an unknown secret can have been
 // printed by something that did not know it was one.
 func (s *Secrets) Scrub(data []byte, heuristics bool) []byte {
-	out := data
-	for _, v := range s.exact {
-		out = bytes.ReplaceAll(out, v, []byte(Redacted))
-	}
-	for _, v := range s.bounded {
-		out = replaceBounded(out, v)
-	}
+	return s.scrub(data, nil, false, heuristics)
+}
+
+// scrub is Scrub for a member that was cut (see find): the part of a known
+// value left at a cut — as little as minSecret bytes, since replacing a
+// few characters at a truncation costs nothing — is replaced too.
+func (s *Secrets) scrub(data []byte, cuts []int, tail, heuristics bool) []byte {
+	out := s.scrubKnown(data, cuts, tail)
 	for _, p := range s.patterns {
 		out = p.re.ReplaceAll(out, []byte(p.repl))
 	}
@@ -282,6 +339,38 @@ func (s *Secrets) Scrub(data []byte, heuristics bool) []byte {
 		for _, h := range heuristicPatterns {
 			out = h.ReplaceAll(out, []byte("${1}"+Redacted))
 		}
+	}
+	return out
+}
+
+// scrubKnown replaces the known values only, whole or cut.
+func (s *Secrets) scrubKnown(data []byte, cuts []int, tail bool) []byte {
+	var spans [][2]int
+	s.automaton().scan(data, cuts, minSecret, func(h hit) bool {
+		spans = append(spans, [2]int{h.start, h.end})
+		return true
+	})
+	if tail {
+		if k := s.automaton().suffixAtStart(data, minSecret); k > 0 {
+			spans = append(spans, [2]int{0, k})
+		}
+	}
+	out := data
+	if len(spans) > 0 {
+		sort.Slice(spans, func(i, j int) bool { return spans[i][0] < spans[j][0] })
+		buf := make([]byte, 0, len(data))
+		last := 0
+		for i := 0; i < len(spans); {
+			start, end := spans[i][0], spans[i][1]
+			for i++; i < len(spans) && spans[i][0] <= end; i++ {
+				end = max(end, spans[i][1])
+			}
+			buf = append(buf, data[last:start]...)
+			buf = append(buf, Redacted...)
+			last = end
+		}
+		buf = append(buf, data[last:]...)
+		out = buf
 	}
 	return out
 }
@@ -298,6 +387,9 @@ var genericPatterns = []pattern{
 	{regexp.MustCompile(`\btby_[A-Za-z0-9_-]{12,}`), Redacted},
 	// A password in a URL.
 	{regexp.MustCompile(`(?i)://[^/\s:@"'\\]+:[^/\s@"'\\]+@`), "://" + Redacted + "@"},
+	// A bare JSON Web Token (an OIDC ID or access token, a signed
+	// assertion): three base64url segments, the first two JSON objects.
+	{regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*`), Redacted},
 }
 
 // heuristicPatterns remove the VALUE of a header or key that carries a
@@ -309,48 +401,14 @@ var heuristicPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)("?x-[a-z-]*(?:token|key|secret|auth)[a-z-]*"?[ \t]*[:=][ \t]*)(?:"(?:[^"\\]|\\.)*"|[^\s,;}]+)`),
 	// password-ish keys, in JSON, logfmt or YAML.
 	regexp.MustCompile(`(?i)("?[a-z0-9_.-]*(?:password|passwd|passphrase|secret|token|apikey|api_key|private_key|credential|signature)s?"?[ \t]*[:=][ \t]*)(?:"(?:[^"\\]|\\.)*"|[^\s,;}&]+)`),
+	// Credentials carried as query or form parameters: a token as jwt=, a
+	// shared access signature (sig=, Azure SAS), a SAML response or
+	// request posted back by an identity provider.
+	regexp.MustCompile(`(?i)(\b(?:jwt|sig|samlresponse|samlrequest|assertion)=)[^\s&"'<>]+`),
 }
 
 func isWordByte(b byte) bool {
 	return b == '_' || (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
-}
-
-func containsBounded(data, v []byte) bool {
-	for off := 0; ; {
-		i := bytes.Index(data[off:], v)
-		if i < 0 {
-			return false
-		}
-		i += off
-		end := i + len(v)
-		if (i == 0 || !isWordByte(data[i-1])) && (end == len(data) || !isWordByte(data[end])) {
-			return true
-		}
-		off = i + 1
-	}
-}
-
-func replaceBounded(data, v []byte) []byte {
-	var out []byte
-	last := 0
-	for off := 0; ; {
-		i := bytes.Index(data[off:], v)
-		if i < 0 {
-			break
-		}
-		i += off
-		end := i + len(v)
-		if (i == 0 || !isWordByte(data[i-1])) && (end == len(data) || !isWordByte(data[end])) {
-			out = append(out, data[last:i]...)
-			out = append(out, Redacted...)
-			last = end
-		}
-		off = i + 1
-	}
-	if last == 0 {
-		return data
-	}
-	return append(out, data[last:]...)
 }
 
 // SortedOrigins is Describe, deduplicated and ordered, for reports.

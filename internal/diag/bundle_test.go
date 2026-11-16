@@ -341,8 +341,8 @@ func TestWindowKeepsTheLastRecords(t *testing.T) {
 	}
 	big := bytes.Repeat([]byte("z"), maxRecordBytes*2)
 	_, _ = w2.Write(big)
-	if r := w2.Records(); len(r) > maxRecordBytes+4 {
-		t.Errorf("an oversized record was not bounded: %d bytes", len(r))
+	if r := w2.Records(); len(r) > maxRecordBytes+len(windowCut)+4 || !bytes.Contains(r, []byte(windowCut)) {
+		t.Errorf("an oversized record was not bounded and marked: %d bytes", len(r))
 	}
 }
 

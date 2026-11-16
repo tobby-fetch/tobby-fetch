@@ -413,6 +413,10 @@
 "TBY-DIA-002.cause": "Avant de livrer un bundle, Tobby cherche dans chaque membre les valeurs secrètes qu'il connaît. L'une d'elles a été trouvée : le bundle n'a pas été écrit plutôt que de l'être avec elle."
 "TBY-DIA-002.action": "Signalez ce défaut aux mainteneurs de Tobby avec le nom du membre — jamais avec le bundle. En attendant, collectez les informations à la main."
 
+"TBY-DIA-003.what": "Un bundle de diagnostic est déjà en cours de construction sur cette instance."
+"TBY-DIA-003.cause": "Un seul bundle est construit à la fois : chacun garde ses membres en mémoire et y cherche les secrets, et des demandes simultanées multiplieraient ce coût."
+"TBY-DIA-003.action": "Attendez quelques secondes la fin du bundle en cours, puis redemandez. Rien n'a été écrit ni envoyé."
+
 "TBY-CLK-001.what": "L'horloge locale indique {{.now}}, une date antérieure à la construction de ce binaire ({{.anchor}})."
 "TBY-CLK-001.cause": "L'horloge retarde de {{.gap}} sur une date que ce binaire prouve passée. Les expirations, les contrôles de fraîcheur et la validité des certificats sont jugés sur cette horloge."
 "TBY-CLK-001.action": "Réglez l'horloge de l'hôte (source de temps de la zone, ou à la main depuis une référence de confiance), puis redémarrez. Tobby avertit et consigne ; il ne corrige pas l'horloge."
@@ -425,9 +429,9 @@
 "TBY-STA-001.cause": "Il a été écrit par une autre version de Tobby, ou ce n'est pas un répertoire d'état de Tobby."
 "TBY-STA-001.action": "Démarrez la version qui l'a écrit, ou restaurez le répertoire d'état depuis une sauvegarde faite avec cette version. L'organisation documentée est le contrat de sauvegarde."
 
-"TBY-STA-002.what": "L'instance refuse de démarrer : {{.path}} est lisible par tous les utilisateurs de l'hôte (mode {{.mode}})."
-"TBY-STA-002.cause": "C'est une entrée secrète du répertoire d'état — empreintes de mots de passe ou de jetons, clé privée — que Tobby crée pour son seul propriétaire. Un mode plus large vient en général d'une restauration qui n'a pas conservé les droits."
-"TBY-STA-002.action": "Retirez l'accès des autres utilisateurs (chmod o-rwx sous Unix ; sous Windows, retirez Tout le monde et Utilisateurs de sa liste d'accès), vérifiez qui a pu la lire entre-temps, puis redémarrez. L'accès de groupe accordé par le volume (fsGroup Kubernetes) est toléré."
+"TBY-STA-002.what": "L'instance refuse de démarrer : {{.path}} est ouvert à tous les utilisateurs de l'hôte ({{.mode}})."
+"TBY-STA-002.cause": "C'est une entrée secrète du répertoire d'état — empreintes de mots de passe ou de jetons, clé privée — lisible par d'autres utilisateurs, ou un répertoire qui en contient une et où d'autres utilisateurs peuvent écrire (donc remplacer le secret), ou une entrée dont la liste d'accès n'a pas pu être lue, que Tobby refuse plutôt que de la supposer restreinte. Tobby les crée pour leur seul propriétaire ; un mode plus large vient en général d'une restauration qui n'a pas conservé les droits."
+"TBY-STA-002.action": "Retirez l'accès des autres utilisateurs (chmod o-rwx sous Unix, sur l'entrée et sur les répertoires qui la contiennent, et pas de racine d'état dans un répertoire partagé à sticky bit appartenant à un autre compte ; sous Windows, retirez Tout le monde, Utilisateurs, Utilisateurs authentifiés et les autres principaux larges de sa liste d'accès), vérifiez qui a pu la lire ou la remplacer entre-temps, puis redémarrez. L'accès de groupe accordé par le volume (fsGroup Kubernetes) est toléré."
 
 "TBY-STA-003.what": "Le répertoire d'état ne contient pas {{.entry}}."
 "TBY-STA-003.cause": "Une entrée d'identité manque — en général après une restauration incomplète. L'instance démarre sans elle, et se comporte comme une instance neuve pour ce qu'elle contenait."

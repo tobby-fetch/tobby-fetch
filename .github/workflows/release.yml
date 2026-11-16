@@ -65,7 +65,10 @@
 # winget or Scoop manifest; those files are kept as workflow artifacts
 # instead. What it does still do, on purpose, is sign keyless — that is
 # the path being rehearsed — so it leaves Rekor entries for the dry-run
-# digests, under an identity on refs/heads/…, never refs/tags/…. Delete
+# digests, under an identity on refs/heads/…, never refs/tags/…: a
+# dispatch on a tag ref is refused by tools/release-meta.sh, so no
+# rehearsal can sign a blob (SBOM, kit) that the published commands —
+# which pin release.yml@refs/tags/<version> — would accept. Delete
 # the dry-run/* packages once the rehearsal is read. How to launch one:
 # docs/release-verification.md, "Rehearsing a release".
 name: Release
@@ -794,7 +797,7 @@ jobs:
             --new-bundle-format \
             --bundle tobby-linux-amd64.cdx.json.bundle \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/' \
+            --certificate-identity https://github.com/tobby-fetch/tobby-fetch/.github/workflows/release.yml@refs/tags/@VERSION@ \
             tobby-linux-amd64.cdx.json
           ```
 
@@ -814,7 +817,7 @@ jobs:
               --new-bundle-format \
               --bundle "$f.bundle" \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-              --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/' \
+              --certificate-identity https://github.com/tobby-fetch/tobby-fetch/.github/workflows/release.yml@refs/tags/@VERSION@ \
               "$f"
           done
           ```

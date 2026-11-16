@@ -487,6 +487,9 @@ const (
 	// member still held a secret value the instance knows: redaction fails
 	// closed (FR-095). Names the member, never the secret.
 	CodeDiagnosticsRedaction Code = "TBY-DIA-002"
+	// CodeDiagnosticsBusy refuses a diagnostic bundle requested while
+	// another is being built: one at a time (FR-095).
+	CodeDiagnosticsBusy Code = "TBY-DIA-003"
 	// CodeClockBeforeBuild reports a local clock earlier than the build time
 	// of the running binary beyond the tolerance (FR-096, R-32).
 	// Non-blocking: it warns and records.
@@ -683,6 +686,7 @@ var catalog = map[Code]Entry{
 	CodeAidsNoRegistry:       {Code: CodeAidsNoRegistry, Class: ClassOperational, HTTPStatus: http.StatusConflict},
 	CodeDiagnosticsFailed:    {Code: CodeDiagnosticsFailed, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
 	CodeDiagnosticsRedaction: {Code: CodeDiagnosticsRedaction, Class: ClassPolicy, HTTPStatus: http.StatusInternalServerError, Params: []string{"member"}},
+	CodeDiagnosticsBusy:      {Code: CodeDiagnosticsBusy, Class: ClassOperational, HTTPStatus: http.StatusConflict},
 	CodeClockBeforeBuild:     {Code: CodeClockBeforeBuild, Class: ClassOperational, Params: []string{"now", "anchor", "gap"}},
 	CodeClockBeforeMedium:    {Code: CodeClockBeforeMedium, Class: ClassOperational, Params: []string{"now", "anchor", "gap", "medium"}},
 	CodeStateLayoutUnknown:   {Code: CodeStateLayoutUnknown, Class: ClassOperational, Params: []string{"root", "version"}},

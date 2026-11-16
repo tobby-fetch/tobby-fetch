@@ -69,12 +69,18 @@ cosign verify-blob \
   --new-bundle-format \
   --bundle tobby-linux-amd64.cdx.json.bundle \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/' \
+  --certificate-identity https://github.com/tobby-fetch/tobby-fetch/.github/workflows/release.yml@refs/tags/v1.0.0 \
   tobby-linux-amd64.cdx.json
 ```
 
-The certificate identity is the release workflow of this repository; the
-transparency log entry is created at release time.
+The certificate identity is the release workflow of this repository **at
+the release tag** — replace `v1.0.0` with the version you verify. A blob
+signature carries no name the way an image signature does: a rehearsal of
+the release workflow (section 7) signs identical files under the same
+repository, from a branch, and pinning the tag is what tells them apart. A
+rehearsal is refused on a tag ref (`tools/release-meta.sh`), so no
+rehearsal signature passes this command. The transparency log entry is
+created at release time.
 
 ### The integration kit: OpenAPI and metrics reference
 
@@ -93,10 +99,12 @@ for f in openapi.yaml metrics-reference.json; do
     --new-bundle-format \
     --bundle "$f.bundle" \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-    --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/' \
+    --certificate-identity https://github.com/tobby-fetch/tobby-fetch/.github/workflows/release.yml@refs/tags/v1.0.0 \
     "$f"
 done
 ```
+
+The identity is pinned to the release tag, as for the SBOMs.
 
 The `integration-kit` job refuses to sign a metrics reference that differs
 from the one committed in `docs/metrics-reference.json`, which a unit test
@@ -250,7 +258,10 @@ gh run watch "$(gh run list --workflow release.yml --limit 1 --json databaseId -
 `version` is the tag about to be cut; the chart-version gate checks it as
 it would on the tag. It must be a single `vX.Y.Z[-pre]` line: any control
 character (a newline above all, which could otherwise forge extra job
-outputs) refuses the run before anything is computed. Only the **push of a
+outputs) refuses the run before anything is computed, and so does a
+dispatch on a tag ref (`--ref v1.0.0`): run from there, the rehearsal's
+keyless signatures would carry the release identity that sections 3 and 5
+pin. Only the **push of a
 `v*` tag** publishes under the real names — every publishing step tests for
 that event itself, not just the dry-run flag (`tools/release-meta.sh`,
 locked in CI by `tools/release-meta-test.sh`). What the rehearsal does:
@@ -274,7 +285,7 @@ locked in CI by `tools/release-meta-test.sh`). What the rehearsal does:
 What it leaves behind, knowingly: packages under `dry-run/` in the
 organisation's registry — delete them once the rehearsal is read — and
 public Rekor entries for the dry-run digests, signed by the release workflow
-from `refs/heads/<branch>`, never from a tag, which is why section 5 pins
-the identity to the tag. As on a real release, a missing
+from `refs/heads/<branch>`, never from a tag, which is why sections 3 and 5
+pin the identity to the tag. As on a real release, a missing
 `HOMEBREW_TAP_TOKEN` turns the homebrew job red: the rehearsal says so
 before the tag does.

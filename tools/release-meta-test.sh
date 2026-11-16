@@ -50,11 +50,20 @@ printf '%s\n' "${out}" | grep -qx 'dry_run=true' || fail "dispatch: not a dry ru
 printf '%s\n' "${out}" | grep -qx 'image=ghcr.io/o/dry-run/r' || fail "dispatch: image not under dry-run/: ${out}"
 [ "$(printf '%s\n' "${out}" | grep -c '^dry_run=')" = "1" ] || fail "dispatch: dry_run printed more than once"
 
-# Any event but a tag push is a dry run, even one naming a tag.
-for ev in "workflow_dispatch refs/tags/v1.2.3" "push refs/heads/v1.2.3" "schedule refs/tags/v1.2.3"; do
+# Any event but a tag push is a dry run.
+for ev in "workflow_dispatch refs/heads/v1.2.3" "push refs/heads/v1.2.3" "schedule refs/heads/main"; do
   # shellcheck disable=SC2086 # two words on purpose
   out="$(sh "${meta}" ${ev} v1.2.3 v1.2.3 o o/r abc 1700000000 2>/dev/null)"
   printf '%s\n' "${out}" | grep -qx 'dry_run=true' || fail "${ev}: not a dry run: ${out}"
+done
+
+# A rehearsal on a tag ref is refused outright: its keyless signatures
+# would carry the release identity the published commands pin.
+for ev in "workflow_dispatch refs/tags/v1.2.3" "schedule refs/tags/v1.2.3" "push refs/tags/x1.2.3"; do
+  # shellcheck disable=SC2086 # two words on purpose
+  if out="$(sh "${meta}" ${ev} v1.2.3 v1.2.3 o o/r abc 1700000000 2>/dev/null)"; then
+    fail "${ev}: accepted, printed: ${out}"
+  fi
 done
 
 # The tag push is the one release.

@@ -1377,8 +1377,13 @@ paths:
         reason. The archive is built and checked in memory before the first
         byte is sent: redaction fails closed, and a member that still holds
         a secret the instance knows aborts the bundle with 500 TBY-DIA-002
-        (naming the member, never the secret) instead of shipping it. Tobby
-        sends it nowhere (NFR-019): it is the response to this request.
+        (naming the member, never the secret) instead of shipping it; the
+        checked archive is then streamed. One bundle is built at a time: a
+        request that arrives while another is being built is answered 409
+        TBY-DIA-003. Tobby sends it nowhere (NFR-019): it is the response to
+        this request. The archive holds personal data — the actors and client
+        addresses of the audit records in the log window, the zone, paths —
+        and is to be handled as such.
         Audited (FR-094): a diagnostics.bundle event with the requester and
         the outcome. Mirror of the /admin/diagnostics screen. Role admin.
       responses:
@@ -1399,9 +1404,11 @@ paths:
     get:
       summary: >-
         The clock-plausibility verdicts of the instance (FR-096, R-32): the
-        local clock compared with the build time of the binary (checked at
-        start) and, once a medium has been opened, with that medium's
-        resolution time, each judged against clock.skewTolerance. An
+        local clock compared with the build time of the binary and, once a
+        medium has been opened, with the latest resolution time among the
+        media opened since the start (a medium whose verification blocked is
+        not believed), each judged against clock.skewTolerance at the check
+        and again every few minutes. An
         implausible verdict carries TBY-CLK-001 or TBY-CLK-002; Tobby warns
         and records, it does not correct the clock and it changes no verdict
         by itself. The same fact the persistent banner shows. A development

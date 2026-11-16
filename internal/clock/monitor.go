@@ -50,10 +50,18 @@ func (r *Record) Target() string {
 	return string(AnchorBuild)
 }
 
-// Monitor keeps the latest verdict per anchor and tells its observers
-// about every implausible one. It is the single object behind the startup
-// log record, the UI banner, the metric, the audit event and the CLI
-// warning (FR-096): they cannot disagree because they read one verdict.
+// Monitor keeps one verdict per anchor and tells its observers about every
+// implausible one. It is the single object behind the startup log record,
+// the UI banner, the metric, the audit event and the CLI warning (FR-096):
+// they cannot disagree because they read one verdict.
+//
+// For the medium anchor it keeps the LATEST resolution time seen since the
+// start, not the last medium opened: a date proven passed stays proven
+// when an older medium — or one forged to carry no date — is opened next,
+// and the clock is judged against the most demanding anchor it holds.
+// Both anchors are judged again by Recheck (and Run, periodically): an
+// instance started with a good clock that is later set back is caught,
+// and a clock put right clears the banner by itself.
 //
 // It warns and records. It never touches the clock and it changes no
 // verdict of the instance by itself.
@@ -91,36 +99,100 @@ func (m *Monitor) CheckBuild() (Record, bool) {
 	if !ok {
 		return Record{}, false
 	}
-	return m.record(&Record{Verdict: Check(AnchorBuild, at, m.Now(), m.tolerance), Tolerance: m.tolerance}), true
+	return m.record(&Record{Verdict: Check(AnchorBuild, at, m.Now(), m.tolerance), Tolerance: m.tolerance}, true), true
 }
 
 // CheckMedium judges the local clock against the resolution time of a
-// medium that is being opened (FR-054's resolvedAt).
+// medium that is being opened (FR-054's resolvedAt), and returns the
+// verdict for that medium. A zero resolvedAt proves nothing and changes
+// nothing. The record kept — what the banner and the metric show — is
+// the medium with the latest resolution time seen since the start, judged
+// against the clock now: an earlier anchor never replaces a later one.
 func (m *Monitor) CheckMedium(id string, resolvedAt time.Time) Record {
-	return m.record(&Record{
-		Verdict: Check(AnchorMedium, resolvedAt, m.Now(), m.tolerance), Medium: id, Tolerance: m.tolerance,
-	})
+	now := m.Now()
+	r := Record{Verdict: Check(AnchorMedium, resolvedAt, now, m.tolerance), Medium: id, Tolerance: m.tolerance}
+	if resolvedAt.IsZero() {
+		return r
+	}
+	m.mu.RLock()
+	kept := m.medium
+	m.mu.RUnlock()
+	if kept != nil && kept.At.After(resolvedAt) {
+		// The older medium is reported to its caller (the CLI warning of the
+		// command that opened it) but does not displace the later anchor.
+		m.record(&Record{Verdict: Check(AnchorMedium, kept.At, now, m.tolerance), Medium: kept.Medium, Tolerance: m.tolerance}, false)
+		if r.Implausible {
+			m.notify(&r)
+		}
+		return r
+	}
+	return m.record(&r, true)
 }
 
-func (m *Monitor) record(r *Record) Record {
+// Recheck judges the clock again against the anchors already held — the
+// build time and the latest medium — and notifies the observers of a
+// verdict that has become implausible since the last check. It costs two
+// comparisons.
+func (m *Monitor) Recheck() {
+	now := m.Now()
+	m.mu.RLock()
+	var again []Record
+	for _, r := range []*Record{m.build, m.medium} {
+		if r != nil {
+			again = append(again, Record{Verdict: Check(r.Anchor, r.At, now, m.tolerance), Medium: r.Medium, Tolerance: m.tolerance})
+		}
+	}
+	m.mu.RUnlock()
+	for i := range again {
+		m.record(&again[i], false)
+	}
+}
+
+// Run calls Recheck every interval until ctx is done.
+func (m *Monitor) Run(ctx context.Context, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			m.Recheck()
+		}
+	}
+}
+
+// record stores r as its anchor's verdict. With always, an implausible
+// verdict is notified whatever came before (a check someone asked for);
+// otherwise only one that was not implausible already (a re-judgment, so a
+// standing condition is not re-announced every interval).
+func (m *Monitor) record(r *Record, always bool) Record {
 	m.mu.Lock()
 	stored := *r
+	prev := m.build
 	if r.Anchor == AnchorMedium {
+		prev = m.medium
 		m.medium = &stored
 	} else {
 		m.build = &stored
 	}
-	observers := append([]func(*Record){}, m.observers...)
 	m.mu.Unlock()
-	if r.Implausible {
-		for _, fn := range observers {
-			fn(r)
-		}
+	if r.Implausible && (always || prev == nil || !prev.Implausible) {
+		m.notify(r)
 	}
 	return *r
 }
 
-// Records returns the latest verdict of each anchor that has been checked.
+func (m *Monitor) notify(r *Record) {
+	m.mu.RLock()
+	observers := append([]func(*Record){}, m.observers...)
+	m.mu.RUnlock()
+	for _, fn := range observers {
+		fn(r)
+	}
+}
+
+// Records returns the verdict of each anchor that has been checked.
 func (m *Monitor) Records() []Record {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

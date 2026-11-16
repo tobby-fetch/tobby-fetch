@@ -90,20 +90,47 @@ Au démarrage, avant que rien n'y lise, Tobby contrôle le répertoire d'état :
 | Condition | Résultat |
 |---|---|
 | La version de layout est inconnue de ce build, ou le fichier de layout est illisible | L'instance **refuse de démarrer** : [`TBY-STA-001`](../../reference/errors/#tby-sta-001). |
-| Une entrée secrète est lisible par **tous les utilisateurs de l'hôte** | L'instance **refuse de démarrer**, en nommant le fichier : [`TBY-STA-002`](../../reference/errors/#tby-sta-002). |
+| Une entrée secrète est lisible par **tous les utilisateurs de l'hôte**, ou sa liste d'accès est illisible | L'instance **refuse de démarrer**, en nommant le fichier : [`TBY-STA-002`](../../reference/errors/#tby-sta-002). |
+| Un répertoire qui contient une entrée secrète — la racine d'état, `tls/` et les répertoires sous lui qui contiennent une clé — est **inscriptible par tous les utilisateurs de l'hôte** | L'instance **refuse de démarrer**, en nommant le répertoire : [`TBY-STA-002`](../../reference/errors/#tby-sta-002). Qui peut y écrire peut remplacer le secret. |
 | Une entrée d'identité dont cette configuration dépend manque dans un répertoire qui a déjà servi | L'instance démarre et **le dit** : un enregistrement d'avertissement par entrée, [`TBY-STA-003`](../../reference/errors/#tby-sta-003). |
 | Une entrée jetable manque | Recréée silencieusement. |
 
-« Lisible par tous » veut dire toute permission pour *other* sous Unix, et une
-liste d'accès accordant Everyone, BUILTIN\Users ou Authenticated Users sous
-Windows. **L'accès du groupe est toléré** : un `fsGroup` Kubernetes, comme dans
-le chart de référence, attribue les fichiers du volume au groupe du pod, et le
-refuser reviendrait à refuser tout déploiement réel. Le contrôle porte sur les
-fichiers de clé dans `tls/`, pas sur le certificat à côté, qui est public.
+« Lisible par tous » veut dire toute permission pour *other* sous Unix.
+« Inscriptible par tous », pour un répertoire, veut dire le bit d'écriture pour
+*other*, ou le sticky bit sur un répertoire qui appartient à un autre compte (le
+sticky bit protège les propriétaires les uns des autres, jamais du propriétaire
+du répertoire). Sous Windows, les deux se lisent dans la liste d'accès : une
+entrée d'autorisation — simple, objet ou callback — qui accorde à un principal
+représentant tout l'hôte (Everyone, BUILTIN\Users, Authenticated Users,
+INTERACTIVE, ANONYMOUS LOGON, Invités, Utilisateurs du domaine, ALL APPLICATION
+PACKAGES…) un droit qui lit ou remplace le fichier, ou qui ajoute, supprime ou
+renomme les entrées du répertoire. Un droit qui ne fait ni l'un ni l'autre
+(`SYNCHRONIZE` seul) n'expose rien, et une liste d'accès que Tobby ne peut pas
+lire refuse le démarrage plutôt que d'être supposée restreinte. Les entrées de
+refus ne sont pas soustraites : retirez plutôt l'entrée d'autorisation large.
 
-Un répertoire neuf est **adopté** : Tobby enregistre sa version de layout et
-démarre. Un répertoire antérieur à ce contrôle est adopté de la même façon,
-après le contrôle des permissions.
+**L'accès du groupe est toléré** : un `fsGroup` Kubernetes, comme dans le chart
+de référence, attribue les fichiers du volume au groupe du pod, et le refuser
+reviendrait à refuser tout déploiement réel. Le contrôle porte sur les fichiers
+de clé dans `tls/` — tout nom finissant par `.key`, `.pem`, `.p8`, `.p12`,
+`.pfx` ou contenant `key`, jugé sur le fichier vers lequel pointe un lien
+symbolique (le `tls.key -> ..data/tls.key` d'un volume projeté) — pas sur le
+certificat à côté (`.crt`, `.cer`), qui est public.
+
+**Les ACL POSIX ne sont pas lues.** Sous Unix, le contrôle lit les seuls bits
+de permission. Une entrée nommée (utilisateur ou groupe) ajoutée par `setfacl`
+apparaît dans les bits de groupe (comme masque de l'ACL) et est jugée comme un
+accès de groupe, donc tolérée : si vos hôtes utilisent des ACL étendues,
+tenez-les à l'écart du répertoire d'état, ou contrôlez-le vous-même
+(`getfacl -R <state.root>`).
+
+Un répertoire neuf — créé par ce démarrage, ou un volume vide — est **adopté** :
+Tobby enregistre sa version de layout et démarre. Un répertoire qui contient
+des entrées du layout mais aucun enregistrement de layout (antérieur à ce
+contrôle, ou restauré sans `layout.json`) est adopté de la même façon, après le
+contrôle des permissions, **et** les entrées d'identité qui lui manquent sont
+signalées. L'enregistrement de layout est créé, jamais ouvert : une entrée déjà
+présente à son nom refuse le démarrage plutôt que d'être écrite au travers.
 
 ## Reconstruire une instance
 
@@ -116,10 +143,10 @@ Sur un hôte où l'instance n'a jamais tourné (ou après une perte) :
 2. Restaurez le **répertoire d'état** avec ses permissions : `tar -xpf`,
    `rsync -a`, `cp -a`, un snapshot de volume ; sous Windows `robocopy /COPYALL`
    ou un snapshot. Une restauration qui a perdu les permissions n'a rien de
-   mystérieux : le démarrage refuse et nomme le fichier. Corrigez
-   (`chmod o-rwx` sous Unix ; retirez Everyone et Users de la liste d'accès sous
-   Windows), vérifiez qui aurait pu lire le fichier entre-temps, puis
-   redémarrez.
+   mystérieux : le démarrage refuse et nomme le fichier ou le répertoire.
+   Corrigez (`chmod o-rwx` sous Unix ; retirez Everyone, Users et les autres
+   principaux larges de la liste d'accès sous Windows), vérifiez qui aurait pu
+   lire ou remplacer le fichier entre-temps, puis redémarrez.
 3. Restaurez la **configuration** et les **fichiers secrets** qu'elle référence,
    aux chemins qu'elle nomme.
 4. Remettez le **store** : restaurez sa propre copie, ou démarrez à vide et

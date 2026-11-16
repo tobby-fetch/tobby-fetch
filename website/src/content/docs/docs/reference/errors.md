@@ -1095,6 +1095,13 @@ The local, redacted archive of FR-095. Redaction fails closed: a bundle that wou
 - **Corrective action:** Report this defect to the Tobby maintainers with the member name — never with the bundle. Meanwhile, collect the information by hand.
 - **Fixable offline:** yes · **Blocks:** the bundle — never shipped with a secret in it
 
+### TBY-DIA-003
+
+- **What happened:** A diagnostic bundle is already being built on this instance.
+- **Probable cause:** One bundle is built at a time: each holds the members in memory and searches them for secrets, and concurrent requests would multiply that.
+- **Corrective action:** Wait a few seconds for the bundle in progress to finish, then ask again. Nothing was written or sent.
+- **Fixable offline:** yes · **Blocks:** this bundle only — nothing was written or sent
+
 ## Clock plausibility (TBY-CLK)
 
 FR-096: the local clock checked against anchors the instance holds without any network. These codes warn and record; they change no verdict.
@@ -1126,9 +1133,9 @@ FR-097: the normative state directory — the backup target of an instance besid
 
 ### TBY-STA-002
 
-- **What happened:** The instance refuses to start: `<path>` is readable by every user of the host (mode `<mode>`).
-- **Probable cause:** It is a secret entry of the state directory — password or token hashes, a private key — which Tobby creates for its owner only. A broader mode usually comes from a restore that did not keep permissions.
-- **Corrective action:** Remove the access of other users (chmod o-rwx on Unix; on Windows, remove Everyone and Users from its access list), check who could read it meanwhile, then restart. Group access granted by the volume (Kubernetes fsGroup) is tolerated.
+- **What happened:** The instance refuses to start: `<path>` is open to every user of the host (`<mode>`).
+- **Probable cause:** It is a secret entry of the state directory — password or token hashes, a private key — readable by other users, or a directory holding one that other users can write to (and so replace the secret), or an entry whose access list could not be read, which Tobby refuses rather than assume it is narrow. Tobby creates them for its owner only; a broader mode usually comes from a restore that did not keep permissions.
+- **Corrective action:** Remove the access of other users (chmod o-rwx on Unix, on the entry and on the directories that hold it, and keep the state root out of a shared sticky directory owned by another account; on Windows, remove Everyone, Users, Authenticated Users and the other broad principals from its access list), check who could read or replace it meanwhile, then restart. Group access granted by the volume (Kubernetes fsGroup) is tolerated.
 - **Fixable offline:** yes · **Blocks:** the start of the instance
 
 ### TBY-STA-003

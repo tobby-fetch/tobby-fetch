@@ -87,20 +87,45 @@ At startup, before anything reads from it, Tobby checks the state directory:
 | Condition | Result |
 |---|---|
 | The layout version is one this build does not know, or the layout file cannot be read | The instance **refuses to start**: [`TBY-STA-001`](../../reference/errors/#tby-sta-001). |
-| A secret entry is readable by **every user of the host** | The instance **refuses to start**, naming the file: [`TBY-STA-002`](../../reference/errors/#tby-sta-002). |
+| A secret entry is readable by **every user of the host**, or its access list cannot be read | The instance **refuses to start**, naming the file: [`TBY-STA-002`](../../reference/errors/#tby-sta-002). |
+| A directory holding a secret entry — the state root, `tls/` and the directories under it that hold a key — can be **written by every user of the host** | The instance **refuses to start**, naming the directory: [`TBY-STA-002`](../../reference/errors/#tby-sta-002). Whoever can write there can replace the secret. |
 | An identity entry this configuration depends on is missing from a directory that has run before | The instance starts and **says so**: a warning record per entry, [`TBY-STA-003`](../../reference/errors/#tby-sta-003). |
 | A discardable entry is missing | Recreated silently. |
 
-"Readable by every user" is any permission for *other* on Unix, and an access
-list granting Everyone, BUILTIN\Users or Authenticated Users on Windows.
+"Readable by every user" is any permission for *other* on Unix. "Writable by
+every user", for a directory, is the write bit for *other*, or the sticky bit
+on a directory another account owns (the sticky bit protects owners from each
+other, never from the directory's owner). On Windows both are read from the
+access list: an allow entry — plain, object or callback — that grants a
+principal standing for the whole host (Everyone, BUILTIN\Users,
+Authenticated Users, INTERACTIVE, ANONYMOUS LOGON, Guests, Domain Users,
+ALL APPLICATION PACKAGES…) a right that reads or replaces the file, or that
+adds, removes or renames the entries of the directory. A right that does
+neither (`SYNCHRONIZE` alone) is no exposure, and an access list Tobby cannot
+read refuses the start rather than be assumed narrow. Deny entries are not
+subtracted: remove the broad allow entry instead.
+
 **Group access is tolerated**: a Kubernetes `fsGroup`, as in the reference
 chart, gives the volume's files to the pod's own group, and refusing that
 would refuse every real deployment. The check applies to the key files inside
-`tls/`, not to the certificate beside them, which is public.
+`tls/` — any name ending in `.key`, `.pem`, `.p8`, `.p12`, `.pfx` or containing
+`key`, judged by the file a symbolic link points to (a projected volume's
+`tls.key -> ..data/tls.key`) — not to the certificate beside them (`.crt`,
+`.cer`), which is public.
 
-A new directory is **adopted**: Tobby records its layout version and starts.
-A directory from before this check is adopted the same way, after the
-permission check.
+**POSIX ACLs are not read.** On Unix the check reads the permission bits
+only. A named-user or named-group entry added with `setfacl` shows in the
+group bits (as the ACL mask) and is judged as group access, that is,
+tolerated: if your hosts use extended ACLs, keep them off the state directory,
+or check it yourself (`getfacl -R <state.root>`).
+
+A new directory — one this start created, or an empty volume — is
+**adopted**: Tobby records its layout version and starts. A directory that
+holds entries of the layout but no layout record (one from before this check,
+or a restore that lost `layout.json`) is adopted the same way, after the
+permission check, **and** the identity entries it lacks are reported. The
+layout record is created, never opened: an entry already at its name refuses
+the start rather than be written through.
 
 ## Rebuild an instance
 
@@ -112,9 +137,10 @@ On a host the instance has never run on (or after a loss):
 2. Restore the **state directory** with its permissions: `tar -xpf`,
    `rsync -a`, `cp -a`, a volume snapshot; on Windows `robocopy /COPYALL` or a
    snapshot. A restore that lost the permissions is not a mystery: the start
-   refuses and names the file. Fix it (`chmod o-rwx` on Unix; remove Everyone
-   and Users from the access list on Windows), check who could read the file
-   meanwhile, and start again.
+   refuses and names the file or directory. Fix it (`chmod o-rwx` on Unix;
+   remove Everyone, Users and the other broad principals from the access list
+   on Windows), check who could read or replace the file meanwhile, and start
+   again.
 3. Restore the **configuration** and the **secret files** it references, at
    the paths it names.
 4. Put the **store** back: restore its own copy, or start empty and

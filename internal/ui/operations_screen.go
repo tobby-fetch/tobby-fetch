@@ -9,11 +9,9 @@
 package ui
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
@@ -46,9 +44,10 @@ func (u *UI) adminDiagnostics(w http.ResponseWriter, r *http.Request) {
 }
 
 // adminDiagnosticsBundle serves POST /admin/diagnostics/bundle: the archive
-// itself, as a download. It is built and checked in memory first, so a
+// itself, as a download. It is collected and checked in memory first, so a
 // bundle the redaction check refused renders as an error page — never as
-// a half-sent file.
+// a half-sent file — and then streamed. One bundle is built at a time
+// (TBY-DIA-003).
 func (u *UI) adminDiagnosticsBundle(w http.ResponseWriter, r *http.Request) {
 	if u.diagnostics == nil {
 		u.render.Error(w, r, taxonomy.New(taxonomy.CodeDiagnosticsFailed, taxonomy.Params{
@@ -66,16 +65,10 @@ func (u *UI) adminDiagnosticsBundle(w http.ResponseWriter, r *http.Request) {
 		u.render.Error(w, r, te)
 		return
 	}
-	var buf bytes.Buffer
-	if _, err := b.WriteTo(&buf); err != nil {
-		u.render.Error(w, r, taxonomy.New(taxonomy.CodeDiagnosticsFailed, taxonomy.Params{"detail": err.Error()}))
-		return
-	}
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+diag.ArchiveName(b.Manifest.Generated)+`"`)
-	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(buf.Bytes())
+	_, _ = b.WriteTo(w)
 }
 
 // stateData feeds /admin/state.
@@ -84,8 +77,10 @@ type stateData struct {
 	// directory.
 	Configured bool
 	Inventory  *statedir.Inventory
-	// Broad names the secret entries readable by every user of the host —
-	// an instance would refuse to start on them.
+	// Broad names the secret entries readable by every user of the host
+	// (or whose access could not be read), and the directories holding one
+	// that other users can write to — an instance would refuse to start on
+	// them.
 	Broad []string
 }
 
@@ -100,9 +95,12 @@ func (u *UI) adminState(w http.ResponseWriter, r *http.Request) {
 		}
 		d.Inventory = inv
 		for i := range inv.Items {
-			if it := &inv.Items[i]; it.Present && it.Secret && it.Access == statedir.AccessBroad {
+			if it := &inv.Items[i]; it.Present && it.Secret && it.Access.Refused() {
 				d.Broad = append(d.Broad, it.Name)
 			}
+		}
+		for _, od := range inv.OpenDirs {
+			d.Broad = append(d.Broad, od.Path+"/")
 		}
 	}
 	u.render.Page(w, r, "admin-state", d)

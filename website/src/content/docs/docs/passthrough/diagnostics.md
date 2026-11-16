@@ -64,7 +64,17 @@ tobby diagnostics bundle --instance https://tobby.example:8443
 or from the administration screen **Diagnostics** (`/admin/diagnostics`), or
 with `POST /api/v1/diagnostics/bundle`. The instance's archive adds the log
 window and the metrics. It needs the **administrator** role: the operator and
-viewer roles are refused.
+viewer roles are refused. One bundle is built at a time: a request that
+arrives while another is being built is refused with
+[`TBY-DIA-003`](../../reference/errors/#tby-dia-003) (HTTP 409) — ask again a
+moment later.
+
+The command checks what the instance answered before keeping it: the download
+is bounded, and an answer that is not a complete diagnostic archive — a
+proxy's error page, a stream cut short, a manifest that does not match its
+files — is removed, and the command fails with
+[`TBY-DIA-001`](../../reference/errors/#tby-dia-001) naming the address it
+asked.
 
 Generating a bundle is an event of the [audit log](../../security/audit-log/)
 (`diagnostics.bundle`) naming who asked and whether it was written, and the
@@ -80,8 +90,10 @@ at all if the check finds a secret. Two steps:
    window, the medium's log, the task reports, the metrics — the secrets the
    instance knows are replaced with `[REDACTED]`, together with credentials of
    a recognizable shape: `Authorization` and `Cookie` headers, bearer and
-   basic credentials, a password inside a URL, a private key block, and the
-   value of a key named `password`, `secret`, `token` and the like.
+   basic credentials, a password inside a URL, a private key block, a bare
+   JSON Web Token (`eyJ….eyJ….…`), the value of a key named `password`,
+   `secret`, `token` and the like, and of the parameters `jwt=`, `sig=` (an
+   Azure shared access signature) and `SAMLResponse=`.
 2. **Check.** *Every* file is then searched for the secrets the instance
    knows. The structured files Tobby writes itself — version, configuration,
    integrity report, state inventory — are not scrubbed: a secret in one of
@@ -89,14 +101,24 @@ at all if the check finds a secret. Two steps:
    [`TBY-DIA-002`](../../reference/errors/#tby-dia-002), naming the file, never
    the secret.
 
+Both steps run on each file **whole, before it is cut** to its size bound
+(32 MiB), so a cut never leaves part of a secret behind it. The log window
+has to cut an oversized record (16 KiB) as it receives it, long before any
+bundle knows what to look for: it marks the cut (`[truncated by the log
+window]`), and the bundle judges what precedes each mark — the beginning of a
+known secret there is redacted in the log window, and refuses the bundle in a
+structured file from 8 bytes on.
+
 "The secrets the instance knows" are: every secret value of the configuration
 (the proxy password, wherever it was set), the **content** of every secret file
 the configuration references (registry credentials, the TLS private key, the
 OIDC client secret, the SAML key) and of the key files in the state directory,
 and the value of the environment variables that look like credentials
 (`*PASSWORD*`, `*SECRET*`, `*TOKEN*`, `*KEY*`…). Each is searched in clear and
-in the encodings it is likely to appear in: base64 (standard, raw, URL), hex,
-URL-escaped, JSON-escaped; for a private key, its PEM body; for a registry
+in the encodings it is likely to appear in: base64 (standard, raw, URL) —
+also inside a longer encoded string, at each of its three possible
+alignments, as in `base64("user:" + password)` — hex, URL-escaped,
+JSON-escaped; for a private key, its PEM body; for a registry
 credentials file, each credential and the decoded `user:password`. If a
 configured secret file exists but cannot be read, the bundle fails with
 [`TBY-DIA-001`](../../reference/errors/#tby-dia-001) rather than guess what it
@@ -112,9 +134,28 @@ What this does **not** promise, stated plainly:
   the word abort the bundle.
 - A secret the instance does not know — typed by a person into a free-text
   field of a task, say — is caught only if it has a recognizable shape.
-- The check protects against **secrets**. Hostnames, registry names, image
-  references and account names are in the archive, and may be sensitive to you.
-  Read what you share.
+- The check protects against **secrets**, not against everything else that
+  is sensitive. Hostnames, registry names, image references and account names
+  are in the archive. Read what you share.
+
+## The archive holds personal data
+
+A bundle is not anonymous. It carries, by design, information that identifies
+people and places, and is to be **handled as personal data** under the rules
+your organisation applies to them — who may receive it, where it is kept,
+when it is deleted:
+
+- the **actors** of the audit records in the log window and the task reports:
+  account names, OIDC and SAML subjects, token names;
+- the **client addresses** those records name (the `origin` of each audit
+  event);
+- the **zone** identifier and the instance's hostnames and registry
+  addresses;
+- **paths** on the host: `state.root`, the store, secret files (their
+  location, never their content).
+
+Share it with the person who needs it, for the time they need it, and prefer
+a channel your organisation approves for personal data over a public ticket.
 
 ## Configuration
 

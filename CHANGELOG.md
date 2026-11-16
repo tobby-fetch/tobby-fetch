@@ -152,6 +152,49 @@ them.
   task item, the resolution row, the `media verify` report (`ingredients`)
   and the log, and it never blocks, unless `trust.requireIngredientSignatures`
   asks for it, in which case every path applies the same rule.
+- **Adversarial review of milestone 7: the diagnostic bundle, the state
+  directory, the clock check and the release identities** (B-065, part).
+  - The bundle scrubs and searches each member **whole, before** cutting it
+    to its size bound; the log window, which must cut an oversized record
+    before any bundle knows the secrets, marks the cut, and what precedes a
+    mark is judged — the beginning of a known secret is redacted in the
+    logs, and refuses the bundle (`TBY-DIA-002`) in a structured member from
+    8 bytes on. A secret is also found base64-encoded inside a longer string
+    at any of its three alignments (`base64("user:"+password)`), and bare
+    JSON Web Tokens, `jwt=`, Azure `sig=` and `SAMLResponse=` are scrubbed.
+    Find and scrub run one automaton over all the known values instead of
+    one copy of the member per value form. One bundle is built at a time: a
+    concurrent request is refused with the new `TBY-DIA-003` (HTTP 409),
+    audited; the checked archive is streamed rather than assembled twice in
+    memory. `tobby diagnostics bundle --instance` bounds the download and
+    verifies the archive against its manifest, removing an answer that is
+    not one.
+  - The start refuses (`TBY-STA-002`) a state root, `tls/` or a directory
+    under it holding a key that every user of the host can write to — or
+    that is sticky and owned by another account — judged before the root is
+    narrowed. On Windows the access list is read in full (object and
+    callback allow entries, inherit-only entries skipped), against the
+    rights that read or replace the file or change a directory's entries,
+    for every principal that stands for the whole host (INTERACTIVE,
+    ANONYMOUS LOGON, Guests, Domain Users, ALL APPLICATION PACKAGES… beside
+    Everyone, Users and Authenticated Users); an access list that cannot be
+    read refuses the start instead of passing. Keys under `tls/` are judged
+    by the file a symbolic link points to, and whatever their extension
+    (`.pem`, `.p12`…). A directory that lost `layout.json` but holds other
+    entries is no longer adopted silently: its missing identity entries
+    are reported (`TBY-STA-003`), and the layout record is created with
+    `O_EXCL`, never written through a planted link.
+  - The clock check keeps the latest medium resolution time seen since the
+    start: an older or undated medium opened next no longer clears a gap
+    already found, and a medium whose verification blocked is no anchor.
+    Both anchors are judged again every five minutes, so a clock set back
+    while the instance runs is caught and a clock put right clears the
+    banner.
+  - The published commands that verify the SBOMs and the integration kit
+    pin the identity `release.yml@refs/tags/<version>` instead of any
+    workflow of the repository, and a rehearsal of the release workflow is
+    refused on a tag ref, so no rehearsal can sign a blob those commands
+    accept.
 - **A FileSet that arrived other than by a synchronization was only
   served after a restart** (B-058). `/files/` re-resolved its FileSets at
   startup and after a sync task, and never otherwise: a FileSet brought
@@ -190,6 +233,10 @@ them.
 
 ### Documentation
 
+- The diagnostic bundle page says the archive holds personal data — the
+  actors and client addresses of the audit records, the zone, host paths —
+  to be handled as such; the backup and rebuild page states that POSIX ACLs
+  are not read by the start check (a named entry counts as group access).
 - **Theming**: the design tokens are documented as the surface of
   `ui.themeOverride`, with the accessibility contract an override takes
   over, in English and French. A test keeps the page and the stylesheet in
