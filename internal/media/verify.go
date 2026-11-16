@@ -94,6 +94,26 @@ func NoKeyDetail(d TrustDecision) string {
 	return "none — no trust root is configured"
 }
 
+// Unsigned reports whether repo@manifestDigest carries no signature at
+// all, in either published layout: the one thing an allowUnsigned scope
+// admits when no trust root applies to it (Keys nil, every root reserved
+// elsewhere or none configured). A signature that is present and that no
+// applicable root verifies is not "unsigned": it is refused, exactly as
+// it is when keys apply (B-068) — otherwise a scope's verdict on a signed
+// recipe would depend on whether the instance happens to hold roots for
+// other scopes. A lookup that fails is not "unsigned" either: it fails
+// closed.
+func Unsigned(ctx context.Context, src sigverify.Manifests, repo, manifestDigest string) bool {
+	return sigverify.Inspect(ctx, src, repo, manifestDigest, nil).State == sigverify.StateNone
+}
+
+// SignedNoKeyDetail is the "fingerprints" detail of a TBY-SIG-001 raised
+// inside an allowUnsigned scope with no key to try, on a subject that
+// carries a signature (Unsigned is false).
+func SignedNoKeyDetail(d TrustDecision) string {
+	return NoKeyDetail(d) + "; the subject carries a signature, and allowUnsigned admits only a subject that carries none"
+}
+
 // SignatureElsewhere names the excluded trust root that verifies the
 // subject's signature, for the refusal message only: it returns the
 // "reserved" (root name and key fingerprint) and "reservedto" (the scopes
@@ -553,12 +573,15 @@ func decide(ctx context.Context, src Reader, r *Recipe, v *RecipeVerdict, trust 
 		v.Reason = &Reason{Code: taxonomy.CodeSignature, Params: params}
 	}
 	if d.Keys == nil {
-		if d.AllowUnsigned {
+		switch {
+		case !d.AllowUnsigned:
+			refuse(NoKeyDetail(d))
+		case !Unsigned(ctx, sigSrc, r.ArtifactRepo, r.Digest):
+			refuse(SignedNoKeyDetail(d))
+		default:
 			v.Pushable, v.Unsigned = true, true
 			v.Assurance = assurance.ForUnsigned(d.Scope)
-			return
 		}
-		refuse(NoKeyDetail(d))
 		return
 	}
 	fingerprint, err := sigverify.Verify(ctx, sigSrc, r.ArtifactRepo, r.Digest, d.Keys)

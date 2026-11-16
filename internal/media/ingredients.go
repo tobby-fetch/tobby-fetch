@@ -51,15 +51,22 @@ type IngredientVerdict struct {
 // (Trust.DecideIngredient). The inspection is always returned, for the
 // record. The refusal is non-nil only when d requires a signature and
 // none verifies: TBY-SIG-001, naming subject (IngredientSubject) and the
-// fingerprints tried.
+// fingerprints tried — and, like a recipe refusal (B-057), the reserved
+// root the signature does verify against, when one does.
 func CheckIngredientSignature(ctx context.Context, src sigverify.Manifests, repo, digest, subject string, d TrustDecision) (sigverify.Inspection, *Reason) {
 	in := sigverify.Inspect(ctx, src, repo, digest, d.Keys)
 	if !d.RequireSignature || in.Verified() {
 		return in, nil
 	}
-	return in, &Reason{Code: taxonomy.CodeSignature, Params: map[string]string{
+	params := map[string]string{
 		"recipe": subject, "fingerprints": ingredientFingerprints(in, d), "scope": d.Scope,
-	}}
+	}
+	if in.State != sigverify.StateNone {
+		if reserved, reservedTo := SignatureElsewhere(ctx, src, repo, digest, d); reserved != "" {
+			params["reserved"], params["reservedto"] = reserved, reservedTo
+		}
+	}
+	return in, &Reason{Code: taxonomy.CodeSignature, Params: params}
 }
 
 // IngredientSubject names an ingredient in a refusal: which one, of which
@@ -73,7 +80,9 @@ func IngredientSubject(name, recipe, repo, digest string) string {
 func ingredientFingerprints(in sigverify.Inspection, d TrustDecision) string {
 	switch {
 	case d.Keys == nil:
-		return "none — no trust root is configured"
+		// B-068: roots may well be configured, every one reserved to
+		// another scope — say which.
+		return NoKeyDetail(d)
 	case in.State == sigverify.StateNone:
 		return "no signature artifact found"
 	case len(in.Tried) > 0:

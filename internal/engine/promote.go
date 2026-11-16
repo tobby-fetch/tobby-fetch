@@ -18,6 +18,7 @@ import (
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
+	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -544,7 +545,9 @@ func (e *Engine) verifyStored(ctx context.Context, localRepo, nominalRepo, manif
 			return refused(ctx, src, localRepo, manifestDigest, d, err)
 		}
 	}
-	if d.AllowUnsigned {
+	// B-068: the same rule as at import — with no key to try,
+	// allowUnsigned admits only a subject that carries no signature.
+	if d.AllowUnsigned && media.Unsigned(ctx, src, localRepo, manifestDigest) {
 		return nil
 	}
 	return noKeyRefusal(ctx, src, localRepo, manifestDigest, subject, d)

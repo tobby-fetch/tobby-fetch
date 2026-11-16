@@ -110,6 +110,19 @@ here, `TBY-SIG-001` says which one: the root's name and fingerprint
 the fix — widen that scope, or re-sign with a key that applies — is
 readable from the refusal itself.
 
+**`allowUnsigned` admits unsigned recipes, not unverifiable ones.** Inside
+such a scope, a recipe that carries no signature at all is admitted, with
+the reduced-assurance marker. A recipe that carries a signature no
+applicable root verifies is refused with `TBY-SIG-001`, exactly as outside
+the scope — including when no root applies to the scope at all because
+every configured root is reserved elsewhere, and the refusal then names
+the reserved root that does verify it. Before v1.0.0-rc.1, such a recipe was
+admitted as unsigned when the scope had no key to try (B-068): a scope's
+verdict on the same signed recipe depended on whether roots happened to be
+configured for other scopes. The same rule applies on a synchronization, in
+a plan, on the re-check before a push, in `media verify` and in
+`store verify`.
+
 :::caution[Changed in v1.0.0-rc.1 — breaking]
 Up to v0.6.x, the strict default verified against **every** configured
 root, scoped or not: a key listed by a scope also verified any recipe

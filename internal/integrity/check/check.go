@@ -428,11 +428,17 @@ func (w *walker) signature(rec *store.RecipeRecord, row *integrity.Recipe) {
 	}
 
 	if d.Keys == nil {
-		if d.AllowUnsigned {
+		// B-068: inside an allowUnsigned scope, only a recipe that carries
+		// no signature at all is admitted; a present signature no
+		// applicable root verifies is refused, as when keys apply.
+		switch {
+		case !d.AllowUnsigned:
+			refuse(media.NoKeyDetail(d))
+		case !media.Unsigned(w.ctx, sigSrc, rec.ArtifactRepo, rec.Digest):
+			refuse(media.SignedNoKeyDetail(d))
+		default:
 			admitUnsigned()
-			return
 		}
-		refuse(media.NoKeyDetail(d))
 		return
 	}
 	fingerprint, err := sigverify.Verify(w.ctx, sigSrc, rec.ArtifactRepo, rec.Digest, d.Keys)
