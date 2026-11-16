@@ -39,8 +39,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/opencontainers/go-digest"
 )
@@ -125,7 +127,28 @@ type Server struct {
 	mu     sync.RWMutex
 	served map[string]*servedSet
 	order  []string // Sync order of served names, for stable Enabled()
+
+	// failed records the extractions that failed, per name@digest, for
+	// the backoff of Resolve (A6 of the milestone-7 review). Guarded by
+	// syncMu.
+	failed map[string]failure
+	now    func() time.Time
 }
+
+// failure is one extraction that failed, and when Resolve may try it
+// again.
+type failure struct {
+	err   error
+	count int
+	until time.Time
+}
+
+// Resolution backoff: the first retry after resolveBackoffMin, doubling
+// with each consecutive failure of the same digest up to resolveBackoffMax.
+const (
+	resolveBackoffMin = 10 * time.Second
+	resolveBackoffMax = 10 * time.Minute
+)
 
 // NewServer builds a Server over the given blob store and cache
 // directory. Zero limits pick the documented defaults.
@@ -139,8 +162,24 @@ func NewServer(blobs Blobs, cacheDir string, limits Limits, logger *slog.Logger)
 		limits:   limits.effective(),
 		logger:   logger,
 		served:   map[string]*servedSet{},
+		failed:   map[string]failure{},
+		now:      time.Now,
 	}
 }
+
+// noteFailure records a failed extraction. Caller holds syncMu.
+func (s *Server) noteFailure(key string, err error) {
+	f := s.failed[key]
+	f.err, f.count = err, f.count+1
+	wait := resolveBackoffMin << min(f.count-1, 10)
+	if wait > resolveBackoffMax {
+		wait = resolveBackoffMax
+	}
+	f.until = s.now().Add(wait)
+	s.failed[key] = f
+}
+
+func failureKey(set FileSet) string { return set.Name + "@" + set.ManifestDigest }
 
 // Sync ensures the cache holds exactly the given filesets: it extracts
 // the missing ones and drops removed or superseded digests. Extraction
@@ -192,10 +231,12 @@ func (s *Server) Sync(ctx context.Context, sets []FileSet) error {
 			// must keep answering until the new one is in place.
 			s.releaseServedDigest(set.Name, set.ManifestDigest)
 			if err := s.extract(ctx, set, target); err != nil {
+				s.noteFailure(failureKey(set), err)
 				errs = append(errs, fmt.Errorf("fileserve: fileset %q: %w", set.Name, err))
 				continue
 			}
 		}
+		delete(s.failed, failureKey(set))
 		root, err := os.OpenRoot(filepath.Join(target, "rootfs"))
 		if err != nil {
 			errs = append(errs, fmt.Errorf("fileserve: fileset %q: opening rootfs: %w", set.Name, err))
@@ -233,6 +274,56 @@ func (s *Server) Sync(ctx context.Context, sets []FileSet) error {
 			slog.String("action", "the entries will be retried on the next synchronization"))
 	}
 	return errors.Join(errs...)
+}
+
+// Resolve extracts and serves ONE FileSet, leaving every other served
+// FileSet as it is — no purge, no re-extraction of anything else. It is
+// the miss path of /files/ (A6 of the milestone-7 review): a request for a
+// declared FileSet that is not served resolves that FileSet only, where a
+// full Sync re-extracted every failing source on every miss.
+//
+// A digest whose extraction failed is not retried before its backoff
+// expires (resolveBackoffMin doubling up to resolveBackoffMax): the miss
+// answers at once with the recorded failure. Sync, which the write-side
+// triggers call, ignores the backoff — new content is a reason to retry.
+func (s *Server) Resolve(ctx context.Context, set FileSet) error {
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+	if err := validateSet(set); err != nil {
+		return err
+	}
+	key := failureKey(set)
+	if f, ok := s.failed[key]; ok && s.now().Before(f.until) {
+		return fmt.Errorf("fileserve: fileset %q: extraction failed, not retried before %s: %w",
+			set.Name, f.until.UTC().Format(time.RFC3339), f.err)
+	}
+	if err := os.MkdirAll(s.cacheDir, 0o750); err != nil {
+		return fmt.Errorf("fileserve: creating cache directory: %w", err)
+	}
+	target := filepath.Join(s.cacheDir, sanitizeName(set.Name), strings.ReplaceAll(set.ManifestDigest, ":", "_"))
+	if !isComplete(target) {
+		s.releaseServedDigest(set.Name, set.ManifestDigest)
+		if err := s.extract(ctx, set, target); err != nil {
+			s.noteFailure(key, err)
+			return fmt.Errorf("fileserve: fileset %q: %w", set.Name, err)
+		}
+	}
+	delete(s.failed, key)
+	root, err := os.OpenRoot(filepath.Join(target, "rootfs"))
+	if err != nil {
+		return fmt.Errorf("fileserve: fileset %q: opening rootfs: %w", set.Name, err)
+	}
+	s.mu.Lock()
+	previous, had := s.served[set.Name]
+	s.served[set.Name] = &servedSet{set: set, root: root}
+	if !slices.Contains(s.order, set.Name) {
+		s.order = append(s.order, set.Name)
+	}
+	s.mu.Unlock()
+	if had {
+		_ = previous.root.Close()
+	}
+	return nil
 }
 
 // releaseServedDigest closes and forgets the root currently serving name,
@@ -332,7 +423,11 @@ func (s *Server) Enabled() []FileSet {
 	defer s.mu.RUnlock()
 	out := make([]FileSet, 0, len(s.order))
 	for _, name := range s.order {
-		out = append(out, s.served[name].set)
+		// A name whose root was released for a re-extraction that has
+		// not landed is not served right now.
+		if ss, ok := s.served[name]; ok {
+			out = append(out, ss.set)
+		}
 	}
 	return out
 }
