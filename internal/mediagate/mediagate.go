@@ -116,6 +116,8 @@ type Gate struct {
 	zone   string
 	verify Verify
 	logger *slog.Logger
+	// transition hears every change of the serving state (SetTransition).
+	transition func(serving bool)
 
 	// guarded is fixed at startup: this instance is a destination side and
 	// its store is a medium. False means every method below is inert and
@@ -190,6 +192,17 @@ func Open(ctx context.Context, root, zone string, logger *slog.Logger) *Gate {
 // which exists later in the startup sequence than the gate does.
 func (g *Gate) SetVerify(verify Verify) { g.verify = verify }
 
+// SetTransition installs a callback told every time the gate opens or
+// closes on a guarded instance — wired once at startup, before anything
+// can reach a verdict.
+//
+// It is how the file surface learns that it may now write: nothing may
+// be extracted from a medium before a verification cleared it (FR-054),
+// so the FileSet cache is built on the transition to open, not at
+// startup (B-058). The callback runs on the goroutine that reached the
+// verdict and must not block on a verification.
+func (g *Gate) SetTransition(f func(serving bool)) { g.transition = f }
+
 // Guarded reports whether this instance withholds its content surfaces
 // until the medium is verified.
 func (g *Gate) Guarded() bool { return g.guarded }
@@ -244,6 +257,9 @@ func (g *Gate) Observe(rep *media.Report) {
 		slog.String("media_id", g.mediaID), slog.String("zone", g.zone),
 		slog.String("verdict", string(rep.Verdict)),
 		slog.String("requirement", "FR-054"))
+	if g.transition != nil {
+		g.transition(now)
+	}
 }
 
 // Start launches a verification in the background and returns immediately.

@@ -44,7 +44,8 @@
 #      skopeo reads, and re-imports at identical digests.
 #  14. R-05: /help serves both languages with no route out.
 #  15. R-41: a directory packed on the isolated side is served under
-#      /files/ — without any HTTP write surface existing.
+#      /files/ — by a real GET, without a restart (B-058) — and without
+#      any HTTP write surface existing.
 #  16. R-04: a plan run leaves the store byte-identical.
 #  17. FR-046: the operator role cannot reset the store; the admin can,
 #      with the typed confirmation, and it is audited.
@@ -609,6 +610,55 @@ for method in POST PUT PATCH DELETE MKCOL; do
     esac
 done
 check "R-41: a directory packed on the isolated side becomes a FileSet; /files/ still accepts no write method"
+
+# And served — by a real GET, which is what the probe above never made
+# (B-058). The medium's own instance cannot show it: its medium is
+# deliberately damaged, so its gate stays closed and /files/ answers 403
+# whatever it holds. A zone-local instance on a working store of the
+# isolated node can, and it is the R-41 shape exactly — a directory of
+# the zone, packed through the remote surface (FR-048), served under
+# /files/ the moment the call returns. Before B-058 that GET answered 404
+# until the instance was restarted, because only a synchronization ever
+# re-resolved the served FileSets.
+inc exec tbc-m5-isolated -- sh -c "mkdir -p /etc/tobby && cat >/etc/tobby/zone-files.yaml <<'EOF'
+mode: mirror
+storage:
+  root: /var/lib/tobby-zone-files
+state:
+  root: /var/lib/tobby-zone-files-state
+server:
+  addr: :8081
+auth:
+  disabled: true
+files:
+  packRoots:
+    - /root/pool
+  filesets:
+    - name: zone-notes
+      ref: localhost/filesets/zone-notes
+      version: 1.0.0
+      anonymous: true
+EOF
+nohup tobby serve --config /etc/tobby/zone-files.yaml >/var/log/tobby-zone-files.log 2>&1 &"
+wait_ready tbc-m5-isolated http://127.0.0.1:8081/readyz
+PACK_CODE=$(curl -s -o "$WORK/pack.json" -w '%{http_code}' -X POST \
+    -H 'Content-Type: application/json' \
+    -d '{"source":"/root/pool","name":"zone-notes","version":"1.0.0"}' \
+    "http://$ISOLATED_IP:8081/api/v1/filesets/pack" || echo 000)
+[ "$PACK_CODE" = "201" ] ||
+    fail "R-41/FR-048: packing through the API answered $PACK_CODE: $(cat "$WORK/pack.json" 2>/dev/null)"
+SERVED=$(curl -s "http://$ISOLATED_IP:8081/files/zone-notes/README" || true)
+SERVED_CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://$ISOLATED_IP:8081/files/zone-notes/README" || echo 000)
+[ "$SERVED_CODE" = "200" ] && [ "$SERVED" = "deb content" ] ||
+    fail "R-41/B-058: a FileSet packed through the API is not served by a GET without a restart ($SERVED_CODE: $SERVED)"
+for method in POST PUT PATCH DELETE MKCOL; do
+    CODE=$(curl -s -o /dev/null -w '%{http_code}' -X "$method" \
+        "http://$ISOLATED_IP:8081/files/zone-notes/README" || echo 000)
+    [ "$CODE" = "405" ] ||
+        fail "R-41/FR-047: /files/ answered $CODE to $method on a served FileSet, want 405"
+done
+inc exec tbc-m5-isolated -- sh -c 'pkill -f "[t]obby serve --config /etc/tobby/zone-files.yaml" || true'
+check "R-41/B-058: a directory packed through the API is served at once by a real GET; its URL accepts no write method"
 
 # -- 19. FR-046: the reset is the admin's, and it is typed ------------------
 # curl again, for the same reason as the write-method probe above: this

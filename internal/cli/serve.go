@@ -264,12 +264,18 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	srv.SetReadyDetail(mediaGate.ReadyDetail)
 
+	// The FileSet server (FR-047) and what decides when it re-resolves
+	// (B-058, fileset_refresh.go). Built here, beside the gate, because
+	// /v2/ below is one of the write paths the refresher listens to.
+	fsrv := fileserve.NewServer(storeBlobs{st: st}, filepath.Join(cfg.Storage.Root, "meta", "fileserve"), fileserve.Limits{}, logger)
+	fileSetRefresh := newFileSetRefresher(ctx, fsrv, st, cfg, mediaGate, logger)
+
 	// The embedded registry serves the standard OCI Distribution API on the
 	// shared listener (FR-040); nested relocated repository names are
 	// first-class (ADR-0013). Reads need viewer, writes need operator
 	// (ADR-0009) — docker/helm/oras authenticate with the same accounts and
 	// tokens as the UI and the API (FR-076).
-	srv.Handle("/v2/", mediaGate.Guard("/v2/", mediagate.RegistryRefusal, authn.Registry(st.APIHandler())))
+	srv.Handle("/v2/", mediaGate.Guard("/v2/", mediagate.RegistryRefusal, authn.Registry(fileSetRefresh.Registry(st.APIHandler()))))
 
 	// The persistent task queue lives inside the store (FR-050) and
 	// re-queues interrupted tasks at startup (FR-029). The unit-import
@@ -550,15 +556,13 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 
 	// The FileSet HTTP surface (FR-047): explicitly enabled FileSets are
 	// extracted (RECIPE-SPEC §7.4/§14.5) into a store-local cache and
-	// served read-only under /files/. Refreshed after every sync.
-	fsrv := fileserve.NewServer(storeBlobs{st: st}, filepath.Join(cfg.Storage.Root, "meta", "fileserve"), fileserve.Limits{}, logger)
-	refreshFileSets := func(runCtx context.Context) {
-		syncFileSets(runCtx, fsrv, st, cfg, logger)
-	}
-	refreshFileSets(ctx)
+	// served read-only under /files/ — re-resolved after every task that
+	// can bring content into the store, and never before the media gate
+	// opens (B-058).
+	fileSetRefresh.Refresh(ctx)
 	queue.Register(tasks.TypeSync, func(runCtx context.Context, t *tasks.Task, taskLogger *slog.Logger, save func()) error {
 		err := eng.Runner()(runCtx, t, taskLogger, save)
-		refreshFileSets(runCtx)
+		fileSetRefresh.Refresh(runCtx)
 		// A cycle may have delivered a new database or scanner binary
 		// (tobby-system): the banner and the metrics follow at once.
 		scanning.refresh(runCtx)
@@ -569,6 +573,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		occupancy.Refresh(runCtx)
 		return err
 	})
+	fileSetRefresh.wrapTasks(queue, tasks.TypeUnitImport, tasks.TypeMediaImport)
 	queue.Start(ctx)
 
 	// The reconciliation cadence (FR-013). The scheduler exists in
@@ -607,7 +612,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		}
 	}
 	srv.Handle(fileserve.RoutePrefix, mediaGate.Guard(fileserve.RoutePrefix, mediagate.FilesRefusal,
-		filesAuth(authn, anonymous, fsrv.Handler())))
+		filesAuth(authn, anonymous, fileSetRefresh.Files(fsrv.Handler()))))
 
 	// The FileSets surface (FR-047 inventory, FR-048 packing), shared by
 	// the screen and the endpoints so the two give one answer (FR-061).
@@ -623,6 +628,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Declared:    declaredFileSets(cfg),
 		BasePrefix:  cfg.Storage.BasePrefix,
 		PackEnabled: len(cfg.Files.PackRoots) > 0,
+		Packed:      fileSetRefresh.Refresh,
 	}
 
 	// The versioned REST API (FR-060), strict UI parity (FR-061). Content
@@ -633,6 +639,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// the selection rules cannot drift between surfaces (FR-061).
 	interopSvc := interop.New(st, queue, cfg.Storage.BasePrefix, logger)
 	interopSvc.Register()
+	fileSetRefresh.wrapTasks(queue, tasks.TypeLayoutImport)
+	interopSvc.SetAfterReset(fileSetRefresh.AfterReset)
 
 	// The consumption aids (FR-065): one service behind the API, the UI,
 	// so the table and the snippet cannot differ between surfaces.
@@ -775,6 +783,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// volume refuse to unmount — so an instance that had served a single
 	// FileSet left the operator unable to eject the medium they had just
 	// shut it down to carry away (B-024, NFR-018, FR-050).
+	fileSetRefresh.Close()
 	if err := fsrv.Close(); err != nil {
 		logger.LogAttrs(ctx, slog.LevelWarn, "the fileset cache was not fully released",
 			slog.String("error", err.Error()))

@@ -80,6 +80,44 @@ them.
   FileSet or OCI artifact a recipe declares reads as such in the listing, the
   filter and the detail screens, whatever the manifest looks like.
 
+### Fixed
+
+- **A FileSet that arrived other than by a synchronization was only
+  served after a restart** (B-058). `/files/` re-resolved its FileSets at
+  startup and after a sync task, and never otherwise: a FileSet brought
+  in by a unit import, a media or layout import, packed from the screen
+  or the API, or pushed through `/v2/` answered 404 until the instance
+  restarted. The served FileSets are now re-resolved after each of those
+  tasks, before a pack returns, after a manifest is written to the
+  repository of a declared FileSet through `/v2/` (a newer version pushed
+  over a served one included), and — as a backstop, at most once per ten
+  seconds per name — when a declared FileSet that is not served is asked
+  for.
+- **On the destination side, the FileSet cache was written before the
+  medium was verified** (B-058, FR-054). The startup extraction wrote
+  under `<storage.root>/meta/fileserve` from blobs no verification had
+  checked, and a cache carried on the medium was served as found — the
+  verification hashes blobs, not that tree. A destination instance
+  holding a medium now writes nothing there while its media gate is
+  closed, discards whatever cache the medium carries, and extracts from
+  the verified blobs when the verdict opens the gate.
+- **A store reset left its FileSets served** (B-059). The reset (FR-046)
+  keeps `meta/`, where the extracted FileSet cache lives, so `/files/`
+  kept serving FileSets whose blobs it had just removed. The cache is now
+  discarded and the served FileSets re-resolved after every reset.
+- **Rebuilding the FileSet cache was reported as altered bookkeeping**
+  (B-060). `meta/fileserve` sat inside the media manifest's coverage, so
+  a destination re-extracting it, or merely extracting into it, drew
+  `metadata altered` and `uncovered` findings on the next verification.
+  New manifests leave it out; a manifest written by v0.6.0 that lists it
+  is still accepted, and those entries are ignored by the verification.
+- **Requests arriving together for a FileSet about to be served could
+  get a 404** (B-061). Only the first request for a declared FileSet not
+  yet extracted waited for the resolution; the others answered 404 until
+  it finished. Every concurrent request now waits for the same resolution
+  (at most 30 seconds), including one already running in the background
+  after a push or the opening of the media gate.
+
 ### Documentation
 
 - **Theming**: the design tokens are documented as the surface of

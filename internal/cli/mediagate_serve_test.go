@@ -89,6 +89,16 @@ func seedTransportStore(t *testing.T, cfg *config.Config, manifest bool) (repo, 
 		t.Fatalf("packing the fixture FileSet: %v", err)
 	}
 	if manifest {
+		// A mirror synchronization always leaves a recipe graph behind,
+		// empty or not, and the verification blocks a medium without one
+		// (R-19). Writing an empty one makes this fixture a medium that a
+		// verification CLEARS, which the B-058 tests need.
+		if err := st.PutRecipeRecord(&store.RecipeRecord{Name: "fixture", Version: "0.0.0"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.DeleteRecipeRecord("fixture", "0.0.0"); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := media.Write(ctx, st, media.WriteOptions{
 			Zone: mediumZone, RunID: "run_fixture", ResolvedAt: time.Now().UTC(),
 		}); err != nil {

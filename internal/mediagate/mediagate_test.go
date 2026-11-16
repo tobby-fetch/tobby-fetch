@@ -479,3 +479,26 @@ func waitIdle(t *testing.T, g *Gate) {
 	}
 	t.Fatal("a verification never settled")
 }
+
+// TestTransitionsReachTheirListener: the file surface builds its cache
+// on the gate opening (B-058), so every change of the serving state must
+// reach the listener — and only changes: a verdict repeating the current
+// state is not an event, and an unguarded instance has none.
+func TestTransitionsReachTheirListener(t *testing.T) {
+	m := newMedium(t)
+	g := Open(context.Background(), m.root, testZone, m.logger)
+	var got []bool
+	g.SetTransition(func(serving bool) { got = append(got, serving) })
+
+	g.Observe(&media.Report{Verdict: media.VerdictPartial}) // closed → closed
+	g.Observe(clearedReport())                              // open
+	g.Observe(clearedReport())                              // open → open
+	g.Observe(&media.Report{Verdict: media.VerdictBlocked}) // closed
+	if want := []bool{true, false}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("transitions heard = %v, want %v", got, want)
+	}
+
+	unguarded := Open(context.Background(), m.root, "", m.logger)
+	unguarded.SetTransition(func(bool) { t.Error("an unguarded gate reported a transition") })
+	unguarded.Observe(clearedReport())
+}

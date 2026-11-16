@@ -284,6 +284,47 @@ func (s *Server) Close() error {
 	return errors.Join(errs...)
 }
 
+// Discard stops serving and removes the whole cache, so that the next
+// Sync extracts every FileSet afresh.
+//
+// It exists for the destination side of a physical transfer (FR-054,
+// B-058). The cache directory lives inside the transportable store, so a
+// medium arrives carrying whatever the SOURCE side extracted — complete
+// markers included — and Sync trusts a complete marker. The verification
+// that opens the destination's surfaces hashes the blobs, not that tree:
+// an altered file under meta/ is a finding there, never a block. Serving
+// the carried tree would therefore hand out bytes no verification vouched
+// for; discarding it before the first post-verification Sync makes the
+// served content exactly the content of the verified blobs.
+//
+// The roots are closed BEFORE the tree is removed: Windows refuses to
+// delete a directory a handle is still open on (B-024).
+func (s *Server) Discard() error {
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+	s.mu.Lock()
+	previous := s.served
+	s.served = map[string]*servedSet{}
+	s.order = nil
+	s.mu.Unlock()
+	for _, ss := range previous {
+		_ = ss.root.Close()
+	}
+	if err := os.RemoveAll(s.cacheDir); err != nil {
+		return fmt.Errorf("fileserve: discarding the fileset cache: %w", err)
+	}
+	return nil
+}
+
+// Serves reports whether a FileSet of that name is being served right
+// now.
+func (s *Server) Serves(name string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.served[name]
+	return ok
+}
+
 // Enabled returns the currently served FileSets (for the UI/status), in
 // Sync order.
 func (s *Server) Enabled() []FileSet {

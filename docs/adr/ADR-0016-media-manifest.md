@@ -69,6 +69,16 @@ destination-side return logs (the audit back-channel of FR-054). Files that
 keep being written after the inventory is taken cannot be inventoried
 without invalidating it on the next line they receive.
 
+*Amendment 2026-11-16 (B-060).* The FileSet extraction cache,
+`meta/fileserve/`, is outside coverage too. It is derived from blobs by
+whichever instance serves it, and the destination never serves the tree a
+medium carries: it discards it and re-extracts from the blobs the
+verification cleared (FR-054, FR-047 amendment). Inventorying it vouched
+for nothing and reported every rebuild as altered bookkeeping. Manifests
+written before this amendment may list it; those entries remain legal
+paths and are ignored by the verification, so such a medium is neither
+refused nor reported for them.
+
 ### 4. The unit of a block is the recipe
 
 Verification and the push decision are taken **recipe by recipe**. A recipe

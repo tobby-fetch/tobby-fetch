@@ -81,7 +81,11 @@ func checkInventoryPath(p string) error {
 			return fmt.Errorf("inventory path %q contains a control character", p)
 		}
 	}
-	if !covered(p) {
+	// A manifest written by v0.6.0 may list the FileSet cache, which was
+	// inside coverage then (B-060). Such an entry is a legal path of that
+	// format, so it is accepted here — and dropped before the verification
+	// reads the inventory (readManifest).
+	if !covered(p) && !inFileSetCache(p) {
 		return fmt.Errorf("inventory path %q lies outside the manifest's coverage (%s)",
 			p, strings.Join(coveredRoots, ", "))
 	}
