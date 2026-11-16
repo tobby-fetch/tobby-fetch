@@ -249,7 +249,7 @@ func newInstance(t *testing.T, opts ...option) *instance {
 		Federation: sp.fed,
 		// The consumption aids (FR-065): a zone registry the screens can
 		// point at, so the NFR-017 pass audits them filled in.
-		Aids: consume.New(st, consume.Settings{Registry: "registry.zone.example", Version: "0.3.0-e2e"}),
+		Aids: consume.New(st, &consume.Settings{Registry: "registry.zone.example", Version: "0.3.0-e2e"}),
 	}
 	if sp.medium {
 		seedMedium(t, st)

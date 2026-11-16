@@ -120,7 +120,7 @@ func newRecipesAPI(t *testing.T, source string) (*http.ServeMux, *tasks.Queue) {
 	api.RegisterRecipes(a, &api.RecipeOptions{
 		Store: st, Queue: queue, Source: source,
 		RelaxedScopes: []string{"legacy-zone"}, AnonymousFileSets: []string{"drivers"},
-		Aids: consume.New(st, consume.Settings{Registry: "reg.zone.example:5000", Version: "v0"}),
+		Aids: consume.New(st, &consume.Settings{Registry: "reg.zone.example:5000", Version: "v0"}),
 	})
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/", a.Handler())

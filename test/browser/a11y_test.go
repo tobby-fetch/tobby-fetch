@@ -289,7 +289,7 @@ func auditKeyboard(t *testing.T, s *session, where string, shell bool) {
 			document.body.removeAttribute("tabindex");
 		})()`))
 	seen := map[string]bool{}
-	for i := 0; i < maxTabStops; i++ {
+	for i := range maxTabStops {
 		s.run(t, "pressing Tab", chromedp.KeyEvent("\t"))
 		stop := eval[focusStop](t, s, "reading the focused element", focusProbe)
 		if stop.Body {
@@ -405,7 +405,7 @@ func TestUC2ByKeyboardAlone(t *testing.T) {
 	// tabTo presses Tab until the focused element matches sel.
 	tabTo := func(what, sel string) {
 		t.Helper()
-		for i := 0; i < 80; i++ {
+		for range 80 {
 			if s.evalBool(t, what, fmt.Sprintf(`!!document.activeElement && document.activeElement.matches(%s)`, jsString(sel))) {
 				return
 			}

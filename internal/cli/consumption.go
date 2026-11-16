@@ -81,7 +81,7 @@ func (f *consumptionFlags) service(cmd *cobra.Command) (*consume.Service, []cons
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	return consume.New(st, set), sel, func() { _ = st.Close() }, nil
+	return consume.New(st, &set), sel, func() { _ = st.Close() }, nil
 }
 
 func newConsumptionTableCmd() *cobra.Command {

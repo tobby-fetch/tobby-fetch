@@ -28,7 +28,7 @@ func consumptionStore(t *testing.T) string {
 		t.Fatal(err)
 	}
 	defer st.Close() //nolint:errcheck // test
-	for _, rec := range []store.RecipeRecord{
+	records := []store.RecipeRecord{
 		{Name: "rke2", Version: "1.36.5", Ingredients: []store.IngredientRecord{
 			{Name: "runtime", Kind: "ContainerImage", Repo: "registry.rancher.com/rancher/rke2-runtime", Tag: "v1", Digest: consumptionDigest},
 			{Name: "rpms", Kind: "FileSet", Repo: "docker.io/acme/rpms", Tag: "1", Digest: consumptionDigest},
@@ -36,8 +36,9 @@ func consumptionStore(t *testing.T) string {
 		{Name: "app", Version: "1.0.0", Ingredients: []store.IngredientRecord{
 			{Name: "busybox", Kind: "ContainerImage", Repo: "docker.io/library/busybox", Tag: "1.36", Digest: consumptionDigest},
 		}},
-	} {
-		if err := st.PutRecipeRecord(&rec); err != nil {
+	}
+	for i := range records {
+		if err := st.PutRecipeRecord(&records[i]); err != nil {
 			t.Fatal(err)
 		}
 	}

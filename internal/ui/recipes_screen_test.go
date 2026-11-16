@@ -606,7 +606,7 @@ func TestPruneConfirmationRefusesWhatItCannotProject(t *testing.T) {
 func TestConsumptionAidsScreens(t *testing.T) {
 	st := openTestStore(t)
 	seedRecipeRecords(t, st)
-	aids := consume.New(st, consume.Settings{Registry: "reg.zone.example", Version: "v0"})
+	aids := consume.New(st, &consume.Settings{Registry: "reg.zone.example", Version: "v0"})
 	mux := mount(newTestUIWithOptions(t, &Options{Store: st, Aids: aids}, nil))
 	c := login(t, mux, "lecteur", "pw-view")
 

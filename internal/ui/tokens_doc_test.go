@@ -41,7 +41,7 @@ func declaredTokens(t *testing.T) map[string]bool {
 func TestEveryTokenReadIsDeclared(t *testing.T) {
 	declared := declaredTokens(t)
 	for _, file := range []string{"static/app.css", "static/tokens.css"} {
-		raw, err := os.ReadFile(file)
+		raw, err := os.ReadFile(file) //nolint:gosec // G304: fixed stylesheet paths of this package
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -64,7 +64,7 @@ func TestEveryDeclaredTokenIsDocumented(t *testing.T) {
 		"../help/corpus/en/reference/theming.md",
 		"../help/corpus/fr/reference/theming.md",
 	} {
-		raw, err := os.ReadFile(page)
+		raw, err := os.ReadFile(page) //nolint:gosec // G304: fixed corpus paths of this test
 		if err != nil {
 			t.Fatalf("the theming page is missing: %v", err)
 		}

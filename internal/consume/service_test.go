@@ -41,16 +41,16 @@ func graph() fakeSource {
 	}
 }
 
-func service(prefix, base string, mod func(*Settings)) *Service {
-	set := Settings{Registry: "reg.zone.example:5000", BasePath: base, StoragePrefix: prefix, Version: "v9.9.9"}
+func service(base string, mod func(*Settings)) *Service {
+	set := Settings{Registry: "reg.zone.example:5000", BasePath: base, Version: "v9.9.9"}
 	if mod != nil {
 		mod(&set)
 	}
-	return New(graph(), set)
+	return New(graph(), &set)
 }
 
 func TestTableMapsEveryIngredient(t *testing.T) {
-	tab, err := service("", "", nil).Table(nil)
+	tab, err := service("", nil).Table(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestTableBasePrefixes(t *testing.T) {
 		{Name: "x", Kind: "ContainerImage", Repo: "zone/docker.io/library/busybox", Tag: "1.36", Digest: d1},
 	}}}
 	set := Settings{Registry: "r.example", BasePath: "mirror", StoragePrefix: "zone"}
-	tab, err := New(src, set).Table(nil)
+	tab, err := New(src, &set).Table(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,11 +89,11 @@ func TestTableBasePrefixes(t *testing.T) {
 	}
 	// A record the configured prefix does not explain is refused, never guessed.
 	set.StoragePrefix = "other"
-	if _, err := New(src, set).Table(nil); err == nil || !strings.Contains(err.Error(), "storage.basePrefix") {
+	if _, err := New(src, &set).Table(nil); err == nil || !strings.Contains(err.Error(), "storage.basePrefix") {
 		t.Errorf("foreign prefix: err = %v", err)
 	}
 	set.StoragePrefix = ""
-	if _, err := New(src, set).Table(nil); err == nil {
+	if _, err := New(src, &set).Table(nil); err == nil {
 		t.Error("an unprefixed configuration read a prefixed path without complaint")
 	}
 }
@@ -102,7 +102,7 @@ func TestDigestOnlyIngredient(t *testing.T) {
 	src := fakeSource{{Name: "a", Version: "1", Ingredients: []store.IngredientRecord{
 		{Name: "x", Kind: "OCIArtifact", Repo: "ghcr.io/a/b", Digest: d1},
 	}}}
-	tab, err := New(src, Settings{Registry: "r.example"}).Table(nil)
+	tab, err := New(src, &Settings{Registry: "r.example"}).Table(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestDigestOnlyIngredient(t *testing.T) {
 }
 
 func TestSelection(t *testing.T) {
-	svc := service("", "", nil)
+	svc := service("", nil)
 	tab, err := svc.Table([]Selector{{Name: "debs", Version: "1.0.0"}})
 	if err != nil || len(tab.Entries) != 1 {
 		t.Fatalf("select name@version: %v %+v", err, tab)
@@ -132,7 +132,7 @@ func TestSelection(t *testing.T) {
 }
 
 func TestNoRegistryIsRefusedWithItsCode(t *testing.T) {
-	svc := service("", "", func(s *Settings) { s.Registry = "" })
+	svc := service("", func(s *Settings) { s.Registry = "" })
 	var te *taxonomy.Error
 	if _, err := svc.Table(nil); !errors.As(err, &te) || te.Code() != taxonomy.CodeAidsNoRegistry {
 		t.Errorf("table: err = %v", err)
@@ -143,7 +143,7 @@ func TestNoRegistryIsRefusedWithItsCode(t *testing.T) {
 }
 
 func TestExportFormatsCarryTheSameRows(t *testing.T) {
-	tab, err := service("", "", nil).Table(nil)
+	tab, err := service("", nil).Table(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func parse(t *testing.T, b []byte) snippet {
 }
 
 func TestRegistriesYAML(t *testing.T) {
-	out, err := service("", "", func(s *Settings) { s.Insecure = true }).RegistriesYAML(nil)
+	out, err := service("", func(s *Settings) { s.Insecure = true }).RegistriesYAML(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestRegistriesYAML(t *testing.T) {
 }
 
 func TestRegistriesYAMLSchemeBaseAndCA(t *testing.T) {
-	out, err := service("", "mirror/zone", func(s *Settings) { s.CAFile = "/etc/ssl/zone-ca.crt" }).RegistriesYAML([]Selector{{Name: "wordpress"}})
+	out, err := service("mirror/zone", func(s *Settings) { s.CAFile = "/etc/ssl/zone-ca.crt" }).RegistriesYAML([]Selector{{Name: "wordpress"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,13 +254,13 @@ func TestRegistriesYAMLSchemeBaseAndCA(t *testing.T) {
 }
 
 func TestRegistriesYAMLIsDeterministic(t *testing.T) {
-	a, _ := service("", "", nil).RegistriesYAML(nil)
-	b, _ := service("", "", nil).RegistriesYAML(nil)
+	a, _ := service("", nil).RegistriesYAML(nil)
+	b, _ := service("", nil).RegistriesYAML(nil)
 	if !bytes.Equal(a, b) {
 		t.Error("two generations differ")
 	}
-	ta, _ := service("", "", nil).Table(nil)
-	tb, _ := service("", "", nil).Table(nil)
+	ta, _ := service("", nil).Table(nil)
+	tb, _ := service("", nil).Table(nil)
 	ja, _ := ta.Render(FormatCSV)
 	jb, _ := tb.Render(FormatCSV)
 	if !bytes.Equal(ja, jb) {

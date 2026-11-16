@@ -636,7 +636,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 
 	// The consumption aids (FR-065): one service behind the API, the UI,
 	// so the table and the snippet cannot differ between surfaces.
-	aids := consume.New(st, consume.FromConfig(cfg, buildinfo.Version()))
+	aidSettings := consume.FromConfig(cfg, buildinfo.Version())
+	aids := consume.New(st, &aidSettings)
 
 	restAPI := api.New(authn, logger)
 	api.RegisterContent(restAPI, st, occupancy)

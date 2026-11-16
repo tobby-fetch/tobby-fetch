@@ -76,15 +76,16 @@ func FromConfig(cfg *config.Config, version string) Settings {
 // WithRegistry returns the settings pointed at another registry host (the
 // command line's --destination), re-deriving the scheme from the
 // insecure list it was resolved against.
-func (s Settings) WithRegistry(host string, insecure []string) Settings {
-	s.Registry = canonicalHost(host)
-	s.Insecure = false
+func (s *Settings) WithRegistry(host string, insecure []string) Settings {
+	out := *s
+	out.Registry = canonicalHost(host)
+	out.Insecure = false
 	for _, h := range insecure {
-		if canonicalHost(h) == s.Registry && s.Registry != "" {
-			s.Insecure = true
+		if canonicalHost(h) == out.Registry && out.Registry != "" {
+			out.Insecure = true
 		}
 	}
-	return s
+	return out
 }
 
 // canonicalHost lowercases a registry host and folds the Docker Hub
@@ -108,7 +109,7 @@ type Service struct {
 }
 
 // New builds the service over a recipe graph and its settings.
-func New(src Source, set Settings) *Service { return &Service{src: src, set: set} }
+func New(src Source, set *Settings) *Service { return &Service{src: src, set: *set} }
 
 // Registry reports the registry host the aids point at, empty when none is
 // configured.

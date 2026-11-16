@@ -89,7 +89,7 @@ func RegisterRecipes(a *API, o *RecipeOptions) {
 	if rc.opts.Aids == nil {
 		// An instance wired without the aids answers TBY-AID-001, not a
 		// nil dereference.
-		rc.opts.Aids = consume.New(rc.opts.Store, consume.Settings{})
+		rc.opts.Aids = consume.New(rc.opts.Store, &consume.Settings{})
 	}
 	a.Handle("GET /api/v1/recipes", a.RequireRole(auth.RoleViewer, rc.list))
 	a.Handle("GET /api/v1/recipes/{recipe}/mapping", a.RequireRole(auth.RoleViewer, rc.mapping))
