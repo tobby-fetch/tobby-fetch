@@ -52,7 +52,10 @@ type Store struct {
 	inspect bool
 	// refMu serializes the referrers index (referrers.go).
 	refMu sync.Mutex
-	root  string
+	// refMemo holds referrers indexes derived for a READ, never persisted
+	// (B-064); a write to the repository forgets its entry. Guarded by refMu.
+	refMemo map[string]*referrerFile
+	root    string
 	// mediaID is the identity of the medium this store is (FR-054
 	// amendment R-28), minted at creation and read back on every open.
 	mediaID string

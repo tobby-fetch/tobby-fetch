@@ -254,12 +254,16 @@ func TestReferrersIndexPersistsAndRebuilds(t *testing.T) {
 	if err != nil || len(got) != 1 || got[0].Digest != d {
 		t.Fatalf("after losing meta/referrers: %v, %+v", err, got)
 	}
-	if _, err := os.Stat(dir); err != nil {
-		t.Errorf("the rebuilt index was not persisted: %v", err)
+	// A read derives the index in memory and never persists it (B-064).
+	if _, err := os.Stat(dir); err == nil {
+		t.Errorf("a read persisted the rebuilt index")
 	}
 
 	// Corruption is treated like absence.
 	idxFile := referrerIndexPath(f.st.root, "app")
+	if err := os.MkdirAll(filepath.Dir(idxFile), 0o750); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(idxFile, []byte("{broken"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +358,7 @@ func TestReferrersIndexPinsNoForeignDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Plant: subject (tagged here) -> a digest only "other" knows.
-	idx := &referrerFile{Repository: "app", Referrers: map[digest.Digest][]referrerDescriptor{
+	idx := &referrerFile{Repository: "app", Referrers: map[digest.Digest][]referrerEntry{
 		digest.Digest(f.subject): {{MediaType: ociManifest, Digest: foreign, Size: 12}},
 	}}
 	if err := writeJSON(referrerIndexPath(f.st.root, "app"), idx); err != nil {

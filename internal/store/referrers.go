@@ -39,6 +39,29 @@ import (
 // revisions on first use, and every garbage collection rebuilds it before
 // marking. Losing meta/ loses nothing but that bookkeeping (meta.go).
 //
+// The index is a HINT, never an answer (B-064). It lives under meta/, where
+// an altered file on a transported medium is only a finding, so nothing it
+// says is served: a listing re-reads every candidate manifest, keeps it only
+// if its own payload names the subject asked about, and describes it from
+// that payload — media type, size, artifact type and annotations. A forged
+// entry pointing at a manifest of the repository is therefore dropped, and
+// a forged description of a real referrer is replaced by the real one. On a
+// guarded destination instance the candidates are not even read from the
+// index: they are the verified manifests of the repository (WithReferrerScope).
+//
+// A READ never writes (B-064): an absent index is derived in memory and kept
+// there until the next write to that repository, so a GET on a read-only
+// medium answers, and a GET on a writable one leaves meta/ byte-identical.
+//
+// Bounds (R5 of the milestone-7 review). An index entry carries no
+// annotations — they are served from the payload — so an entry is a few
+// hundred bytes whatever a client pushed. A subject holds at most
+// maxReferrersPerSubject referrers; the PUT of one more is refused before it
+// is stored. Each indexed PUT rewrites the repository's index, which is
+// linear in the entries of that one repository: bounded per subject, and
+// left unsharded deliberately — the write is an operator push, and a
+// per-subject layout would be a store format change for a cache.
+//
 // Garbage collection (FR-044, B-043). A referrer is reachable when its
 // subject is: the mark phase follows the index from every reachable
 // manifest, transitively. It marks a digest only if the manifest is held
@@ -48,7 +71,8 @@ import (
 // rule: swept once older than the grace period.
 
 // referrerDescriptor is one entry of a referrers listing: the descriptor of
-// the referring manifest plus its artifact type and annotations.
+// the referring manifest plus its artifact type and annotations — every
+// field read from the manifest's own payload.
 type referrerDescriptor struct {
 	MediaType    string            `json:"mediaType"`
 	Digest       digest.Digest     `json:"digest"`
@@ -57,10 +81,44 @@ type referrerDescriptor struct {
 	Annotations  map[string]string `json:"annotations,omitempty"`
 }
 
+// referrerEntry is one entry of the persisted index: which manifest names
+// the subject. The other fields are informational (the listing re-reads
+// the payload); annotations are deliberately not indexed (R5).
+type referrerEntry struct {
+	MediaType    string        `json:"mediaType"`
+	Digest       digest.Digest `json:"digest"`
+	Size         int64         `json:"size"`
+	ArtifactType string        `json:"artifactType,omitempty"`
+}
+
 // referrerFile is the persisted index of one repository.
 type referrerFile struct {
-	Repository string                                 `json:"repository"`
-	Referrers  map[digest.Digest][]referrerDescriptor `json:"referrers"`
+	Repository string                            `json:"repository"`
+	Referrers  map[digest.Digest][]referrerEntry `json:"referrers"`
+}
+
+// maxReferrersPerSubject bounds the referrers one subject may carry (R5).
+// Signatures, attestations, SBOMs and VEX documents of one image are a
+// handful; thousands is a client gone wrong, or someone filling the index.
+var maxReferrersPerSubject = 4096
+
+// ReferrerScope names the candidate referrers of a repository a caller
+// vouches for. A guarded destination instance passes the verified manifests
+// of the repository (internal/mediagate), so neither a forged index entry
+// nor a forged omission can change what it lists.
+type ReferrerScope func(repo string) []digest.Digest
+
+type referrerScopeKey struct{}
+
+// WithReferrerScope restricts the referrers listings served under ctx to
+// the candidates scope names.
+func WithReferrerScope(ctx context.Context, scope ReferrerScope) context.Context {
+	return context.WithValue(ctx, referrerScopeKey{}, scope)
+}
+
+func referrerScopeOf(ctx context.Context) ReferrerScope {
+	s, _ := ctx.Value(referrerScopeKey{}).(ReferrerScope)
+	return s
 }
 
 // maxManifestBody is the library's own bound on a manifest body; a larger
@@ -133,7 +191,7 @@ func (s *Store) loadReferrerIndex(repo string) (*referrerFile, bool) {
 		return nil, false
 	}
 	if f.Referrers == nil {
-		f.Referrers = map[digest.Digest][]referrerDescriptor{}
+		f.Referrers = map[digest.Digest][]referrerEntry{}
 	}
 	return &f, true
 }
@@ -146,9 +204,21 @@ func (s *Store) saveReferrerIndex(f *referrerFile) error {
 }
 
 // rebuildReferrerIndex derives a repository's index from its manifest
-// revisions. Caller holds refMu.
+// revisions and persists it. Caller holds refMu. Only write paths call it
+// (a manifest write, a garbage collection, the integrity tooling).
 func (s *Store) rebuildReferrerIndex(ctx context.Context, repo string) (*referrerFile, error) {
-	out := &referrerFile{Repository: repo, Referrers: map[digest.Digest][]referrerDescriptor{}}
+	out, err := s.deriveReferrerIndex(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	delete(s.refMemo, repo)
+	return out, s.saveReferrerIndex(out)
+}
+
+// deriveReferrerIndex computes a repository's index from its manifest
+// revisions, in memory. Caller holds refMu.
+func (s *Store) deriveReferrerIndex(ctx context.Context, repo string) (*referrerFile, error) {
+	out := &referrerFile{Repository: repo, Referrers: map[digest.Digest][]referrerEntry{}}
 	r, err := s.repository(ctx, repo)
 	if err != nil {
 		return nil, err
@@ -171,9 +241,9 @@ func (s *Store) rebuildReferrerIndex(ctx context.Context, repo string) (*referre
 			return nil //nolint:nilerr // see above
 		}
 		if subject, facts, ok := parseSubject(payload); ok {
-			addReferrer(out, subject, referrerDescriptor{
+			addReferrer(out, subject, referrerEntry{
 				MediaType: mediaType, Digest: d, Size: int64(len(payload)),
-				ArtifactType: facts.artifactTypeOrConfig(), Annotations: facts.Annotations,
+				ArtifactType: facts.artifactTypeOrConfig(),
 			})
 		}
 		return nil
@@ -181,11 +251,11 @@ func (s *Store) rebuildReferrerIndex(ctx context.Context, repo string) (*referre
 	if err != nil {
 		return nil, mapBrowseErr("enumerating manifests of "+repo, err)
 	}
-	return out, s.saveReferrerIndex(out)
+	return out, nil
 }
 
-// referrerIndex returns the index of a repository, rebuilding it when it is
-// absent. Caller holds refMu.
+// referrerIndex returns the index of a repository, rebuilding (and
+// persisting) it when it is absent. Caller holds refMu. Write paths only.
 func (s *Store) referrerIndex(ctx context.Context, repo string) (*referrerFile, error) {
 	if f, ok := s.loadReferrerIndex(repo); ok {
 		return f, nil
@@ -193,7 +263,46 @@ func (s *Store) referrerIndex(ctx context.Context, repo string) (*referrerFile, 
 	return s.rebuildReferrerIndex(ctx, repo)
 }
 
-func addReferrer(f *referrerFile, subject digest.Digest, d referrerDescriptor) {
+// referrerIndexForRead returns the index of a repository for a listing:
+// the persisted file, or one derived in memory and kept there until the
+// next write to the repository. It never writes (B-064). Caller holds
+// refMu.
+func (s *Store) referrerIndexForRead(ctx context.Context, repo string) (*referrerFile, error) {
+	if f, ok := s.loadReferrerIndex(repo); ok {
+		return f, nil
+	}
+	if f, ok := s.refMemo[repo]; ok {
+		return f, nil
+	}
+	f, err := s.deriveReferrerIndex(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	if s.refMemo == nil {
+		s.refMemo = map[string]*referrerFile{}
+	}
+	s.refMemo[repo] = f
+	return f, nil
+}
+
+// referrerCount is how many referrers the index knows for subject, and
+// whether d is one of them.
+func (s *Store) referrerCount(ctx context.Context, repo string, subject, d digest.Digest) (n int, known bool, err error) {
+	s.refMu.Lock()
+	defer s.refMu.Unlock()
+	f, err := s.referrerIndexForRead(ctx, repo)
+	if err != nil {
+		return 0, false, err
+	}
+	for _, e := range f.Referrers[subject] {
+		if e.Digest == d {
+			known = true
+		}
+	}
+	return len(f.Referrers[subject]), known, nil
+}
+
+func addReferrer(f *referrerFile, subject digest.Digest, d referrerEntry) {
 	list := f.Referrers[subject]
 	for i := range list {
 		if list[i].Digest == d.Digest {
@@ -214,13 +323,14 @@ func (s *Store) noteReferrer(ctx context.Context, repo, mediaType string, dgst d
 	}
 	s.refMu.Lock()
 	defer s.refMu.Unlock()
+	delete(s.refMemo, repo)
 	f, err := s.referrerIndex(ctx, repo)
 	if err != nil {
 		return err
 	}
-	addReferrer(f, subject, referrerDescriptor{
+	addReferrer(f, subject, referrerEntry{
 		MediaType: mediaType, Digest: dgst, Size: int64(len(payload)),
-		ArtifactType: facts.artifactTypeOrConfig(), Annotations: facts.Annotations,
+		ArtifactType: facts.artifactTypeOrConfig(),
 	})
 	return s.saveReferrerIndex(f)
 }
@@ -231,6 +341,7 @@ func (s *Store) noteReferrer(ctx context.Context, repo, mediaType string, dgst d
 func (s *Store) forgetReferrer(repo string, dgst digest.Digest) error {
 	s.refMu.Lock()
 	defer s.refMu.Unlock()
+	delete(s.refMemo, repo)
 	f, ok := s.loadReferrerIndex(repo)
 	if !ok {
 		return nil // nothing persisted: the next use rebuilds from the repository
@@ -259,6 +370,9 @@ func (s *Store) forgetReferrer(repo string, dgst digest.Digest) error {
 
 // dropReferrerIndex forgets a repository's index (the repository is gone).
 func (s *Store) dropReferrerIndex(repo string) {
+	s.refMu.Lock()
+	delete(s.refMemo, repo)
+	s.refMu.Unlock()
 	if s.inspect {
 		return
 	}
@@ -284,18 +398,29 @@ func (s *Store) RebuildReferrers(ctx context.Context) error {
 }
 
 // Referrers lists the manifests of a repository whose subject is subject,
-// optionally restricted to an artifact type. Entries whose manifest has
-// since left the repository are left out.
+// optionally restricted to an artifact type.
+//
+// Every candidate is re-read and kept only if its own payload hashes to its
+// digest and names the subject, and every field of its descriptor comes
+// from that payload (B-064): the index only says where to look. Under
+// WithReferrerScope the candidates are the scope's, not the index's. A
+// listing never writes.
 func (s *Store) Referrers(ctx context.Context, repo string, subject digest.Digest, artifactType string) ([]referrerDescriptor, error) {
-	s.refMu.Lock()
-	f, err := s.referrerIndex(ctx, repo)
-	var list []referrerDescriptor
-	if err == nil {
-		list = append(list, f.Referrers[subject]...)
-	}
-	s.refMu.Unlock()
-	if err != nil {
-		return nil, err
+	var candidates []digest.Digest
+	if scope := referrerScopeOf(ctx); scope != nil {
+		candidates = scope(repo)
+	} else {
+		s.refMu.Lock()
+		f, err := s.referrerIndexForRead(ctx, repo)
+		if err == nil {
+			for _, e := range f.Referrers[subject] {
+				candidates = append(candidates, e.Digest)
+			}
+		}
+		s.refMu.Unlock()
+		if err != nil {
+			return nil, err
+		}
 	}
 	r, err := s.repository(ctx, repo)
 	if err != nil {
@@ -306,17 +431,44 @@ func (s *Store) Referrers(ctx context.Context, repo string, subject digest.Diges
 		return nil, mapBrowseErr("opening manifests of "+repo, err)
 	}
 	out := []referrerDescriptor{}
-	for _, d := range list {
-		if artifactType != "" && d.ArtifactType != artifactType {
+	seen := map[digest.Digest]bool{}
+	for _, d := range candidates {
+		if seen[d] {
 			continue
 		}
-		if ok, err := ms.Exists(ctx, d.Digest); err != nil || !ok {
+		seen[d] = true
+		desc, ok := readReferrer(ctx, ms, d, subject)
+		if !ok || (artifactType != "" && desc.ArtifactType != artifactType) {
 			continue
 		}
-		out = append(out, d)
+		out = append(out, desc)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Digest < out[j].Digest })
 	return out, nil
+}
+
+// readReferrer reads one candidate manifest and describes it from its own
+// payload, if that payload hashes to d and names subject.
+func readReferrer(ctx context.Context, ms distribution.ManifestService, d, subject digest.Digest) (referrerDescriptor, bool) {
+	m, err := ms.Get(ctx, d)
+	if err != nil {
+		return referrerDescriptor{}, false
+	}
+	mediaType, payload, err := m.Payload()
+	if err != nil || d.Algorithm() != digest.SHA256 || digest.FromBytes(payload) != d {
+		return referrerDescriptor{}, false
+	}
+	got, facts, ok := parseSubject(payload)
+	if !ok || got != subject {
+		return referrerDescriptor{}, false
+	}
+	if facts.MediaType != "" {
+		mediaType = facts.MediaType
+	}
+	return referrerDescriptor{
+		MediaType: mediaType, Digest: d, Size: int64(len(payload)),
+		ArtifactType: facts.artifactTypeOrConfig(), Annotations: facts.Annotations,
+	}, true
 }
 
 // markReferrers extends a repository's reachable set with the referrers of
@@ -479,6 +631,14 @@ func (s *Store) putManifestHTTP(next http.Handler, w http.ResponseWriter, r *htt
 	subject, _, hasSubject := parseSubject(body)
 	if hasSubject {
 		rec.subject = subject.String()
+		// R5: a subject's referrers are bounded, and the refusal comes
+		// BEFORE the manifest is stored, not after.
+		n, known, err := s.referrerCount(r.Context(), repo, subject, digest.FromBytes(body))
+		if err == nil && !known && n >= maxReferrersPerSubject {
+			writeRegistryError(w, http.StatusBadRequest, "DENIED",
+				fmt.Sprintf("subject %s already has %d referrers, the most this registry indexes", subject, maxReferrersPerSubject))
+			return
+		}
 	}
 	next.ServeHTTP(rec, r)
 	if rec.status != http.StatusCreated || !hasSubject {
