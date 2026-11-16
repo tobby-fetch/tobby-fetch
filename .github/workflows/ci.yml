@@ -471,6 +471,14 @@ jobs:
       # keeps its pace; -count=2 is the anti-flaky rule of the pyramid, and
       # TOBBY_E2E_REQUIRE_CHROME turns "no browser" into a failure instead
       # of a skip.
+      # The snap Chromium of linux/arm64 is confined to the user's home: it
+      # cannot write a download into a test's directory under /tmp. The
+      # suite's temporary directories go under the workspace there.
+      - name: Keep test directories where the snap browser may write
+        if: runner.arch == 'ARM64'
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/browser-tmp"
+          echo "TMPDIR=${GITHUB_WORKSPACE}/browser-tmp" >> "${GITHUB_ENV}"
       - name: Browser scenarios (B-001, B-002, B-005, B-011, R-37)
         env:
           TOBBY_E2E_REQUIRE_CHROME: "1"
