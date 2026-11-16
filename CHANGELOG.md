@@ -171,6 +171,9 @@ the complete bilingual documentation.
 
 ### Changed
 
+- **`tobby sync --dry-run` names the trust scope of each recipe** in a new
+  `SCOPE` column of its text output (`-` for the default set), as the JSON
+  output already did; the emergency-path procedure relies on it.
 - **`tobby fileset pack` marks what it packs** with
   `dev.tobby.recipe/kind: FileSet` beside `dev.tobby.fileset/packed`.
   Packing stays deterministic, but the same tree packed by this version
