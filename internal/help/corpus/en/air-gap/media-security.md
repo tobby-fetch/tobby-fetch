@@ -160,7 +160,12 @@ destination instance holding a transported medium withholds `/v2/` and
 verification *it performed* has cleared the medium, and answers `403` with
 [`TBY-MED-030`](../../reference/errors/#tby-med-030) and the way out. The
 gate opens only on a medium that came out whole, holds no persistent record,
-re-closes on every restart, and has no opt-out setting.
+re-closes on every restart, and has no opt-out setting. Once open, it serves
+the **verified set** and nothing else: what the pushable recipes reach, every
+file re-hashed by that verification, read-only — content on the medium that
+no pushable recipe reaches is reported and never handed out
+([`TBY-MED-033`](../../reference/errors/#tby-med-033)). A destination store
+whose manifest is missing is guarded all the same.
 
 ## Secrets never travel
 

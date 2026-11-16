@@ -173,7 +173,12 @@ support, et répond `403` avec
 [`TBY-MED-030`](../../reference/errors/#tby-med-030) et la marche à suivre.
 Le verrou ne s'ouvre que sur un support intégralement validé, ne conserve
 aucune trace persistante, se referme à chaque redémarrage, et n'a aucun
-réglage de contournement.
+réglage de contournement. Une fois ouvert, il sert l'**ensemble vérifié** et
+rien d'autre : ce qu'atteignent les recipes poussables, chaque fichier
+recalculé par cette vérification, en lecture seule — le contenu du support
+qu'aucune recipe poussable n'atteint est signalé et jamais distribué
+([`TBY-MED-033`](../../reference/errors/#tby-med-033)). Un store de
+destination dont le manifeste manque est verrouillé de même.
 
 ## Les secrets ne voyagent jamais
 
