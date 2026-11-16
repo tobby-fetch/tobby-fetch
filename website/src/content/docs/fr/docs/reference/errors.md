@@ -511,16 +511,25 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 ### TBY-SIG-001
 
 - **Quoi :** la signature de la recipe n'a pas pu être vérifiée.
-- **Cause probable :** aucune clé de confiance configurée ne valide la
-  signature de *\<recipe\>* (les empreintes essayées sont listées). Quand un
-  périmètre de confiance déclaré correspond à la recipe, le message **nomme ce
-  périmètre** (*\<périmètre\>*) et les clés essayées sont celles qu'il
-  autorise : une clé valide ailleurs, mais absente des `roots` du périmètre,
-  ne s'applique pas dedans.
+- **Cause probable :** aucune clé de confiance qui s'applique à
+  *\<recipe\>* ne valide sa signature (les empreintes essayées sont
+  listées). Quand un périmètre de confiance déclaré correspond à la recipe, le
+  message **nomme ce périmètre** (*\<périmètre\>*) et les clés essayées sont
+  celles qu'il autorise : une clé valide ailleurs, mais absente des `roots` du
+  périmètre, ne s'applique pas dedans. Hors de tout périmètre, les clés
+  essayées sont l'**ensemble par défaut** — les clés qu'aucun périmètre ne
+  liste : une clé listée par un périmètre est réservée à ce périmètre et ne
+  vérifie rien en dehors. Quand toutes les clés configurées sont réservées,
+  rien n'est essayé et le message le dit. Quand la signature est valide pour
+  une clé qui ne s'applique pas ici, le message la nomme — nom et empreinte
+  (*\<réservée\>*) et le périmètre auquel elle est réservée
+  (*\<réservée-à\>*).
 - **Action corrective :** vérifiez que les clés de confiance de la zone
   incluent la clé qui a signé cette recipe — ou, quand un périmètre est nommé,
-  que ses `roots` la listent, ou que la recipe relève d'un autre périmètre
-  (voir
+  que ses `roots` la listent, ou que la recipe relève d'un autre périmètre.
+  Quand une clé réservée est nommée, étendez les `repositories` de ce
+  périmètre pour couvrir la recipe, ou faites re-signer la recipe avec une
+  clé qui s'applique là où elle est (voir
   [Signatures, clés de confiance et liste blanche](../../security/content-trust/)).
   Une recipe non vérifiée n'est jamais admise.
 - **Remédiable hors-ligne :** oui, quand la bonne clé publique est disponible localement (les clés de confiance sont la configuration de la destination) ; une recipe réellement non signée ou mal signée doit être re-signée en amont · **Bloque :** la recipe concernée (classe vérification, sortie 4) ; jamais dérogeable

@@ -189,8 +189,12 @@ const (
 	// OCI DENIED envelope on /v2/ (hardening.Registry).
 	CodeRegistryPushDisabled Code = "TBY-POL-006"
 
-	// CodeSignature is a recipe signature that no configured trust root
-	// validates (FR-033).
+	// CodeSignature is a recipe signature that no trust root applying to
+	// the recipe validates (FR-033). Optional parameters (B-057):
+	// "reserved" names a configured root that does verify the signature
+	// but does not apply here (name and fingerprint), "reservedto" the
+	// scopes that root is reserved to (empty for a root of the default
+	// set).
 	CodeSignature Code = "TBY-SIG-001"
 	// CodeDigestMismatch is fetched content not matching its pinned digest
 	// (FR-033). Reserved: emitter lands at milestone 3.
@@ -589,7 +593,7 @@ var catalog = map[Code]Entry{
 	// source does not publish.
 	CodePlatformMissing: {Code: CodePlatformMissing, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "platforms", "available"}},
 
-	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "fingerprints", "scope"}},
+	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "fingerprints", "scope", "reserved", "reservedto"}},
 	CodeDigestMismatch: {Code: CodeDigestMismatch, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "expected", "actual"}},
 	CodeArtifactType:   {Code: CodeArtifactType, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "expected", "actual"}},
 

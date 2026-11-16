@@ -162,7 +162,7 @@ est décrit dans
 | Clé | Type | Rôle |
 |---|---|---|
 | `trust.roots[]` | liste | Clés publiques de confiance (cosign, à base de clés). Chaque racine a un `name` et exactement une clé parmi `key` (PEM en ligne), `keyFile`, `keyURL` (`https://` uniquement, récupérée et mise en cache au moment de la configuration — jamais au moment de la vérification). Plusieurs racines permettent la rotation par chevauchement. |
-| `trust.scopes[]` | liste | Périmètres d'assouplissement déclarés, évalués dans l'ordre, le premier qui correspond l'emporte. Chaque périmètre a un `name`, des motifs glob `repositories` sur le chemin de cookbook **nominal canonique** de la recipe (`*` à l'intérieur d'un segment, `**` à travers ; le `:` d'un port s'écrit `_`), et doit changer quelque chose : `allowUnsigned: true` et/ou une restriction `roots`. Les périmètres assouplis sont signalés sur toutes les surfaces, jamais en silence. |
+| `trust.scopes[]` | liste | Périmètres d'assouplissement déclarés, évalués dans l'ordre, le premier qui correspond l'emporte. Chaque périmètre a un `name`, des motifs glob `repositories` sur le chemin de cookbook **nominal canonique** de la recipe (`*` à l'intérieur d'un segment, `**` à travers ; le `:` d'un port s'écrit `_`), et doit changer quelque chose : `allowUnsigned: true` et/ou une restriction `roots`. Une racine listée par les `roots` d'un périmètre est **réservée** aux périmètres qui la listent : elle ne vérifie rien ailleurs. Hors de tout périmètre, et dans un périmètre sans `roots`, les recipes sont vérifiées contre l'ensemble par défaut — les racines qu'aucun périmètre ne liste (depuis la v1.0.0-rc.1, B-057). Les périmètres assouplis sont signalés sur toutes les surfaces, jamais en silence. |
 
 ### Analyse de vulnérabilités
 

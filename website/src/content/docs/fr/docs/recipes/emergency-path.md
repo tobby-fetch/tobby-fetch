@@ -25,8 +25,8 @@ besoin.
   avec cosign, hors de Tobby, avec une clé que l'organisation maîtrise. La
   recipe est vérifiée comme toute autre, contre un trust root.
 - **Elle est cloisonnée, par la configuration.** La clé d'urgence n'est de
-  confiance que pour un seul chemin de cookbook, si vous déclarez les
-  périmètres comme ci-dessous.
+  confiance que pour un seul chemin de cookbook : un root listé par un
+  périmètre est réservé à ce périmètre (étape 2).
 - **Elle est visible.** Le nom du périmètre accompagne la recipe dans l'API,
   les rapports de tâche, le plan et l'écran Recipes, et le périmètre fait
   partie de la configuration effective.
@@ -74,32 +74,36 @@ trust:
       keyFile: /etc/tobby/keys/emergency.pub
 
   scopes:
-    # 1. La porte d'urgence : ce cookbook, vérifié contre la seule clé
-    #    d'urgence.
+    # La porte d'urgence : ce cookbook, vérifié contre la seule clé
+    # d'urgence. La lister ici la RÉSERVE aussi : elle ne vérifie rien
+    # hors de ce périmètre.
     - name: emergency
       repositories: ["registry.example.com/emergency/**"]
       roots: [org-emergency-key]
-    # 2. Tout le reste garde sa clé normale et ne peut pas être vérifié
-    #    par la clé d'urgence.
-    - name: standard
-      repositories: ["**"]
-      roots: [org-release-key]
 ```
 
-Pourquoi deux périmètres ? Les périmètres sont évalués dans l'ordre de
-déclaration et le premier qui correspond l'emporte. Un dépôt qui ne
-correspond à **aucun** périmètre retombe sur le défaut strict, qui accepte
-**n'importe quel** root configuré. Sans le périmètre fourre-tout `standard`,
-la clé d'urgence serait un signataire valide pour toutes les recipes de tous
-les cookbooks, pas seulement celui d'urgence. Avec lui, la clé d'urgence
-vérifie la voie d'urgence et rien d'autre, et l'ordre compte : gardez
-`emergency` en premier.
+Un seul périmètre suffit. Un root listé par un périmètre est réservé à ce
+périmètre : la clé d'urgence vérifie le cookbook d'urgence et rien d'autre,
+et tout ce qui est hors du périmètre est vérifié contre l'**ensemble par
+défaut** — les roots qu'aucun périmètre ne liste, ici `org-release-key` seul.
+Une recipe du cookbook normal signée avec la clé d'urgence est refusée avec
+[`TBY-SIG-001`](../../reference/errors/#tby-sig-001), et le message nomme
+`org-emergency-key` et le périmètre `emergency` auquel elle est réservée.
+
+:::caution[Changé en v1.0.0-rc.1]
+Jusqu'à la v0.6.x, un dépôt qui ne correspondait à aucun périmètre était
+vérifié contre **tous** les roots configurés, clé d'urgence comprise (B-057),
+et cette page recommandait un second périmètre fourre-tout
+(`repositories: ["**"]`, `roots: [org-release-key]`) pour cantonner la clé
+d'urgence. Ce périmètre n'est plus nécessaire. Il fonctionne toujours, la
+première correspondance l'emportant après `emergency`, et peut être retiré.
+:::
 
 Les motifs s'appliquent au chemin nominal du cookbook de la recipe, sous forme
 canonique : hôte en minuscules, le `:` d'un port écrit `_`
 (`registry.example.com_5000/…`). Voir
 [Signatures, trust roots et liste d'autorisation](../../security/content-trust/#périmètres-dassouplissement--et-leur-visibilité).
-Aucun des deux périmètres ne positionne `allowUnsigned` : la voie d'urgence
+Le périmètre ne positionne pas `allowUnsigned` : la voie d'urgence
 n'admet jamais de contenu non signé, elle ne porte donc aucun
 [marqueur d'assurance réduite](../../security/reduced-assurance/) et ne
 déclenche aucun bandeau. Sa visibilité, c'est le nom du périmètre, ci-dessous.
@@ -227,8 +231,8 @@ tobby sync --wait
 Si la signature ne se vérifie pas contre `org-emergency-key`, la recipe est
 refusée avec [`TBY-SIG-001`](../../reference/errors/#tby-sig-001), et le
 message nomme le périmètre qui a refusé. Une signature faite avec la clé
-*standard* ne se vérifie pas non plus ici : les `roots` d'un périmètre
-forment un compartiment.
+normale `org-release-key` ne se vérifie pas non plus ici : les `roots` d'un
+périmètre forment un compartiment.
 
 ## Où l'urgence reste visible
 

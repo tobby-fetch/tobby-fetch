@@ -468,15 +468,24 @@ its published rendering.
 ### TBY-SIG-001
 
 - **What happened:** the recipe signature could not be verified.
-- **Probable cause:** no configured trust root validates the signature of
-  *\<recipe\>* (the tried key fingerprints are listed). When a declared
-  trust scope matched the recipe, the message **names that scope**
+- **Probable cause:** no trust root that applies to *\<recipe\>*
+  validates its signature (the tried key fingerprints are listed). When a
+  declared trust scope matched the recipe, the message **names that scope**
   (*\<scope\>*) and the keys tried are the ones the scope allows: a key
   that is a valid trust root elsewhere, but is not listed by the scope's
-  `roots`, does not apply inside it.
+  `roots`, does not apply inside it. Outside every scope, the keys tried
+  are the **default set** — the roots no scope lists: a root that a scope
+  lists is reserved to that scope and verifies nothing outside it. When
+  every configured root is reserved, nothing is tried and the message says
+  so. When the signature does verify against a root that does not apply
+  here, the message names it — root name and fingerprint (*\<reserved\>*)
+  and the scope it is reserved to (*\<reservedto\>*).
 - **Corrective action:** check that the zone's trust roots include the key
   that signed this recipe — or, when a scope is named, that the scope's
-  `roots` list it, or that the recipe belongs under another scope (see
+  `roots` list it, or that the recipe belongs under another scope. When a
+  reserved root is named, either extend that scope's `repositories` to
+  cover the recipe, or have the recipe re-signed with a key that applies
+  where it is (see
   [Signatures, trust roots and allowlist](../../security/content-trust/)). An
   unverified recipe is never admitted.
 - **Fixable offline:** yes, when the right public key is available locally (trust roots are destination configuration); a genuinely unsigned or wrongly signed recipe must be re-signed upstream · **Blocks:** the recipe concerned (verification class, exit 4); never overridable

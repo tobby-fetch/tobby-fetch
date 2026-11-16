@@ -336,10 +336,11 @@ func TestLoadTrustSources(t *testing.T) {
 			t.Errorf("restricted-scope decision = %+v (fingerprints %v), want the single named root",
 				d, fingerprintsOf(d))
 		}
-		// Outside the scope: the full root set.
+		// Outside the scope: the default set, which leaves out the root
+		// the scope reserves (B-057).
 		d = tp.Decide("other.example.com/cookbook/x")
-		if d.Scope != "" || d.AllowUnsigned || len(d.Keys.Fingerprints()) != 2 {
-			t.Errorf("default decision = %+v (fingerprints %v), want strict with both roots", d, fingerprintsOf(d))
+		if d.Scope != "" || d.AllowUnsigned || len(fingerprintsOf(d)) != 1 || fingerprintsOf(d)[0] == tp.Decide("narrow.example.com/cookbook/x").Keys.Fingerprints()[0] {
+			t.Errorf("default decision = %+v (fingerprints %v), want strict with the unreserved root only", d, fingerprintsOf(d))
 		}
 	})
 }

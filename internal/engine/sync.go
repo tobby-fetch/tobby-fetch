@@ -575,16 +575,12 @@ func (e *Engine) verifyRecipe(ctx context.Context, f *FetchedRecipe, d Decision)
 		if errors.Is(err, sigverify.ErrNoSignature) && d.AllowUnsigned {
 			return false, d.Scope, nil
 		}
-		return false, d.Scope, withScope(d.Scope, err)
+		return false, d.Scope, refused(ctx, src, f.NominalRepo, f.ManifestDigest, d, err)
 	}
 	if d.AllowUnsigned {
 		return false, d.Scope, nil
 	}
-	return false, d.Scope, taxonomy.New(taxonomy.CodeSignature, taxonomy.Params{
-		"recipe":       f.NominalRepo + ":" + f.Tag,
-		"fingerprints": "none — no trust root is configured",
-		"scope":        d.Scope,
-	})
+	return false, d.Scope, noKeyRefusal(ctx, src, f.NominalRepo, f.ManifestDigest, f.NominalRepo+":"+f.Tag, d)
 }
 
 // syncIngredient fetches one ingredient by its pinned digest into its

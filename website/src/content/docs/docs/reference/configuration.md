@@ -157,7 +157,7 @@ bypass. The full model is on
 | Key | Type | Purpose |
 |---|---|---|
 | `trust.roots[]` | list | Trusted public keys (cosign, key-based). Each root has a `name` and exactly one of `key` (inline PEM), `keyFile`, `keyURL` (`https://` only, fetched and cached at configuration time — never at verification time). Multiple roots enable rotation by overlap. |
-| `trust.scopes[]` | list | Declared relaxation perimeters, evaluated in order, first match wins. Each scope has a `name`, `repositories` glob patterns on the recipe's **canonical nominal** cookbook path (`*` within a segment, `**` across; a port's `:` is written `_`), and must change something: `allowUnsigned: true` and/or a `roots` restriction. Relaxed scopes are reported on every surface, never silent. |
+| `trust.scopes[]` | list | Declared relaxation perimeters, evaluated in order, first match wins. Each scope has a `name`, `repositories` glob patterns on the recipe's **canonical nominal** cookbook path (`*` within a segment, `**` across; a port's `:` is written `_`), and must change something: `allowUnsigned: true` and/or a `roots` restriction. A root listed by a scope's `roots` is **reserved** to the scopes listing it: it verifies nowhere else. Outside every scope, and in a scope without `roots`, recipes verify against the default set — the roots no scope lists (since v1.0.0-rc.1, B-057). Relaxed scopes are reported on every surface, never silent. |
 
 ### Vulnerability scanning
 
