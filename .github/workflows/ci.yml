@@ -437,8 +437,22 @@ jobs:
       # Chrome comes with the runner image and is NEVER downloaded by the
       # suite (NFR-019). Failing here, loudly, beats a suite that silently
       # skips itself on a runner that lost its browser.
+      # Google Chrome is not published for Linux arm64, and the
+      # ubuntu-24.04-arm image omits it (actions/partner-runner-images,
+      # arm-ubuntu-24-image.md, "omitted software"). The browser the suite
+      # drives there is Canonical's Chromium snap, one of the lookup
+      # locations of the suite (/snap/bin/chromium) — installed by the
+      # workflow, never by the suite (NFR-019).
+      - name: Install Chromium (linux/arm64 has no Google Chrome)
+        if: runner.arch == 'ARM64'
+        run: sudo snap install chromium
       - name: Report the browser taken from the environment
-        run: google-chrome --version
+        run: |
+          if command -v google-chrome >/dev/null 2>&1; then
+            google-chrome --version
+          else
+            /snap/bin/chromium --version
+          fi
       # The scenarios live behind the `browser` build tag so `go test ./...`
       # keeps its pace; -count=2 is the anti-flaky rule of the pyramid, and
       # TOBBY_E2E_REQUIRE_CHROME turns "no browser" into a failure instead
