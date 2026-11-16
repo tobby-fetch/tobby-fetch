@@ -221,6 +221,7 @@ func readManifest(root *os.Root) (*Manifest, *Block) {
 	if err := validate(&m); err != nil {
 		return nil, unreadable(err.Error())
 	}
+	m.Inventory = withoutFileSetCache(m.Inventory)
 	if m.MediaFormat != ManifestFormat {
 		return nil, &Block{Code: taxonomy.CodeMediaFormatUnsupported, Params: map[string]string{
 			"found": strconv.Itoa(m.MediaFormat), "supported": strconv.Itoa(ManifestFormat),
@@ -232,6 +233,20 @@ func readManifest(root *os.Root) (*Manifest, *Block) {
 		}}
 	}
 	return &m, nil
+}
+
+// withoutFileSetCache drops the inventory entries a v0.6.0 manifest wrote
+// for the FileSet cache (B-060). The destination never serves that tree —
+// it discards it and re-extracts from the verified blobs (FR-054, B-058) —
+// so checking it would only report its rebuild as altered bookkeeping.
+func withoutFileSetCache(inv []File) []File {
+	out := inv[:0:0]
+	for _, e := range inv {
+		if !inFileSetCache(e.Path) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func unreadable(detail string) *Block {

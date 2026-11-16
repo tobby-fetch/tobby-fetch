@@ -840,6 +840,17 @@ not pushed; a media produced for zone A is refused by an instance configured for
 zone B; a trust-root file on the media has no effect on verification; verification
 progress is displayed. *(ADR-0006, ADR-0007)*
 
+*Amendment 2026-11-16 (B-060) — the FileSet cache is not covered.* The FileSet
+extraction cache (`meta/fileserve/`) SHALL be outside manifest coverage: it is
+derived from the blobs by the instance serving it, and the destination side
+rebuilds it from the verified blobs (FR-047 amendment) rather than serving what
+the medium carries. Inventory entries under that path in a manifest written by
+an earlier release SHALL be accepted and ignored by the verification.
+*Acceptance:* a manifest written over a store holding a FileSet cache does not
+list it; on the destination, a rebuilt cache produces no finding; a manifest
+listing the cache in the earlier format is not refused and its cache entries
+produce no finding. *(ADR-0016 §3)*
+
 *Amendment 2026-08-26 (R-19) — granularity of the block.* The sentence
 "integrity or completeness failure SHALL block with no override" above was
 written as a global verdict, while RECIPE-SPEC §12.3 point 4 requires failing
