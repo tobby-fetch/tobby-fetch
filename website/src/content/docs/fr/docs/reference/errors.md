@@ -1158,6 +1158,13 @@ L'archive locale et expurgée de FR-095. L'expurgation échoue fermée : un bund
 - **Action corrective :** Signalez ce défaut aux mainteneurs de Tobby avec le nom du membre — jamais avec le bundle. En attendant, collectez les informations à la main.
 - **Remédiable hors-ligne :** oui · **Bloque :** le bundle — jamais livré avec un secret dedans
 
+### TBY-DIA-003
+
+- **Quoi :** Un bundle de diagnostic est déjà en cours de construction sur cette instance.
+- **Cause probable :** Un seul bundle est construit à la fois : chacun garde ses membres en mémoire et y cherche les secrets, et des demandes simultanées multiplieraient ce coût.
+- **Action corrective :** Attendez quelques secondes la fin du bundle en cours, puis redemandez. Rien n'a été écrit ni envoyé.
+- **Remédiable hors-ligne :** oui · **Bloque :** ce bundle seulement — rien n'a été écrit ni envoyé
+
 ## Cohérence d'horloge (TBY-CLK)
 
 FR-096 : l'horloge locale confrontée à des repères que l'instance détient sans aucun réseau. Ces codes avertissent et consignent ; ils ne changent aucun verdict.
@@ -1189,9 +1196,9 @@ FR-097 : le répertoire d'état normé — la cible de sauvegarde d'une instance
 
 ### TBY-STA-002
 
-- **Quoi :** L'instance refuse de démarrer : `<path>` est lisible par tous les utilisateurs de l'hôte (mode `<mode>`).
-- **Cause probable :** C'est une entrée secrète du répertoire d'état — empreintes de mots de passe ou de jetons, clé privée — que Tobby crée pour son seul propriétaire. Un mode plus large vient en général d'une restauration qui n'a pas conservé les droits.
-- **Action corrective :** Retirez l'accès des autres utilisateurs (chmod o-rwx sous Unix ; sous Windows, retirez Tout le monde et Utilisateurs de sa liste d'accès), vérifiez qui a pu la lire entre-temps, puis redémarrez. L'accès de groupe accordé par le volume (fsGroup Kubernetes) est toléré.
+- **Quoi :** L'instance refuse de démarrer : `<path>` est ouvert à tous les utilisateurs de l'hôte (`<mode>`).
+- **Cause probable :** C'est une entrée secrète du répertoire d'état — empreintes de mots de passe ou de jetons, clé privée — lisible par d'autres utilisateurs, ou un répertoire qui en contient une et où d'autres utilisateurs peuvent écrire (donc remplacer le secret), ou une entrée dont la liste d'accès n'a pas pu être lue, que Tobby refuse plutôt que de la supposer restreinte. Tobby les crée pour leur seul propriétaire ; un mode plus large vient en général d'une restauration qui n'a pas conservé les droits.
+- **Action corrective :** Retirez l'accès des autres utilisateurs (chmod o-rwx sous Unix, sur l'entrée et sur les répertoires qui la contiennent, et pas de racine d'état dans un répertoire partagé à sticky bit appartenant à un autre compte ; sous Windows, retirez Tout le monde, Utilisateurs, Utilisateurs authentifiés et les autres principaux larges de sa liste d'accès), vérifiez qui a pu la lire ou la remplacer entre-temps, puis redémarrez. L'accès de groupe accordé par le volume (fsGroup Kubernetes) est toléré.
 - **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance
 
 ### TBY-STA-003

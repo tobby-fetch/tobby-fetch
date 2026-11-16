@@ -413,6 +413,10 @@
 "TBY-DIA-002.cause": "Before releasing a bundle, Tobby searches every member for the secret values it knows. One was found, so the bundle was not written rather than written with it."
 "TBY-DIA-002.action": "Report this defect to the Tobby maintainers with the member name — never with the bundle. Meanwhile, collect the information by hand."
 
+"TBY-DIA-003.what": "A diagnostic bundle is already being built on this instance."
+"TBY-DIA-003.cause": "One bundle is built at a time: each holds the members in memory and searches them for secrets, and concurrent requests would multiply that."
+"TBY-DIA-003.action": "Wait a few seconds for the bundle in progress to finish, then ask again. Nothing was written or sent."
+
 "TBY-CLK-001.what": "The local clock reads {{.now}}, earlier than the build of this binary ({{.anchor}})."
 "TBY-CLK-001.cause": "The clock is {{.gap}} behind a date this binary proves has passed. Expiries, freshness checks and certificate validity are judged against this clock."
 "TBY-CLK-001.action": "Set the host's clock (time source of the zone, or by hand from a trusted reference), then restart. Tobby warns and records; it does not correct the clock."
@@ -425,9 +429,9 @@
 "TBY-STA-001.cause": "It was written by another version of Tobby, or it is not a Tobby state directory."
 "TBY-STA-001.action": "Start the version that wrote it, or restore the state directory from a backup made with this version. The documented layout is the backup contract."
 
-"TBY-STA-002.what": "The instance refuses to start: {{.path}} is readable by every user of the host (mode {{.mode}})."
-"TBY-STA-002.cause": "It is a secret entry of the state directory — password or token hashes, a private key — which Tobby creates for its owner only. A broader mode usually comes from a restore that did not keep permissions."
-"TBY-STA-002.action": "Remove the access of other users (chmod o-rwx on Unix; on Windows, remove Everyone and Users from its access list), check who could read it meanwhile, then restart. Group access granted by the volume (Kubernetes fsGroup) is tolerated."
+"TBY-STA-002.what": "The instance refuses to start: {{.path}} is open to every user of the host ({{.mode}})."
+"TBY-STA-002.cause": "It is a secret entry of the state directory — password or token hashes, a private key — readable by other users, or a directory holding one that other users can write to (and so replace the secret), or an entry whose access list could not be read, which Tobby refuses rather than assume it is narrow. Tobby creates them for its owner only; a broader mode usually comes from a restore that did not keep permissions."
+"TBY-STA-002.action": "Remove the access of other users (chmod o-rwx on Unix, on the entry and on the directories that hold it, and keep the state root out of a shared sticky directory owned by another account; on Windows, remove Everyone, Users, Authenticated Users and the other broad principals from its access list), check who could read or replace it meanwhile, then restart. Group access granted by the volume (Kubernetes fsGroup) is tolerated."
 
 "TBY-STA-003.what": "The state directory holds no {{.entry}}."
 "TBY-STA-003.cause": "An identity entry is missing — typically after an incomplete restore. The instance starts without it, and behaves as a new instance for what it held."

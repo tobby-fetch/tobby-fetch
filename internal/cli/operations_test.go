@@ -12,6 +12,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/clock"
 	"github.com/tobby-fetch/tobby-fetch/internal/diag"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -272,5 +275,79 @@ func TestMediaVerifyWarnsWhenTheClockIsBehindTheMedium(t *testing.T) {
 	}
 	if strings.Contains(stderr, "CLK") || strings.Contains(stderr, "clock.implausible") {
 		t.Errorf("a clock within the tolerance raised something:\n%s", stderr)
+	}
+}
+
+// TestABlockedMediumIsNoClockAnchor (review A5): the resolution time of a
+// medium whose verification blocked is not believed — a forged date must
+// neither raise the banner nor become the anchor.
+func TestABlockedMediumIsNoClockAnchor(t *testing.T) {
+	now := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)
+	mon := clock.NewMonitor(time.Hour)
+	mon.Now = func() time.Time { return now }
+	late := now.Add(30 * 24 * time.Hour)
+	observeMediumClock(mon, &media.Report{Verdict: media.VerdictBlocked, Media: &media.Info{MediaID: "forged", ResolvedAt: late}})
+	if len(mon.Records()) != 0 {
+		t.Errorf("a blocked medium became an anchor: %+v", mon.Records())
+	}
+	observeMediumClock(mon, &media.Report{Verdict: media.VerdictPartial, Media: &media.Info{MediaID: "real", ResolvedAt: late}})
+	if imp := mon.Implausible(); len(imp) != 1 || imp[0].Medium != "real" {
+		t.Errorf("a verified medium is not an anchor: %+v", imp)
+	}
+}
+
+// TestARemoteBundleThatIsNoArchiveIsNotKept (review R6): an answer of 200
+// that is not a diagnostic archive — a proxy's page, a truncated stream —
+// is removed, and the error says what to check.
+func TestARemoteBundleThatIsNoArchiveIsNotKept(t *testing.T) {
+	for name, body := range map[string][]byte{
+		"html page": []byte("<html>login</html>"),
+		"truncated": func() []byte {
+			b, err := diag.Build(diag.Options{Secrets: diag.NewSecrets()}, &diag.Sources{Version: func() ([]byte, error) { return []byte(`{"v":1}`), nil }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := b.Archive()
+			if err != nil {
+				t.Fatal(err)
+			}
+			return raw[:len(raw)-20]
+		}(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/gzip")
+				_, _ = w.Write(body)
+			}))
+			t.Cleanup(srv.Close)
+			out := filepath.Join(t.TempDir(), "b.tar.gz")
+			err := execute(t, "diagnostics", "bundle", "--mode", "passthrough", "--storage-root", t.TempDir(), "--instance", srv.URL, "-o", out)
+			if got := taxonomyCode(t, err); got != taxonomy.CodeDiagnosticsFailed {
+				t.Fatalf("err = %v, want TBY-DIA-001", err)
+			}
+			if !strings.Contains(taxonomy.Text("en", err.(*taxonomy.Error)), "--instance") { //nolint:errorlint // the assertion is the test's point
+				t.Errorf("the error is not actionable: %v", err)
+			}
+			if _, serr := os.Stat(out); serr == nil {
+				t.Error("the answer was kept")
+			}
+		})
+	}
+}
+
+// TestARemoteBundleDownloadIsBounded (R6): an answer longer than any
+// archive stops the copy with an error.
+func TestARemoteBundleDownloadIsBounded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(bytes.Repeat([]byte("z"), 4096))
+	}))
+	t.Cleanup(srv.Close)
+	c := &instanceClient{base: srv.URL, http: srv.Client()}
+	var sink bytes.Buffer
+	if _, err := c.download(context.Background(), http.MethodPost, "/", &sink, 1000); err == nil {
+		t.Error("an answer past the bound was accepted")
+	}
+	if sink.Len() > 1001 {
+		t.Errorf("%d bytes copied past a bound of 1000", sink.Len())
 	}
 }

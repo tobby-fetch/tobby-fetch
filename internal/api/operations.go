@@ -9,11 +9,9 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
@@ -69,9 +67,11 @@ func (o *operationsAPI) now() time.Time {
 }
 
 // bundle serves POST /api/v1/diagnostics/bundle: the archive itself in the
-// response body, built in memory and checked before the first byte is
-// sent — a bundle that would carry a secret is a problem document, never
-// a partial download.
+// response body. Every member is collected, scrubbed and checked in memory
+// before the first byte is sent — a bundle that would carry a secret is a
+// problem document, never a partial download — and the archive is then
+// streamed rather than assembled a second time in memory. One bundle is
+// built at a time: a concurrent request is answered 409, TBY-DIA-003.
 func (o *operationsAPI) bundle(w http.ResponseWriter, r *http.Request) {
 	if o.opts == nil || o.opts.Diagnostics == nil {
 		o.api.Problem(w, r, taxonomy.New(taxonomy.CodeDiagnosticsFailed, taxonomy.Params{
@@ -89,17 +89,14 @@ func (o *operationsAPI) bundle(w http.ResponseWriter, r *http.Request) {
 		o.api.Problem(w, r, te)
 		return
 	}
-	var buf bytes.Buffer
-	if _, err := b.WriteTo(&buf); err != nil {
-		o.api.Problem(w, r, taxonomy.New(taxonomy.CodeDiagnosticsFailed, taxonomy.Params{"detail": err.Error()}))
-		return
-	}
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+diag.ArchiveName(b.Manifest.Generated)+`"`)
-	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(buf.Bytes())
+	// A write error past this point is the client going away: the archive
+	// was already checked, and a truncated gzip stream is detected by the
+	// reader (the command line verifies the manifest and removes the file).
+	_, _ = b.WriteTo(w)
 }
 
 // clockVerdict is one anchor of GET /api/v1/clock.

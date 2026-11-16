@@ -7,6 +7,8 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -159,8 +161,13 @@ func runBundleRemote(cmd *cobra.Command, cfg *config.Config, inst *instanceFlags
 	if out == "" {
 		out = diag.ArchiveName(time.Now())
 	}
+	// The answer is bounded — a bundle is at most every member at its own
+	// bound — and checked before it is kept: an answer that is not a
+	// diagnostic archive (a proxy's page, a truncated stream, another
+	// service at that address) is removed rather than left looking like one.
+	limit := diag.MaxArchive(cfg.Diagnostics.Tasks)
 	n, err := writeNewFile(out, func(w io.Writer) (int64, error) {
-		return client.download(cmd.Context(), http.MethodPost, "/api/v1/diagnostics/bundle", w)
+		return client.download(cmd.Context(), http.MethodPost, "/api/v1/diagnostics/bundle", w, limit)
 	})
 	if err != nil {
 		var te *taxonomy.Error
@@ -170,9 +177,12 @@ func runBundleRemote(cmd *cobra.Command, cfg *config.Config, inst *instanceFlags
 		}
 		return taxonomy.New(taxonomy.CodeDiagnosticsFailed, taxonomy.Params{"detail": err.Error()}).WithCause(err)
 	}
-	man, err := readBundleManifest(out)
+	man, err := verifyBundleArchive(out)
 	if err != nil {
-		return err
+		_ = os.Remove(out)
+		return taxonomy.New(taxonomy.CodeDiagnosticsFailed, taxonomy.Params{
+			"detail": fmt.Sprintf("the answer of %s is not a complete diagnostic archive (%v); nothing was kept — check that --instance names a Tobby instance and retry", client.base, err),
+		}).WithCause(err)
 	}
 	return writeBundleReport(cmd, report, &bundleReport{
 		File: out, Bytes: n, Source: "instance", Members: man.Members, Omitted: man.Omitted,
@@ -209,8 +219,11 @@ func writeNewFile(path string, write func(io.Writer) (int64, error)) (int64, err
 	return n, nil
 }
 
-// readBundleManifest reads MANIFEST.json back out of an archive.
-func readBundleManifest(path string) (*diag.Manifest, error) {
+// verifyBundleArchive reads an archive written from an instance's answer
+// back whole: a gzip-compressed tar whose first file is MANIFEST.json, a
+// valid manifest, and every member it lists present once with the size
+// and digest it states — and nothing else.
+func verifyBundleArchive(path string) (*diag.Manifest, error) {
 	f, err := os.Open(path) //nolint:gosec // G304: the file just written
 	if err != nil {
 		return nil, err
@@ -218,27 +231,58 @@ func readBundleManifest(path string) (*diag.Manifest, error) {
 	defer func() { _ = f.Close() }()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
-		return nil, fmt.Errorf("the instance's answer is not a gzip archive: %w", err)
+		return nil, fmt.Errorf("not a gzip archive: %w", err)
 	}
 	tr := tar.NewReader(gz)
+	h, err := tr.Next()
+	if err != nil || h.Name != diag.MemberManifest {
+		return nil, fmt.Errorf("the archive does not begin with %s", diag.MemberManifest)
+	}
+	var m diag.Manifest
+	if err := json.NewDecoder(io.LimitReader(tr, 1<<20)).Decode(&m); err != nil {
+		return nil, fmt.Errorf("reading %s: %w", diag.MemberManifest, err)
+	}
+	if err := m.Validate(); err != nil {
+		return nil, err
+	}
+	want := map[string]diag.Member{}
+	for _, mem := range m.Members {
+		want[mem.Name] = mem
+	}
 	for {
 		h, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
 		if err != nil {
-			return nil, fmt.Errorf("the archive has no %s: %w", diag.MemberManifest, err)
+			return nil, fmt.Errorf("reading the archive: %w", err)
 		}
-		if h.Name != diag.MemberManifest {
-			continue
+		mem, ok := want[h.Name]
+		if !ok {
+			return nil, fmt.Errorf("%s is not listed in the manifest", h.Name)
 		}
-		var m diag.Manifest
-		if err := json.NewDecoder(io.LimitReader(tr, 1<<20)).Decode(&m); err != nil {
-			return nil, err
+		delete(want, h.Name)
+		sum := sha256.New()
+		n, err := io.Copy(sum, io.LimitReader(tr, mem.Size+1))
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", h.Name, err)
 		}
-		return &m, nil
+		if n != mem.Size || "sha256:"+hex.EncodeToString(sum.Sum(nil)) != mem.Digest {
+			return nil, fmt.Errorf("%s does not match its manifest entry", h.Name)
+		}
 	}
+	if _, err := io.Copy(io.Discard, io.LimitReader(gz, 1<<20)); err != nil {
+		return nil, fmt.Errorf("reading the archive: %w", err)
+	}
+	for name := range want {
+		return nil, fmt.Errorf("%s is listed in the manifest but missing", name)
+	}
+	return &m, nil
 }
 
-// download performs one API call and copies a successful body to w.
-func (c *instanceClient) download(ctx context.Context, method, path string, w io.Writer) (int64, error) {
+// download performs one API call and copies a successful body to w, at
+// most limit bytes: a longer answer is an error, not a truncated copy.
+func (c *instanceClient) download(ctx context.Context, method, path string, w io.Writer, limit int64) (int64, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, http.NoBody)
 	if err != nil {
 		return 0, err
@@ -255,7 +299,11 @@ func (c *instanceClient) download(ctx context.Context, method, path string, w io
 	if resp.StatusCode >= 400 {
 		return 0, c.problem(resp)
 	}
-	return io.Copy(w, resp.Body)
+	n, err := io.Copy(w, io.LimitReader(resp.Body, limit+1))
+	if err == nil && n > limit {
+		err = fmt.Errorf("the answer exceeds %d bytes, more than any diagnostic archive", limit)
+	}
+	return n, err
 }
 
 // ---- Sources -------------------------------------------------------------
@@ -415,7 +463,7 @@ func diagSecrets(cfg *config.Config) func() (*diag.Secrets, error) {
 		if cfg.State.Root != "" {
 			// The generated and adopted keys of the state directory.
 			_ = filepath.WalkDir(statedir.Path(cfg.State.Root, statedir.TLS), func(p string, d fs.DirEntry, err error) error {
-				if err == nil && !d.IsDir() && strings.HasSuffix(d.Name(), ".key") {
+				if err == nil && !d.IsDir() && statedir.SecretFileInDir(d.Name()) {
 					files["state "+statedir.TLS+"/"+d.Name()] = p
 				}
 				return nil

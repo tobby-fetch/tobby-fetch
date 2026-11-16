@@ -65,7 +65,17 @@ tobby diagnostics bundle --instance https://tobby.example:8443
 ou depuis l'écran d'administration **Diagnostic** (`/admin/diagnostics`), ou avec
 `POST /api/v1/diagnostics/bundle`. L'archive de l'instance ajoute la fenêtre de
 journal et les métriques. Il faut le rôle **administrateur** : les rôles
-opérateur et lecteur sont refusés.
+opérateur et lecteur sont refusés. Un seul bundle est construit à la fois : une
+demande qui arrive pendant qu'un autre est en construction est refusée avec
+[`TBY-DIA-003`](../../reference/errors/#tby-dia-003) (HTTP 409) — redemandez
+un instant plus tard.
+
+La commande contrôle la réponse de l'instance avant de la garder : le
+téléchargement est borné, et une réponse qui n'est pas une archive de
+diagnostic complète — la page d'erreur d'un proxy, un flux coupé, un manifeste
+qui ne correspond pas à ses fichiers — est supprimée, et la commande échoue
+avec [`TBY-DIA-001`](../../reference/errors/#tby-dia-001) en nommant
+l'adresse interrogée.
 
 Produire un bundle est un événement du [journal d'audit](../../security/audit-log/)
 (`diagnostics.bundle`) qui nomme le demandeur et dit si l'archive a été écrite,
@@ -82,14 +92,25 @@ du tout si le contrôle trouve un secret. Deux temps :
    tâches, les métriques — les secrets que l'instance connaît sont remplacés par
    `[REDACTED]`, ainsi que les identifiants d'une forme reconnaissable : en-têtes
    `Authorization` et `Cookie`, identifiants bearer et basic, mot de passe dans
-   une URL, bloc de clé privée, et la valeur d'une clé nommée `password`,
-   `secret`, `token` et semblables.
+   une URL, bloc de clé privée, JSON Web Token nu (`eyJ….eyJ….…`), la valeur
+   d'une clé nommée `password`, `secret`, `token` et semblables, et celle des
+   paramètres `jwt=`, `sig=` (signature d'accès partagé Azure) et
+   `SAMLResponse=`.
 2. **Contrôler.** *Chaque* fichier est ensuite cherché pour les secrets que
    l'instance connaît. Les fichiers structurés que Tobby écrit lui-même —
    version, configuration, rapport d'intégrité, inventaire d'état — ne sont pas
    épurés : un secret dans l'un d'eux est un défaut, et le bundle est
    **abandonné** avec [`TBY-DIA-002`](../../reference/errors/#tby-dia-002), qui
    nomme le fichier, jamais le secret.
+
+Les deux temps portent sur chaque fichier **entier, avant qu'il soit coupé** à
+sa borne de taille (32 Mio) : une coupure ne laisse jamais derrière elle une
+partie de secret. La fenêtre de journal doit couper un enregistrement trop long
+(16 Kio) dès sa réception, bien avant qu'un bundle sache quoi chercher : elle
+marque la coupure (`[truncated by the log window]`), et le bundle juge ce qui
+précède chaque marque — le début d'un secret connu y est expurgé dans la
+fenêtre de journal, et fait refuser le bundle dans un fichier structuré à
+partir de 8 octets.
 
 « Les secrets que l'instance connaît » sont : chaque valeur secrète de la
 configuration (le mot de passe du proxy, où qu'il ait été posé), le **contenu**
@@ -98,7 +119,10 @@ registry, clé privée TLS, secret client OIDC, clé SAML) et des fichiers de cl
 du répertoire d'état, et la valeur des variables d'environnement qui ressemblent
 à des identifiants (`*PASSWORD*`, `*SECRET*`, `*TOKEN*`, `*KEY*`…). Chacune est
 cherchée en clair et dans les encodages où elle est susceptible d'apparaître :
-base64 (standard, brut, URL), hexadécimal, échappé pour URL, échappé pour JSON ;
+base64 (standard, brut, URL) — y compris au sein d'une chaîne encodée plus
+longue, à chacun de ses trois alignements possibles, comme dans
+`base64("user:" + mot_de_passe)` — hexadécimal, échappé pour URL, échappé pour
+JSON ;
 pour une clé privée, son corps PEM ; pour un fichier d'identifiants de registry,
 chaque identifiant et le `user:password` décodé. Si un fichier secret configuré
 existe mais ne peut pas être lu, le bundle échoue avec
@@ -116,9 +140,29 @@ Ce que cela ne promet **pas**, dit sans détour :
 - Un secret que l'instance ne connaît pas — saisi par une personne dans un champ
   libre d'une tâche, par exemple — n'est attrapé que s'il a une forme
   reconnaissable.
-- Le contrôle protège contre les **secrets**. Les noms d'hôtes, de registries,
-  de références d'images et de comptes sont dans l'archive, et peuvent être
-  sensibles pour vous. Relisez ce que vous partagez.
+- Le contrôle protège contre les **secrets**, pas contre tout ce qui est
+  sensible par ailleurs. Les noms d'hôtes, de registries, de références d'images
+  et de comptes sont dans l'archive. Relisez ce que vous partagez.
+
+## L'archive contient des données personnelles
+
+Un bundle n'est pas anonyme. Il porte, par construction, des informations qui
+identifient des personnes et des lieux, et se **traite comme une donnée
+personnelle** selon les règles que votre organisation leur applique — qui peut
+le recevoir, où il est conservé, quand il est supprimé :
+
+- les **acteurs** des enregistrements d'audit de la fenêtre de journal et des
+  rapports de tâches : noms de comptes, sujets OIDC et SAML, noms de jetons ;
+- les **adresses des clients** que ces enregistrements nomment (l'`origin` de
+  chaque événement d'audit) ;
+- l'identifiant de **zone**, les noms d'hôtes de l'instance et les adresses de
+  registries ;
+- des **chemins** sur l'hôte : `state.root`, le store, les fichiers secrets
+  (leur emplacement, jamais leur contenu).
+
+Transmettez-le à la personne qui en a besoin, pour le temps où elle en a
+besoin, et préférez un canal que votre organisation agrée pour les données
+personnelles à un ticket public.
 
 ## Configuration
 

@@ -26,6 +26,13 @@ type Window struct {
 // a window of 2000 records into hundreds of megabytes.
 const maxRecordBytes = 16 << 10
 
+// windowCut is appended to a record the window cut. The window cannot
+// scrub before it cuts — it is fed long before a bundle knows the secrets
+// to look for — so it marks where it cut, and the bundle judges what was
+// left at the mark: the part of a known secret there is redacted, or the
+// bundle is refused (Build).
+const windowCut = " [truncated by the log window]"
+
 // maxWindowBytes bounds the whole window, whatever the record count.
 const maxWindowBytes = 64 << 20
 
@@ -45,10 +52,12 @@ func (w *Window) Write(p []byte) (int, error) {
 	if len(rec) == 0 {
 		return n, nil
 	}
+	var cp []byte
 	if len(rec) > maxRecordBytes {
-		rec = rec[:maxRecordBytes]
+		cp = append(append(make([]byte, 0, maxRecordBytes+len(windowCut)), rec[:maxRecordBytes]...), windowCut...)
+	} else {
+		cp = append([]byte(nil), rec...)
 	}
-	cp := append([]byte(nil), rec...)
 	w.mu.Lock()
 	w.lines = append(w.lines, cp)
 	w.bytes += len(cp)

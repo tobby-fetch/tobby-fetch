@@ -116,8 +116,8 @@ func TestStateScreenListsEntriesAndFlagsABroadSecret(t *testing.T) {
 }
 
 // TestImplausibleClockShowsAPersistentBannerThatRetracts: FR-096 — on every
-// page, in the viewer's language, naming the code; gone by itself once a
-// later check is plausible.
+// page, in the viewer's language, naming the code; kept while the clock is
+// behind the latest anchor seen, gone by itself once the clock is right.
 func TestImplausibleClockShowsAPersistentBannerThatRetracts(t *testing.T) {
 	now := time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
 	mon := clock.NewMonitor(time.Hour)
@@ -142,8 +142,15 @@ func TestImplausibleClockShowsAPersistentBannerThatRetracts(t *testing.T) {
 	if !strings.Contains(fr, "les expirations et les contrôles de fraîcheur peuvent être faux") {
 		t.Error("the banner is not translated")
 	}
+	// An earlier medium does not clear it: the clock is still behind the
+	// later anchor. Putting the clock right does, at the next re-judgment.
 	mon.CheckMedium("med_ok", now)
+	if body := get(t, mux, c, "/", nil).Body.String(); !strings.Contains(body, "TBY-CLK-002") {
+		t.Error("an earlier medium cleared the banner of a later one")
+	}
+	now = now.Add(73 * time.Hour)
+	mon.Recheck()
 	if body := get(t, mux, c, "/", nil).Body.String(); strings.Contains(body, "TBY-CLK") {
-		t.Error("the banner survived a plausible verdict")
+		t.Error("the banner survived a clock put right")
 	}
 }

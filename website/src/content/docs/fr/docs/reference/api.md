@@ -147,7 +147,10 @@ le chemin laisserait deviner.
   seulement. Elle est construite et contrôlée avant le premier octet envoyé :
   un bundle qui porterait un secret est un document problème
   ([`TBY-DIA-002`](../../reference/errors/#tby-dia-002)), jamais un
-  téléchargement partiel. La demande est auditée. Voir
+  téléchargement partiel ; l'archive contrôlée est ensuite diffusée en flux,
+  sans `Content-Length`. Un seul bundle est construit à la fois : une demande
+  concurrente reçoit 409 ([`TBY-DIA-003`](../../reference/errors/#tby-dia-003)).
+  La demande est auditée. Voir
   [Collecter un bundle de diagnostic](../../passthrough/diagnostics/).
 - **`GET /api/v1/clock` et `GET /api/v1/state` sont des rapports.** Le premier
   renvoie le dernier [verdict d'horloge](../../air-gap/clock-check/) de chaque
