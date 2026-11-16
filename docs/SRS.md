@@ -456,6 +456,53 @@ shown; with the scanner binary removed, the banner, the log record and the
 metric report the degraded mode, every item is reported not scanned, and under
 `block` none is pushed.
 
+*Amendment 2026-11-16 (R-15) — exceptions, scoped and bounded.* An exception
+relaxes a control, so from this release it is never open-ended nor broader
+than its author meant. This paragraph governs the exceptions bullet above:
+
+- **Expiry is mandatory.** Every exception declared in the instance
+  configuration (`scan.exceptions[]`) SHALL carry `expires`; one without it
+  is a configuration error naming the entry and the remedy, and the instance
+  refuses to start. This is a deliberate break before 1.0, announced in the
+  changelog with the correction to apply. A `justification` is likewise
+  required. Exceptions carried by a Retriever follow the same rule from the
+  `v1` format on (RECIPE-SPEC §10.4); until then a Retriever exception
+  without expiry is reported as unbounded on every surface that shows it.
+- **Scope.** An exception MAY be narrowed to the items it was meant for: a
+  manifest **digest**, a source **repository** (the nominal reference of the
+  ingredient, glob patterns as in trust scopes), and a **recipe** (name,
+  optionally `name@version`). The criteria present combine with AND; an
+  exception with none applies, as before, to every item of its level. An
+  exception whose identifier matches a finding but whose scope excludes the
+  item does not apply, and the report says so beside the finding — the
+  operator sees why the item is still refused.
+- **Re-blocking is visible.** An exception past its expiry no longer
+  applies: under a blocking policy the item it covered is refused again at
+  the next evaluation, and that transition is stated — in the item report
+  (the expired exception named beside the finding), as a security audit
+  event (FR-094), and in a metric counting active and expired exceptions.
+  Nothing is silently re-admitted and nothing is silently re-blocked.
+- **OpenVEX input.** The instance MAY declare OpenVEX documents
+  (`scan.vex[]`: a local file — no URL is ever fetched, NFR-019 — and a
+  mandatory `expires`, since OpenVEX statements carry none). Each
+  `not_affected` statement carrying a machine-readable justification is
+  translated into an exception scoped by its product identifiers and
+  bounded by the document's declared expiry; a statement with an impact
+  statement only, and every other status, adds nothing. A document that
+  cannot be read or validated refuses the start, naming the file.
+  Exceptions born of a VEX document are reported with the document they
+  came from. Tobby reads VEX; it never produces or signs one (ADR-0006:
+  Tobby signs nothing).
+
+*Acceptance:* an instance configuration listing an exception without
+`expires` refuses to start with an actionable message; an exception scoped to
+one digest admits that image and still blocks another image carrying the same
+CVE, whose report says the exception is out of scope; once the expiry passes
+the same image is refused again, with the expired exception named in the
+report, an audit record and the metric moved; an OpenVEX `not_affected`
+statement for the image admits it and the report names the document; a
+malformed VEX file refuses the start.
+
 **FR-032 — Offline vulnerability database.**
 Tobby SHALL support consuming the Trivy vulnerability database as an OCI artifact
 transferable by Tobby itself, so scanning works in restricted and air-gapped zones.
@@ -578,6 +625,19 @@ Tobby SHALL expose an embedded OCI registry on `/v2/` conforming to the OCI
 Distribution Specification (pull and push).
 *Acceptance:* the OCI distribution-spec conformance suite passes against the
 endpoint. *(ADR-0004)*
+
+*Amendment 2026-11-16 (7.3) — conformance in CI.* The upstream
+`distribution-spec` conformance suite, at a pinned version, SHALL run in CI
+against the embedded registry on every change, for the pull, push and content
+discovery workflows, and for content management as far as FR-044 lets a
+client delete. Any test the endpoint does not pass by design (a deletion
+FR-044 forbids, for instance) SHALL be excluded by name, with its reason, in
+the documentation; no other exclusion is acceptable for a release candidate.
+FR-098's hardening switch that refuses pushes is evaluated separately: the
+suite runs against the default configuration.
+*Acceptance:* the CI job runs the pinned suite and fails the build on any
+unlisted failure; the published exclusion list matches the suite's
+configuration.
 
 **FR-041 — Standard client compatibility.**
 The embedded registry SHALL be usable with `docker`, `podman`, `helm`, `oras`, and
@@ -912,6 +972,17 @@ specification shipped with the application.
 *Acceptance:* the OpenAPI document is served by the running instance, validates
 against the OpenAPI schema, and describes every implemented endpoint.
 
+*Amendment 2026-11-16 (R-11) — a contract an integrator can hold.* The
+OpenAPI document of each release, together with the command-line output
+schemas of FR-066, SHALL also be published as a release artifact, versioned
+with the release and signed like the other release artifacts (NFR-005,
+NFR-006), so that an integrator in a zone without access to a running
+instance can generate a client against the exact contract. From 1.0.0 on,
+changes to the document are additive within a major version.
+*Acceptance:* a release carries `openapi.yaml` with its signature, identical
+byte for byte to the document the same build serves on
+`/api/v1/openapi.yaml`, and the signature verifies with `cosign`.
+
 **FR-061 — UI/API parity.**
 Every action available in the web UI SHALL be achievable through the REST API, and
 vice versa (excluding purely presentational features).
@@ -977,6 +1048,18 @@ translation catalog.
 *Acceptance:* switching language translates all UI labels; a missing-translation
 check runs in CI; no user-facing string is hard-coded in templates. *(ADR-0010)*
 
+*Amendment 2026-11-16 (7.2) — completeness, checked both ways.* The CI check
+SHALL fail the build on any of: a key present in one language and missing in
+the other; an **orphaned** key, present in the catalogs but referenced by no
+template and no code path; a message whose parameters differ between
+languages; and an empty translation. It covers every user-facing catalog —
+the UI labels, the error taxonomy messages (and the published error
+reference of both languages), and the embedded help corpus (NFR-003: every
+English page has its French counterpart).
+*Acceptance:* removing a French key, adding an unused key, or dropping a
+`{{.Param}}` from one language each fails the CI job with the key named; the
+help corpus check lists an English page without French counterpart.
+
 **FR-064 — Themable styling.**
 The UI's visual theme SHALL be customizable via configuration (design-token based
 stylesheet override) without rebuilding the application.
@@ -994,6 +1077,48 @@ explicitly, using the mapping table. Tobby SHALL NOT rewrite chart values.
 *Acceptance:* on an RKE2 node configured with the generated snippet, a pod
 referencing `docker.io/bitnami/wordpress` pulls from the zone registry; the table
 matches pushed content. *(ADR-0013)*
+
+*Amendment 2026-11-16 (7.1) — what is generated, where, and its limits.*
+
+- **Scope.** Both aids are produced per recipe and for the whole set of
+  recipes the instance holds, for one destination: the configured
+  `destination.registry` (with `destination.basePath`), or, for an instance
+  that serves its own `/v2/` to the zone (UC3, destination side without a
+  separate zone registry), the address declared in
+  `consumption.registry`. With neither, the request is refused with a
+  dedicated code naming both settings.
+- **The mapping table** lists, per ingredient: recipe, ingredient, kind,
+  nominal reference, relocated reference at the destination, tag and digest.
+  It is exportable as CSV, JSON and Markdown from the UI, the API (FR-061)
+  and the command line, and it is computed from what the store holds, so it
+  matches what is pushed (FR-026, FR-035).
+- **The `registries.yaml` snippet** (K3s and RKE2 format) carries one
+  `mirrors` entry per nominal registry host of the `ContainerImage`
+  ingredients covered (Docker Hub aliases folded onto `docker.io`), whose
+  `endpoint` is the destination and whose `rewrite` rules map the nominal
+  repository onto its relocated path (FR-035, RECIPE-SPEC §11.5), plus a
+  `configs` entry for the destination stating the CA file path declared in
+  `consumption.caFile` when one is. It SHALL NEVER contain a credential:
+  the `auth` block, when the destination needs one, is a commented
+  placeholder the operator fills on the node (NFR-015). The output is
+  deterministic — same store, same configuration, same bytes; it carries no
+  timestamp — and states in a header comment the Tobby version, the
+  destination and the recipes it covers.
+- **Limits, stated in the documentation and in the header of the snippet.**
+  The mirror redirection applies to images pulled by the container runtime
+  of the node only. It does not apply to Helm chart sources, to GitOps
+  controllers, to admission policies or to any tool that resolves image
+  references itself: those reference relocated paths explicitly, using the
+  mapping table. Tobby never rewrites chart values, never writes to a node,
+  and generates no configuration for other runtimes in v1 (CRI-O, Docker).
+  A digest-pinned reference keeps its digest through the rewrite.
+
+*Acceptance (complements the above):* the snippet generated for a recipe
+holding images from two registries has two `mirrors` entries with rewrite
+rules matching the relocated paths, and no credential; the CSV, JSON and
+Markdown tables carry the same rows as the API; generating twice yields the
+same bytes; an instance with neither a destination nor
+`consumption.registry` refuses with the dedicated code.
 
 **FR-066 — Command-line interface.**
 Tobby SHALL provide a CLI covering the automation-relevant operations: media
@@ -1158,7 +1283,7 @@ certificate as a fallback when none is supplied.
 without one, a self-signed certificate is generated and its fingerprint logged;
 certificate replacement is possible via configuration and the admin UI (FR-062).
 
-### 3.10 Observability
+### 3.10 Observability and operations
 
 **FR-090 — Structured logging.**
 Tobby SHALL emit structured JSON logs — to stdout in passthrough mode, to a
@@ -1178,6 +1303,42 @@ synchronization counts and durations, per-status ingredient counts, transferred
 bytes, policy rejections, and scan results.
 *Acceptance:* the endpoint is scrapeable by Prometheus; each listed metric family is
 present and documented. *(ADR-0012)*
+
+*Amendment 2026-11-16 (R-11) — what supervision needs, and a kit to use it.*
+
+- **Families completed.** On top of the minimum above — which SHALL be met
+  by name: synchronization runs counted by outcome, their durations as a
+  histogram, and the per-status ingredient counts of the last run (FR-026) —
+  the endpoint SHALL expose the end time of the **last successful
+  synchronization** (so its age is computable and alertable), the
+  **expiry time of the server certificate** the listener presents (FR-082,
+  self-signed fallback included), the unmanaged content of FR-098, the clock
+  verdict of FR-096, and the active and expired exceptions of FR-031.
+  A family exists from the first scrape with a true value, or not at all:
+  a timestamp gauge that has measured nothing is absent, not zero.
+- **A published reference.** The metrics reference — every family, its
+  type, its labels and their closed value sets, its unit, and the
+  requirement it serves — SHALL be generated from the running registry, so a
+  family cannot exist undocumented, and published as a versioned, signed
+  release artifact beside the OpenAPI document (FR-060 amendment). Renaming
+  or removing a family is a breaking change under the 1.x promise.
+- **Alert rules and a dashboard.** The reference chart (4.5) SHALL ship,
+  disabled by default and enabled by one value each, Prometheus alerting
+  rules (as a `PrometheusRule` resource and as a plain rules file) for at
+  least: repeated synchronization failures; no successful synchronization
+  for longer than a configurable bound; transfers saturating
+  `sync.parallelism`; store occupancy beyond its threshold (FR-045); a
+  vulnerability database beyond its maximum age or absent, and a scanner in
+  degraded mode (FR-031, FR-032); a server certificate expiring within a
+  configurable bound; an implausible clock (FR-096) — and an example
+  dashboard. Every expression references only families of the published
+  reference, which a test enforces.
+*Acceptance:* the reference artifact lists every family the endpoint
+exposes and nothing else; each alert rule fires in a test fed with the
+corresponding condition and stays silent otherwise; `helm template` with
+the alerting value renders a `PrometheusRule` that validates; the
+certificate-expiry gauge equals the `NotAfter` of the presented certificate,
+before and after a certificate replacement.
 
 **FR-092 — Health probes.**
 Tobby SHALL expose `/healthz` (liveness) and `/readyz` (readiness, false until
@@ -1209,6 +1370,127 @@ schema fields; audit records are separable from operational logs by a single
 filter on the marker field; the documented schema is stable across the 1.x
 series. *(ADR-0012)*
 
+**FR-095 — Diagnostic bundle. *(amendment 2026-11-16, R-30)***
+Tobby SHALL produce, in one action — `tobby diagnostics bundle` on the host,
+and from the UI with its API mirror (FR-061), admin role — a single local
+archive an operator can hand to support: the version and build information
+(FR-001, NFR-004), the effective configuration redacted as `tobby config
+dump` redacts it (FR-003, NFR-015), the most recent log records held by the
+instance (a bounded in-memory window, `diagnostics.logRecords`, plus, in
+mirror mode, the tail of the medium's log, FR-053), the reports of the most
+recent tasks (`diagnostics.tasks`), a metrics snapshot (FR-091), the last
+on-demand integrity report if any (FR-057), the state-directory inventory of
+FR-097 (names, sizes, modes — never contents), and a manifest listing every
+file of the archive with its digest. The archive is written locally or
+downloaded by the requesting administrator; Tobby never sends it anywhere
+(NFR-019). Redaction SHALL fail closed: before the archive is released, its
+every member is searched for the secret values the instance knows (proxy
+password, client secrets, private keys, the clear form of any credential it
+read), and a match aborts the bundle with a dedicated code rather than
+shipping it. Generating a bundle is an FR-094 event naming who asked for it.
+*Acceptance:* on an instance configured with planted secrets in every
+secret-bearing setting, the bundle contains none of them in any member, as a
+test scanning the archive establishes; a member forced to contain one aborts
+the bundle with the dedicated code; the archive's manifest digests match its
+members; the operator and viewer roles cannot obtain it; no outbound
+connection is made.
+
+**FR-096 — Clock plausibility. *(amendment 2026-11-16, R-32)***
+An isolated zone has no time source to trust, and a wrong clock silently
+falsifies freshness (FR-032, FR-052 R-28), expiries (FR-031, FR-072) and
+certificate validity. Tobby SHALL check its local clock against two anchors
+it holds without any network: the build time of its own binary
+(`SOURCE_DATE_EPOCH`, ADR-0011), at startup; and the resolution timestamp of
+a medium (FR-054), when the medium is opened. A local clock earlier than
+either anchor, beyond a configurable tolerance (`clock.skewTolerance`,
+default 1h, absorbing ordinary drift between zones), is **implausible**: the
+instance warns in the startup log record, on a persistent UI banner, in the
+CLI output of the command that opened the medium, and in a metric, and
+records the observed gap as an FR-094 event. It warns and records; it does
+not correct the clock, and it changes no verdict by itself — expiries and
+freshness keep being judged against the local clock, now visibly in doubt.
+*Acceptance:* an instance started with its clock set before its build date
+shows the banner, the log record, the metric and the audit event naming the
+gap; opening a medium resolved after the local time beyond the tolerance
+does the same, naming the medium; a clock within the tolerance raises
+nothing.
+
+**FR-097 — Instance state directory, backup and rebuild. *(amendment 2026-11-16, R-27)***
+Everything that makes an instance *this* instance and is not content SHALL
+live in the state directory (`state.root`, strictly outside the store,
+NFR-020): local accounts and their password hashes (FR-073), static tokens
+as hashes (FR-072), the adopted or generated server certificate and key
+(FR-082), the trust-root cache of URL-fetched roots (FR-033), the operator
+overrides persisted at runtime (FR-013 interval), the per-zone import
+record (FR-052, R-28), and the configuration tables written through the UI.
+Its layout SHALL be **normative and versioned**: each entry is documented
+with its purpose, whether it is secret, and whether it is to be backed up
+(identity) or may be discarded (caches and spools: resumable partial
+downloads, scanner work directory, trust-root cache, which are rebuilt).
+Together with the configuration file and the secret files it references, it
+is the **single backup target** of an instance besides the store; the store
+(FR-050) is either re-synchronized or restored from its own copy.
+- **Secrets at rest.** Secret entries are files of mode 0600 (owner-only ACL
+  on Windows, NFR-020); credentials Tobby verifies are stored hashed, never
+  in clear (FR-072, FR-073). Encryption at rest is the volume's
+  responsibility, documented with the deployment; an encrypted backup
+  bundle is outside v1.
+- **Rebuild.** An instance started on a restored state directory,
+  configuration and store SHALL behave as the original: same accounts and
+  tokens, same certificate fingerprint, same import record, same overrides.
+  At startup Tobby SHALL check the layout version and the permissions of
+  secret entries, and refuse to start, naming the entry, when a secret
+  entry is readable by others or the layout version is unknown; a
+  discardable entry missing is recreated silently, an identity entry missing
+  is reported.
+- **Inventory.** `tobby state inspect` lists the entries present with their
+  class (identity, secret, discardable), size and mode — never their
+  content — and is the input the diagnostic bundle (FR-095) records.
+*Acceptance:* an end-to-end test stops an instance, copies its state
+directory, configuration and store to a fresh host, starts it there, and
+signs in with the original account and token, sees the same certificate
+fingerprint and the same media import record; a state directory whose
+accounts file was made world-readable refuses to start naming the file; the
+documented layout matches `tobby state inspect` on a fully exercised
+instance.
+
+**FR-098 — Provenance and trust, content by content. *(amendment 2026-11-16, R-17)***
+Every repository of the store SHALL expose its **provenance class**, building
+on the classification FR-044 and FR-045 already record: `recipe` — managed
+by one or more recipes verified against this instance's trust roots (the
+reduced-assurance marker of FR-037 shown when a relaxed scope admitted
+them); `unit-import` — brought by a unit import (FR-023) or a local packing
+(FR-048), unsigned by construction; or `seed` — pushed directly through
+`/v2/` by a standard client (UC3). Each tag also exposes the result and the
+date of its last vulnerability scan when one exists (FR-031), with the
+database age it was scanned with. The class is shown in the content browser
+(FR-062), returned by the API (FR-060), carried by a structured log field on
+the records that concern the repository (FR-090), and counted by a metric of
+**unmanaged content** — repositories not managed by a verified recipe, by
+class (FR-091). The class is a fact about this store, never written into
+any registry.
+- **Hardening options, per instance.** Two settings, off by default, remove
+  a way in: `hardening.disableUnitImport` refuses unit imports (FR-023) and
+  local packing (FR-048) on every surface — UI, API and command line — and
+  `hardening.disableRegistryPush` makes the embedded registry read-only for
+  every client and every role, refusing every push with the OCI `DENIED`
+  error carrying a dedicated code. Recipe-driven writes (FR-027) are
+  unaffected by both. They are hardening, not relaxation: they need no
+  acknowledgement, but they are reported like every security setting — at
+  startup, in the configuration dump, on the screens whose action they
+  disable (the action shown disabled, naming the setting), and in the
+  metrics — so an operator never mistakes a refusal for a fault. Seeding a
+  new environment (UC3) is then impossible on that instance, by design.
+*Acceptance:* a store holding one recipe-managed repository, one unit import,
+one packed FileSet and one pushed repository shows each with its class in
+the browser and the API, with the scan date of the scanned tags; the
+unmanaged-content metric counts two `unit-import` and one `seed`; with
+`hardening.disableUnitImport` the import screen, its API and `tobby fileset
+pack` refuse with the dedicated code and the setting is named; with
+`hardening.disableRegistryPush` a `docker push` by an administrator is
+refused with `DENIED` and the dedicated code while `docker pull` and a
+recipe synchronization still work.
+
 ---
 
 ## 4. Non-functional requirements
@@ -1234,6 +1516,14 @@ The container image SHALL be built from a minimal base with a zero-known-CVE
 objective at release time.
 *Acceptance:* a Trivy scan of each release image reports zero known CVEs at build
 date; the image contains no shell or package manager. *(ADR-0011)*
+
+*Amendment 2026-11-16 (7.3) — the release gate.* For a release candidate and
+a stable release, a known **critical or high** vulnerability in the image —
+the binaries it embeds included — SHALL fail the release pipeline, with no
+ignore mechanism other than a signed OpenVEX statement published with the
+release (ADR-0011). Lower severities are reported in the release notes.
+*Acceptance:* the release job records the scan of the exact image digest it
+publishes and stops on a planted critical finding.
 
 **NFR-003 — Embedded assets.**
 All UI assets (templates, stylesheets, translations) SHALL be embedded in the binary
@@ -1313,6 +1603,21 @@ forgery.
 *Acceptance:* state-changing requests without a valid CSRF token are rejected;
 covered by automated tests.
 
+*Amendment 2026-11-16 (7.3) — every route, both ways.* The protection SHALL
+cover every request authenticated by a session cookie whose method is not
+`GET`, `HEAD` or `OPTIONS` — UI routes and API routes alike, the federated
+callbacks excepted, which are protected by their own `state` and
+`InResponseTo` checks (FR-070, FR-071). Requests authenticated by a bearer
+token or by basic credentials carry no ambient authority and are exempt. As
+defense in depth, a cookie-authenticated state-changing request whose
+`Origin` (or, failing it, `Sec-Fetch-Site`) names another site is refused
+even with a valid token. No `GET` route changes state.
+*Acceptance:* a test enumerates every registered route and asserts, for each
+state-changing one, that a cookie-authenticated request without a token,
+with a forged token, and with a cross-site `Origin` are each refused with
+TBY-AUTH-004, while the same request with a bearer token is accepted; the
+same enumeration finds no `GET` handler that writes.
+
 **NFR-013 — No unsafe HTML rendering.**
 The UI SHALL only render escaped output; any rendering of remote content (e.g.,
 Recipe descriptions, chart READMEs) SHALL be sanitized — no raw/unsafe HTML mode.
@@ -1351,6 +1656,52 @@ is detected by the startup check; created secret files carry the documented
 permissions; the e2e suite scans a produced medium for the planted secrets and
 finds none.
 
+**NFR-022 — HTTP security headers. *(amendment 2026-11-16, 7.3)***
+Every response of the single listener SHALL carry `X-Content-Type-Options:
+nosniff` and `Referrer-Policy: no-referrer`; every HTML response its
+`Content-Security-Policy` (no inline script without a hash, `frame-ancestors
+'none'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`) and
+`X-Frame-Options: DENY`; every response to an authenticated request
+`Cache-Control: no-store`; and, when the listener serves TLS or
+`server.secureCookies` states that TLS is terminated in front of it,
+`Strict-Transport-Security`. The embedded registry (`/v2/`) and the FileSet
+surface (`/files/`) keep the headers their clients require and add only those
+that cannot break them. The set is one middleware, not a per-handler habit.
+*Acceptance:* a test walks every registered route of the UI, the API, `/v2/`,
+`/files/`, `/help`, the probes and `/metrics`, and asserts the headers of its
+class; the five OCI clients of FR-041 still pass their suite.
+
+**NFR-023 — Input validation at every trust boundary. *(amendment 2026-11-16, 7.3)***
+Every input crossing a trust boundary — request bodies, path and query
+parameters, form fields, configuration files, documents read from a store or
+a medium, responses of registries and identity providers — SHALL be bounded
+in size before it is parsed, decoded strictly (unknown fields refused where
+the format allows it), and checked against its grammar (OCI references and
+digests, repository paths, identifiers, timestamps) before it reaches any
+file-system path, process argument or log record. Validation failures are
+answered with a taxonomy code, never with a stack trace or an internal
+message. The review that establishes this is recorded per entry point in the
+security documentation.
+*Acceptance:* a table of entry points, each with its bound, its decoder and
+its grammar check, is published with the security model; a test sends an
+oversized body to every state-changing API route and receives the bounded
+refusal; malformed references and path parameters are refused with their
+code.
+
+**NFR-024 — Parser fuzzing. *(amendment 2026-11-16, 7.3)***
+Every parser of untrusted input SHALL have a native Go fuzz target with a
+committed seed corpus: OCI manifests and indexes as the store and the engine
+read them, the media manifest (FR-054), OCI image layout indexes (FR-051),
+FileSet layer extraction (RECIPE-SPEC §14.5), `dockerconfigjson` payloads
+(FR-004), OpenVEX documents (FR-031), SAML responses (FR-071), and the
+recipe and retriever documents through the SDK (in `recipe-spec`). CI SHALL
+run each target for a bounded time on every change and longer on a
+schedule; a crashing input becomes a regression test in the seed corpus
+before the fix is merged.
+*Acceptance:* `go test -fuzz` runs each listed target in CI; the scheduled
+run's corpus growth and any crasher are reported; each historical crasher is
+a committed seed.
+
 ### 4.5 Maintainability
 
 **NFR-016 — Code quality gates.**
@@ -1360,6 +1711,18 @@ The codebase SHALL maintain a test coverage target of at least 70% on core packa
 *Acceptance:* CI blocks merges below the coverage threshold or with lint findings;
 coverage is published per release.
 
+*Amendment 2026-11-16 (7.3) — the core, named.* The core packages of the
+release criteria (fetch, resolve, store, push, policy, signature
+verification) are the internal packages carrying them — at least
+`engine`, `blobfetch`, `importer`, `store`, `relocate`, `policy`,
+`sigverify`, `scan`, `media`, `mediagate`, `integrity` and `ocilayout` —
+and the 70 % floor applies per package, to them and to every other internal
+package (stricter floors MAY be set on security paths). The coverage
+measured by CI is attached to every release.
+*Acceptance:* the CI job prints the per-package coverage and fails on any
+package under its floor; the release carries the coverage report of the
+tagged commit.
+
 ### 4.6 Usability and accessibility
 
 **NFR-017 — UI accessibility and quality.**
@@ -1368,6 +1731,43 @@ focus states) and follow a consistent design system across all screens.
 *Acceptance:* automated accessibility checks (e.g., axe) report no AA violations on
 the FR-062 screens; a manual keyboard-only pass completes UC1 and UC2 flows.
 *(ADR-0010)*
+
+**NFR-021 — Complete bilingual documentation. *(amendment 2026-11-16, 7.2)***
+The user documentation SHALL be complete in English and in French, on the
+public site and in the embedded corpus (NFR-003): installation (container,
+chart, binaries, Windows workstation), configuration (every key, its
+default and its environment variable), operation of both modes end to end,
+the security model (trust roots and scopes, what Tobby verifies and what it
+does not, the threat model of the medium, the hardening options, the
+entry-point table of NFR-023), monitoring (the metrics reference and the
+alert kit of FR-091), backup and rebuild (FR-097), troubleshooting (every
+taxonomy code), and the **emergency path** (R-21): writing a local recipe
+with the published SDK and schemas, copying digests from the content
+browser (FR-062), signing it with the organization's emergency key with the
+exact `cosign` command, and admitting it under a dedicated, declared trust
+scope (FR-033, RECIPE-SPEC §12.3) whose relaxation is visible in the
+configuration and the reports — Tobby signs nothing and has no bypass. A
+French page is a translation of its English page at the same revision, not
+a summary.
+*Acceptance:* a CI check lists every English page without French
+counterpart and fails on any; the emergency procedure, followed literally on
+a crucible instance, admits the local recipe under its scope and shows the
+scope in the report; a review records the documentation as complete for the
+release.
+
+*Amendment 2026-11-16 (7.1) — the design pass.* The design tokens (colors,
+typography, spacing, radii, focus ring) SHALL be one documented set of CSS
+custom properties, the only values the stylesheets use and the public
+surface of the theme override (FR-064): an override that sets tokens only
+keeps every screen coherent. The core flows — sign-in, dashboard, recipe
+synchronization and its task, content browsing, the Media screen through
+Verify → Report → Push, store verification, and account and token
+management — SHALL pass the automated AA check in both languages and in
+the light and dark themes, in the browser suite run by CI (R-38).
+*Acceptance:* the browser suite runs the accessibility check on each core
+flow in both languages and both themes with zero AA violation; a theme
+override setting only the documented tokens changes every screen's colors
+and passes the same check when its own contrast does.
 
 ### 4.7 Platform scope
 
@@ -1387,14 +1787,24 @@ macOS appears in that matrix as a convenience tier (NFR-001): the full test
 suite runs on macOS in CI, but no end-to-end operating scenario is validated
 on it and no production support is implied.
 
+**NFR-025 — End-to-end evidence on both architectures. *(amendment 2026-11-16, 7.3)***
+The end-to-end suites of both use cases — UC1 passthrough promotion and UC2
+mirror transport with destination-side push, plus UC3 seeding — SHALL run in
+CI on linux/amd64 **and** linux/arm64 against the release image and binary
+built from the change, and the Windows mirror and destination-side run of
+NFR-018 SHALL run beside them. A use case covered on one architecture only
+is not covered.
+*Acceptance:* the CI summary of a release candidate shows each use case
+green on both Linux architectures and the Windows run green.
+
 ### 4.8 Network posture
 
 **NFR-019 — No unconfigured outbound connections.**
 Tobby SHALL make no network connection that was not explicitly configured by the
 operator (source and destination registries, IdP, proxy). There is no usage
 telemetry, crash reporting, update checking, or any other implicit outbound
-call; any future diagnostics bundle is a local file export the operator chooses
-to share.
+call; the diagnostic bundle (FR-095) is a local file export the operator
+chooses to share.
 *Acceptance:* a full e2e run behind an egress-capturing proxy records
 connections to configured endpoints only; the crucible air-gap canary
 (ADR-0014) proves zero egress in mirror scenarios. *(ADR-0012)*
@@ -1471,3 +1881,6 @@ operation logs of the run (FR-053).
 | ADR-0012 | Observability & operations: structured logs, OpenMetrics, health probes |
 | ADR-0013 | Ingredient relocation and destination naming |
 | ADR-0014 | Crucible test infrastructure: Incus |
+| ADR-0015 | Web UI invariants: canonical URLs, reserved prefixes, htmx doctrine |
+| ADR-0016 | Media manifest: an unsigned inventory, and what verification actually rests on |
+| ADR-0017 | Scanning by content, whatever the declared kind |
