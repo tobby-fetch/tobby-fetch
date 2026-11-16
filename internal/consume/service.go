@@ -152,7 +152,7 @@ type Table struct {
 func (s *Service) selection(sel []Selector) ([]store.RecipeRecord, error) {
 	records, err := s.src.RecipeRecords()
 	if err != nil {
-		return nil, err
+		return nil, taxonomy.New(taxonomy.CodeStoreRead, taxonomy.Params{"detail": err.Error()}).WithCause(err)
 	}
 	var out []store.RecipeRecord
 	if len(sel) == 0 {
@@ -220,7 +220,9 @@ func (s *Service) rows(records []store.RecipeRecord) ([]Row, error) {
 			ing := &rec.Ingredients[j]
 			nominal, rest, err := s.nominal(ing.Repo)
 			if err != nil {
-				return nil, fmt.Errorf("recipe %s@%s, ingredient %s: %w", rec.Name, rec.Version, ing.Name, err)
+				return nil, taxonomy.New(taxonomy.CodeConfigInvalid, taxonomy.Params{
+					"detail": fmt.Sprintf("recipe %s@%s, ingredient %s: %v", rec.Name, rec.Version, ing.Name, err),
+				}).WithCause(err)
 			}
 			relocated := rest
 			if s.set.BasePath != "" {

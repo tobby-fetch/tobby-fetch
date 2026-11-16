@@ -26,6 +26,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/blobfetch"
 	"github.com/tobby-fetch/tobby-fetch/internal/buildinfo"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/consume"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
@@ -633,6 +634,10 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	interopSvc := interop.New(st, queue, cfg.Storage.BasePrefix, logger)
 	interopSvc.Register()
 
+	// The consumption aids (FR-065): one service behind the API, the UI,
+	// so the table and the snippet cannot differ between surfaces.
+	aids := consume.New(st, consume.FromConfig(cfg, buildinfo.Version()))
+
 	restAPI := api.New(authn, logger)
 	api.RegisterContent(restAPI, st, occupancy)
 	api.RegisterTasks(restAPI, queue, st, time.Duration(cfg.Import.InspectTimeout), importPolicy)
@@ -648,6 +653,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Prune:             eng.PrunesByDefault(),
 		Projector:         eng,
 		Occupancy:         occupancy,
+		Aids:              aids,
 	})
 	api.RegisterPublish(restAPI, publisher)
 	api.RegisterPlan(restAPI, &api.PlanOptions{Planner: eng.Planner()})
@@ -700,6 +706,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Integrity:          integritySvc,
 		Federation:         fed,
 		Scan:               scanning.uiState,
+		Aids:               aids,
 	})
 	webUI.Mount(srv.Mux())
 	webUI.MountFederation(srv.Mux())

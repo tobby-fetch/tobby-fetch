@@ -55,6 +55,7 @@ possible at all.
 | `GET /import` | operator | Importing is an operator action (FR-023). |
 | `POST /import` | operator | |
 | `GET /recipes`, `GET /recipes/{recipe}/mapping` | viewer | |
+| `GET /recipes/{recipe}/mapping/-/export`, `GET /recipes/{recipe}/mapping/-/registries.yaml`, `GET /consumption`, `GET /consumption/-/export`, `GET /consumption/-/registries.yaml` | viewer | The consumption aids (FR-065): the mapping table as a download and the K3s/RKE2 snippet, for one recipe or the whole store. Pure projections of recorded recipes and configuration; no credential in them. |
 | `POST /recipes/sync` | operator | Triggering a synchronization is an operator action (FR-014). |
 | `GET /recipes/prune-preview` | operator | The projection of what a prune would remove, shown before the synchronization that would remove it (FR-045). Offered to the role that can trigger one. |
 | `GET /recipes/publish` | operator | The recipe publication form (R-40): only a role that can publish is offered one. |
@@ -118,6 +119,7 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `POST /api/v1/sync` | operator | `POST /recipes/sync` |
 | `POST /api/v1/plan` | operator | `POST /recipes/plan` |
 | `GET /api/v1/sync/prune-preview` | operator | `GET /recipes/prune-preview` |
+| `GET /api/v1/mapping`, `GET /api/v1/registries.yaml`, `GET /api/v1/recipes/{recipe}/registries.yaml` | viewer | `GET /consumption…`, `GET /recipes/{recipe}/mapping/-/…` |
 | `POST /api/v1/recipes/publish` | operator | `POST /recipes/publish` |
 | `GET /api/v1/media` | viewer | the Media screen's summary (`GET /media`) |
 | `GET /api/v1/media/verification` | viewer | the serving gate and the verification in progress — what `GET /media` polls |

@@ -35,8 +35,18 @@ them.
   scanned is still decided by content (ADR-0017), what is trusted by
   signatures and pinned digests. An unmarked FileSet still reads as the
   image it is.
-- **Milestone-7 configuration keys, reserved**: `consumption.registry`,
-  `consumption.caFile`, `hardening.disableUnitImport`,
+- **Consumption aids** (FR-065, 7.1): the source→destination mapping table
+  of the recipes the store holds — FileSets included — exportable as CSV,
+  JSON and Markdown, and a K3s/RKE2 `registries.yaml` generated from it (one
+  mirror per source registry host, a `rewrite` onto the relocated path, `http`
+  for a destination in `registries.insecure`, never a credential, byte-for-byte
+  deterministic). Available on the recipe mapping screen, the new
+  `/consumption` screen, `GET /api/v1/mapping`, `GET /api/v1/registries.yaml`
+  (plus per-recipe forms and `?format=` on the existing mapping route) and
+  `tobby consumption table|registries-yaml`. `consumption.registry` and
+  `consumption.caFile` are live; without a registry the aids answer
+  `TBY-AID-001`.
+- **Milestone-7 configuration keys, reserved**: `hardening.disableUnitImport`,
   `hardening.disableRegistryPush`, `scan.vex[]` and
   `scan.exceptions[].scope` are part of the documented surface and refused
   at startup until their feature lands — never silently ignored;

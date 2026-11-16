@@ -25,6 +25,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
+	"github.com/tobby-fetch/tobby-fetch/internal/consume"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -186,6 +187,8 @@ func (u *UI) prunePreview(w http.ResponseWriter, r *http.Request) {
 type recipeMappingData struct {
 	Name     string
 	Versions []store.RecipeRecord
+	// Aids are the consumption aids of this recipe (FR-065, 7.1).
+	Aids *aidsView
 }
 
 // recipeMapping serves GET /recipes/{recipe}/mapping. An unknown recipe
@@ -208,6 +211,8 @@ func (u *UI) recipeMapping(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sortRecipeRecords(data.Versions)
+	export, registries := recipeAidPaths(name)
+	data.Aids = u.newAidsView(r, []consume.Selector{{Name: name}}, export, registries, false)
 	u.render.Page(w, r, "recipe-mapping", data)
 }
 

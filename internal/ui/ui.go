@@ -12,6 +12,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/consume"
 	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
@@ -99,6 +100,8 @@ type UI struct {
 	mediaGate *mediagate.Gate
 	// integrity runs the on-demand store verification (FR-057, R-31).
 	integrity IntegrityVerifier
+	// aids computes the consumption aids (FR-065, 7.1).
+	aids *consume.Service
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -194,6 +197,10 @@ type Options struct {
 	// mirror answer alike (FR-061). Nil: the screen says this instance
 	// cannot verify.
 	Integrity IntegrityVerifier
+	// Aids backs the consumption aids (FR-065, 7.1): the mapping table
+	// exports and the registries.yaml snippet. Nil leaves the screens
+	// stating that no registry is known.
+	Aids *consume.Service
 
 	// Federation is the federated sign-in (FR-070, FR-071, FR-078): the
 	// provider buttons of the sign-in page and the /auth/ round trips
@@ -249,6 +256,7 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		mediaZone:         opts.MediaZone,
 		mediaGate:         opts.MediaGate,
 		integrity:         opts.Integrity,
+		aids:              opts.Aids,
 		federation:        opts.Federation,
 	}
 }
@@ -335,6 +343,13 @@ func (u *UI) Mount(rt Router) {
 	mux.Handle("GET /recipes/plan", operator(u.planScreen))
 	mux.Handle("POST /recipes/plan", operator(u.planSubmit))
 	mux.Handle("GET /recipes/{recipe}/mapping", app(u.recipeMapping))
+	// The consumption aids (FR-065, 7.1): downloads on the "/-/" separator
+	// (ADR-0015 §3), and the same aids for the whole store. Read-only.
+	mux.Handle("GET /recipes/{recipe}/mapping/-/export", app(u.recipeExport))
+	mux.Handle("GET /recipes/{recipe}/mapping/-/registries.yaml", app(u.recipeRegistries))
+	mux.Handle("GET /consumption", app(u.consumptionScreen))
+	mux.Handle("GET "+PathConsumptionExport, app(u.consumptionExport))
+	mux.Handle("GET "+PathConsumptionRegistries, app(u.consumptionRegistries))
 
 	// The Media screen (FR-062 amendment R-02, FR-052): the physical
 	// transfer, on both sides of it. Reading the medium's inventory is a

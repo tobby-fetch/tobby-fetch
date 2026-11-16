@@ -1,0 +1,34 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* The consumption aids block (FR-065, 7.1): the export links of the
+     mapping table and the registries.yaml snippet, on the recipe mapping
+     screen and on /consumption. Callers pass the *aidsView through
+     withData:
+
+       {{template "aids-section" (withData . .Data.Aids)}}
+
+     Nothing is offered that would fail: with no registry known the block
+     says which two settings to set. */}}
+{{define "aids-section"}}{{with .Data}}
+<section class="t-aids" aria-labelledby="aids-title">
+  <h2 class="t-kick" id="aids-title">{{$.T "aids.section_title"}}</h2>
+  {{if not .Configured}}
+  <div class="t-empty"><p>{{$.T "aids.no_registry"}}</p></div>
+  {{else if .Failure}}
+  {{template "error-block" (withErr $ .Failure)}}
+  {{else}}
+  <p class="t-muted">{{$.T "aids.registry_line"}} <span class="t-mono" translate="no">{{.Registry}}</span></p>
+  <div class="t-row t-pullrow" role="group" aria-label="{{$.T "aids.export_group"}}">
+    {{/* hx-boost="false": a download, not a page to swap in (B-013). */}}
+    {{range .Formats}}<a class="t-btn t-btn--secondary t-btn--sm" href="{{.Href}}" download hx-boost="false">{{$.T .LabelKey}}</a>{{end}}
+  </div>
+  <h3 class="t-kick">{{$.T "aids.snippet_title"}}</h3>
+  <p class="t-muted t-note">{{$.T "aids.snippet_limits"}}</p>
+  <div class="t-row t-pullrow">
+    <button type="button" class="t-btn t-btn--secondary t-btn--sm t-chip-copy" data-copy="{{.Snippet}}"
+            aria-label="{{$.T "aids.copy_snippet"}}" title="{{$.T "aids.copy_snippet"}}">⧉ {{$.T "aids.copy_snippet"}}</button>
+    <a class="t-btn t-btn--secondary t-btn--sm" href="{{.SnippetHref}}" download hx-boost="false">{{$.T "aids.download_snippet"}}</a>
+  </div>
+  <div class="t-logview t-docview" tabindex="0" role="region" aria-label="{{$.T "aids.snippet_title"}}"><pre translate="no" lang="en">{{.Snippet}}</pre></div>
+  {{end}}
+</section>
+{{end}}{{end}}

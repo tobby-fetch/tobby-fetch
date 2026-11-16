@@ -89,7 +89,7 @@ The surface today (from the served OpenAPI document):
 | Content | `GET /api/v1/content` (search, filters, pagination), `GET /api/v1/content/{repo}`, `GET /api/v1/content/{repo}/-/tags/{tag}`, `DELETE /api/v1/content/{repo}` |
 | Unit import | `GET /api/v1/import/inspect`, `POST /api/v1/import` |
 | Tasks | `GET /api/v1/tasks`, `GET /api/v1/tasks/{id}`, `GET /api/v1/tasks/{id}/logs` |
-| Recipes and sync | `GET /api/v1/recipes`, `GET /api/v1/recipes/{recipe}/mapping`, `POST /api/v1/recipes/publish`, `POST /api/v1/sync`, `GET /api/v1/sync/prune-preview`, `GET /api/v1/retriever`, `PUT/DELETE /api/v1/retriever/interval` |
+| Recipes and sync | `GET /api/v1/recipes`, `GET /api/v1/recipes/{recipe}/mapping` (`?format=csv|json|markdown` for the exportable table), `GET /api/v1/mapping`, `GET /api/v1/registries.yaml`, `GET /api/v1/recipes/{recipe}/registries.yaml`, `POST /api/v1/recipes/publish`, `POST /api/v1/sync`, `GET /api/v1/sync/prune-preview`, `GET /api/v1/retriever`, `PUT/DELETE /api/v1/retriever/interval` |
 | Plan (side-effect-free) | `POST /api/v1/plan` |
 | Media journey | `GET /api/v1/media`, `GET /api/v1/media/verification`, `GET /api/v1/media/slip`, `POST /api/v1/media/verify`, `POST /api/v1/media/import` |
 | FileSets | `GET /api/v1/filesets`, `POST /api/v1/filesets/pack` |

@@ -33,6 +33,7 @@
     <a href="/" {{if eq .Path "/"}}aria-current="page"{{end}}>{{.T "nav.dashboard"}}</a>
     <a href="/content" {{if hasPrefix .Path "/content"}}aria-current="page"{{end}}>{{.T "nav.content"}}</a>
     <a href="/recipes" {{if hasPrefix .Path "/recipes"}}aria-current="page"{{end}}>{{.T "nav.recipes"}}</a>
+    <a href="/consumption" {{if hasPrefix .Path "/consumption"}}aria-current="page"{{end}}>{{.T "nav.consumption"}}</a>
     {{if .CanOperate}}<a href="/import" {{if eq .Path "/import"}}aria-current="page"{{end}}>{{.T "nav.import"}}</a>{{end}}
     <a href="/filesets" {{if hasPrefix .Path "/filesets"}}aria-current="page"{{end}}>{{.T "nav.filesets"}}</a>
     {{/* The Media screen (R-02) is reachable from every screen and on both

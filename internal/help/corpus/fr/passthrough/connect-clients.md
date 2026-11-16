@@ -83,15 +83,21 @@ nominale, le dépôt relocalisé, le tag et le digest épinglé (FR-065) :
 - **API** : `GET /api/v1/recipes/{recipe}/mapping` — les mêmes données en
   JSON, une entrée par version résolue, ingrédients compris.
 
+La table s'exporte aussi en CSV, JSON ou Markdown, pour une recipe ou pour
+tout le store, depuis l'interface, l'API et `tobby consumption table` — voir
+les [aides à la consommation](../consumption-aids/).
+
 ![Le tableau de correspondance par recipe : de la référence amont au chemin relocalisé dans la zone, avec boutons de copie](../../../../../assets/docs/recipe-mapping.png)
 
 ## Mirrors containerd pour K3s et RKE2
 
 Pour les **tirages d'images à l'exécution**, vous n'avez aucune valeur de
 chart à modifier : containerd réécrit les références au moment du pull.
-Sur chaque nœud K3s/RKE2, écrivez
-`/etc/rancher/{k3s,rke2}/registries.yaml` à la main, à partir du tableau
-de correspondance :
+Sur chaque nœud K3s/RKE2, installez
+`/etc/rancher/{k3s,rke2}/registries.yaml`. Tobby
+[le génère](../consumption-aids/) (`tobby consumption registries-yaml`) ;
+en voici la forme, que vous pouvez aussi écrire à la main à partir du
+tableau de correspondance :
 
 ```yaml
 # /etc/rancher/rke2/registries.yaml
@@ -118,12 +124,9 @@ Une fois cela en place, un pod qui référence
 chart se déploie tel qu'il a été publié — valeurs inchangées, digests
 intacts.
 
-:::note[À venir]
-Générer ce fragment par recipe et par destination est la seconde moitié
-de FR-065 et n'est pas encore implémenté — aujourd'hui, le tableau de
-correspondance est exposé et le fragment s'écrit à la main. À suivre sur
-la page [État du projet](../../discover/status/).
-:::
+Le fragment généré ajoute le schéma `http` pour une destination listée dans
+`registries.insecure`, le chemin de l'autorité pour `consumption.caFile`, et
+un en-tête qui énonce les limites ci-dessous.
 
 ## Ce que les mirrors ne couvrent pas
 

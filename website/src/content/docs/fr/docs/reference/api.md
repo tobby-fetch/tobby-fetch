@@ -92,7 +92,7 @@ La surface actuelle (d'après le document OpenAPI servi) :
 | Contenu | `GET /api/v1/content` (recherche, filtres, pagination), `GET /api/v1/content/{repo}`, `GET /api/v1/content/{repo}/-/tags/{tag}`, `DELETE /api/v1/content/{repo}` |
 | Import unitaire | `GET /api/v1/import/inspect`, `POST /api/v1/import` |
 | Tâches | `GET /api/v1/tasks`, `GET /api/v1/tasks/{id}`, `GET /api/v1/tasks/{id}/logs` |
-| Recipes et synchronisation | `GET /api/v1/recipes`, `GET /api/v1/recipes/{recipe}/mapping`, `POST /api/v1/recipes/publish`, `POST /api/v1/sync`, `GET /api/v1/sync/prune-preview`, `GET /api/v1/retriever`, `PUT/DELETE /api/v1/retriever/interval` |
+| Recipes et synchronisation | `GET /api/v1/recipes`, `GET /api/v1/recipes/{recipe}/mapping` (`?format=csv|json|markdown` pour la table exportable), `GET /api/v1/mapping`, `GET /api/v1/registries.yaml`, `GET /api/v1/recipes/{recipe}/registries.yaml`, `POST /api/v1/recipes/publish`, `POST /api/v1/sync`, `GET /api/v1/sync/prune-preview`, `GET /api/v1/retriever`, `PUT/DELETE /api/v1/retriever/interval` |
 | Plan (sans effet de bord) | `POST /api/v1/plan` |
 | Parcours du média | `GET /api/v1/media`, `GET /api/v1/media/verification`, `GET /api/v1/media/slip`, `POST /api/v1/media/verify`, `POST /api/v1/media/import` |
 | FileSets | `GET /api/v1/filesets`, `POST /api/v1/filesets/pack` |

@@ -20,6 +20,7 @@ import (
 	"github.com/opencontainers/go-digest"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/consume"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
@@ -596,5 +597,56 @@ func TestPruneConfirmationRefusesWhatItCannotProject(t *testing.T) {
 	}
 	if !strings.Contains(body, "could not be worked out") {
 		t.Errorf("the failure is not stated:\n%s", body)
+	}
+}
+
+// TestConsumptionAidsScreens covers FR-065 on the UI: the aids block on the
+// recipe mapping screen, /consumption for the whole store, the downloads,
+// and the explicit "no registry" state.
+func TestConsumptionAidsScreens(t *testing.T) {
+	st := openTestStore(t)
+	seedRecipeRecords(t, st)
+	aids := consume.New(st, consume.Settings{Registry: "reg.zone.example", Version: "v0"})
+	mux := mount(newTestUIWithOptions(t, &Options{Store: st, Aids: aids}, nil))
+	c := login(t, mux, "lecteur", "pw-view")
+
+	body := get(t, mux, c, "/recipes/wordpress/mapping", nil).Body.String()
+	for _, want := range []string{
+		"Consumption aids", "registries.yaml for K3s and RKE2",
+		`href="/recipes/wordpress/mapping/-/export?format=csv"`,
+		`href="/recipes/wordpress/mapping/-/registries.yaml"`,
+		"https://reg.zone.example",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("mapping aids miss %q", want)
+		}
+	}
+
+	all := get(t, mux, c, "/consumption", nil)
+	if all.Code != http.StatusOK || !strings.Contains(all.Body.String(), "reg.zone.example/docker.io/bitnami/wordpress") {
+		t.Fatalf("/consumption = %d", all.Code)
+	}
+
+	dl := get(t, mux, c, "/consumption/-/export?format=csv", nil)
+	if dl.Code != http.StatusOK || !strings.HasPrefix(dl.Header().Get("Content-Type"), "text/csv") ||
+		!strings.Contains(dl.Header().Get("Content-Disposition"), "attachment") {
+		t.Errorf("csv download = %d %v", dl.Code, dl.Header())
+	}
+	y := get(t, mux, c, "/recipes/wordpress/mapping/-/registries.yaml", nil)
+	if y.Code != http.StatusOK || !strings.Contains(y.Body.String(), "mirrors:") {
+		t.Errorf("snippet download = %d", y.Code)
+	}
+	if bad := get(t, mux, c, "/consumption/-/export?format=pdf", nil); bad.Code < 400 {
+		t.Errorf("unknown format = %d", bad.Code)
+	}
+
+	// No registry known: the screens say so, and the downloads refuse with the code.
+	bare := mount(newTestUIWithOptions(t, &Options{Store: st}, nil))
+	c2 := login(t, bare, "lecteur", "pw-view")
+	if b := get(t, bare, c2, "/consumption", nil).Body.String(); !strings.Contains(b, "No zone registry is configured") {
+		t.Error("the unconfigured state is not stated")
+	}
+	if r := get(t, bare, c2, "/consumption/-/export?format=csv", nil); r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), "TBY-AID-001") {
+		t.Errorf("unconfigured download = %d", r.Code)
 	}
 }

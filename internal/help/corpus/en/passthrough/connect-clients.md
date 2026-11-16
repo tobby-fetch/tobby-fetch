@@ -79,14 +79,19 @@ relocated repository, tag, and pinned digest (FR-065):
 - **API**: `GET /api/v1/recipes/{recipe}/mapping` — the same data as
   JSON, one entry per resolved version, ingredients included.
 
+The table is also exportable as CSV, JSON or Markdown, for one recipe or the
+whole store, from the UI, the API and `tobby consumption table` — see
+[consumption aids](../consumption-aids/).
+
 ![The per-recipe mapping table: upstream reference to relocated zone path, with copy buttons](../../../../assets/docs/recipe-mapping.png)
 
 ## containerd mirrors for K3s and RKE2
 
 For **runtime image pulls**, you do not have to touch a single chart
 value: containerd rewrites references at pull time. On each K3s/RKE2
-node, write `/etc/rancher/{k3s,rke2}/registries.yaml` by hand from the
-mapping table:
+node, install `/etc/rancher/{k3s,rke2}/registries.yaml`. Tobby
+[generates it](../consumption-aids/) (`tobby consumption registries-yaml`);
+this is the shape, which you can also write by hand from the mapping table:
 
 ```yaml
 # /etc/rancher/rke2/registries.yaml
@@ -112,12 +117,9 @@ With that in place, a pod referencing `docker.io/bitnami/wordpress`
 pulls from the zone registry, and the chart deploys as published —
 values untouched, digests intact.
 
-:::note[Upcoming]
-Generating this snippet per recipe and destination is the second half of
-FR-065 and is not implemented yet — today the mapping table is exposed
-and the snippet is written by hand. Track it on the
-[project status](../../discover/status/) page.
-:::
+The generated snippet adds the `http` scheme for a destination listed in
+`registries.insecure`, the CA path for `consumption.caFile`, and a header
+that states the limits below.
 
 ## What mirrors do not cover
 
