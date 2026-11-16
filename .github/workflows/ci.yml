@@ -478,6 +478,29 @@ jobs:
       - name: No missing or orphaned key, placeholders agree
         run: go run ./tools/i18ncheck
 
+  # Hardening (DEVELOPMENT-PLAN §2.7): every native fuzz target, bounded.
+  # Targets are discovered by tools/fuzz.sh, so a new one joins the gate on
+  # its own; the longer run is .github/workflows/fuzz.yml (scheduled). A
+  # failing input is kept as an artifact and must be committed under
+  # testdata/fuzz/ — it is then a regression seed for a plain `go test`.
+  fuzz:
+    name: Fuzzing (30 s per target)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Fuzz every target for 30 seconds
+        run: sh tools/fuzz.sh 30
+      - name: Keep the failing inputs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-crashers
+          path: "**/testdata/fuzz/**"
+          if-no-files-found: ignore
+
   # OCI distribution-spec conformance (release criterion, DEVELOPMENT-PLAN
   # §3): the pinned upstream suite against a real `tobby serve`, nothing
   # excluded — pull, push, content discovery (tags and the Referrers API)
