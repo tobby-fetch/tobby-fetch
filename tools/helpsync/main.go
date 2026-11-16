@@ -81,11 +81,26 @@ func main() {
 		fail(err)
 	}
 	added, changed, removed := diff(want, have)
+	missing, err := untranslated(root)
+	if err != nil {
+		fail(err)
+	}
 
 	if *check {
-		if len(added)+len(changed)+len(removed) == 0 {
-			fmt.Printf("corpus in sync with %s (%d files)\n", docsRoot, len(want))
+		// NFR-021: the documentation is complete in English AND in French.
+		// A French page missing is a finding of this gate, not a fallback
+		// to live with: every English page, the excluded ones included
+		// (they are published on the website), has its translation.
+		if len(missing) > 0 {
+			fmt.Fprintf(os.Stderr, "English pages without a French counterpart under %s:\n", frDocsRoot)
+			report("not translated", missing)
+		}
+		if len(added)+len(changed)+len(removed) == 0 && len(missing) == 0 {
+			fmt.Printf("corpus in sync with %s (%d files), every English page translated\n", docsRoot, len(want))
 			return
+		}
+		if len(added)+len(changed)+len(removed) == 0 {
+			os.Exit(1)
 		}
 		fmt.Fprintf(os.Stderr, "the embedded help corpus has drifted from %s:\n", docsRoot)
 		report("missing from the corpus", added)
@@ -100,6 +115,10 @@ func main() {
 	}
 	fmt.Printf("corpus written: %d files (+%d ~%d -%d)\n",
 		len(want), len(added), len(changed), len(removed))
+	if len(missing) > 0 {
+		fmt.Fprintf(os.Stderr, "warning: English pages without a French counterpart under %s (helpsync -check fails on them):\n", frDocsRoot)
+		report("not translated", missing)
+	}
 }
 
 func fail(err error) {
@@ -185,6 +204,46 @@ func collectPages(root, dir, lang string, want map[string][]byte) error {
 		want[lang+"/"+rel] = body
 		return nil
 	})
+}
+
+// untranslated lists the English pages, relative to docsRoot, that have no
+// page at the same path under frDocsRoot (NFR-021, website/README-docs.md).
+func untranslated(root string) ([]string, error) {
+	pages := func(dir string) (map[string]bool, error) {
+		out := map[string]bool{}
+		base := filepath.Join(root, dir)
+		err := filepath.WalkDir(base, func(p string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			if ext := filepath.Ext(p); ext != ".md" && ext != ".mdx" {
+				return nil
+			}
+			rel, err := filepath.Rel(base, p)
+			if err != nil {
+				return err
+			}
+			out[filepath.ToSlash(rel)] = true
+			return nil
+		})
+		return out, err
+	}
+	en, err := pages(docsRoot)
+	if err != nil {
+		return nil, err
+	}
+	fr, err := pages(frDocsRoot)
+	if err != nil {
+		return nil, err
+	}
+	var missing []string
+	for rel := range en {
+		if !fr[rel] {
+			missing = append(missing, rel)
+		}
+	}
+	sort.Strings(missing)
+	return missing, nil
 }
 
 // referencedAssets returns the screenshot file names the collected pages
