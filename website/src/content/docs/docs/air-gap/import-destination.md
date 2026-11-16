@@ -179,6 +179,26 @@ medium.
 - **No role bypasses it.** A closed gate is not an authorization refusal:
   the role matrix decides who may ask, the gate decides whether this
   instance is willing to hand anything out yet.
+- **An open gate serves the verified set, and only it.** The verification
+  records what the pushable recipes reach — recipe artifacts and their
+  signatures, ingredients and their own signatures, every manifest and blob
+  they name, each file re-hashed — and the gate serves exactly that,
+  read-only. A tag resolves to the digest it was verified at; the catalog
+  and the tag lists show only verified content; a FileSet resolves only
+  among verified versions. An image or a FileSet version added to the medium
+  after its manifest was written, content no pushable recipe reaches, and
+  any write answer `403` with
+  [`TBY-MED-033`](../../reference/errors/#tby-med-033). A medium that lists
+  no recipe clears nothing and opens nothing
+  ([`TBY-MED-034`](../../reference/errors/#tby-med-034)).
+- **A missing manifest does not exempt a medium.** An instance with a
+  `zone:` whose store holds content but no `meta/media.json` is guarded as
+  well, and its verification blocks on
+  [`TBY-MED-001`](../../reference/errors/#tby-med-001).
+- **A carried FileSet cache leaves a trace.** It is never served — it is
+  discarded and rebuilt from the verified blobs — and the report summarizes
+  it ([`TBY-MED-023`](../../reference/errors/#tby-med-023)); anything under
+  `meta/fileserve/` that is not an extraction is reported as uncovered.
 
 A source-side mirror instance is unaffected. Its store carries a manifest
 too — it wrote one — but the medium is its own output rather than something

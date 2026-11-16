@@ -104,12 +104,56 @@ func newMedium(t *testing.T) *medium {
 		t.Fatalf("enabling the fixture FileSet: %v", err)
 	}
 
+	// One delivery reaching the FileSet, so a verification has something
+	// to clear: the served set is the reach of the pushable recipes, and a
+	// medium without recipe clears nothing (B-063).
+	if err := st.PutRecipeRecord(deliveryOf(res)); err != nil {
+		t.Fatalf("recording the delivery: %v", err)
+	}
 	if _, err := media.Write(ctx, st, media.WriteOptions{
 		Zone: testZone, RunID: "run_test", ResolvedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatalf("writing the media manifest: %v", err)
 	}
 	return &medium{root: root, store: st, pack: res, files: files, logger: logger}
+}
+
+// deliveryOf is a recipe whose artifact and only ingredient are the packed
+// FileSet: unsigned, admitted by the allowUnsigned trust below.
+func deliveryOf(res *fileserve.PackResult) *store.RecipeRecord {
+	return &store.RecipeRecord{
+		Name: "site", Version: fileSetTag,
+		CookbookRepo: res.Repository, ArtifactRepo: res.Repository, ArtifactTag: fileSetTag,
+		Digest: res.Digest, Zone: testZone, ResolvedAt: time.Now().UTC(),
+		Ingredients: []store.IngredientRecord{{
+			Name: fileSetName, Kind: "FileSet", Repo: res.Repository, Tag: fileSetTag, Digest: res.Digest,
+		}},
+	}
+}
+
+// allowUnsigned is a destination trust policy admitting the fixture's
+// unsigned delivery.
+type allowUnsigned struct{}
+
+func (allowUnsigned) Decide(string) media.TrustDecision {
+	return media.TrustDecision{AllowUnsigned: true, Scope: "lab"}
+}
+
+func (allowUnsigned) DecideIngredient(string) media.TrustDecision {
+	return media.TrustDecision{AllowUnsigned: true, Scope: "lab"}
+}
+
+// verified runs the real verification over the medium.
+func (m *medium) verified(t *testing.T) *media.Report {
+	t.Helper()
+	rep, err := media.Verify(context.Background(), m.store, media.VerifyOptions{Zone: testZone, Trust: allowUnsigned{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Verdict != media.VerdictPushable {
+		t.Fatalf("the fixture medium verifies %q, want pushable: %+v", rep.Verdict, rep)
+	}
+	return rep
 }
 
 // storeBlobs adapts the store to the fileserve read surface, exactly as
@@ -170,11 +214,6 @@ func get(t *testing.T, srv *httptest.Server, path string) (status int, body stri
 	return resp.StatusCode, string(raw)
 }
 
-// clearedReport is a verdict that opens the gate.
-func clearedReport() *media.Report {
-	return &media.Report{Verdict: media.VerdictPushable}
-}
-
 // TestUnverifiedMediumServesNeitherRegistryNorFiles is the FR-054 serving
 // guard: "destination-side verification SHALL precede any push, any
 // SERVING, and any local write".
@@ -218,7 +257,7 @@ func TestUnverifiedMediumServesNeitherRegistryNorFiles(t *testing.T) {
 	// And the gate opens on a verdict, so the guard is a gate and not a
 	// wall: an instance that could never serve would pass every assertion
 	// above while being useless.
-	g.Observe(clearedReport())
+	g.Observe(m.verified(t))
 	if status, _ := get(t, srv, m.registryURL()); status != http.StatusOK {
 		t.Errorf("GET %s = %d after verification cleared the medium, want 200", m.registryURL(), status)
 	}
@@ -332,7 +371,7 @@ func TestOnlyAWholeMediumOpensTheGate(t *testing.T) {
 		}
 	}
 
-	g.Observe(clearedReport())
+	g.Observe(m.verified(t))
 	if !g.Serving() {
 		t.Fatal("the gate did not open on a whole medium")
 	}
@@ -390,7 +429,7 @@ func TestAGuardedInstanceStaysReadyAndSaysWhy(t *testing.T) {
 			t.Errorf("the readiness note does not mention %q: %q", want, detail)
 		}
 	}
-	g.Observe(clearedReport())
+	g.Observe(m.verified(t))
 	if got := g.ReadyDetail(); got != "" {
 		t.Errorf("the readiness note survives verification: %q", got)
 	}
@@ -406,11 +445,12 @@ func TestOneVerificationAtATime(t *testing.T) {
 
 	release := make(chan struct{})
 	started := make(chan struct{})
+	rep := m.verified(t)
 	g.SetVerify(func(_ context.Context, _ Options, progress func(media.Progress)) (*media.Report, error) {
 		progress(media.Progress{Stage: media.StageRecipes, Bytes: 1, TotalBytes: 2})
 		close(started)
 		<-release
-		return clearedReport(), nil
+		return rep, nil
 	})
 
 	if e := g.Start(Options{}); e != nil {
@@ -442,7 +482,7 @@ func TestOneVerificationAtATime(t *testing.T) {
 func TestAFailedRunLeavesTheGateWhereItWas(t *testing.T) {
 	m := newMedium(t)
 	g := Open(context.Background(), m.root, testZone, m.logger)
-	g.Observe(clearedReport())
+	g.Observe(m.verified(t))
 
 	done := make(chan struct{})
 	g.SetVerify(func(_ context.Context, _ Options, _ func(media.Progress)) (*media.Report, error) {
@@ -491,8 +531,8 @@ func TestTransitionsReachTheirListener(t *testing.T) {
 	g.SetTransition(func(serving bool) { got = append(got, serving) })
 
 	g.Observe(&media.Report{Verdict: media.VerdictPartial}) // closed → closed
-	g.Observe(clearedReport())                              // open
-	g.Observe(clearedReport())                              // open → open
+	g.Observe(m.verified(t))                                // open
+	g.Observe(m.verified(t))                                // open → open
 	g.Observe(&media.Report{Verdict: media.VerdictBlocked}) // closed
 	if want := []bool{true, false}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("transitions heard = %v, want %v", got, want)
@@ -500,5 +540,5 @@ func TestTransitionsReachTheirListener(t *testing.T) {
 
 	unguarded := Open(context.Background(), m.root, "", m.logger)
 	unguarded.SetTransition(func(bool) { t.Error("an unguarded gate reported a transition") })
-	unguarded.Observe(clearedReport())
+	unguarded.Observe(m.verified(t))
 }

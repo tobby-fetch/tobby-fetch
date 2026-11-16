@@ -329,6 +329,13 @@ const (
 	// other than the recipe graph, which blocks globally — that does not
 	// match its inventory entry. Non-blocking: nothing is pushed from it.
 	CodeMediaMetadataAltered Code = "TBY-MED-022"
+	// CodeMediaFileSetCache reports a FileSet extraction cache carried by
+	// the medium (meta/fileserve, outside coverage since B-060): never
+	// hashed, never served, discarded and rebuilt from the verified blobs
+	// by a serving destination. Non-blocking, and reported so that a tree
+	// nothing hashes does not cross the gap without a trace (A9 of the
+	// milestone-7 review).
+	CodeMediaFileSetCache Code = "TBY-MED-023"
 
 	// The serving half of FR-054. "Destination-side verification SHALL
 	// precede any push, any serving, and any local write": the push and
@@ -351,6 +358,17 @@ const (
 	// store as a whole — /v2/ and /files/ hand out blobs, and a blob a
 	// blocked recipe reaches is exactly the byte range that failed.
 	CodeMediaNotCleared Code = "TBY-MED-032"
+	// CodeMediaOutsideVerified is a request to an OPEN gate for something
+	// the verification did not clear: content no pushable recipe reaches,
+	// or a write (B-063). A guarded instance serves the verified set and
+	// nothing else, read-only.
+	CodeMediaOutsideVerified Code = "TBY-MED-033"
+	// CodeMediaNothingCleared is a medium whose verification cleared no
+	// content at all — its manifest lists no recipe, so the verdict is
+	// "pushable" with nothing to push. Serving stays closed (B-063): such
+	// a medium used to open the gate and serve its whole store, none of it
+	// hashed.
+	CodeMediaNothingCleared Code = "TBY-MED-034"
 
 	// CodeResetConfirmation is a store reset submitted without the exact
 	// typed confirmation FR-046 requires. Distinct from a validation
@@ -629,6 +647,7 @@ var catalog = map[Code]Entry{
 	CodeMediaUncovered:       {Code: CodeMediaUncovered, Class: ClassOperational, Params: []string{"path"}},
 	CodeMediaUnreachable:     {Code: CodeMediaUnreachable, Class: ClassOperational, Params: []string{"path"}},
 	CodeMediaMetadataAltered: {Code: CodeMediaMetadataAltered, Class: ClassOperational, Params: []string{"path"}},
+	CodeMediaFileSetCache:    {Code: CodeMediaFileSetCache, Class: ClassOperational, Params: []string{"path", "files", "bytes"}},
 
 	// 403 on both closed-gate codes, and deliberately not 404 or a bare
 	// 503: the content exists and the instance is alive — it is refusing,
@@ -641,6 +660,8 @@ var catalog = map[Code]Entry{
 	// for the run already in flight.
 	CodeMediaVerificationRunning: {Code: CodeMediaVerificationRunning, Class: ClassOperational, HTTPStatus: http.StatusConflict, Params: []string{"stage"}},
 	CodeMediaNotCleared:          {Code: CodeMediaNotCleared, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"surface", "media", "verdict", "screen"}},
+	CodeMediaOutsideVerified:     {Code: CodeMediaOutsideVerified, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"surface", "media", "path", "screen"}},
+	CodeMediaNothingCleared:      {Code: CodeMediaNothingCleared, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"surface", "media", "screen"}},
 
 	// 422: the request is well formed, the confirmation is simply not the
 	// word the requirement asks for.

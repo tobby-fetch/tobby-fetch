@@ -108,7 +108,12 @@ cru.
   trust root déposé sur un support est sans effet, par exigence et par test.
 - **Tant qu'une vérification n'a pas validé le support en entier, la
   destination n'en sert rien** : `/v2/` et `/files/` répondent `403`
-  (`TBY-MED-030`), pour tous les rôles, sans réglage pour les rouvrir.
+  (`TBY-MED-030`), pour tous les rôles, sans réglage pour les rouvrir. Une
+  fois validé, il ne sert que le contenu qu'atteignent les recipes
+  poussables, tel que cette vérification l'a haché, en lecture seule
+  (`TBY-MED-033` pour tout le reste) ; une liste de referrers est construite
+  à partir des manifestes référents eux-mêmes, jamais de l'index présent sur
+  le support.
 
 Les deux seules dérogations (un support adressé à une autre zone, un support
 plus ancien que le dernier importé) sont des garde-fous anti-accident : ce ne

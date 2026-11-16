@@ -20,8 +20,17 @@ import (
 // therefore not content the manifest can vouch for, nor content whose
 // absence or presence means anything — covering it only produced false
 // "metadata altered" and "uncovered" findings.
+//
+// Out of coverage is not out of sight, though (A9 of the milestone-7
+// review): a carried cache is summarized in ONE finding (TBY-MED-023), and
+// whatever under it does not have the shape of an extraction is reported
+// as uncovered content.
 
-const cachedFile = "meta/fileserve/site-config/sha256_0000/rootfs/etc/marker.conf"
+var (
+	digestDirA = "sha256_" + strings.Repeat("0", 64)
+	digestDirB = "sha256_" + strings.Repeat("1", 64)
+	cachedFile = "meta/fileserve/site-config/" + digestDirA + "/rootfs/etc/marker.conf"
+)
 
 func plant(t *testing.T, f *fixture, slash, content string) {
 	t.Helper()
@@ -65,14 +74,14 @@ func TestNewManifestsLeaveTheFileSetCacheOut(t *testing.T) {
 	if err := os.RemoveAll(f.path(media.FileSetCache)); err != nil {
 		t.Fatal(err)
 	}
-	plant(t, f, "meta/fileserve/site-config/sha256_1111/rootfs/etc/marker.conf", "extracted here")
+	plant(t, f, "meta/fileserve/site-config/"+digestDirB+"/rootfs/etc/marker.conf", "extracted here")
 
 	rep := f.verify(media.VerifyOptions{Zone: zoneA})
 	if rep.Verdict != media.VerdictPushable {
 		t.Fatalf("verdict = %q, want pushable", rep.Verdict)
 	}
-	if got := findingsUnder(rep, media.FileSetCache); len(got) > 0 {
-		t.Errorf("the fileset cache produces findings: %v", got)
+	if got := findingsUnder(rep, media.FileSetCache); len(got) != 1 || got[0] != "TBY-MED-023 "+media.FileSetCache {
+		t.Errorf("the fileset cache produces %v, want its one summary finding", got)
 	}
 }
 
@@ -104,7 +113,7 @@ func TestAV060ManifestListingTheFileSetCacheIsAccepted(t *testing.T) {
 	inv := doc["inventory"].([]any)
 	doc["inventory"] = append(inv,
 		map[string]any{"path": cachedFile, "size": len(content), "digest": dgstOf(content)},
-		map[string]any{"path": "meta/fileserve/site-config/sha256_0000/.complete", "size": 0, "digest": dgstOf(nil)},
+		map[string]any{"path": "meta/fileserve/site-config/" + digestDirA + "/.complete", "size": 0, "digest": dgstOf(nil)},
 	)
 	totals := doc["totals"].(map[string]any)
 	totals["files"] = totals["files"].(float64) + 2
@@ -128,8 +137,50 @@ func TestAV060ManifestListingTheFileSetCacheIsAccepted(t *testing.T) {
 	if rep.Verdict != media.VerdictPushable {
 		t.Fatalf("verdict = %q, want pushable", rep.Verdict)
 	}
-	if got := findingsUnder(rep, media.FileSetCache); len(got) > 0 {
-		t.Errorf("the fileset cache listed by a v0.6.0 manifest produces findings: %v", got)
+	if got := findingsUnder(rep, media.FileSetCache); len(got) != 1 || got[0] != "TBY-MED-023 "+media.FileSetCache {
+		t.Errorf("the fileset cache listed by a v0.6.0 manifest produces %v, want its one summary finding", got)
+	}
+}
+
+// TestACarriedFileSetCacheLeavesATrace (A9): the cache crosses the gap
+// unhashed, so it is never silent. Its extraction-shaped content is
+// summarized — files and bytes — and everything else under it is reported
+// path by path as uncovered.
+//
+// Proved fallible: before the fix every file under meta/fileserve passed
+// the verification with no finding at all.
+func TestACarriedFileSetCacheLeavesATrace(t *testing.T) {
+	f := newFixture(t)
+	f.addRecipe("alpha", "1.0.0", true)
+	f.write(time.Now().UTC())
+	plant(t, f, cachedFile, "12345")
+	plant(t, f, "meta/fileserve/site-config/"+digestDirA+"/.complete", "")
+	plant(t, f, "meta/fileserve/exfil.tar", "smuggled")
+	plant(t, f, "meta/fileserve/site-config/"+digestDirA+"/notes.txt", "smuggled")
+	plant(t, f, "meta/fileserve/site-config/not-a-digest/rootfs/x", "smuggled")
+
+	rep := f.verify(media.VerifyOptions{Zone: zoneA})
+	got := map[string]media.Finding{}
+	for _, fd := range rep.Findings {
+		if strings.HasPrefix(fd.Path, media.FileSetCache) {
+			got[string(fd.Code)+" "+fd.Path] = fd
+		}
+	}
+	sum, ok := got["TBY-MED-023 "+media.FileSetCache]
+	if !ok || sum.Params["files"] != "2" || sum.Params["bytes"] != "5" {
+		t.Errorf("no summary of the extraction-shaped cache (2 files, 5 bytes): %+v", got)
+	}
+	for _, p := range []string{
+		"meta/fileserve/exfil.tar",
+		"meta/fileserve/site-config/" + digestDirA + "/notes.txt",
+		"meta/fileserve/site-config/not-a-digest",
+	} {
+		if _, ok := got["TBY-MED-020 "+p]; !ok {
+			t.Errorf("%s is not reported as uncovered: %v", p, got)
+		}
+	}
+	if len(got) != 4 {
+		t.Errorf("findings under the cache = %d, want 4: %v", len(got), got)
 	}
 }
 

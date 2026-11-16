@@ -938,6 +938,21 @@ remet quand même ses recipes intactes.
   ne l'avez pas modifié délibérément. Rien n'est poussé depuis ces fichiers.
 - **Corrigeable hors ligne :** oui · **Bloque :** rien (signalé seulement)
 
+### TBY-MED-023
+
+- **Quoi :** le support porte un cache d'extraction de FileSet
+  (`meta/fileserve/`), ignoré et reconstruit.
+- **Cause probable :** l'instance source servait des FileSets depuis ce
+  store. Le cache est hors de la couverture du manifeste, donc rien n'en a été
+  haché ; le constat en donne le nombre de fichiers et la taille. Une
+  destination ne le sert jamais : elle le jette et réextrait depuis les blobs
+  vérifiés. Tout ce qui, dessous, n'a pas la forme d'une extraction est
+  signalé à part en [TBY-MED-020](#tby-med-020).
+- **Action corrective :** rien pour l'import. Si vous n'attendiez pas
+  d'extraction sur ce support, inspectez ou supprimez le répertoire avant
+  qu'il ne reparte — il franchit la coupure sans vérification.
+- **Corrigeable hors ligne :** oui · **Bloque :** rien (signalé seulement)
+
 ### TBY-MED-030
 
 - **Quoi :** le support n'a pas encore été vérifié : cette instance n'en sert
@@ -986,6 +1001,34 @@ remet quand même ses recipes intactes.
   livraison bloquée et le fichier fautif. Recopiez le support depuis
   l'instance source et vérifiez de nouveau. Les livraisons intactes restent
   poussables vers la registry de zone, qui les sert ensuite.
+- **Corrigeable hors ligne :** oui · **Bloque :** la registry embarquée et la
+  surface de fichiers, pour ce support
+
+### TBY-MED-033
+
+- **Quoi :** la requête sort du contenu que la vérification du support a
+  validé.
+- **Cause probable :** une fois la porte ouverte, `/v2/` et `/files/` ne
+  servent, en lecture seule, que ce qu'atteignent les recipes poussables —
+  leurs artefacts, signatures, ingrédients et signatures propres des
+  ingrédients. Le contenu atteint par aucune recipe vérifiée, un tag ajouté
+  ou déplacé après la vérification et toute écriture sont refusés (B-063).
+- **Action corrective :** lisez le rapport sur l'écran Média : le contenu
+  hors de l'ensemble vérifié figure dans ses constats. Livrez-le par une
+  recipe sur un nouveau support, ou poussez-le dans la registry de zone.
+- **Corrigeable hors ligne :** oui · **Bloque :** cette requête seulement
+
+### TBY-MED-034
+
+- **Quoi :** la vérification du support n'a validé aucun contenu : cette
+  instance n'en sert rien.
+- **Cause probable :** le manifeste du support ne liste aucune recipe : rien
+  n'y est atteint par une livraison, rien n'a été recalculé, et le verdict est
+  *poussable* sans rien à pousser. Un tel support ouvrait auparavant la porte
+  et servait tout son store (B-063).
+- **Action corrective :** vérifiez que la synchronisation source a livré ses
+  recipes avant l'écriture du support, puis recopiez-le et vérifiez-le de
+  nouveau.
 - **Corrigeable hors ligne :** oui · **Bloque :** la registry embarquée et la
   surface de fichiers, pour ce support
 

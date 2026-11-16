@@ -1119,8 +1119,11 @@ func sweepSessions(ctx context.Context, sessions *auth.Sessions) {
 // waiting for its recipe kept every other FileSet, packed ones included,
 // out of /files/. Found by running the FR-048 flow end to end against a
 // configuration declaring both a packed FileSet and one still to come.
-func syncFileSets(ctx context.Context, fsrv *fileserve.Server, st *store.Store, cfg *config.Config, logger *slog.Logger) {
-	sets, err := resolveFileSets(ctx, st, cfg)
+//
+// scope restricts the resolution to verified content on a guarded
+// destination instance (B-063); nil resolves against the whole store.
+func syncFileSets(ctx context.Context, fsrv *fileserve.Server, st *store.Store, cfg *config.Config, scope fileSetScope, logger *slog.Logger) {
+	sets, err := resolveFileSetsIn(ctx, st, cfg, scope)
 	if err != nil {
 		logger.LogAttrs(ctx, slog.LevelWarn, "fileset resolution failed",
 			slog.Int("resolved", len(sets)),
@@ -1137,15 +1140,27 @@ func syncFileSets(ctx context.Context, fsrv *fileserve.Server, st *store.Store, 
 // pinned version or highest local semver tag, platform selected on an
 // index (FR-047).
 func resolveFileSets(ctx context.Context, st *store.Store, cfg *config.Config) ([]fileserve.FileSet, error) {
+	return resolveFileSetsIn(ctx, st, cfg, nil)
+}
+
+// fileSetScope is the verified content a guarded destination instance may
+// serve (*media.Served, B-063): FileSet resolution looks for its tags and
+// manifests there and nowhere else, so a version added to the medium after
+// its manifest was written — or any tag no pushable recipe reaches — is
+// never "the highest local tag".
+type fileSetScope interface {
+	Tags(repo string) []string
+	Tag(repo, tag string) (string, bool)
+	Manifest(repo, dgst string) bool
+}
+
+// resolveFileSetsIn is resolveFileSets inside a scope; nil is the whole
+// store.
+func resolveFileSetsIn(ctx context.Context, st *store.Store, cfg *config.Config, scope fileSetScope) ([]fileserve.FileSet, error) {
 	var sets []fileserve.FileSet
 	var errs []error
 	for _, f := range cfg.Files.FileSets {
-		repo, err := relocate.PathWithBase(cfg.Storage.BasePrefix, f.Ref)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("fileset %s: %w", f.Name, err))
-			continue
-		}
-		set, err := resolveFileSet(ctx, st, f, repo)
+		set, err := resolveDeclaredFileSet(ctx, st, cfg, f, scope)
 		if err != nil {
 			// A FileSet whose content has not arrived yet is not an
 			// instance failure: it starts serving after the sync lands.
@@ -1157,11 +1172,25 @@ func resolveFileSets(ctx context.Context, st *store.Store, cfg *config.Config) (
 	return sets, errors.Join(errs...)
 }
 
-func resolveFileSet(ctx context.Context, st *store.Store, f config.FileSetServe, repo string) (fileserve.FileSet, error) {
+// resolveDeclaredFileSet resolves one files.filesets entry.
+func resolveDeclaredFileSet(ctx context.Context, st *store.Store, cfg *config.Config, f config.FileSetServe, scope fileSetScope) (fileserve.FileSet, error) {
+	repo, err := relocate.PathWithBase(cfg.Storage.BasePrefix, f.Ref)
+	if err != nil {
+		return fileserve.FileSet{}, err
+	}
+	return resolveFileSet(ctx, st, f, repo, scope)
+}
+
+func resolveFileSet(ctx context.Context, st *store.Store, f config.FileSetServe, repo string, scope fileSetScope) (fileserve.FileSet, error) {
 	tag := f.Version
 	if tag == "" {
-		tags, err := st.Tags(ctx, repo)
-		if err != nil {
+		var (
+			tags []string
+			err  error
+		)
+		if scope != nil {
+			tags = scope.Tags(repo)
+		} else if tags, err = st.Tags(ctx, repo); err != nil {
 			return fileserve.FileSet{}, err
 		}
 		versions := make([]string, 0, len(tags))
@@ -1175,11 +1204,21 @@ func resolveFileSet(ctx context.Context, st *store.Store, f config.FileSetServe,
 			return fileserve.FileSet{}, err
 		}
 	}
-	payload, mediaType, dgst, err := st.RawManifest(ctx, repo, tag)
+	ref := tag
+	if scope != nil {
+		// The tag as the verification found it, never as the medium's tag
+		// file says now.
+		d, ok := scope.Tag(repo, tag)
+		if !ok {
+			return fileserve.FileSet{}, fmt.Errorf("%s:%s is not part of the content the medium's verification cleared (FR-054)", repo, tag)
+		}
+		ref = d
+	}
+	payload, mediaType, dgst, err := st.RawManifest(ctx, repo, ref)
 	if err != nil {
 		return fileserve.FileSet{}, err
 	}
-	dgst, err = selectFileSetManifest(ctx, st, repo, payload, mediaType, dgst, f.Platform)
+	dgst, err = selectFileSetManifest(ctx, st, repo, payload, mediaType, dgst, f.Platform, scope)
 	if err != nil {
 		return fileserve.FileSet{}, err
 	}
@@ -1190,7 +1229,13 @@ func resolveFileSet(ctx context.Context, st *store.Store, f config.FileSetServe,
 // step 1): the configured platform, or the single entry of a
 // single-manifest FileSet; an ambiguous index without a configured
 // platform is refused.
-func selectFileSetManifest(ctx context.Context, st *store.Store, repo string, payload []byte, mediaType, dgst, platform string) (string, error) {
+func selectFileSetManifest(ctx context.Context, st *store.Store, repo string, payload []byte, mediaType, dgst, platform string, scope fileSetScope) (string, error) {
+	present := func(d string) bool {
+		if scope != nil && !scope.Manifest(repo, d) {
+			return false
+		}
+		return st.HasManifest(ctx, repo, d)
+	}
 	if !strings.Contains(mediaType, "index") && !strings.Contains(mediaType, "manifest.list") {
 		return dgst, nil
 	}
@@ -1221,7 +1266,7 @@ func selectFileSetManifest(ctx context.Context, st *store.Store, repo string, pa
 		// "linux/arm64" must find the index child the registry describes
 		// as linux/arm64 variant v8.
 		if importer.MatchesPlatform(platform, m.Platform.OS, m.Platform.Arch, m.Platform.Variant) {
-			if !st.HasManifest(ctx, repo, m.Digest) {
+			if !present(m.Digest) {
 				return "", fmt.Errorf("platform %s of %s is not present locally (sparse index)", platform, repo)
 			}
 			return m.Digest, nil
@@ -1231,7 +1276,7 @@ func selectFileSetManifest(ctx context.Context, st *store.Store, repo string, pa
 		return "", fmt.Errorf("platform %s not found in the index of %s", platform, repo)
 	}
 	if len(candidates) == 1 {
-		if !st.HasManifest(ctx, repo, candidates[0]) {
+		if !present(candidates[0]) {
 			return "", fmt.Errorf("the single platform of %s is not present locally", repo)
 		}
 		return candidates[0], nil

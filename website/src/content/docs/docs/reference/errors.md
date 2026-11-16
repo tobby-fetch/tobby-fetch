@@ -877,6 +877,21 @@ a partially damaged medium still hands over its intact recipes.
   did not alter it deliberately. Nothing is pushed out of these files.
 - **Fixable offline:** yes · **Blocks:** nothing (reported only)
 
+### TBY-MED-023
+
+- **What happened:** the medium carries a FileSet extraction cache
+  (`meta/fileserve/`), which is ignored and rebuilt.
+- **Probable cause:** the source instance served FileSets from this store.
+  The cache is outside the manifest's coverage, so none of it was hashed; the
+  finding names its file count and size. A destination never serves it: it
+  discards it and re-extracts from the verified blobs. Anything under it that
+  does not have the shape of an extraction is reported separately as
+  [TBY-MED-020](#tby-med-020).
+- **Corrective action:** nothing for the import. If you did not expect an
+  extraction on the medium, inspect or remove the directory before the
+  medium travels back — it crosses the gap unverified.
+- **Fixable offline:** yes · **Blocks:** nothing (reported only)
+
 ### TBY-MED-030
 
 - **What happened:** the medium has not been verified yet, so this instance
@@ -921,6 +936,34 @@ a partially damaged medium still hands over its intact recipes.
   blocked delivery and the file that failed. Re-copy the medium from the
   source instance and verify it again. The intact deliveries can still be
   pushed into the zone registry, which then serves them.
+- **Fixable offline:** yes · **Blocks:** the embedded registry and the file
+  surface, for this medium
+
+### TBY-MED-033
+
+- **What happened:** the request is outside the content the verification of
+  the medium cleared.
+- **Probable cause:** once the gate is open, `/v2/` and `/files/` serve only
+  what the pushable recipes reach — their artifacts, signatures, ingredients
+  and the ingredients' own signatures — read-only. Content no verified recipe
+  reaches, a tag added or moved after verification, and every write are
+  refused (B-063).
+- **Corrective action:** read the report on the Media screen: content
+  outside the verified set is listed in its findings. Deliver it through a
+  recipe on a new medium, or push it into the zone registry.
+- **Fixable offline:** yes · **Blocks:** that request only
+
+### TBY-MED-034
+
+- **What happened:** the verification of the medium cleared no content, so
+  this instance serves none of it.
+- **Probable cause:** the media manifest lists no recipe: nothing on the
+  medium is reachable from a delivery, nothing was re-hashed, and the
+  verdict is *pushable* with nothing to push. Such a medium used to open the
+  gate and serve its whole store (B-063).
+- **Corrective action:** check that the source synchronization delivered its
+  recipes before the medium was written, then re-copy the medium and verify
+  it again.
 - **Fixable offline:** yes · **Blocks:** the embedded registry and the file
   surface, for this medium
 
