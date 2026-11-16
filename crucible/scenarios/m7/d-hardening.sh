@@ -404,8 +404,10 @@ printf 'apiVersion: v2\nname: m7d\nversion: 0.1.0\n' >"$WORK/chart/m7d/Chart.yam
 helm package "$WORK/chart/m7d" -d "$WORK" >/dev/null || fail "packaging the chart"
 helm push "$WORK/m7d-0.1.0.tgz" "oci://$R/m7d/charts" --ca-file "$CA" >/dev/null 2>&1 || fail "FR-041: helm push failed"
 [ -n "$(digest_of m7d/charts/m7d 0.1.0)" ] || fail "FR-041: the helm push is not served back"
-helm pull "oci://$R/m7d/charts/m7d" --version 0.1.0 --ca-file "$CA" -d "$WORK/helm-out" >/dev/null 2>&1 ||
-    fail "FR-041: helm pull failed"
+# helm pull writes into -d and does not create it.
+mkdir -p "$WORK/helm-out"
+helm pull "oci://$R/m7d/charts/m7d" --version 0.1.0 --ca-file "$CA" -d "$WORK/helm-out" >"$WORK/helm.out" 2>&1 ||
+    fail "FR-041: helm pull failed: $(tail -3 "$WORK/helm.out")"
 printf 'an oras artifact\n' >"$WORK/oras.txt"
 ( cd "$WORK" && oras push --ca-file "$CA" -u "$ADMIN" -p "$ADMIN_PW" "$R/m7d/oras:1.0.0" oras.txt:text/plain >/dev/null 2>&1 ) ||
     fail "FR-041: oras push failed"
@@ -573,8 +575,9 @@ $D pull "$R/$REPO_A@$DIG_hard_a" >/dev/null 2>&1 || fail "FR-098: docker pull of
 $PM rmi "$R/m7d/podman:1.0.0" >/dev/null 2>&1 || true
 $PM pull "$R/m7d/podman:1.0.0" >"$WORK/podman.out" 2>&1 || fail "FR-098: podman pull failed under $P_SET: $(tail -3 "$WORK/podman.out")"
 rm -rf "$WORK/helm-out" "$WORK/oras-out"
-helm pull "oci://$R/m7d/charts/m7d" --version 0.1.0 --ca-file "$CA" -d "$WORK/helm-out" >/dev/null 2>&1 ||
-    fail "FR-098: helm pull failed under $P_SET"
+mkdir -p "$WORK/helm-out"
+helm pull "oci://$R/m7d/charts/m7d" --version 0.1.0 --ca-file "$CA" -d "$WORK/helm-out" >"$WORK/helm.out" 2>&1 ||
+    fail "FR-098: helm pull failed under $P_SET: $(tail -3 "$WORK/helm.out")"
 oras pull --ca-file "$CA" -u "$ADMIN" -p "$ADMIN_PW" -o "$WORK/oras-out" "$R/m7d/oras:1.0.0" >/dev/null 2>&1 ||
     fail "FR-098: oras pull failed under $P_SET"
 skopeo inspect --cert-dir "$WORK/certs" --creds "$ADMIN:$ADMIN_PW" "docker://$R/m7d/skopeo:1.0.0" >/dev/null 2>&1 ||
