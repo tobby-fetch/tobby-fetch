@@ -265,6 +265,52 @@ jobs:
           path: sboms/
           if-no-files-found: error
 
+  # The integration and supervision kit (R-11): the OpenAPI document and the
+  # metrics reference, versioned with the release and signed the way the
+  # SBOMs are — keyless, through the job's OIDC identity, as a cosign
+  # bundle beside each file. They are the CONTRACTS a site integrates and
+  # alerts against; both are generated from the code this tag was built
+  # from, and the job refuses to publish a metrics reference that is not
+  # what the registry generates now (the freshness test of internal/metrics
+  # would have failed first, this is the same check at the point of use).
+  integration-kit:
+    name: Integration kit (OpenAPI + metrics reference, cosign-signed)
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      id-token: write # Sigstore keyless signing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      - name: Stage the kit (OpenAPI as served; metrics reference as generated)
+        run: |
+          set -eu
+          mkdir -p kit
+          # The document the binary embeds and serves at
+          # GET /api/v1/openapi.yaml, byte for byte.
+          cp internal/api/openapi.yaml kit/openapi.yaml
+          # Generated from the registry of this tag, never copied from the
+          # repository: a stale committed copy must not be what is signed.
+          go run ./tools/metricsref -o kit/metrics-reference.json
+          cmp kit/metrics-reference.json docs/metrics-reference.json \
+            || { echo "::error::docs/metrics-reference.json is stale: run 'go run ./tools/metricsref' and commit it"; exit 1; }
+      - name: Sign each file (cosign keyless via job OIDC identity)
+        run: |
+          # Same bundle format as the SBOMs: self-contained, no detached
+          # signature or certificate files.
+          for f in kit/openapi.yaml kit/metrics-reference.json; do
+            cosign sign-blob --yes --bundle "$f.bundle" "$f"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kit
+          path: kit/
+          if-no-files-found: error
+
   image:
     name: Container image (melange + apko)
     runs-on: ubuntu-latest
@@ -674,7 +720,7 @@ jobs:
   release:
     name: Create GitHub release
     runs-on: ubuntu-latest
-    needs: [build, verify-reproducibility, sbom, image, image-scan, chart, binaries-oci]
+    needs: [build, verify-reproducibility, sbom, integration-kit, image, image-scan, chart, binaries-oci]
     permissions:
       contents: write
     env:
@@ -700,6 +746,10 @@ jobs:
         with:
           name: image-sboms
           path: image-sboms
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kit
+          path: kit
       - name: Write release notes with exact verification commands (ADR-0011)
         run: |
           cat > notes-template.md <<'EOF'
@@ -746,6 +796,27 @@ jobs:
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/' \
             tobby-linux-amd64.cdx.json
+          ```
+
+          ### Integration kit: the API contract and the metrics reference
+
+          `openapi.yaml` is the OpenAPI 3.1 document of the REST API
+          (byte-identical to what a running instance serves at
+          `/api/v1/openapi.yaml`); `metrics-reference.json` lists every
+          `tobby_*` metric family with its type, labels and closed value
+          sets, unit and the requirement it serves. Both are signed like the
+          SBOMs, and the reference is what the chart's alert rules and
+          dashboard are held to.
+
+          ```bash
+          for f in openapi.yaml metrics-reference.json; do
+            cosign verify-blob \
+              --new-bundle-format \
+              --bundle "$f.bundle" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/' \
+              "$f"
+          done
           ```
 
           ### Container image
@@ -840,7 +911,7 @@ jobs:
           --verify-tag
           --title "tobby ${VERSION}"
           --notes-file notes.md
-          dist/* sboms/* image-sboms/*
+          dist/* sboms/* image-sboms/* kit/*
       # Rehearsal: the notes and the full asset set a release would carry
       # are kept as one workflow artifact, and the notes shown in the run
       # summary. No release, no tag, no asset.
@@ -853,7 +924,7 @@ jobs:
             cat notes.md
           } >> "$GITHUB_STEP_SUMMARY"
           mkdir -p dry-run-release
-          cp notes.md dist/* sboms/* image-sboms/* dry-run-release/
+          cp notes.md dist/* sboms/* image-sboms/* kit/* dry-run-release/
       - name: "Dry run: keep the would-be release as a workflow artifact"
         if: needs.build.outputs.dry_run == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

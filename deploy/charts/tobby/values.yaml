@@ -492,3 +492,65 @@ extraVolumeMounts: []
 # Extra containers, for a log shipper or a sidecar proxy.
 extraContainers: []
 initContainers: []
+
+# ---------------------------------------------------------------------------
+# Alerting and dashboard (R-11, FR-091 amendment)
+# ---------------------------------------------------------------------------
+# Rules and a dashboard written against the metrics reference published with
+# every release (metrics-reference.json): every expression names only
+# families of that reference, and a test holds the chart to it. Both are off
+# by default — an install on a cluster without the Prometheus Operator or
+# Grafana renders nothing it cannot use.
+#
+# The rules go with the instance, so they are not tuned for it: start from
+# the defaults, then read what your instance does for a week. A passthrough
+# instance reconciles on a timer and should have a bound on the age of its
+# last success; a mirror instance synchronizes when an operator says so, and
+# a bound there would page nobody usefully — set thresholds.syncMaxAgeSeconds
+# to 0 to leave that rule out.
+alerting:
+  # A PrometheusRule resource. Requires the Prometheus Operator CRDs.
+  prometheusRule:
+    enabled: false
+    # Namespace of the rule, when it is not the release's.
+    namespace: ""
+    # Labels the operator's ruleSelector asks for (e.g. release: prometheus).
+    labels: {}
+  # The same rules as a plain Prometheus rules file, in a ConfigMap
+  # (key tobby-alerts.rules.yaml), for a Prometheus that is not run by the
+  # Operator. The file is also kept beside the chart: files/tobby-alerts.rules.yaml.
+  rulesFile:
+    enabled: false
+  # Labels added to every alert (e.g. team, environment).
+  extraLabels: {}
+  # Bounds. Seconds where the expression compares a number, a Prometheus
+  # duration where it is a "for:".
+  thresholds:
+    # Repeated synchronization failures: at least this many failed runs
+    # within the window.
+    syncFailures: 3
+    syncFailuresWindow: 1h
+    # No successful synchronization for longer than this, in seconds.
+    # 0 leaves the rule out (mirror instances).
+    syncMaxAgeSeconds: 21600
+    # Transfers pinned at sync.parallelism for this long.
+    saturationFor: 15m
+    # The store beyond storage.occupancyThreshold for this long (FR-045).
+    storeOccupancyFor: 15m
+    # The vulnerability database stale or absent, or the scanner degraded,
+    # for this long (FR-031, FR-032).
+    scannerFor: 1h
+    # The listener's certificate expires within this many seconds, for
+    # this long.
+    certificateExpirySeconds: 1209600
+    certificateExpiryFor: 10m
+    # The clock found earlier than the build or a medium (FR-096).
+    clockFor: 5m
+
+# A Grafana dashboard for the same families, as a ConfigMap the Grafana
+# sidecar picks up (label grafana_dashboard). Off by default.
+dashboard:
+  enabled: false
+  namespace: ""
+  labels:
+    grafana_dashboard: "1"
