@@ -279,9 +279,9 @@ completed milestones meanwhile with `./crucible/run.sh m1 m2 m3 m4 m5 m6`.
 | `b-clock.sh` | B (R-32) | clock before the build date and before a medium's production: warned and audited, never corrected |
 | `b-rebuild.sh` | B (R-27) | state directory, configuration and store restored on a fresh node: same accounts, token, certificate, import record |
 | `c-exceptions.sh` | C (R-15) | mandatory expiry, digest/repository/recipe scopes, visible re-blocking, OpenVEX input |
-| `c-provenance.sh` | C (R-17) | provenance class per repository on every surface, unmanaged-content metric, both hardening switches |
+| `c-provenance.sh` | C (R-17) | provenance class per repository on every surface, last scan per tag, unmanaged-content metric, provenance log field |
 | `c-emergency-path.sh` | C, E (R-21) | the published emergency procedure followed literally, admitted only under its declared scope |
-| `d-hardening.sh` | D (7.3) | security headers per route class, CSRF over the wire, bounded inputs, OCI clients unaffected |
+| `d-hardening.sh` | C (R-17, 7.3) | both hardening switches on every surface, security headers per route class, CSRF over the wire, bounded inputs, OCI clients unaffected |
 | `e-docs-offline.sh` | E (7.2) | the complete bilingual corpus served offline, no dangling target |
 | `z-crown-rke2.sh` | integration | RKE2 v1.36.5 bootstrapped air-gapped from a bare OS: OS packages and RKE2 artifacts from served FileSets, images through the zone registry via the **generated** `registries.yaml` |
 
