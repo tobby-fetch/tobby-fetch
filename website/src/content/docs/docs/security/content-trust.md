@@ -92,14 +92,16 @@ refused the recipe instead of hunting through every root
 a synchronization, on the signature re-check before a push, in a plan, and
 when a transported medium is verified on the destination side.
 
-:::note[Upcoming]
-Two refinements are on the roadmap: **provenance visible content by
+:::note[Upcoming — provenance, content by content]
+One refinement is still on the roadmap: **provenance visible content by
 content** — recipe-verified, unit import, direct push (R-17 — milestone
-7); and the documented **emergency path** — a locally written recipe
-signed with the organization's emergency key, admitted under a declared
-`emergency` scope (R-21 — milestone 7, documentation-only). Track them on
-the [project status](../../discover/status/) page.
+7). Track it on the [project status](../../discover/status/) page.
 :::
+
+A scope can also **restrict** rather than relax: its `roots` fence a
+dedicated key, such as the organization's emergency key, to one cookbook.
+That is the mechanism behind the documented
+[emergency path](../../recipes/emergency-path/).
 
 ## The two accepted signature formats
 
