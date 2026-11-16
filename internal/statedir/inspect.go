@@ -59,6 +59,21 @@ type Inventory struct {
 	// Items lists the documented entries in documentation order, present
 	// or not, then whatever else was found.
 	Items []Item `json:"items"`
+	// OpenDirs names the directories holding a secret entry — the root,
+	// the secret directories and those under them that hold a key — that
+	// other users of the host can write to, or whose access could not be
+	// read: whoever can write there can replace the secret, which refuses
+	// the start (TBY-STA-002) as surely as reading it.
+	OpenDirs []OpenDir `json:"openDirs,omitempty"`
+}
+
+// OpenDir is a directory of OpenDirs.
+type OpenDir struct {
+	// Path is relative to the root ("." for the root itself).
+	Path string `json:"path"`
+	// Mode says why: the Unix mode and what makes it open, or the broad
+	// principal of the access list.
+	Mode string `json:"mode"`
 }
 
 // Expect says which identity entries THIS configuration makes the
@@ -133,7 +148,60 @@ func Inspect(root string) (*Inventory, error) {
 	}
 	sort.Slice(extra, func(i, j int) bool { return extra[i].Name < extra[j].Name })
 	inv.Items = append(inv.Items, extra...)
+	inv.OpenDirs = openDirs(root)
 	return inv, nil
+}
+
+// openDirs judges the directories that hold a secret entry: the root (it
+// holds accounts.yaml), each secret directory, and every directory under
+// one on the way to a key file — the key's own directory once a symbolic
+// link is followed included.
+func openDirs(root string) []OpenDir {
+	dirs := []string{root}
+	seen := map[string]bool{root: true}
+	addDir := func(d string) {
+		if !seen[d] {
+			seen[d] = true
+			dirs = append(dirs, d)
+		}
+	}
+	for _, e := range entries {
+		if !e.Secret || e.Kind != KindDir {
+			continue
+		}
+		top := Path(root, e.Name)
+		if _, err := os.Stat(top); err != nil {
+			continue
+		}
+		addDir(top)
+		for _, f := range secretFiles(top) {
+			for d := filepath.Dir(f); d != top && strings.HasPrefix(d, top); d = filepath.Dir(d) {
+				addDir(d)
+			}
+			if target, err := filepath.EvalSymlinks(f); err == nil {
+				addDir(filepath.Dir(target))
+			}
+		}
+	}
+	var out []OpenDir
+	for _, d := range dirs {
+		rel, err := filepath.Rel(root, d)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			rel = d
+		}
+		info, err := os.Stat(d)
+		if err != nil {
+			continue
+		}
+		open, mode, err := dirOpen(d, info)
+		switch {
+		case err != nil:
+			out = append(out, OpenDir{Path: filepath.ToSlash(rel), Mode: "access list unreadable: " + err.Error()})
+		case open:
+			out = append(out, OpenDir{Path: filepath.ToSlash(rel), Mode: mode})
+		}
+	}
+	return out
 }
 
 func describe(root, name string, e *Entry) Item {
@@ -179,12 +247,21 @@ func describe(root, name string, e *Entry) Item {
 	return it
 }
 
+// unreadable is the verdict on a secret file whose access could not be
+// read: refused, never assumed narrow.
+func unreadable(err error) (access Access, mode string) {
+	return AccessUnknown, "access list unreadable: " + err.Error()
+}
+
 // itemAccess is the access verdict of an entry: the file's own, or for a
 // directory the broadest of its secret files.
 func itemAccess(full string, info fs.FileInfo, secret bool) (access Access, mode string) {
 	if !info.IsDir() {
 		a, m, err := accessOf(full, info)
 		if err != nil {
+			if secret {
+				return unreadable(err)
+			}
 			return "", ""
 		}
 		return a, m
@@ -199,11 +276,18 @@ func itemAccess(full string, info fs.FileInfo, secret bool) (access Access, mode
 	}
 	access = AccessOwner
 	for _, f := range secretFiles(full) {
-		fi, err := os.Lstat(f)
+		// A key adopted as a symbolic link (a projected Kubernetes volume:
+		// tls.key -> ..data/tls.key) is judged by what it points to: the
+		// link itself always reads 0777. A dangling one holds nothing.
+		fi, err := os.Stat(f)
 		if err != nil {
 			continue
 		}
-		if a, m, aerr := accessOf(f, fi); aerr == nil && rank(a) > rank(access) {
+		a, m, aerr := accessOf(f, fi)
+		if aerr != nil {
+			a, m = unreadable(aerr)
+		}
+		if rank(a) > rank(access) {
 			access, mode = a, m
 		}
 	}
@@ -212,6 +296,8 @@ func itemAccess(full string, info fs.FileInfo, secret bool) (access Access, mode
 
 func rank(a Access) int {
 	switch a {
+	case AccessUnknown:
+		return 3
 	case AccessBroad:
 		return 2
 	case AccessGroup:
@@ -224,7 +310,7 @@ func rank(a Access) int {
 func secretFiles(dir string) []string {
 	var out []string
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && secretFileInDir(d.Name()) {
+		if err == nil && !d.IsDir() && SecretFileInDir(d.Name()) {
 			out = append(out, p)
 		}
 		return nil
@@ -266,13 +352,27 @@ type Report struct {
 
 // Prepare creates root owner-only when needed and runs the startup check
 // of FR-097: the layout version must be one this build knows
-// (TBY-STA-001), no secret entry may be readable by every user of the
-// host (TBY-STA-002), and an identity entry the configuration depends on
-// that a directory with a history lacks is reported (TBY-STA-003, not an
-// error). version is the build that records the layout on adoption.
+// (TBY-STA-001); no secret entry may be readable by every user of the
+// host, nor any directory holding one writable by them, and an access
+// list that cannot be read counts as broad (TBY-STA-002); and an identity
+// entry the configuration depends on that a directory with a history
+// lacks is reported (TBY-STA-003, not an error). version is the build that
+// records the layout on adoption.
+//
+// A directory with a history is one that records a layout, or that holds
+// any documented entry: a directory whose layout.json was lost in a
+// partial restore is adopted again, but what it lacks is still reported.
+// Only a directory holding none of the layout — this start created it, or
+// an empty volume was mounted — is new and says nothing.
+//
+// An existing root is judged as found, before it is narrowed to its owner:
+// narrowing it first would hide that someone else could write there
+// until this start.
 func Prepare(root string, expect Expect, version string) (*Report, error) {
-	if err := secretfile.MkdirAll(root); err != nil {
-		return nil, err
+	if _, err := os.Stat(root); err != nil {
+		if err := secretfile.MkdirAll(root); err != nil {
+			return nil, err
+		}
 	}
 	inv, err := Inspect(root)
 	if err != nil {
@@ -291,22 +391,67 @@ func Prepare(root string, expect Expect, version string) (*Report, error) {
 	}
 	for i := range inv.Items {
 		it := &inv.Items[i]
-		if !it.Present || !it.Secret || it.Access != AccessBroad {
+		if !it.Present || !it.Secret || !it.Access.Refused() {
 			continue
 		}
+		mode := it.Mode
+		if mode != "" && mode[0] >= '0' && mode[0] <= '9' {
+			mode = "mode " + mode
+		}
 		return nil, taxonomy.New(taxonomy.CodeStatePermissions, taxonomy.Params{
-			"path": Path(root, it.Name), "mode": it.Mode,
+			"path": Path(root, it.Name), "mode": mode,
 		})
 	}
+	if len(inv.OpenDirs) > 0 {
+		d := inv.OpenDirs[0]
+		return nil, taxonomy.New(taxonomy.CodeStatePermissions, taxonomy.Params{
+			"path": Path(root, filepath.FromSlash(d.Path)), "mode": d.Mode,
+		})
+	}
+	if err := secretfile.MkdirAll(root); err != nil {
+		return nil, err
+	}
 	if rep.Adopted {
-		doc, _ := json.MarshalIndent(layoutDoc{Layout: LayoutVersion, WrittenBy: version, WrittenAt: time.Now().UTC()}, "", "  ")
-		if err := os.WriteFile(Path(root, LayoutFile), append(doc, '\n'), 0o600); err != nil {
-			return nil, fmt.Errorf("statedir: recording the layout version: %w", err)
+		if err := writeLayout(root, version); err != nil {
+			return nil, err
 		}
-		return rep, nil
+		if !inv.hasHistory() {
+			return rep, nil
+		}
 	}
 	rep.Missing = inv.Missing(expect)
 	return rep, nil
+}
+
+// hasHistory reports whether the directory holds any documented entry
+// besides the layout record.
+func (inv *Inventory) hasHistory() bool {
+	for i := range inv.Items {
+		if it := &inv.Items[i]; it.Documented && it.Present && it.Name != LayoutFile {
+			return true
+		}
+	}
+	return false
+}
+
+// writeLayout records the layout version. The file is created, never
+// opened: an entry already at that name — a symbolic link planted to make
+// the write land elsewhere included — fails the start instead of being
+// followed.
+func writeLayout(root, version string) error {
+	doc, _ := json.MarshalIndent(layoutDoc{Layout: LayoutVersion, WrittenBy: version, WrittenAt: time.Now().UTC()}, "", "  ")
+	f, err := os.OpenFile(Path(root, LayoutFile), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("statedir: recording the layout version: %w", err)
+	}
+	_, werr := f.Write(append(doc, '\n'))
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		return fmt.Errorf("statedir: recording the layout version: %w", werr)
+	}
+	return nil
 }
 
 // Describe renders a report line for the startup log.
