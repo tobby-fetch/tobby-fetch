@@ -46,6 +46,9 @@ OpenAPI, et servi par la même instance, parce qu'une automatisation qui pilote
 Tobby utilise les deux — voir la
 [référence de la CLI](../../reference/cli/#format-de-rapport).
 
+Chaque release publie aussi `openapi.yaml`, signé, identique à l'octet près à ce
+que l'instance sert (voir [Superviser une instance](../../passthrough/monitoring/)).
+
 Un test à la compilation recoupe le document avec les routes enregistrées : un
 point d'accès ne peut pas être livré sans documentation, et le document ne
 peut pas décrire un point d'accès qui n'existe pas. Ce que sert votre instance
@@ -100,6 +103,7 @@ La surface actuelle (d'après le document OpenAPI servi) :
 | Intégrité du store | `POST /api/v1/store/verify`, `POST /api/v1/store/verify/cancel`, `GET /api/v1/store/verification` |
 | Comptes et tokens | `POST /api/v1/account/password`, `GET/POST /api/v1/accounts`, `PATCH/DELETE /api/v1/accounts/{name}`, `GET/POST /api/v1/tokens`, `POST /api/v1/tokens/{name}/revoke` |
 | Réseau | `GET /api/v1/network`, `PUT /api/v1/network/certificate` |
+| Exploitation | `POST /api/v1/diagnostics/bundle`, `GET /api/v1/clock`, `GET /api/v1/state` |
 
 Quatre d'entre eux méritent une remarque, car leur forme n'est pas celle que
 le chemin laisserait deviner.
@@ -137,6 +141,18 @@ le chemin laisserait deviner.
   rôle inférieur donne [`TBY-AUTH-003`](../../reference/errors/#tby-auth-003), et
   la tentative comme la levée appliquée sont consignées dans le journal d'audit.
   Rien ne lève un verdict d'intégrité ou de signature, quel que soit le rôle.
+
+- **`POST /api/v1/diagnostics/bundle` répond avec l'archive elle-même**
+  (`application/gzip`, `Content-Disposition: attachment`), pour l'administrateur
+  seulement. Elle est construite et contrôlée avant le premier octet envoyé :
+  un bundle qui porterait un secret est un document problème
+  ([`TBY-DIA-002`](../../reference/errors/#tby-dia-002)), jamais un
+  téléchargement partiel. La demande est auditée. Voir
+  [Collecter un bundle de diagnostic](../../passthrough/diagnostics/).
+- **`GET /api/v1/clock` et `GET /api/v1/state` sont des rapports.** Le premier
+  renvoie le dernier [verdict d'horloge](../../air-gap/clock-check/) de chaque
+  ancre, à tout rôle ; le second l'inventaire du répertoire d'état, noms, tailles
+  et permissions, aux administrateurs.
 
 Sur une instance qui n'est pas le côté destination d'un transfert physique,
 les quatre points d'accès du média répondent

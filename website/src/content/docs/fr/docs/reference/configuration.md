@@ -228,6 +228,14 @@ seuls les FileSets listés ici sont servis sous `/files/<name>/`.
 Il n'existe aucune clé de configuration pour la langue de l'interface : la CLI
 suit la locale de l'hôte, l'interface web négocie sa langue par utilisateur.
 
+### Exploitation
+
+| Clé | Type | Défaut | Env | Rôle |
+|---|---|---|---|---|
+| `diagnostics.logRecords` | int | `2000` | *(fichier seul)* | Taille de la fenêtre en mémoire des derniers enregistrements de journal que porte le [bundle de diagnostic](../../passthrough/diagnostics/). De 1 à 100000. Une fenêtre, jamais une archive : elle est perdue quand le processus s'arrête. |
+| `diagnostics.tasks` | int | `20` | *(fichier seul)* | Combien des derniers rapports de tâches le bundle porte. De 1 à 500. |
+| `clock.skewTolerance` | duration | `1h` | *(fichier seul)* | De combien l'horloge locale peut être antérieure à la date de build du binaire ou à l'heure de résolution d'un support avant d'être [jugée invraisemblable](../../air-gap/clock-check/). De 0 à `7d`. Le contrôle lui-même ne peut pas être désactivé : il avertit et consigne, il ne change aucun verdict. |
+
 ## Vérifier la configuration effective
 
 `tobby config dump` affiche sur la sortie standard le résultat fusionné des

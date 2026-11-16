@@ -1079,14 +1079,14 @@ The local, redacted archive of FR-095. Redaction fails closed: a bundle that wou
 - **What happened:** The diagnostic bundle could not be produced.
 - **Probable cause:** `<detail>`
 - **Corrective action:** Retry; if it fails again, collect the instance logs by the means of the deployment. Nothing was written or sent: a bundle is local only.
-- **Fixable offline:** yes · **Blocks:** the bundle · **Status:** reserved — emitted from milestone 7
+- **Fixable offline:** yes · **Blocks:** the bundle
 
 ### TBY-DIA-002
 
 - **What happened:** The diagnostic bundle was withheld: `<member>` still contained a secret.
 - **Probable cause:** Before releasing a bundle, Tobby searches every member for the secret values it knows. One was found, so the bundle was not written rather than written with it.
 - **Corrective action:** Report this defect to the Tobby maintainers with the member name — never with the bundle. Meanwhile, collect the information by hand.
-- **Fixable offline:** yes · **Blocks:** the bundle — never shipped with a secret in it · **Status:** reserved — emitted from milestone 7
+- **Fixable offline:** yes · **Blocks:** the bundle — never shipped with a secret in it
 
 ## Clock plausibility (TBY-CLK)
 
@@ -1097,14 +1097,14 @@ FR-096: the local clock checked against anchors the instance holds without any n
 - **What happened:** The local clock reads `<now>`, earlier than the build of this binary (`<anchor>`).
 - **Probable cause:** The clock is `<gap>` behind a date this binary proves has passed. Expiries, freshness checks and certificate validity are judged against this clock.
 - **Corrective action:** Set the host's clock (time source of the zone, or by hand from a trusted reference), then restart. Tobby warns and records; it does not correct the clock.
-- **Fixable offline:** yes · **Blocks:** nothing — a warning, recorded in the audit log · **Status:** reserved — emitted from milestone 7
+- **Fixable offline:** yes · **Blocks:** nothing — a warning, recorded in the audit log
 
 ### TBY-CLK-002
 
 - **What happened:** The local clock reads `<now>`, earlier than the production of medium `<medium>` (`<anchor>`).
 - **Probable cause:** The medium was resolved `<gap>` after the time this host believes it is: one of the two clocks is wrong, and freshness and expiry checks depend on it.
 - **Corrective action:** Check this host's clock against a trusted reference before trusting expiry and freshness verdicts. Tobby warns and records; it does not correct the clock.
-- **Fixable offline:** yes · **Blocks:** nothing — a warning, recorded in the audit log · **Status:** reserved — emitted from milestone 7
+- **Fixable offline:** yes · **Blocks:** nothing — a warning, recorded in the audit log
 
 ## Instance state directory (TBY-STA)
 
@@ -1115,21 +1115,21 @@ FR-097: the normative state directory — the backup target of an instance besid
 - **What happened:** The instance refuses to start: the state directory `<root>` has an unknown layout (`<version>`).
 - **Probable cause:** It was written by another version of Tobby, or it is not a Tobby state directory.
 - **Corrective action:** Start the version that wrote it, or restore the state directory from a backup made with this version. The documented layout is the backup contract.
-- **Fixable offline:** yes · **Blocks:** the start of the instance · **Status:** reserved — emitted from milestone 7
+- **Fixable offline:** yes · **Blocks:** the start of the instance
 
 ### TBY-STA-002
 
 - **What happened:** The instance refuses to start: `<path>` is readable by every user of the host (mode `<mode>`).
 - **Probable cause:** It is a secret entry of the state directory — password or token hashes, a private key — which Tobby creates for its owner only. A broader mode usually comes from a restore that did not keep permissions.
 - **Corrective action:** Remove the access of other users (chmod o-rwx on Unix; on Windows, remove Everyone and Users from its access list), check who could read it meanwhile, then restart. Group access granted by the volume (Kubernetes fsGroup) is tolerated.
-- **Fixable offline:** yes · **Blocks:** the start of the instance · **Status:** reserved — emitted from milestone 7
+- **Fixable offline:** yes · **Blocks:** the start of the instance
 
 ### TBY-STA-003
 
 - **What happened:** The state directory holds no `<entry>`.
 - **Probable cause:** An identity entry is missing — typically after an incomplete restore. The instance starts without it, and behaves as a new instance for what it held.
 - **Corrective action:** If this instance was restored, restore the missing entry from the same backup and restart; otherwise nothing to do.
-- **Fixable offline:** yes · **Blocks:** nothing by itself — the instance starts without the entry · **Status:** reserved — emitted from milestone 7
+- **Fixable offline:** yes · **Blocks:** nothing by itself — the instance starts without the entry
 
 ## Tasks (TBY-TSK)
 
