@@ -23,7 +23,9 @@ du 2026-11-07, pour la version de maintenance v0.5.1 : les mêmes 88
 vérifications après le passage à Go 1.27 et à la dernière version de chaque
 dépendance, dans un seul rapport. Le plus récent date du 2026-11-12, pour la
 v0.6.0 : les jalons 1 à 5 de nouveau (les mêmes 88 vérifications) et les six
-scénarios du jalon 6 (81 vérifications), sur le commit `4d8ad1b`.
+scénarios du jalon 6 (81 vérifications), sur le commit `4d8ad1b`. Le
+dernier de tous date du 2026-11-16, pour la v1.0.0-rc.1 : les jalons 1 à 6
+de nouveau et les onze scénarios du jalon 7, couronne comprise.
 
 ## Les rapports
 
@@ -167,6 +169,56 @@ push quand l'hôte de son cookbook porte un port (B-055), et aucun chart publié
 par `helm push` qui puisse être synchronisé, parce que helm omet un champ que
 les fixtures de test écrivaient toujours (B-056). Les deux sont corrigés en
 v0.6.0, chacun avec un test qui échouait avant.
+
+### Jalon 7 — finitions, documentation et recette (v1.0.0-rc.1)
+
+Exécuté le 2026-11-16 sur des hôtes bare-metal jetables, chacun créé et
+détruit dans la même session. Les jalons 1 à 6 rejoués d'abord sur le
+commit `05dafee`, 175 vérifications, un rapport chacun
+([m1](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m1-crucible-report.txt),
+[m2](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m2-crucible-report.txt),
+[m3](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m3-crucible-report.txt),
+[m4](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m4-crucible-report.txt),
+[m5](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m5-crucible-report.txt),
+et les six scénarios du jalon 6: [a-scanning](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-a-scanning.txt), [a-self-update](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-a-self-update.txt), [b-auth](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-b-auth.txt), [c-assurance](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-c-assurance.txt), [c-integrity](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-c-integrity.txt), [c-trust-scopes](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-c-trust-scopes.txt)).
+Puis les onze scénarios du jalon 7 sur le commit `2c8aa7d`, 200
+vérifications :
+
+- [a-consumption-aids](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-crucible-report-a-consumption-aids.txt) : la table de correspondance et le
+  `registries.yaml` généré, identiques depuis l'API et la ligne de
+  commande, octet pour octet, et les règles de réécriture qui atteignent
+  chaque digest épinglé.
+- [b-clock](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-crucible-report-b-clock.txt), [b-diagnostics](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-crucible-report-b-diagnostics.txt), [b-rebuild](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-crucible-report-b-rebuild.txt),
+  [b-supervision](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-crucible-report-b-supervision.txt) : une horloge invraisemblable signalée sans rien
+  corriger, un bundle de diagnostic qui ne laisse fuir aucun des secrets
+  posés, une instance reconstruite sur un nœud neuf depuis son répertoire
+  d'état, et les règles d'alerte et le tableau de bord testés contre un vrai
+  Prometheus.
+- [c-emergency-path](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-crucible-report-c-emergency-path.txt), [c-exceptions](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-crucible-report-c-exceptions.txt), [c-provenance](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-crucible-report-c-provenance.txt) :
+  la procédure d'urgence suivie à la lettre depuis sa page, des dérogations
+  ciblées et bornées qui rebloquent visiblement à leur échéance, et la
+  provenance de chaque dépôt.
+- [d-hardening](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-crucible-report-d-hardening.txt) : les interrupteurs de durcissement face à de vrais
+  clients Docker, Podman, Helm, ORAS et skopeo, le CSRF et les en-têtes de
+  sécurité.
+- [e-docs-offline](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-crucible-report-e-docs-offline.txt) : la documentation bilingue servie par une instance
+  dans la zone isolée, chaque page, lien et code d'erreur.
+- [z-crown-rke2](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-crucible-report-z-crown-rke2.txt) : la couronne — un cluster RKE2 installé sur un nœud
+  Rocky Linux 9 nu, SELinux en mode enforcing, uniquement avec ce que Tobby
+  a fait traverser, sans aucun paquet sorti de la zone isolée.
+
+Toutes les vérifications passent, avec une précision. Sur un nœud
+intermédiaire, le même jour et sur le même code, les deux scénarios qui
+démarrent une machine virtuelle (b-clock et la couronne) ont échoué : la VM
+n'a pas démarré. Les deux sont passés seuls sur un nœud neuf et dans le
+passage complet publié ici ; la cause n'a pas été établie, et les scénarios
+affichent désormais le journal QEMU si cela se reproduit. Le premier
+passage complet du jalon 7 n'a révélé que des défauts de scénario — une
+image de VM qui exige Secure Boot désactivé, un paquet de distribution qui
+n'existe pas, une variable de digest écrasée, un dépôt RPM vidé par `dnf` —
+corrigés dans les scénarios ; le produit n'a pas été modifié pour eux. Les
+deux revues adversariales du jalon, avant cette recette, ont trouvé et
+corrigé neuf défauts du produit (B-063 à B-071).
 
 ### [milestone-4-quality-audit.md](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-4-quality-audit.md) — audit à un instant donné
 
