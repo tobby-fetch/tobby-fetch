@@ -35,11 +35,14 @@ import (
 //   - after every task that can bring content into the store (sync, unit
 //     import, media import, layout import), inside the task, so the task
 //     settles with its FileSets already served;
+//
 //   - after a successful pack, before the screen or the API answers;
+//
 //   - after a manifest write or delete through /v2/ on the repository of
 //     a declared FileSet, in the background, so a client's push is never
 //     held up by an extraction — and a newer version pushed over a
 //     served one is picked up, which no read-side trigger could notice;
+//
 //   - on a miss: a GET for a DECLARED FileSet that is not served waits for
 //     the resolution in flight, or starts one, before answering — every
 //     concurrent miss shares that one resolution (B-061). This is the backstop for writes the instance
@@ -49,6 +52,23 @@ import (
 //     declared name triggers at most once per fileSetMissCooldown, so a
 //     client polling a FileSet whose content has not arrived costs one
 //     resolution per cooldown, not one per request.
+//
+//     The miss resolves THAT FileSet and nothing else (A6 of the
+//     milestone-7 review): it used to run a full refresh, which
+//     re-extracted every failing source on every miss — N declared
+//     FileSets failing cost N² extractions per cooldown. A digest whose
+//     extraction failed is then held off by the server's backoff
+//     (fileserve.Server.Resolve), and at most fileSetMissWaiters requests
+//     wait at once; the others are answered with what is there.
+//
+//     What it does not hide: a declared name may wait for a resolution
+//     where an undeclared one answers 404 at once. That timing difference
+//     is visible only past authentication (filesAuth runs first) or on an
+//     anonymous FileSet, whose name is public by construction, and the
+//     declared names are listed to every viewer on the FileSets screen —
+//     so it reveals nothing a reader of the surface does not already see.
+//     Making the two indistinguishable would mean holding connections on
+//     names that do not exist, which is the amplification this bounds.
 //
 // On a guarded destination instance every one of those is a no-op while
 // the media gate is closed: nothing is written under the medium's cache
@@ -93,7 +113,14 @@ type fileSetRefresher struct {
 	// (B-061). pending counts the refreshes it covers.
 	flight  chan struct{}
 	pending int
+	// waiting counts the requests currently waiting on a flight
+	// (bounded by fileSetMissWaiters).
+	waiting int
 }
+
+// fileSetMissWaiters bounds the requests that wait on a resolution at
+// once; the ones past it are answered immediately with what is served.
+const fileSetMissWaiters = 64
 
 // fileSetMissWait bounds how long a request for a declared FileSet waits
 // for a resolution in flight before it is answered with what is there.
@@ -187,7 +214,50 @@ func (r *fileSetRefresher) refresh(ctx context.Context) {
 		}
 		r.untrusted.Store(false)
 	}
-	syncFileSets(ctx, r.fsrv, r.st, r.cfg, r.logger)
+	syncFileSets(ctx, r.fsrv, r.st, r.cfg, r.scope(), r.logger)
+}
+
+// scope is what FileSet resolution may look at: the whole store on an
+// instance that guards nothing, the verified set on a guarded one (B-063).
+// A guarded gate that closed meanwhile yields the nil set, which matches
+// nothing.
+func (r *fileSetRefresher) scope() fileSetScope {
+	served, restricted := r.gate.Scope()
+	if !restricted {
+		return nil
+	}
+	return served
+}
+
+// resolveOne resolves and serves the one declared FileSet a miss asked
+// for (A6). A cache not yet rebuilt by this instance goes through the full
+// refresh, which discards it first.
+func (r *fileSetRefresher) resolveOne(ctx context.Context, name string) {
+	if r.untrusted.Load() {
+		r.refresh(ctx)
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.gate.Serving() {
+		return
+	}
+	for _, f := range r.cfg.Files.FileSets {
+		if f.Name != name {
+			continue
+		}
+		set, err := resolveDeclaredFileSet(ctx, r.st, r.cfg, f, r.scope())
+		if err != nil {
+			r.logger.LogAttrs(ctx, slog.LevelWarn, "fileset resolution failed",
+				slog.String("fileset", name), slog.String("error", err.Error()))
+			return
+		}
+		if err := r.fsrv.Resolve(ctx, set); err != nil {
+			r.logger.LogAttrs(ctx, slog.LevelWarn, "fileset extraction failed",
+				slog.String("fileset", name), slog.String("error", err.Error()))
+		}
+		return
+	}
 }
 
 // AfterReset follows a store reset (FR-046, B-059): the reset removes the
@@ -339,21 +409,33 @@ func (r *fileSetRefresher) awaitResolution(ctx context.Context, name string) {
 	// had not registered its flight yet would answer the very 404 this
 	// exists to prevent.
 	r.kmu.Lock()
+	if r.waiting >= fileSetMissWaiters {
+		r.kmu.Unlock()
+		return
+	}
 	flight := r.flight
 	start := false
 	if flight == nil && !r.closed && r.allowMissLocked(name) {
 		flight, start = r.beginLocked(), true
 		r.wg.Add(1)
 	}
+	if flight != nil {
+		r.waiting++
+	}
 	r.kmu.Unlock()
 	if flight == nil {
 		return
 	}
+	defer func() {
+		r.kmu.Lock()
+		r.waiting--
+		r.kmu.Unlock()
+	}()
 	if start {
 		go func() {
 			defer r.wg.Done()
 			defer r.end()
-			r.refresh(r.base)
+			r.resolveOne(r.base, name)
 		}()
 	}
 	timer := time.NewTimer(fileSetMissWait)

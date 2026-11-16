@@ -55,6 +55,12 @@ type Report struct {
 	// carries that will never be pushed, and bookkeeping that does not
 	// match its inventory entry.
 	Findings []Finding `json:"findings,omitempty"`
+	// Served is the content this verification vouches for — what the
+	// pushable recipes reach, re-hashed — and the only content a guarded
+	// destination instance serves (B-063). Nil when no recipe is pushable.
+	// It serializes as a summary (digest and counts); only the in-process
+	// report a verification returned carries the listing itself.
+	Served *Served `json:"served,omitempty"`
 	// Checked is what verification actually read and hashed — the honest
 	// volumetry, which is smaller than the inventory's when a global block
 	// stopped the walk.

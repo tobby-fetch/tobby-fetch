@@ -160,7 +160,7 @@ func Verify(ctx context.Context, src Reader, opts VerifyOptions) (*Report, error
 		return finish(rep), nil
 	}
 
-	rep.Recipes = verifyRecipes(ctx, src, c, m, opts)
+	rep.Recipes, rep.Served = verifyRecipes(ctx, src, c, m, opts)
 	rep.Findings = append(rep.Findings, c.findings(m)...)
 	rep.Checked = Totals{Files: c.files, Bytes: c.bytes}
 	return finish(rep), nil
@@ -400,8 +400,13 @@ func logOverride(opts *VerifyOptions, b Block, guard string) {
 
 // verifyRecipes takes the per-recipe decisions (R-19): completeness and
 // checksums first, then the signature, in the order FR-054 fixes.
-func verifyRecipes(ctx context.Context, src Reader, c *checker, m *Manifest, opts VerifyOptions) []RecipeVerdict {
+//
+// The second return is the served set (B-063): the union of what the
+// PUSHABLE recipes reached, every file of it re-hashed by this walk. It is
+// nil when no recipe is pushable.
+func verifyRecipes(ctx context.Context, src Reader, c *checker, m *Manifest, opts VerifyOptions) ([]RecipeVerdict, *Served) {
 	out := make([]RecipeVerdict, 0, len(m.Recipes))
+	var served *Served
 	for i := range m.Recipes {
 		r := &m.Recipes[i]
 		id := r.Name + "@" + r.Version
@@ -418,7 +423,7 @@ func verifyRecipes(ctx context.Context, src Reader, c *checker, m *Manifest, opt
 			// instance's own verdict and never instead of it (FR-037).
 			SourceAssurance: r.Assurance,
 		}
-		w := &walk{c: c, recipe: id, seen: map[string]bool{}}
+		w := &walk{c: c, recipe: id, seen: map[string]bool{}, served: newServed()}
 		w.delivery(r)
 		v.Files, v.Bytes = w.files, w.bytes
 		if w.reason != nil {
@@ -445,9 +450,18 @@ func verifyRecipes(ctx context.Context, src Reader, c *checker, m *Manifest, opt
 				v.Pushable, v.Reason = false, refusal
 			}
 		}
+		if v.Pushable {
+			if served == nil {
+				served = newServed()
+			}
+			served.merge(w.served)
+		}
 		out = append(out, v)
 	}
-	return out
+	if served != nil {
+		served.seal()
+	}
+	return out, served
 }
 
 // decide applies the signature verdict to a recipe whose content already
@@ -656,6 +670,7 @@ func (c *checker) findings(m *Manifest) []Finding {
 		out = append(out, Finding{Code: taxonomy.CodeMediaUncovered, Path: p,
 			Params: map[string]string{"path": p}})
 	}
+	out = append(out, c.fileSetCache()...)
 	sort.Slice(out, func(a, b int) bool {
 		if out[a].Code != out[b].Code {
 			return out[a].Code < out[b].Code
@@ -703,6 +718,134 @@ func (c *checker) uncovered() []string {
 	return out
 }
 
+// fileSetCache reports the FileSet extraction cache a medium carries
+// (A9 of the milestone-7 review). The cache is outside coverage (B-060)
+// and a guarded destination discards it before extracting anything, but
+// "outside coverage" must not mean "unreported": a tree nothing hashes is
+// a channel, in both directions — `tobby media import` leaves it on the
+// medium, and it travels back. So the cache is summarized in one finding
+// (files, bytes: ignored and rebuilt), and anything under it that does not
+// have the shape an extraction leaves — <name>/<digest>/rootfs/…,
+// <name>/<digest>/.complete — is reported as uncovered content, path by
+// path.
+func (c *checker) fileSetCache() []Finding {
+	var (
+		out   []Finding
+		files int
+		bytes int64
+	)
+	err := fs.WalkDir(c.root.FS(), FileSetCache, func(p string, d fs.DirEntry, err error) error {
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return fs.SkipAll
+		case err != nil:
+			return err
+		}
+		if err := c.ctx.Err(); err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if !cacheDirShape(strings.TrimPrefix(p, FileSetCache)) {
+				out = append(out, Finding{Code: taxonomy.CodeMediaUncovered, Path: p,
+					Params: map[string]string{"path": p}})
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !cacheFileShape(strings.TrimPrefix(p, FileSetCache+"/")) {
+			out = append(out, Finding{Code: taxonomy.CodeMediaUncovered, Path: p,
+				Params: map[string]string{"path": p}})
+			return nil
+		}
+		files++
+		if info, ierr := d.Info(); ierr == nil {
+			bytes += info.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		p := FileSetCache + " (not fully readable: " + err.Error() + ")"
+		out = append(out, Finding{Code: taxonomy.CodeMediaUncovered, Path: p,
+			Params: map[string]string{"path": p}})
+	}
+	if files > 0 {
+		out = append(out, Finding{Code: taxonomy.CodeMediaFileSetCache, Path: FileSetCache,
+			Params: map[string]string{
+				"path": FileSetCache, "files": strconv.Itoa(files), "bytes": strconv.FormatInt(bytes, 10),
+			}})
+	}
+	return out
+}
+
+// cacheDirShape accepts the directories an extraction leaves: the cache
+// root, <name>, <name>/<digest>, and anything under <name>/<digest>/rootfs.
+// rel is the path below meta/fileserve, with its leading slash.
+func cacheDirShape(rel string) bool {
+	if rel == "" {
+		return true
+	}
+	parts := strings.Split(strings.TrimPrefix(rel, "/"), "/")
+	switch {
+	case !cacheNameShape(parts[0]):
+		return false
+	case len(parts) == 1:
+		return true
+	case !cacheDigestShape(parts[1]):
+		return false
+	case len(parts) == 2:
+		return true
+	}
+	return parts[2] == "rootfs"
+}
+
+// cacheFileShape accepts the files an extraction leaves: the completion
+// marker of a digest directory, and anything inside its rootfs.
+func cacheFileShape(rel string) bool {
+	parts := strings.Split(rel, "/")
+	if len(parts) < 3 || !cacheNameShape(parts[0]) || !cacheDigestShape(parts[1]) {
+		return false
+	}
+	if len(parts) == 3 {
+		return parts[2] == ".complete"
+	}
+	return parts[2] == "rootfs"
+}
+
+// cacheNameShape is the FileSet server's directory naming (fileserve
+// sanitizeName): lower-case alphanumerics, dots and dashes, or "_" and
+// sixteen hex digits.
+func cacheNameShape(seg string) bool {
+	if h, ok := strings.CutPrefix(seg, "_"); ok {
+		return len(h) == 16 && isLowerHex(h)
+	}
+	if seg == "" || len(seg) > 100 || seg[0] == '.' || seg[0] == '-' {
+		return false
+	}
+	for i := range len(seg) {
+		ch := seg[i]
+		if (ch < 'a' || ch > 'z') && (ch < '0' || ch > '9') && ch != '.' && ch != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// cacheDigestShape is a digest directory: "sha256_" and 64 hex digits.
+func cacheDigestShape(seg string) bool {
+	h, ok := strings.CutPrefix(seg, "sha256_")
+	return ok && len(h) == 64 && isLowerHex(h)
+}
+
+func isLowerHex(s string) bool {
+	for i := range len(s) {
+		ch := s[i]
+		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 // walk is the reachability walk of one recipe: what this delivery reaches
 // on the medium, checked as it is discovered. It stops at the first
 // failure — the recipe is blocked whole either way (R-19), and the report
@@ -714,17 +857,22 @@ type walk struct {
 	reason *Reason
 	files  int
 	bytes  int64
+	// served is what this recipe reached and checked: merged into the
+	// report's served set only if the recipe ends up pushable.
+	served *Served
 }
 
-// delivery walks the four things a delivery is made of: the recipe
-// artifact, its signature artifacts, its ingredients, and everything those
-// reach.
+// delivery walks the five things a delivery is made of: the recipe
+// artifact, its signature artifacts, its ingredients, the ingredients' own
+// signature artifacts (B-062: copied along so a consumer in the zone can
+// verify an upstream-signed image), and everything those reach.
 func (w *walk) delivery(r *Recipe) {
 	w.root(r.ArtifactRepo, r.Digest, r.ArtifactTag)
 	w.signatures(r.ArtifactRepo, r.Digest)
 	for i := range r.Ingredients {
 		ing := &r.Ingredients[i]
 		w.root(ing.Repo, ing.Digest, ing.Tag)
+		w.signatures(ing.Repo, ing.Digest)
 	}
 }
 
@@ -742,6 +890,13 @@ func (w *walk) root(repo, dgst, tag string) {
 		w.optionalTree(tagIndexDir(repo, tag))
 	}
 	w.manifest(repo, dgst, true)
+	if tag != "" && w.reason == nil {
+		// The tag is served only while it names the pinned digest it was
+		// verified at; a tag the medium points elsewhere is not.
+		if d, ok := w.currentDigest(repo, tag); ok && d == dgst {
+			w.served.repo(repo).tags[tag] = d
+		}
+	}
 }
 
 // signatures walks the cosign artifacts that travel with the recipe
@@ -762,6 +917,9 @@ func (w *walk) signatures(repo, dgst string) {
 		w.optionalTree(tagIndexDir(repo, tag))
 		if d, ok := w.currentDigest(repo, tag); ok {
 			w.manifest(repo, d, true)
+			if w.reason == nil {
+				w.served.repo(repo).tags[tag] = d
+			}
 		}
 	}
 }
@@ -832,6 +990,7 @@ func (w *walk) manifest(repo, dgst string, required bool) {
 		}})
 		return
 	}
+	w.served.repo(repo).manifests[dgst] = true
 	for i := range doc.Manifests {
 		w.manifest(repo, doc.Manifests[i].Digest, false)
 	}
@@ -858,6 +1017,9 @@ func (w *walk) blob(repo, dgst string) {
 	}
 	w.file(layerLinkPath(repo, h))
 	w.file(blobPath(h))
+	if w.reason == nil {
+		w.served.repo(repo).blobs[dgst] = true
+	}
 }
 
 // file checks one required file and accounts for it.

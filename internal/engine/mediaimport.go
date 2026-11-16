@@ -419,6 +419,17 @@ func logVerification(ctx context.Context, logger *slog.Logger, rep *media.Report
 			slog.String("code", string(rep.Findings[0].Code)),
 			slog.String("requirement", "FR-054"))
 	}
+	// A carried FileSet cache is named on its own line, whatever else the
+	// medium carries: nothing hashed it, nothing removes it from the
+	// medium, and it travels back with it (A9 of the milestone-7 review).
+	for i := range rep.Findings {
+		if f := &rep.Findings[i]; f.Code == taxonomy.CodeMediaFileSetCache {
+			logger.LogAttrs(ctx, slog.LevelWarn, "medium carries a FileSet cache: never hashed, never served, left on the medium",
+				slog.String("path", f.Path), slog.String("files", f.Params["files"]),
+				slog.String("bytes", f.Params["bytes"]), slog.String("code", string(f.Code)),
+				slog.String("requirement", "FR-054"))
+		}
+	}
 }
 
 // mediumGraph is the medium's recipe graph, indexed by "name@version".

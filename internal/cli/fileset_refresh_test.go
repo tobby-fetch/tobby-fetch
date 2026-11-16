@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -166,4 +167,91 @@ func TestConcurrentMissesShareOneResolution(t *testing.T) {
 			}
 		})
 	}
+}
+
+// recordText keeps the rendered attributes of every resolution record.
+type recordText struct {
+	mu    sync.Mutex
+	lines []string
+}
+
+func (c *recordText) Enabled(context.Context, slog.Level) bool { return true }
+func (c *recordText) Handle(_ context.Context, r slog.Record) error { //nolint:gocritic // slog.Handler's signature
+	if r.Message != "fileset resolution failed" {
+		return nil
+	}
+	var b strings.Builder
+	r.Attrs(func(a slog.Attr) bool {
+		b.WriteString(a.String() + " ")
+		return true
+	})
+	c.mu.Lock()
+	c.lines = append(c.lines, b.String())
+	c.mu.Unlock()
+	return nil
+}
+func (c *recordText) WithAttrs([]slog.Attr) slog.Handler { return c }
+func (c *recordText) WithGroup(string) slog.Handler      { return c }
+
+// TestAMissResolvesOnlyTheMissedFileSet (A6 of the milestone-7 review): a
+// miss on one declared FileSet resolves that one. It used to run a full
+// refresh — every declared FileSet, every failing extraction — on every
+// miss.
+//
+// Proved fallible: before the fix the miss on "first" resolved "second"
+// too, and the record named both.
+func TestAMissResolvesOnlyTheMissedFileSet(t *testing.T) {
+	st := openFileSetStore(t)
+	rec := &recordText{}
+	logger := slog.New(rec)
+	fsrv := fileserve.NewServer(storeBlobs{st: st}, t.TempDir(), fileserve.Limits{}, logger)
+	t.Cleanup(func() { _ = fsrv.Close() })
+	cfg := fileSetConfig(
+		config.FileSetServe{Name: "first", Ref: "registry.example.com/filesets/absent-one"},
+		config.FileSetServe{Name: "second", Ref: "registry.example.com/filesets/absent-two"},
+	)
+	gate := mediagate.Open(context.Background(), t.TempDir(), "", logger)
+	r := newFileSetRefresher(context.Background(), fsrv, st, cfg, gate, logger)
+	h := r.Files(fsrv.Handler())
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/files/first/a.txt", http.NoBody))
+	r.Close()
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.lines) != 1 {
+		t.Fatalf("the miss resolved %d times, want once: %v", len(rec.lines), rec.lines)
+	}
+	if strings.Contains(rec.lines[0], "second") || strings.Contains(rec.lines[0], "absent-two") {
+		t.Errorf("a miss on first resolved second too: %s", rec.lines[0])
+	}
+}
+
+// TestMissWaitersAreBounded (A6): at most fileSetMissWaiters requests wait
+// on a resolution; the next one is answered at once.
+func TestMissWaitersAreBounded(t *testing.T) {
+	st := openFileSetStore(t)
+	logger := slog.New(slog.DiscardHandler)
+	fsrv := fileserve.NewServer(storeBlobs{st: st}, t.TempDir(), fileserve.Limits{}, logger)
+	t.Cleanup(func() { _ = fsrv.Close() })
+	cfg := fileSetConfig(config.FileSetServe{Name: "awaited", Ref: "registry.example.com/filesets/absent"})
+	gate := mediagate.Open(context.Background(), t.TempDir(), "", logger)
+	r := newFileSetRefresher(context.Background(), fsrv, st, cfg, gate, logger)
+
+	// A flight that never ends, and the waiters already at the bound.
+	r.kmu.Lock()
+	flight := r.beginLocked()
+	r.waiting = fileSetMissWaiters
+	r.kmu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		r.awaitResolution(context.Background(), "awaited")
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a request past the waiter bound waited on the flight")
+	}
+	r.end()
+	<-flight
 }
