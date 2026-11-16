@@ -8,6 +8,17 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+### Documentation
+
+- **French parity** (7.2): every English page of the documentation now has
+  its French counterpart, and three pages are new in both languages: the
+  security model, troubleshooting by symptom (with the `TBY-*` codes and
+  their corrective actions), and the emergency path (R-21), the end-to-end
+  procedure for a locally written recipe signed with the organization's
+  emergency key and admitted under a declared `emergency` trust scope.
+  Pages describing the stale "upcoming" state of the milestone 6 controls
+  (scanning, OIDC, SAML) were brought up to date.
+
 ## [0.6.0] - 2026-11-12
 
 Milestone 6: hardened controls and enterprise identity. Every container

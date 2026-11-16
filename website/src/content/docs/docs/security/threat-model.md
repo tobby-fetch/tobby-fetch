@@ -7,8 +7,7 @@ sidebar:
 
 This page states what Tobby defends, against whom, and with which
 mechanism. Every control carries its requirement number and its delivery
-status; the milestone 6 scanning and enterprise-identity controls are
-marked as upcoming, not presented as delivered.
+status. For the model as a whole, see [the security model](../model/).
 
 ## Assets
 
@@ -80,12 +79,13 @@ capability. Key custody (HSM/KMS, revocation) is deliberately the
 operating organization's responsibility and out of Tobby's scope
 (ADR-0007).
 
-:::note[Upcoming — milestone 6]
-Vulnerability scanning (FR-031, FR-032, ADR-0008) addresses a different
-adversary — *honestly signed content with known CVEs* — and arrives at
-milestone 6, together with authentication hardening (R-14) and the
-reduced-trust content marker (R-22).
-:::
+**Honestly signed content with known CVEs.** Signatures prove who
+vouched for content, not that it is free of vulnerabilities. Scanning
+(FR-031, FR-032, ADR-0008 — delivered v0.6.0) addresses that adversary
+under an advisory or blocking policy, and content admitted under a
+relaxed trust scope stays marked item by item (R-22 — delivered v0.6.0).
+See [vulnerability scanning](../vulnerability-scanning/) and the
+[reduced-assurance marker](../reduced-assurance/).
 
 ## Trust boundaries per mode
 
@@ -153,7 +153,7 @@ hostile — because it may have been.
 | Retriever source (file, HTTPS, OCI) | outbound | configured endpoint (FR-010) | source side only |
 | Destination zone registry | outbound | differential push of verified content (FR-028) | destination side, from the transported store |
 | Trust-root URLs | outbound | fetched at configuration time only, never at verification time (FR-033) | inline or file forms instead |
-| Identity provider | outbound | OIDC/SAML at milestone 6 (FR-070, FR-071) | local accounts |
+| Identity provider | outbound | OIDC/SAML (FR-070, FR-071 — delivered v0.6.0) | local accounts |
 | Telemetry, update checks, crash reporting | outbound | **none, ever** (NFR-019) | none |
 
 **No other destination, ever.** NFR-019 requires that no connection
@@ -179,4 +179,4 @@ proxy that records every connection attempt (ADR-0014). See
 | Per-recipe blocking, no override on integrity or signature | R-19 | delivered v0.5.0 |
 | Secrets never on media, enforced at startup | R-16, NFR-020 | delivered v0.5.0 |
 | Trivy scanning with policy, offline DB carried by Tobby | FR-031, FR-032, ADR-0008 — [Vulnerability scanning](../vulnerability-scanning/) | v0.6.0 |
-| OIDC then SAML | FR-070, FR-071 | upcoming, milestone 6 |
+| OIDC and SAML 2.0 | FR-070, FR-071 | delivered v0.6.0 |
