@@ -58,6 +58,11 @@ type Scan struct {
 	DBRepository string `yaml:"dbRepository,omitempty"`
 	// Trivy locates and pins the scanner binary (ADR-0008 decision 4).
 	Trivy Trivy `yaml:"trivy"`
+	// VEX lists local OpenVEX documents whose not_affected statements
+	// become bounded exceptions (FR-031 amendment 2026-11-16, R-15).
+	// Reserved: refused while R-15 has not landed. List-valued:
+	// configuration file only.
+	VEX []VEXDocument `yaml:"vex,omitempty"`
 	// Timeout bounds one scan of one item, the scanner process included.
 	// Default 10m. An item whose scan times out is reported not scanned
 	// (and refused under a blocking policy).
@@ -73,8 +78,15 @@ type ScanException struct {
 	// at milestone 7).
 	Justification string `yaml:"justification,omitempty"`
 	// Expires is optional at milestone 6. A past expiry means the
-	// exception no longer applies.
+	// exception no longer applies. R-15 makes it mandatory (FR-031
+	// amendment 2026-11-16): the track that lands it turns its absence
+	// into a configuration error.
 	Expires time.Time `yaml:"expires,omitempty"`
+	// Scope narrows the exception to a digest, a source repository and a
+	// recipe (R-15, milestone7.go). Reserved: refused while R-15 has not
+	// landed, since an ignored scope would make the exception broader
+	// than its author meant.
+	Scope ExceptionScope `yaml:"scope,omitempty"`
 }
 
 // Trivy locates the scanner binary. With every field empty the platform

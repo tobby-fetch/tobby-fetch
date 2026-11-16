@@ -70,6 +70,12 @@ type Config struct {
 	Files       Files       `yaml:"files"`
 	Logging     Logging     `yaml:"logging"`
 	Shutdown    Shutdown    `yaml:"shutdown"`
+
+	// The milestone-7 surface (milestone7.go).
+	Consumption Consumption `yaml:"consumption"`
+	Diagnostics Diagnostics `yaml:"diagnostics"`
+	Clock       Clock       `yaml:"clock"`
+	Hardening   Hardening   `yaml:"hardening"`
 }
 
 // Retriever locates the desired-state document (FR-010): an HTTP(S) URL,
@@ -627,6 +633,7 @@ func Default() Config {
 		Shutdown:    Shutdown{GracePeriod: Duration(30 * time.Second)},
 	}
 	defaultMilestone6(&cfg)
+	defaultMilestone7(&cfg)
 	return cfg
 }
 
@@ -795,6 +802,7 @@ func (c *Config) validate(scope Scope) error {
 	errs = append(errs, c.validateFiles()...)
 	errs = append(errs, c.validateScan()...)
 	errs = append(errs, c.validateAuthMilestone6()...)
+	errs = append(errs, c.validateMilestone7(scope)...)
 	return errors.Join(errs...)
 }
 

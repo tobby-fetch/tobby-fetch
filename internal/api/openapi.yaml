@@ -1898,6 +1898,12 @@ components:
                 type: string
               kind:
                 $ref: "#/components/schemas/Kind"
+              provenance:
+                type: string
+                enum: [recipe, unit-import, seed]
+                description: >-
+                  Reserved (R-17, milestone 7): the repository's provenance
+                  class (FR-098). Absent until the feature lands.
               tags:
                 type: integer
               sizeBytes:
@@ -1918,6 +1924,8 @@ components:
           type: string
         kind:
           $ref: "#/components/schemas/Kind"
+        provenance:
+          $ref: "#/components/schemas/Provenance"
         tags:
           type: array
           items:
@@ -1935,6 +1943,33 @@ components:
               presentPlatforms:
                 type: integer
                 description: Entries whose manifest is locally held (sparse index, FR-022).
+    Provenance:
+      description: >-
+        Reserved (R-17, milestone 7). How a repository entered the store
+        (FR-098): managed by verified recipes, a unit import or local
+        packing, or a direct push through /v2/. A fact about this store,
+        never written into any registry. Absent until the feature lands.
+      type: object
+      properties:
+        class:
+          type: string
+          enum: [recipe, unit-import, seed]
+        origin:
+          type: string
+          description: Refines unit-import; "local-pack" for a packed FileSet (FR-048).
+        recipes:
+          type: array
+          description: The recipes managing the repository, for class recipe.
+          items: { type: string }
+        assurance:
+          $ref: "#/components/schemas/Assurance"
+        lastScan:
+          type: object
+          description: The last vulnerability scan of the repository's tags, when one exists (FR-031).
+          properties:
+            verdict: { type: string }
+            scannedAt: { type: string, format: date-time }
+            databaseBuiltAt: { type: string, format: date-time }
     ContentManifest:
       type: object
       properties:
@@ -2423,6 +2458,22 @@ components:
         level:
           type: string
           enum: [instance, retriever]
+        scope:
+          description: >-
+            Reserved (R-15, milestone 7). Narrows the exception; the
+            criteria present combine with AND. Absent, the exception
+            applies to every item of its level.
+          type: object
+          properties:
+            digest: { type: string, description: "Manifest digest, sha256:<64 hex>." }
+            repository: { type: string, description: "Nominal source repository pattern, canonical form (ADR-0013)." }
+            recipe: { type: string, description: "Recipe name, optionally name@version." }
+        vex:
+          type: string
+          description: >-
+            Reserved (R-15, milestone 7). The local OpenVEX document this
+            exception was translated from; absent for an exception written
+            by hand.
     ScanEvaluation:
       type: object
       description: The evaluated policy of one item — verdict, reasons, exceptions applied.

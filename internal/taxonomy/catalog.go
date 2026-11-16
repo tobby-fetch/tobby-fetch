@@ -11,7 +11,9 @@ import "net/http"
 // and digest verification, FR-033), DST (destination limits, FR-035), STO
 // (local store), MED (removable-media transport, FR-054), SCN
 // (vulnerability scanning, FR-031/FR-032), INT (on-demand store integrity,
-// FR-057), TSK (tasks), SRV (instance itself).
+// FR-057), AID (consumption aids, FR-065), DIA (diagnostic bundle,
+// FR-095), CLK (clock plausibility, FR-096), STA (instance state
+// directory, FR-097), TSK (tasks), SRV (instance itself).
 //
 // Codes marked "reserved" have no emitter yet: the class is fixed at
 // milestone 2 (roadmap directive) so later milestones plug engines into an
@@ -177,6 +179,15 @@ const (
 	// different content (RECIPE-SPEC §8: a cooked recipe is immutable —
 	// any change, even a single digest, requires a new metadata.version).
 	CodeTagImmutable Code = "TBY-POL-004"
+	// CodeUnitImportDisabled refuses a unit import or a local packing on an
+	// instance hardened with hardening.disableUnitImport (FR-098, R-17).
+	// Reserved: emitter lands with R-17 (milestone 7, track C).
+	CodeUnitImportDisabled Code = "TBY-POL-005"
+	// CodeRegistryPushDisabled refuses a push to the embedded registry on an
+	// instance hardened with hardening.disableRegistryPush (FR-098), in the
+	// OCI DENIED envelope on /v2/. Reserved: emitter lands with R-17
+	// (milestone 7, track C).
+	CodeRegistryPushDisabled Code = "TBY-POL-006"
 
 	// CodeSignature is a recipe signature that no configured trust root
 	// validates (FR-033).
@@ -420,6 +431,22 @@ const (
 	// scanner are never refused by it, or the zone could never arm one
 	// (ADR-0017). Non-blocking.
 	CodeScanSystemAdvisory Code = "TBY-SCN-025"
+	// CodeScanExceptionOutOfScope reports an exception whose identifier
+	// matches a finding but whose scope (digest, repository, recipe)
+	// excludes the item: it does not apply here, and the report says why
+	// the item is still judged on the finding (FR-031 amendment, R-15).
+	// Non-blocking by itself. Reserved: emitter lands with R-15
+	// (milestone 7, track C).
+	CodeScanExceptionOutOfScope Code = "TBY-SCN-026"
+	// CodeScanVEXInvalid is a configured OpenVEX document that cannot be
+	// read or validated: the instance refuses to start (FR-031 amendment,
+	// R-15). Reserved: emitter lands with R-15 (milestone 7, track C).
+	CodeScanVEXInvalid Code = "TBY-SCN-027"
+	// CodeScanExceptionUnbounded reports a Retriever exception without
+	// expiry, applied but stated as unbounded until the v1 format makes the
+	// expiry mandatory there too (FR-031 amendment, R-15). Non-blocking.
+	// Reserved: emitter lands with R-15 (milestone 7, track C).
+	CodeScanExceptionUnbounded Code = "TBY-SCN-028"
 
 	// On-demand store integrity verification (FR-057, R-31 — milestone
 	// 6). Read-only: every code reports, none repairs; signatures that no
@@ -444,6 +471,46 @@ const (
 	// CodeIntegrityCancelled is a verification an operator cancelled before
 	// it reached a verdict (FR-057): it reports nothing about the store.
 	CodeIntegrityCancelled Code = "TBY-INT-006"
+
+	// Milestone 7 — reserved at the opening of the milestone. No emitter
+	// yet: each track wires its own codes and drops the "Reserved" marker
+	// of the reference pages when it does.
+	//
+	// CodeAidsNoRegistry refuses to generate a consumption aid on an
+	// instance that names no registry the zone pulls from: neither
+	// destination.registry nor consumption.registry (FR-065 amendment, 7.1).
+	// Reserved: emitter lands with 7.1 (track A).
+	CodeAidsNoRegistry Code = "TBY-AID-001"
+	// CodeDiagnosticsFailed is a diagnostic bundle that could not be
+	// produced (FR-095, R-30). Reserved: emitter lands with R-30 (track B).
+	CodeDiagnosticsFailed Code = "TBY-DIA-001"
+	// CodeDiagnosticsRedaction is a diagnostic bundle aborted because a
+	// member still held a secret value the instance knows: redaction fails
+	// closed (FR-095). Names the member, never the secret. Reserved:
+	// emitter lands with R-30 (track B).
+	CodeDiagnosticsRedaction Code = "TBY-DIA-002"
+	// CodeClockBeforeBuild reports a local clock earlier than the build time
+	// of the running binary beyond the tolerance (FR-096, R-32).
+	// Non-blocking: it warns and records. Reserved: emitter lands with R-32
+	// (track B).
+	CodeClockBeforeBuild Code = "TBY-CLK-001"
+	// CodeClockBeforeMedium reports a local clock earlier than the
+	// resolution time of the medium being opened beyond the tolerance
+	// (FR-096). Non-blocking. Reserved: emitter lands with R-32 (track B).
+	CodeClockBeforeMedium Code = "TBY-CLK-002"
+	// CodeStateLayoutUnknown refuses to start on a state directory whose
+	// layout version this build does not know (FR-097, R-27). Reserved:
+	// emitter lands with R-27 (track B).
+	CodeStateLayoutUnknown Code = "TBY-STA-001"
+	// CodeStatePermissions refuses to start on a state directory whose
+	// secret entry is readable by others (FR-097, NFR-020). Reserved:
+	// emitter lands with R-27 (track B).
+	CodeStatePermissions Code = "TBY-STA-002"
+	// CodeStateIdentityMissing reports an identity entry of the state
+	// directory missing at startup — accounts, certificate, import record —
+	// typically after an incomplete restore (FR-097). Non-blocking by
+	// itself. Reserved: emitter lands with R-27 (track B).
+	CodeStateIdentityMissing Code = "TBY-STA-003"
 
 	// CodeTaskNotFound is a task identifier unknown to this instance.
 	CodeTaskNotFound Code = "TBY-TSK-001"
@@ -606,6 +673,24 @@ var catalog = map[Code]Entry{
 	CodeIntegrityRunning:    {Code: CodeIntegrityRunning, Class: ClassOperational, HTTPStatus: http.StatusConflict, Params: []string{"task"}},
 	CodeIntegrityCancelled:  {Code: CodeIntegrityCancelled, Class: ClassOperational, Params: []string{"task"}},
 	CodeIntegrityUnreadable: {Code: CodeIntegrityUnreadable, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
+
+	// Milestone 7 — reserved (see the declarations). Startup refusals and
+	// non-blocking notes carry no status: they are never a response body.
+	CodeUnitImportDisabled:      {Code: CodeUnitImportDisabled, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"setting"}},
+	CodeRegistryPushDisabled:    {Code: CodeRegistryPushDisabled, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"setting"}},
+	CodeScanExceptionOutOfScope: {Code: CodeScanExceptionOutOfScope, Class: ClassOperational, Params: []string{"id", "reference", "scope"}},
+	CodeScanVEXInvalid:          {Code: CodeScanVEXInvalid, Class: ClassOperational, Params: []string{"path", "detail"}},
+	CodeScanExceptionUnbounded:  {Code: CodeScanExceptionUnbounded, Class: ClassOperational, Params: []string{"id"}},
+	// 409: the request is well formed; this instance's configuration is
+	// what cannot answer it.
+	CodeAidsNoRegistry:       {Code: CodeAidsNoRegistry, Class: ClassOperational, HTTPStatus: http.StatusConflict},
+	CodeDiagnosticsFailed:    {Code: CodeDiagnosticsFailed, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
+	CodeDiagnosticsRedaction: {Code: CodeDiagnosticsRedaction, Class: ClassPolicy, HTTPStatus: http.StatusInternalServerError, Params: []string{"member"}},
+	CodeClockBeforeBuild:     {Code: CodeClockBeforeBuild, Class: ClassOperational, Params: []string{"now", "anchor", "gap"}},
+	CodeClockBeforeMedium:    {Code: CodeClockBeforeMedium, Class: ClassOperational, Params: []string{"now", "anchor", "gap", "medium"}},
+	CodeStateLayoutUnknown:   {Code: CodeStateLayoutUnknown, Class: ClassOperational, Params: []string{"root", "version"}},
+	CodeStatePermissions:     {Code: CodeStatePermissions, Class: ClassPolicy, Params: []string{"path", "mode"}},
+	CodeStateIdentityMissing: {Code: CodeStateIdentityMissing, Class: ClassOperational, Params: []string{"entry"}},
 
 	CodeTaskNotFound: {Code: CodeTaskNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound, Params: []string{"id"}},
 

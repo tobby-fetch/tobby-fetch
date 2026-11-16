@@ -51,11 +51,30 @@ type Exception struct {
 	Expires time.Time `json:"expires,omitzero"`
 	// Level is where the exception was declared.
 	Level Level `json:"level"`
+	// Scope narrows the exception (FR-031 amendment 2026-11-16, R-15).
+	// Reserved: nil until R-15 lands — and nil keeps the exception
+	// level-wide, as at milestone 6.
+	Scope *ExceptionScope `json:"scope,omitempty"`
+	// VEX names the local OpenVEX document an exception was translated
+	// from (R-15); empty for an exception written by hand. Reserved.
+	VEX string `json:"vex,omitempty"`
+}
+
+// ExceptionScope narrows an exception to the items it was meant for
+// (R-15). The criteria present combine with AND.
+type ExceptionScope struct {
+	// Digest is a manifest digest, "sha256:<64 hex>".
+	Digest string `json:"digest,omitempty"`
+	// Repository is a nominal source repository pattern, canonical form,
+	// with the glob grammar of trust scopes.
+	Repository string `json:"repository,omitempty"`
+	// Recipe is a recipe name, optionally "name@version".
+	Recipe string `json:"recipe,omitempty"`
 }
 
 // ExpiredAt reports whether the exception no longer applies at now: it
 // carries an expiry, and now is past it.
-func (e Exception) ExpiredAt(now time.Time) bool {
+func (e *Exception) ExpiredAt(now time.Time) bool {
 	return !e.Expires.IsZero() && now.After(e.Expires)
 }
 

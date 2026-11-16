@@ -155,6 +155,14 @@
 "TBY-POL-004.cause": "{{.reference}} pointe déjà sur {{.published}} ; le document proposé publierait {{.candidate}}. Une recipe cuite est immuable (RECIPE-SPEC §8)."
 "TBY-POL-004.action": "Publiez le changement sous un nouveau metadata.version et un nouveau tag. Republier une version sur un contenu différent changerait en silence ce que des zones ont déjà résolu."
 
+"TBY-POL-005.what": "Cette instance n'accepte pas d'import unitaire."
+"TBY-POL-005.cause": "Elle est durcie par {{.setting}} : le contenu n'entre dans son store que par des recipes vérifiées, et un import unitaire ou un empaquetage local serait un contenu qu'aucune recipe ne garantit."
+"TBY-POL-005.action": "Livrez ce contenu par une recipe signée. Si l'import unitaire est nécessaire sur cette instance, un administrateur retire {{.setting}} de sa configuration et la redémarre."
+
+"TBY-POL-006.what": "Ce registre est en lecture seule : les push sont refusés."
+"TBY-POL-006.cause": "L'instance est durcie par {{.setting}} : sa registry embarquée sert du contenu et n'en accepte d'aucun client, quel que soit son rôle. Les synchronisations de recipes écrivent toujours dans le store."
+"TBY-POL-006.action": "Tirez depuis ce registre, ou poussez vers la registry de la zone. Alimenter cette instance par push exige qu'un administrateur retire {{.setting}} et la redémarre."
+
 "TBY-SIG-001.what": "La signature de la recipe n'a pas pu être vérifiée."
 "TBY-SIG-001.cause": "{{if .scope}}Aucune clé de confiance autorisée par le périmètre de confiance {{.scope}} ne valide la signature de {{.recipe}} (clés essayées : {{.fingerprints}}). Une clé valide pour un autre périmètre ne s'applique pas dans celui-ci.{{else}}Aucune clé de confiance configurée ne valide la signature de {{.recipe}} (clés essayées : {{.fingerprints}}).{{end}}"
 "TBY-SIG-001.action": "{{if .scope}}Vérifiez les clés listées par le périmètre {{.scope}} (trust.scopes[].roots) : elles doivent inclure la clé qui a signé cette recipe, ou la recipe relève d'un autre périmètre.{{else}}Vérifiez que les clés de confiance de la zone incluent la clé qui a signé cette recipe.{{end}} Une recipe non vérifiée n'est jamais admise."
@@ -355,6 +363,18 @@
 "TBY-SCN-025.cause": "C'est une livraison de l'analyseur lui-même. La refuser au nom de la politique qu'elle arme laisserait la zone sans moyen d'armer un analyseur, ni de mettre à jour sa base."
 "TBY-SCN-025.action": "Rien à faire. Ses vulnérabilités restent rapportées ; la confiance dans ce contenu repose sur la signature de la recipe tobby-system."
 
+"TBY-SCN-026.what": "La dérogation pour {{.id}} ne couvre pas {{.reference}}."
+"TBY-SCN-026.cause": "La dérogation est limitée à {{.scope}}, et cet élément est hors de cette portée : la vulnérabilité est jugée comme si aucune dérogation n'existait."
+"TBY-SCN-026.action": "Rien à faire si la portée est la bonne. Si cet élément devait être couvert, élargissez la portée de la dérogation dans la configuration — elle reste bornée par son expiration."
+
+"TBY-SCN-027.what": "Le document OpenVEX {{.path}} est inutilisable."
+"TBY-SCN-027.cause": "{{.detail}}"
+"TBY-SCN-027.action": "Corrigez ou retirez le document listé sous scan.vex, puis redémarrez. Tobby lit les documents OpenVEX et ne les télécharge jamais : le fichier doit être un document local valide."
+
+"TBY-SCN-028.what": "La dérogation du Retriever pour {{.id}} n'a pas d'expiration."
+"TBY-SCN-028.cause": "Elle s'applique, mais sans limite dans le temps : les dérogations déclarées par une instance doivent porter une expiration, et celles des Retrievers le devront aussi à partir du format v1."
+"TBY-SCN-028.action": "Demandez au responsable du Retriever de la zone de donner à la dérogation une date expires et une justification."
+
 "TBY-INT-001.what": "Le blob {{.path}} ne correspond pas à son digest."
 "TBY-INT-001.cause": "Son contenu donne {{.actual}} au lieu de {{.expected}} : le fichier a été endommagé ou modifié sur le disque."
 "TBY-INT-001.action": "La vérification ne modifie rien. Re-synchronisez les recipes qui atteignent ce blob pour le récupérer à nouveau, ou restaurez le store depuis une copie saine ; vérifiez le disque."
@@ -378,6 +398,40 @@
 "TBY-INT-006.what": "La vérification du store a été annulée."
 "TBY-INT-006.cause": "La vérification {{.task}} a été arrêtée avant d'atteindre un verdict : elle ne dit rien du store."
 "TBY-INT-006.action": "Lancez une nouvelle vérification quand vous voulez une réponse. Rien n'a été modifié : une vérification ne fait que lire."
+
+# Jalon 7 — réservés à l'ouverture du jalon.
+
+"TBY-AID-001.what": "Aucune aide à la consommation ne peut être générée : cette instance ne nomme aucune registry depuis laquelle la zone tire."
+"TBY-AID-001.cause": "La table de correspondance et l'extrait registries.yaml pointent vers la registry de la zone. Cette instance ne pousse vers aucune destination.registry, et consumption.registry n'est pas renseigné."
+"TBY-AID-001.action": "Renseignez destination.registry si cette instance pousse vers la registry de la zone, ou consumption.registry avec l'adresse depuis laquelle les clients de la zone tirent — cette instance elle-même quand elle sert la zone."
+
+"TBY-DIA-001.what": "Le bundle de diagnostic n'a pas pu être produit."
+"TBY-DIA-001.cause": "{{.detail}}"
+"TBY-DIA-001.action": "Réessayez ; en cas de nouvel échec, collectez les journaux de l'instance par les moyens du déploiement. Rien n'a été écrit ni envoyé : un bundle est uniquement local."
+
+"TBY-DIA-002.what": "Le bundle de diagnostic a été retenu : {{.member}} contenait encore un secret."
+"TBY-DIA-002.cause": "Avant de livrer un bundle, Tobby cherche dans chaque membre les valeurs secrètes qu'il connaît. L'une d'elles a été trouvée : le bundle n'a pas été écrit plutôt que de l'être avec elle."
+"TBY-DIA-002.action": "Signalez ce défaut aux mainteneurs de Tobby avec le nom du membre — jamais avec le bundle. En attendant, collectez les informations à la main."
+
+"TBY-CLK-001.what": "L'horloge locale indique {{.now}}, une date antérieure à la construction de ce binaire ({{.anchor}})."
+"TBY-CLK-001.cause": "L'horloge retarde de {{.gap}} sur une date que ce binaire prouve passée. Les expirations, les contrôles de fraîcheur et la validité des certificats sont jugés sur cette horloge."
+"TBY-CLK-001.action": "Réglez l'horloge de l'hôte (source de temps de la zone, ou à la main depuis une référence de confiance), puis redémarrez. Tobby avertit et consigne ; il ne corrige pas l'horloge."
+
+"TBY-CLK-002.what": "L'horloge locale indique {{.now}}, une date antérieure à la production du support {{.medium}} ({{.anchor}})."
+"TBY-CLK-002.cause": "Le support a été résolu {{.gap}} après l'heure que croit avoir cet hôte : l'une des deux horloges est fausse, et les contrôles de fraîcheur et d'expiration en dépendent."
+"TBY-CLK-002.action": "Vérifiez l'horloge de cet hôte contre une référence de confiance avant de vous fier aux verdicts d'expiration et de fraîcheur. Tobby avertit et consigne ; il ne corrige pas l'horloge."
+
+"TBY-STA-001.what": "L'instance refuse de démarrer : le répertoire d'état {{.root}} a une organisation inconnue ({{.version}})."
+"TBY-STA-001.cause": "Il a été écrit par une autre version de Tobby, ou ce n'est pas un répertoire d'état de Tobby."
+"TBY-STA-001.action": "Démarrez la version qui l'a écrit, ou restaurez le répertoire d'état depuis une sauvegarde faite avec cette version. L'organisation documentée est le contrat de sauvegarde."
+
+"TBY-STA-002.what": "L'instance refuse de démarrer : {{.path}} est lisible par d'autres utilisateurs (mode {{.mode}})."
+"TBY-STA-002.cause": "C'est une entrée secrète du répertoire d'état — empreintes de mots de passe ou de jetons, clé privée — que Tobby crée pour son seul propriétaire. Un mode plus large vient en général d'une restauration qui n'a pas conservé les droits."
+"TBY-STA-002.action": "Restreignez-la au propriétaire (chmod 600 sous Unix ; accès propriétaire seul sous Windows), vérifiez qui a pu la lire entre-temps, puis redémarrez."
+
+"TBY-STA-003.what": "Le répertoire d'état ne contient pas {{.entry}}."
+"TBY-STA-003.cause": "Une entrée d'identité manque — en général après une restauration incomplète. L'instance démarre sans elle, et se comporte comme une instance neuve pour ce qu'elle contenait."
+"TBY-STA-003.action": "Si cette instance a été restaurée, restaurez l'entrée manquante depuis la même sauvegarde et redémarrez ; sinon, rien à faire."
 
 "TBY-TSK-001.what": "La tâche n'existe pas."
 "TBY-TSK-001.cause": "Aucune tâche d'identifiant {{.id}} sur cette instance — lien erroné, ou store réinitialisé."

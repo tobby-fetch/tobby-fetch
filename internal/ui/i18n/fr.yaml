@@ -947,3 +947,40 @@
 "integrity.findings_note": "Contenu qu'aucune recipe enregistrée ni aucune racine protégée (imports unitaires, contenu amorcé, base de vulnérabilités) n'atteint. La vérification ne supprime rien ici ; élaguez selon le Retriever ou retirez la recipe qui le portait pour récupérer l'espace. Le contenu qu'une synchronisation est encore en train d'écrire peut apparaître ici jusqu'à sa fin."
 "integrity.link": "Vérifier l'intégrité du store"
 "integrity.cancel_action": "Annuler la vérification"
+
+# ── Jalon 7 (réservé à l'ouverture du jalon) ─────────────────────────────
+# Un bloc par piste : chaque piste ajoute ses libellés DANS son bloc, pour
+# que des branches parallèles ne modifient jamais les mêmes lignes. Les
+# libellés qu'aucun gabarit n'affiche encore sont réservés ; le test de
+# complétude les tient quand même en EN/FR, et le contrôle des clés
+# orphelines de la piste D (amendement de FR-063) doit exempter ce bloc
+# jusqu'à ce que chaque piste affiche ses libellés — ou passer en dernier.
+
+# Piste A — aides à la consommation et finition de l'interface (7.1).
+"aids.section_title": "Aides à la consommation"
+"aids.export_csv": "Exporter en CSV"
+"aids.export_json": "Exporter en JSON"
+"aids.export_markdown": "Exporter en Markdown"
+"aids.snippet_title": "registries.yaml pour K3s et RKE2"
+"aids.snippet_limits": "Ne redirige que les tirages d'images du runtime de conteneurs du nœud. Les sources de charts Helm, les contrôleurs GitOps et les politiques d'admission doivent référencer les chemins relocalisés de la table."
+"aids.no_registry": "Aucune registry de zone n'est configurée : renseignez destination.registry, ou consumption.registry quand cette instance sert elle-même la zone."
+
+# Piste B — exploitation et supervision (R-30, R-27, R-32, R-11).
+"diagnostics.section_title": "Bundle de diagnostic"
+"diagnostics.generate_action": "Générer un bundle de diagnostic"
+"diagnostics.local_only": "Le bundle est un fichier local, expurgé avant d'être écrit. Tobby ne l'envoie jamais nulle part : c'est vous qui choisissez à qui le confier."
+"banner.clock_implausible": "L'horloge de cet hôte indique {{.Now}}, {{.Gap}} avant {{.Anchor}} : les expirations et les contrôles de fraîcheur peuvent être faux."
+"state.section_title": "État de l'instance"
+"state.backup_hint": "Sauvegardez le répertoire d'état, le fichier de configuration et les fichiers secrets qu'il référence : avec le store, c'est tout ce qu'est cette instance."
+
+# Piste C — contrôles du contenu et durcissement (R-15, R-17, 7.3).
+"provenance.label": "Provenance"
+"provenance.recipe": "Géré par une recipe vérifiée"
+"provenance.unit_import": "Import unitaire"
+"provenance.local_pack": "Empaqueté sur cette instance"
+"provenance.seed": "Poussé directement"
+"provenance.last_scan": "Dernière analyse {{.When}} : {{.Verdict}}"
+"hardening.unit_import_disabled": "L'import unitaire est désactivé sur cette instance (hardening.disableUnitImport)."
+"hardening.registry_push_disabled": "La registry embarquée est en lecture seule sur cette instance (hardening.disableRegistryPush)."
+"scan.exception_out_of_scope": "La dérogation {{.ID}} ne couvre pas cet élément"
+"scan.exception_vex": "Issue du document VEX {{.Document}}"

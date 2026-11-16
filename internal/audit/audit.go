@@ -220,6 +220,29 @@ const (
 	ActionIntegrityVerify = "store.verify"
 )
 
+// Actions reserved at the opening of milestone 7. No surface emits them
+// yet; each track wires its own and documents it on the audit-log page
+// (website security/audit-log) when it does.
+const (
+	// ActionDiagnosticsBundle is a diagnostic bundle produced or refused
+	// (FR-095, R-30): the requester is the actor, the outcome failure when
+	// the redaction check aborted it. Track B.
+	ActionDiagnosticsBundle = "diagnostics.bundle"
+	// ActionClockImplausible is a local clock found earlier than an anchor
+	// beyond the tolerance (FR-096, R-32); the target names the anchor
+	// ("build" or the medium identifier), the gap is in the details.
+	// Track B.
+	ActionClockImplausible = "clock.implausible"
+	// ActionScanExceptionExpired is an item refused again because the
+	// exception that admitted it expired (FR-031 amendment, R-15): the
+	// target is the item, the exception is named. Track C.
+	ActionScanExceptionExpired = "scan.exception_expired"
+	// ActionHardeningRefused is a write refused by a hardening switch
+	// (FR-098, R-17): a unit import, a packing or a registry push, with
+	// the setting that refused it. Track C.
+	ActionHardeningRefused = "hardening.refused"
+)
+
 // Event is one security audit event (FR-094 schema).
 type Event struct {
 	// Actor is the authenticated identity, ActorLocal for local invocation,
