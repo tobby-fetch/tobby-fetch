@@ -490,6 +490,24 @@ echo "$VERDICT" | jq -e '.recipes[] | select(.name=="zone-tool") | .pushable == 
 OFFENDER=$(echo "$VERDICT" | jq -r '.recipes[] | select(.name=="zone-app") | .reason.path')
 check "R-19: zone-app blocked whole, naming $OFFENDER; zone-tool still pushable"
 
+# -- 12b. B-062: ingredient signatures, recorded by default, required on request
+# The ingredients were pushed unsigned: by default the report records "none"
+# and blocks nothing on it. The SAME medium, verified by the same instance
+# with trust.requireIngredientSignatures, blocks the intact delivery too —
+# TBY-SIG-001 naming the ingredient — which is the verdict the import
+# would act on (one rule for media verify and the import).
+echo "$VERDICT" | jq -e '.recipes[] | select(.name=="zone-tool") | .ingredients[0].signature.state == "none" and (.ingredients[0].required | not)' >/dev/null ||
+    fail "B-062: the default report does not record zone-tool's unsigned ingredient as such: $(echo "$VERDICT" | jq -c '.recipes[] | select(.name=="zone-tool") | .ingredients')"
+inc exec tbc-m5-isolated -- sh -c \
+    "awk '{print} /^trust:\$/ {print \"  requireIngredientSignatures: true\"}' /etc/tobby/config.yaml >/etc/tobby/config-strict.yaml"
+STRICT=$(inc exec tbc-m5-isolated -- sh -c 'tobby media verify --config /etc/tobby/config-strict.yaml --output json 2>/dev/null' || true)
+echo "$STRICT" | jq -e '.recipes[] | select(.name=="zone-tool") | .pushable == false and .reason.code == "TBY-SIG-001"
+    and (.reason.params.recipe | startswith("ingredient tool of zone-tool@1.0.0"))
+    and .reason.params.fingerprints == "no signature artifact found"' >/dev/null ||
+    fail "B-062: with trust.requireIngredientSignatures, the unsigned ingredient does not block its delivery: $(echo "$STRICT" | jq -c '.recipes[]? | {name, pushable, reason}')"
+inc exec tbc-m5-isolated -- rm -f /etc/tobby/config-strict.yaml
+check "B-062: unsigned ingredients recorded \"none\" by default; with trust.requireIngredientSignatures, media verify blocks zone-tool with TBY-SIG-001 naming its ingredient"
+
 # -- 13. Import: only what cleared crosses into the zone registry ------------
 inc exec tbc-m5-isolated -- sh -c 'tobby media import --output json' >"$WORK/import.json" 2>/dev/null || true
 inc exec tbc-m5-dest -- wget -q -O - "http://127.0.0.1:5000/v2/_catalog" >"$WORK/catalog.json" 2>/dev/null || true
