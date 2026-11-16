@@ -1,0 +1,34 @@
+# Conformance specs that are KNOWN to fail against the embedded registry.
+#
+# One entry per line: <regular expression> :: <justification>. The regular
+# expression is matched (ginkgo semantics) against the full text of a spec:
+# "OCI Distribution Conformance Tests <workflow> <container...> <spec>".
+#
+# run.sh handles this file in two steps, so a gap can neither hide a
+# regression nor outlive its cause:
+#   1. the main run SKIPS these specs; everything else must pass;
+#   2. a second run executes ONLY these specs and requires every one of
+#      them to still FAIL. A gap that starts passing, or that matches no
+#      spec at all (renamed upstream), fails the job until the entry is
+#      removed: this file is a ledger of what is missing, not a mute button.
+#
+# The embedded registry is CNCF distribution/distribution v3.1.2 used as a
+# library (ADR-0004, internal/store/store.go). That release implements
+# neither the OCI 1.1 Referrers API (GET /v2/<name>/referrers/<digest>
+# answers 404) nor the OCI-Subject response header on a manifest PUT that
+# carries a "subject". These five specs are the whole of the Referrers
+# workflow of the Content Discovery category.
+#
+# This is a deliberate scope decision, not an oversight: no Tobby
+# requirement depends on the Referrers API. Recipe signatures use the
+# cosign tag convention, and the Sigstore-bundle layout is discovered
+# through its fallback tag sha256-<hex> (ADR-0002, ADR-0007, RECIPE-SPEC
+# §12.2; the design record of B-015 states that the embedded registry does
+# not serve the Referrers API). Closing the gap would mean upgrading the
+# library to a release that serves it, or implementing the endpoint in
+# front of the store; in both cases delete the entries below.
+Content Discovery Setup References setup$ :: manifest PUT with a subject must answer OCI-Subject (referrers API not implemented by distribution v3.1.2)
+Content Discovery Test content discovery endpoints \(listing references\) GET request to nonexistent blob should result in empty 200 response$ :: GET /v2/<name>/referrers/<digest> answers 404, spec 1.1 requires 200 with an empty index
+Content Discovery Test content discovery endpoints \(listing references\) GET request to existing blob should yield 200$ :: referrers API not implemented
+Content Discovery Test content discovery endpoints \(listing references\) GET request to existing blob with filter should yield 200$ :: referrers API not implemented
+Content Discovery Test content discovery endpoints \(listing references\) GET request to missing manifest should yield 200$ :: referrers API not implemented
