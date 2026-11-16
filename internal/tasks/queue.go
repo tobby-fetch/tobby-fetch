@@ -190,6 +190,17 @@ func (q *Queue) Register(taskType string, r Runner) {
 	q.runners[taskType] = r
 }
 
+// Runner returns the runner registered for a task type, nil when none
+// is. It lets the instance wiring decorate a runner a component
+// registered itself — the FileSet refresh after every task that can
+// bring content into the store (B-058) — without that component having
+// to know about it.
+func (q *Queue) Runner(taskType string) Runner {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.runners[taskType]
+}
+
 // laneCapacity bounds the pending tasks of one lane. Lanes carry
 // operations that run one at a time and refuse a second request while one
 // is in flight, so a handful is generous.

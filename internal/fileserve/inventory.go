@@ -113,6 +113,11 @@ type Surface struct {
 	// none, packing from this surface is refused and the surface says so
 	// rather than only failing (FR-075).
 	PackEnabled bool
+	// Packed runs after every successful Pack, before it returns: the
+	// instance re-resolves what /files/ serves, so a declared FileSet
+	// packed from the screen or the API is served the moment the call
+	// answers rather than at the next restart (B-058). Nil does nothing.
+	Packed func(ctx context.Context)
 }
 
 // Inventory lists what this instance holds and what it serves.
@@ -126,7 +131,11 @@ func (s *Surface) Inventory(ctx context.Context) ([]Entry, error) {
 
 // Pack packages a local directory through the surface's confined packer.
 func (s *Surface) Pack(ctx context.Context, req PackRequest) (*PackResult, error) {
-	return s.Packer.Pack(ctx, req)
+	res, err := s.Packer.Pack(ctx, req)
+	if err == nil && s.Packed != nil {
+		s.Packed(ctx)
+	}
+	return res, err
 }
 
 // inventory merges the declared FileSets (FR-047 configuration), what the

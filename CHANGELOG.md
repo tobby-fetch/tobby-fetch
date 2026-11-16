@@ -50,6 +50,28 @@ them.
   Packing stays deterministic, but the same tree packed by this version
   gets a new digest; FileSets already pinned are unaffected.
 
+### Fixed
+
+- **A FileSet that arrived other than by a synchronization was only
+  served after a restart** (B-058). `/files/` re-resolved its FileSets at
+  startup and after a sync task, and never otherwise: a FileSet brought
+  in by a unit import, a media or layout import, packed from the screen
+  or the API, or pushed through `/v2/` answered 404 until the instance
+  restarted. The served FileSets are now re-resolved after each of those
+  tasks, before a pack returns, after a manifest is written to the
+  repository of a declared FileSet through `/v2/` (a newer version pushed
+  over a served one included), and — as a backstop, at most once per ten
+  seconds per name — when a declared FileSet that is not served is asked
+  for.
+- **On the destination side, the FileSet cache was written before the
+  medium was verified** (B-058, FR-054). The startup extraction wrote
+  under `<storage.root>/meta/fileserve` from blobs no verification had
+  checked, and a cache carried on the medium was served as found — the
+  verification hashes blobs, not that tree. A destination instance
+  holding a medium now writes nothing there while its media gate is
+  closed, discards whatever cache the medium carries, and extracts from
+  the verified blobs when the verdict opens the gate.
+
 ### Documentation
 
 - **French parity** (7.2): every English page of the documentation now has
