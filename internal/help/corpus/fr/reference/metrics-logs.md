@@ -3,14 +3,11 @@ title: Métriques et journaux
 description: Les métriques que l'instance expose aujourd'hui, le schéma des journaux JSON et ses clés de corrélation stables, et ce sur quoi alerter.
 sidebar:
   order: 5
-  badge:
-    text: Partiel
-    variant: caution
 ---
 
 Un seul listener, deux surfaces d'observation : `/metrics` (OpenMetrics) et les
-journaux JSON structurés sur la sortie standard. Cette page liste ce que la
-série v0.5.x actuelle expose réellement, extrait de `internal/metrics` et
+journaux JSON structurés sur la sortie standard. Cette page liste ce que cette
+version expose réellement, extrait de `internal/metrics` et
 `internal/logging`.
 
 ## Métriques

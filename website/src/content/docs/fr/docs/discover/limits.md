@@ -150,7 +150,7 @@ file de tâches, état cohérent). Tobby est un chemin de promotion, non la
 registry de référence servant votre zone — et s'il l'est temporairement (le
 cas d'usage de remplacement), planifiez les mises à niveau en conséquence.
 
-## Pas encore — lacunes opérationnelles connues
+## Des réglages par défaut à connaître
 
 - **Le nettoyage du store de transit est désactivé par défaut en
   passthrough.** L'élagage aligné sur les retrievers existe (R-33) mais
@@ -159,16 +159,17 @@ cas d'usage de remplacement), planifiez les mises à niveau en conséquence.
   Définissez `storage.occupancyThreshold` pour que l'instance vous prévienne
   quand le store dépasse son volume — non défini signifie non surveillé, pas
   « dans les limites ».
-- **Pas de contrôle d'intégrité à la demande.** La vérification complète du
-  store avec un rapport horodaté arrive avec R-31 (jalon 6).
-- **Pas encore d'analyse de vulnérabilités.** L'analyse avec politique
-  bloquante ou consultative est le jalon 6 (6.1) ; d'ici là, l'analyse relève
-  de votre pipeline de qualification amont.
-- **Procédure de sauvegarde pas encore formalisée.** Le répertoire d'état est
-  la cible de sauvegarde, mais la procédure de reconstruction de bout en bout
-  testée est R-27 (jalon 7). Voir [exploiter dans la durée](../../passthrough/operate/).
 
-Chacune de ces limites est suivie, avec son jalon, sur la page
+Trois lacunes que cette page listait sont comblées : la vérification
+d'intégrité du store à la demande avec un rapport horodaté (R-31, v0.6.0 —
+[vérifier l'intégrité du store](../../passthrough/verify-store/)), l'analyse
+de vulnérabilités avec politique bloquante ou consultative (6.1, v0.6.0 —
+[analyse de vulnérabilités](../../security/vulnerability-scanning/)), et la
+sauvegarde du répertoire d'état avec une procédure de reconstruction testée
+de bout en bout (R-27, v1.0.0-rc.1 —
+[sauvegarder et reconstruire une instance](../../passthrough/backup-rebuild/)).
+
+Chaque fonctionnalité est suivie, avec son statut et son jalon, sur la page
 [état du projet](../../discover/status/) — et le
 [modèle de menaces](../../security/threat-model/) indique quels contrôles de
 sécurité existent aujourd'hui et lesquels sont planifiés.

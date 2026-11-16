@@ -3,16 +3,11 @@ title: Operate over time
 description: Probes, task tracking and resume, what to alert on, backup, store growth, upgrades, and graceful shutdown.
 sidebar:
   order: 7
-  badge:
-    text: Partial
-    variant: caution
 ---
 
 A passthrough instance is designed to run unattended for months. This
 page is what that costs you: what to watch, what to back up, what grows,
-and how to upgrade. Some of the tooling that will make parts of this
-easier is still ahead — those parts are badged below rather than
-hidden.
+and how to upgrade.
 
 ## Probes and metrics
 
@@ -161,9 +156,12 @@ Exit code `5` means "changes planned", distinct from `0` ("nothing to do"),
 so a pipeline can gate on it without treating a plan with work in it as a
 broken build. See the [CLI reference](../../reference/cli/#tobby-sync).
 
-:::note[Upcoming — milestone 6]
-On-demand integrity verification of the store through the UI and API
-(R-31) ships with milestone 6.
+:::tip[Verify the store on demand]
+A plan reads metadata; to check the bytes, verify the store: every blob
+re-hashed against its digest, manifests checked for completeness, recipe
+signatures against the trust roots configured now, with a timestamped
+report — from the interface, the API or `tobby store verify`
+(R-31, since v0.6.0). See [verify the store's integrity](../verify-store/).
 :::
 
 ## What the store holds, and from where
@@ -215,10 +213,11 @@ formats are carried across versions — lives in
   PVCs carry `helm.sh/resource-policy: keep`, so even `helm uninstall`
   leaves the data behind.
 
-:::note[Upcoming — milestone 6]
-Tobby updating through its own OCI channel (R-25) — the new release
-travelling as verified content, across zones and through the air gap
-like everything else it carries — ships with milestone 6.
+:::tip[Through its own channel]
+Since v0.6.0, Tobby can also be updated through its own OCI channel
+(R-25): each release is published recipe-ready, and travels as verified
+content, across zones and through the air gap, like everything else it
+carries. See [updating Tobby in an isolated zone](../../air-gap/update-tobby/).
 :::
 
 ## Graceful shutdown

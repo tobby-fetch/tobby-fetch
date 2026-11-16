@@ -8,8 +8,8 @@
 # milestone: the milestone that delivers (or completes) the feature;
 #            omitted when the feature is fully available.
 # security: true marks rows shown on the security one-pager.
-updated: "2026-11-12"
-version: "v0.6.0"
+updated: "2026-11-16"
+version: "v1.0.0-rc.1"
 features:
   # ── Milestone 1 — Foundations (delivered, v0.1.x) ──────────────────────
   - id: "1.1"
@@ -337,75 +337,71 @@ features:
     status: available
     security: true
 
-  # ── Milestone 7 — Finishing, documentation & acceptance (v0.7.x → 1.0) ─
+  # ── Milestone 7 — Finishing, documentation & acceptance (v1.0.0-rc.1 → 1.0.0)
   - id: "7.1"
     en: UI polish and consumption aids (mapping exports, registries.yaml snippet)
     fr: Finition de l'interface et aides à la consommation (exports mapping, registries.yaml)
-    status: partial
-    milestone: 7
+    status: available
     note:
-      en: Consumption aids (mapping exports, generated registries.yaml) are in; the design pass is finishing for v1.0.0-rc.1.
-      fr: Les aides à la consommation (exports mapping, registries.yaml généré) sont livrées ; la passe design se termine pour la v1.0.0-rc.1.
+      en: Delivered in v1.0.0-rc.1 — consumption aids (mapping exports, generated registries.yaml) and the design pass.
+      fr: Livré en v1.0.0-rc.1 — aides à la consommation (exports mapping, registries.yaml généré) et passe design.
   - id: "7.2"
     en: Complete bilingual documentation (EN/FR, CI-checked completeness)
     fr: Documentation bilingue complète (EN/FR, complétude vérifiée en CI)
-    status: upcoming
-    milestone: 7
+    status: available
     note:
-      en: English and French pages are at parity, with the security model, troubleshooting and the emergency path; the pages of this milestone's new features and the CI completeness check remain.
-      fr: Les pages anglaises et françaises sont à parité, avec le modèle de sécurité, le dépannage et la voie d'urgence ; restent les pages des nouvelles features du jalon et le contrôle de complétude en CI.
+      en: Delivered in v1.0.0-rc.1 — every page in English and French, on the site and embedded in the binary; CI fails on an English page without its French counterpart.
+      fr: Livré en v1.0.0-rc.1 — chaque page en anglais et en français, sur le site et embarquée dans le binaire ; la CI échoue sur une page anglaise sans son pendant français.
   - id: "R-30"
     en: One-step redacted diagnostic bundle
     fr: Bundle de diagnostic expurgé en un geste
     status: available
     security: true
     note:
-      en: Ships with v1.0.0-rc.1. Local archive, redaction that fails closed, audited; command line, administration screen and API.
-      fr: Livré avec la v1.0.0-rc.1. Archive locale, expurgation qui échoue fermée, auditée ; ligne de commande, écran d'administration et API.
+      en: Delivered in v1.0.0-rc.1. Local archive, redaction that fails closed, audited; command line, administration screen and API.
+      fr: Livré en v1.0.0-rc.1. Archive locale, expurgation qui échoue fermée, auditée ; ligne de commande, écran d'administration et API.
   - id: "R-11"
     en: Integration and monitoring kit (signed OpenAPI, metrics reference, alerts)
     fr: Kit d'intégration et de supervision (OpenAPI signée, métriques, alertes)
     status: available
     note:
-      en: Ships with v1.0.0-rc.1. Signed OpenAPI and metrics reference as release artifacts; alert rules and dashboard in the reference chart, off by default.
-      fr: Livré avec la v1.0.0-rc.1. OpenAPI et référentiel des métriques signés en artefacts de release ; règles d'alerte et tableau de bord dans le chart de référence, désactivés par défaut.
+      en: Delivered in v1.0.0-rc.1. Signed OpenAPI and metrics reference as release artifacts; alert rules and dashboard in the reference chart, off by default.
+      fr: Livré en v1.0.0-rc.1. OpenAPI et référentiel des métriques signés en artefacts de release ; règles d'alerte et tableau de bord dans le chart de référence, désactivés par défaut.
   - id: "R-32"
     en: Clock-sanity detection in isolated zones
     fr: Cohérence d'horloge en zone isolée
     status: available
     security: true
     note:
-      en: Ships with v1.0.0-rc.1. Warns and records — banner, log, command line, metric, audit event; it never corrects the clock.
-      fr: Livré avec la v1.0.0-rc.1. Avertit et consigne — bannière, journal, ligne de commande, métrique, événement d'audit ; ne corrige jamais l'horloge.
+      en: Delivered in v1.0.0-rc.1. Warns and records — banner, log, command line, metric, audit event; it never corrects the clock.
+      fr: Livré en v1.0.0-rc.1. Avertit et consigne — bannière, journal, ligne de commande, métrique, événement d'audit ; ne corrige jamais l'horloge.
   - id: "R-27"
     en: Instance backup and tested rebuild procedure
     fr: Sauvegarde et reconstruction d'instance testée
     status: available
     note:
-      en: Ships with v1.0.0-rc.1. Normative state directory checked at startup, tobby state inspect, and a rebuild procedure tested end to end.
-      fr: Livré avec la v1.0.0-rc.1. Répertoire d'état normatif contrôlé au démarrage, tobby state inspect, et procédure de reconstruction testée de bout en bout.
+      en: Delivered in v1.0.0-rc.1. Normative state directory checked at startup, tobby state inspect, and a rebuild procedure tested end to end.
+      fr: Livré en v1.0.0-rc.1. Répertoire d'état normatif contrôlé au démarrage, tobby state inspect, et procédure de reconstruction testée de bout en bout.
   - id: "R-15"
     en: Scoped, expiring vulnerability exceptions (VEX-convergent)
     fr: Dérogations de vulnérabilités ciblées et bornées (convergence VEX)
     status: available
     security: true
     note:
-      en: "v1.0.0-rc.1: mandatory expiry and justification, scope by digest, repository and recipe, visible re-blocking (report, audit, metric), local OpenVEX input; Retriever exceptions without expiry apply and are reported unbounded until the v1 format."
-      fr: "v1.0.0-rc.1 : échéance et justification obligatoires, portée par digest, dépôt et recipe, re-blocage visible (rapport, audit, métrique), lecture OpenVEX locale ; les dérogations de Retriever sans échéance s'appliquent et sont signalées sans limite jusqu'au format v1."
+      en: "Delivered in v1.0.0-rc.1: mandatory expiry and justification, scope by digest, repository and recipe, visible re-blocking (report, audit, metric), local OpenVEX input; Retriever exceptions without expiry apply and are reported unbounded until the v1 format."
+      fr: "Livré en v1.0.0-rc.1 : échéance et justification obligatoires, portée par digest, dépôt et recipe, re-blocage visible (rapport, audit, métrique), lecture OpenVEX locale ; les dérogations de Retriever sans échéance s'appliquent et sont signalées sans limite jusqu'au format v1."
   - id: "7.3"
     en: Hardening proven by tests (fuzzing, CSRF, OCI conformance suite)
     fr: Durcissement prouvé par les tests (fuzzing, CSRF, conformité OCI)
-    status: partial
-    milestone: 7
+    status: available
     security: true
     note:
-      en: "Security part in v1.0.0-rc.1: CSRF and origin check on every cookie-authenticated change, one security-header middleware, bounded and strict inputs with the entry-point table, OpenVEX parser fuzzed in CI."
-      fr: "Volet sécurité en v1.0.0-rc.1 : CSRF et contrôle d'origine sur toute modification authentifiée par cookie, middleware unique d'en-têtes de sécurité, entrées bornées et strictes avec le tableau des points d'entrée, parseur OpenVEX fuzzé en CI."
+      en: "Delivered in v1.0.0-rc.1: CSRF and origin check on every cookie-authenticated change, one security-header middleware, bounded and strict inputs with the entry-point table, the parsers fuzzed in CI, the OCI conformance suite."
+      fr: "Livré en v1.0.0-rc.1 : CSRF et contrôle d'origine sur toute modification authentifiée par cookie, middleware unique d'en-têtes de sécurité, entrées bornées et strictes avec le tableau des points d'entrée, parseurs fuzzés en CI, suite de conformité OCI."
   - id: "R-21"
     en: Documented emergency path (scoped, visible, organization-signed)
     fr: Voie d'urgence encadrée (périmètre déclaré, visible, signée par l'organisation)
     status: available
-    milestone: 7
     security: true
     note:
       en: Documentation-only feature, no code path. Procedure on the emergency path page.
@@ -416,8 +412,8 @@ features:
     status: available
     security: true
     note:
-      en: "v1.0.0-rc.1: provenance class per repository and last scan per tag in the browser, the API, the logs and the metrics; hardening.disableUnitImport and hardening.disableRegistryPush."
-      fr: "v1.0.0-rc.1 : classe de provenance par dépôt et dernière analyse par tag dans le navigateur, l'API, les journaux et les métriques ; hardening.disableUnitImport et hardening.disableRegistryPush."
+      en: "Delivered in v1.0.0-rc.1: provenance class per repository and last scan per tag in the browser, the API, the logs and the metrics; hardening.disableUnitImport and hardening.disableRegistryPush."
+      fr: "Livré en v1.0.0-rc.1 : classe de provenance par dépôt et dernière analyse par tag dans le navigateur, l'API, les journaux et les métriques ; hardening.disableUnitImport et hardening.disableRegistryPush."
   - id: "7.4"
     en: Adversarial acceptance and version 1.0 (spec frozen at v1)
     fr: Recette contradictoire et version 1.0 (spec gelée en v1)

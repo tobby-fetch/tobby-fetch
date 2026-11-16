@@ -216,7 +216,8 @@ spec:
 ```
 
 Planifiez avant de promouvoir. Un plan ne change rien et montre le verdict de
-confiance de chaque recipe, y compris le périmètre qui l'a décidé :
+signature de chaque recipe et, dans sa colonne `SCOPE`, le périmètre de
+confiance qui l'a décidé — `emergency` sur cette entrée, `-` sur les autres :
 
 ```sh
 tobby sync --dry-run --retriever ./retriever.yaml
@@ -243,8 +244,8 @@ Rien n'est caché parce que la signature est valide.
 | --- | --- |
 | Configuration effective | `trust.scopes` avec `emergency`, ses dépôts et ses roots (`tobby config dump`, et la configuration affichée par l'instance). |
 | Recipes | `GET /api/v1/recipes` : `verified: true` et `trustScope: "emergency"` sur la recipe enregistrée. L'écran Recipes montre le périmètre à côté du verdict. |
-| Rapports de tâche | `trust_scope` sur chaque élément de la tâche de synchronisation. |
-| Plan | Le périmètre de confiance qui a décidé du verdict de chaque recipe, dans le rapport de plan (`tobby sync --dry-run --output json`) et sur l'écran de plan. |
+| Rapports de tâche | `trust_scope: "emergency"` sur la ligne de la recipe dans `resolutions` de la tâche de synchronisation (`GET /api/v1/tasks/{id}`). |
+| Plan | Le périmètre de confiance qui a décidé du verdict de chaque recipe : la colonne `SCOPE` de `tobby sync --dry-run`, `trust_scope` dans son rapport `--output json`, et l'écran de plan. |
 | Média | Le périmètre est affiché à côté de la recipe sur l'écran Média d'un support qui la porte ; la destination rend son **propre** verdict à partir de ses propres trust roots, elle doit donc déclarer le même périmètre d'urgence et le même root pour admettre la recipe. |
 | Journal d'audit | La publication par l'interface ou l'API est un événement `recipe.publish` ; une synchronisation est `sync.create`. Voir le [journal d'audit](../../security/audit-log/). |
 
@@ -263,12 +264,36 @@ La voie d'urgence sert à livrer, pas à s'installer. Refermez-la proprement :
 1. Faites qualifier, cuisiner et signer le même changement par la chaîne
    normale dans le cookbook standard, puis remplacez l'entrée du Retriever et
    supprimez la surcharge `cookbook`.
-2. Renouvelez la clé d'urgence si elle est sortie de sa garde. La rotation se
+2. Refermez la porte : retirez de `trust` le périmètre `emergency` **et** le
+   root `org-emergency-key`, ensemble, puis redémarrez l'instance. Il reste
+   la configuration d'une zone sans voie d'urgence :
+
+   ```yaml
+   trust:
+     roots:
+       - name: org-release-key
+         keyFile: /etc/tobby/keys/org-release.pub
+   ```
+
+   La recipe d'urgence est alors refusée avec
+   [`TBY-SIG-001`](../../reference/errors/#tby-sig-001), comme toute recipe
+   qu'aucun root configuré ne vérifie.
+3. Renouvelez la clé d'urgence si elle est sortie de sa garde. La rotation se
    fait par recouvrement, comme pour tout trust root : ajoutez le nouveau
    root, re-signez ce qui est encore utilisé, puis retirez l'ancien.
-3. Conservez la référence du ticket dans les annotations de la recipe et la
+4. Conservez la référence du ticket dans les annotations de la recipe et la
    synchronisation dans vos archives : le rapport de tâche et le journal
    d'audit sont la preuve de qui a admis quoi, et quand.
+
+:::danger[Ne retirez jamais le périmètre seul]
+C'est le périmètre qui enclôt la clé d'urgence. Un root qu'aucun périmètre
+ne liste appartient à l'**ensemble par défaut**, qui vérifie tout cookbook
+hors périmètre. Retirez `emergency` de `trust.scopes` en laissant
+`org-emergency-key` dans `trust.roots`, et la clé d'urgence n'est plus
+enclose : elle rejoint l'ensemble par défaut et vérifie tous les cookbooks. La recipe d'urgence est toujours admise — sous
+aucun périmètre — et avec elle tout ce qui est signé de cette clé, dans
+n'importe quel cookbook. Retirez les deux, ou aucun.
+:::
 
 Les versions de recipe publiées sont immuables. Corriger la recipe d'urgence
 passe par une nouvelle `metadata.version`, jamais par un nouveau push sur le

@@ -175,7 +175,7 @@ reserved prefix. The list is part of the product contract (shown on
 | `/metrics` | OpenMetrics endpoint — see [Metrics and logs](../../reference/metrics-logs/). |
 | `/healthz`, `/readyz` | Liveness and readiness probes, the only anonymous surfaces. |
 | `/files/` | FileSet HTTP serving (OS package repositories) — Basic auth so `apt`/`dnf` URL credentials work; per-FileSet anonymous opt-in. |
-| `/auth/` | Reserved ahead of the milestone-6 OIDC/SAML callbacks. |
+| `/auth/` | The OIDC and SAML round trips of [enterprise identity](../../security/enterprise-identity/) (redirects and callbacks). |
 | `/static/` | Embedded UI assets. |
 
 Anything outside these prefixes is a UI route and may evolve freely; the

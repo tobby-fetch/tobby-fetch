@@ -134,11 +134,14 @@ workaround, a catch-all `**` scope listing only the normal keys, is no
 longer needed and can be removed.
 :::
 
-:::note[Upcoming — provenance, content by content]
-One refinement is still on the roadmap: **provenance visible content by
-content** — recipe-verified, unit import, direct push (R-17 — milestone
-7). Track it on the [project status](../../discover/status/) page.
-:::
+Trust is also visible **content by content** (R-17, since v1.0.0-rc.1):
+every repository of the store carries its provenance class — `recipe`
+(verified against these roots, with the reduced-assurance marker when a
+relaxed scope admitted it), `unit-import` or `seed` (a direct push) — in the
+content browser, the API, the logs and the metrics, and the
+[hardening switches](../model/#hardening-switches) can close the two
+unverified doors altogether. See
+[what the store holds, and from where](../../passthrough/operate/#what-the-store-holds-and-from-where).
 
 A scope can also **restrict** rather than relax: its `roots` fence a
 dedicated key, such as the organization's emergency key, to one cookbook —

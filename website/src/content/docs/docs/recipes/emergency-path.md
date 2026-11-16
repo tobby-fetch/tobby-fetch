@@ -208,8 +208,9 @@ spec:
       cookbook: registry.example.com/emergency
 ```
 
-Plan before you promote. A plan changes nothing and shows the trust
-verdict of every recipe, including the scope that decided it:
+Plan before you promote. A plan changes nothing and shows the signature
+verdict of every recipe and, in its `SCOPE` column, the trust scope that
+decided it — `emergency` on this entry, `-` on the others:
 
 ```sh
 tobby sync --dry-run --retriever ./retriever.yaml
@@ -236,8 +237,8 @@ Nothing is hidden because the signature is valid.
 | --- | --- |
 | Effective configuration | `trust.scopes` with `emergency` and its repositories and roots (`tobby config dump`, and the configuration shown by the instance). |
 | Recipes | `GET /api/v1/recipes`: `verified: true` and `trustScope: "emergency"` on the recorded recipe. The Recipes screen shows the scope beside the verdict. |
-| Task reports | `trust_scope` on every item of the synchronization task. |
-| Plan | The trust scope that decided each recipe's verdict, in the plan report (`tobby sync --dry-run --output json`) and on the plan screen. |
+| Task reports | `trust_scope: "emergency"` on the recipe's row of `resolutions` in the synchronization task (`GET /api/v1/tasks/{id}`). |
+| Plan | The trust scope that decided each recipe's verdict: the `SCOPE` column of `tobby sync --dry-run`, `trust_scope` in its `--output json` report, and the plan screen. |
 | Media | The scope is shown beside the recipe on the Media screen of a medium carrying it; the destination takes its **own** verdict from its own trust roots, so the destination must declare the same emergency scope and root to admit the recipe. |
 | Audit log | The publication through the interface or the API is a `recipe.publish` event; a synchronization is `sync.create`. See the [audit log](../../security/audit-log/). |
 
@@ -256,12 +257,37 @@ The emergency path is for delivery, not for staying. Close it properly:
 1. Have the normal pipeline qualify, cook and sign the same change in the
    standard cookbook, then replace the Retriever entry and drop its
    `cookbook` override.
-2. Rotate the emergency key if it left its custody. Rotation is by
+2. Close the door: remove the `emergency` scope **and** the
+   `org-emergency-key` root from `trust`, together, then restart the
+   instance. What remains is the configuration of a zone without an
+   emergency path:
+
+   ```yaml
+   trust:
+     roots:
+       - name: org-release-key
+         keyFile: /etc/tobby/keys/org-release.pub
+   ```
+
+   The emergency recipe is then refused with
+   [`TBY-SIG-001`](../../reference/errors/#tby-sig-001), like any recipe
+   no configured root verifies.
+3. Rotate the emergency key if it left its custody. Rotation is by
    overlap, like any trust root: add the new root, re-sign what is still
    in use, then remove the old one.
-3. Keep the ticket reference in the recipe's annotations and the
+4. Keep the ticket reference in the recipe's annotations and the
    synchronization run in your records: the task report and the audit log
    are the evidence of who admitted what, and when.
+
+:::danger[Never remove the scope alone]
+The scope is what fences the emergency key. A root that no scope lists
+belongs to the **default set**, which verifies every cookbook outside a
+scope. Remove `emergency` from `trust.scopes` but leave `org-emergency-key`
+in `trust.roots`, and the emergency key is no longer fenced: it joins the
+default set and verifies every cookbook. The emergency recipe is still admitted — under no
+scope at all — and so is anything else signed with that key, in any
+cookbook. Remove both, or neither.
+:::
 
 Published recipe versions are immutable. A correction to the emergency
 recipe is a new `metadata.version`, never a re-push over the same tag.

@@ -3,16 +3,13 @@ title: Licences, gouvernance, pérennité
 description: GPL-3.0 pour l'application, Apache-2.0 pour le format — pourquoi, ce que cela signifie pour votre service juridique, comment les vulnérabilités sont traitées, et pourquoi le projet reste auditable sans son éditeur.
 sidebar:
   order: 4
-  badge:
-    text: Partial
-    variant: caution
 ---
 
-:::caution[Partiellement complet]
-Le contenu sur les licences, le DCO et le signalement de vulnérabilités
-ci-dessous est à jour. Le traitement des vulnérabilités s'étoffe avec le
-jalon 6, quand l'analyse avec politique est livrée et reçoit sa propre
-documentation. Suivez-le sur la page [état du projet](../../discover/status/).
+:::note[Les vulnérabilités du contenu que Tobby transporte]
+Cette page traite des vulnérabilités de Tobby lui-même. L'analyse du contenu
+que Tobby transfère, avec une politique bloquante ou consultative, est
+livrée depuis la v0.6.0 et documentée dans
+[analyse de vulnérabilités](../../security/vulnerability-scanning/).
 :::
 
 ## Deux licences, une frontière

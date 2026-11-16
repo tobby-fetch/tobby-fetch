@@ -3,15 +3,11 @@ title: Metrics and logs
 description: The metrics the instance exposes today, the JSON log schema and its stable correlation keys, and what to alert on.
 sidebar:
   order: 5
-  badge:
-    text: Partial
-    variant: caution
 ---
 
 One listener, two observation surfaces: `/metrics` (OpenMetrics) and the
-structured JSON logs on stdout. This page lists what the current v0.5.x
-series actually exposes, extracted from `internal/metrics` and
-`internal/logging`.
+structured JSON logs on stdout. This page lists what this release actually
+exposes, extracted from `internal/metrics` and `internal/logging`.
 
 ## Metrics
 

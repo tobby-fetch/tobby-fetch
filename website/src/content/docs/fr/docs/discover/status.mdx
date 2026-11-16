@@ -7,8 +7,8 @@ sidebar:
 
 import StatusTable from "../../../../../components/StatusTable.astro";
 
-Tobby est publié et en développement actif. Les jalons 1 à 6 sont livrés ; la
-ligne de release courante est **v0.6.x**. Le tableau ci-dessous est produit à
+Tobby est publié et en développement actif. Les jalons 1 à 7 sont livrés ; la
+version courante est **v1.0.0-rc.1**, la première release candidate de la 1.0.0. Le tableau ci-dessous est produit à
 partir d'un unique fichier de données (`status.yaml`) et alimente chaque badge
 de statut de ce site — y compris la vue filtrée de la
 [fiche sécurité](../../security/one-pager/). Si une page et ce tableau se
@@ -20,7 +20,8 @@ contredisent, c'est le tableau qui a raison et la page qui a un bug.
 
 ## Trains de versions
 
-Chaque jalon correspond à une ligne mineure : le jalon N sort en **v0.N.x**.
+Chaque jalon correspond à une ligne mineure : le jalon N sort en **v0.N.x** —
+sauf le jalon 7, qui sort en release candidates de la 1.0.0.
 Les versions correctives d'un train ne portent que des correctifs et du
 durcissement, jamais de nouvelle fonctionnalité.
 
@@ -32,7 +33,7 @@ durcissement, jamais de nouvelle fonctionnalité.
 | 4 — Passthrough | v0.4.x | Livré (v0.4.0 → v0.4.2) |
 | 5 — Mirror et air-gap | v0.5.x | Livré (v0.5.0 → v0.5.2) |
 | 6 — Contrôles renforcés et identité d'entreprise | v0.6.x | Livré (v0.6.0, 2026-11-12) |
-| 7 — Finitions, documentation et recette | v0.7.x → 1.0.0 | À venir |
+| 7 — Finitions, documentation et recette | v1.0.0-rc.x → 1.0.0 | Livré en v1.0.0-rc.1 ; la recette formelle et la 1.0.0 suivent |
 
 **Cadence observée.** Les cinq premiers jalons ont été livrés entre le
 2026-08-11 (v0.1.0) et le 2026-08-27 (v0.5.0), avec deux correctifs de
@@ -43,9 +44,10 @@ développement initiale, non un engagement : chaque jalon sort quand ses
 scénarios de recette passent sur le [crucible](../../project/tests-and-proofs/),
 pas à une date.
 
-**Chemin vers la 1.0.** Il reste un jalon : le jalon 7 se clôt par des
-travaux de finition, une documentation bilingue complète et une recette
-adversariale de la release candidate. La version 1.0.0 gèle les quatre
+**Chemin vers la 1.0.** Tous les jalons sont livrés : le jalon 7 a apporté
+les travaux de finition, la documentation bilingue complète et le
+durcissement prouvé par les tests, dans la release candidate v1.0.0-rc.1.
+Reste la recette adversariale de cette candidate. La version 1.0.0 gèle les quatre
 surfaces publiques (CLI, API, configuration, layout de stockage) sous SemVer —
 la [politique de release et de compatibilité](../../project/release-compatibility/)
 est la référence de ce qui est déjà stable et de ce qui se gèle à la 1.0.

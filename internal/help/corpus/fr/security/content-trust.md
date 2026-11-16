@@ -142,11 +142,14 @@ précédent, un périmètre fourre-tout `**` ne listant que les clés normales,
 n'est plus nécessaire et peut être retiré.
 :::
 
-:::note[À venir — provenance, contenu par contenu]
-Une évolution reste sur la feuille de route : la **provenance visible contenu
-par contenu** — vérifié par recipe, import unitaire, dépôt direct (R-17 — jalon
-7). Suivez-la sur la page [état du projet](../../discover/status/).
-:::
+La confiance est aussi visible **contenu par contenu** (R-17, depuis la
+v1.0.0-rc.1) : chaque dépôt du store porte sa classe de provenance —
+`recipe` (vérifié contre ces roots, avec le marqueur d'assurance réduite
+quand un périmètre assoupli l'a admis), `unit-import` ou `seed` (un dépôt
+direct) — dans le navigateur de contenu, l'API, les journaux et les
+métriques, et les [interrupteurs de durcissement](../model/#interrupteurs-de-durcissement)
+peuvent fermer purement et simplement les deux portes non vérifiées. Voir
+[ce que le store détient, et d'où](../../passthrough/operate/#ce-que-le-store-détient-et-doù).
 
 Un périmètre peut aussi **restreindre** plutôt qu'assouplir : ses `roots`
 cantonnent une clé dédiée, comme la clé d'urgence de l'organisation, à un seul
