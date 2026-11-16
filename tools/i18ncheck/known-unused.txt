@@ -1,0 +1,8 @@
+# Message keys that are defined and, on purpose, not (yet) used.
+#
+# One entry per line: <catalog> <key or key prefix> :: <reason>. The catalog
+# name is the one tools/i18ncheck prints: ui, slip, taxonomy.
+#
+# An entry is deleted as soon as its key is used, or removed from the
+# catalogs: i18ncheck fails on an entry that matches no unused key.
+ui login.idp_unavailable :: message prepared with the federated sign-in (milestone 6) for an unreachable identity provider; the login screen does not render it yet. Wire it into the login page or delete it from both catalogs: to be decided.

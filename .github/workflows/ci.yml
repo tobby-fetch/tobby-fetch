@@ -438,6 +438,36 @@ jobs:
           TOBBY_E2E_REQUIRE_CHROME: "1"
         run: go test -tags browser -count=2 -timeout 20m ./test/browser/...
 
+  # Release criterion (DEVELOPMENT-PLAN §3): >= 70 % statement coverage on
+  # the core packages. They are listed in tools/coverage-core.txt, not
+  # inferred; tools/covercheck fails below the floor and when a listed
+  # package is not measured at all.
+  coverage-core:
+    name: Coverage floor on the core packages (>= 70%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Core packages (fetch, resolve, store, push, policy, signatures)
+        run: sh tools/check-coverage-core.sh
+
+  # Release criterion 7.2 (FR-063): no missing or orphaned message key, no
+  # placeholder drift between English and French — web interface, command
+  # line (error taxonomy) and transfer slip. The same check also runs as a
+  # unit test of the tool, so a local `go test ./...` fails the same way.
+  i18n:
+    name: i18n completeness (EN, FR)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: No missing or orphaned key, placeholders agree
+        run: go run ./tools/i18ncheck
+
   # OCI distribution-spec conformance (release criterion, DEVELOPMENT-PLAN
   # §3): the pinned upstream suite against a real `tobby serve`. Everything
   # runs from test/conformance/run.sh, which is also how a developer
