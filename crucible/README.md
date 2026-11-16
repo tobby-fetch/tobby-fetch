@@ -53,6 +53,9 @@ crucible/
         ├── b-*.sh    # track B: enterprise identity, auth hardening
         ├── c-*.sh    # track C: integrity, trust scopes, assurance
         └── *-lib.sh  # per-track sourced helpers (b-lib.sh, c-lib.sh)
+    └── m7/           # milestone-7 finishing, documentation & acceptance
+        ├── run.sh    # dispatcher: every a-* … e-*, then z-crown-rke2.sh
+        └── *.sh      # one scenario per external feature (see below)
 ```
 
 Everything lives in the dedicated Incus project `tobby-crucible`; the host's
@@ -257,3 +260,32 @@ pattern all read exactly like the guard under test failing.
   device as a *claim* beside the destination's own verdict — a manifest
   that claims nothing hides nothing — and never written into the
   destination registry (same digests, no marker artifact: RECIPE-SPEC §7.1).
+
+### m7 — finishing, documentation and the crown
+
+Same layout as m6 — one file per external feature, named by track prefix,
+dispatched by `scenarios/m7/run.sh` in name order — with one addition: the
+**crown**, `z-crown-rke2.sh`, sorts last on purpose. Until its track
+writes it, each file is a named skeleton that **fails**, stating in its
+header what it will prove: m7 is not accepted while one is pending, and a
+skeleton that passed would report a check nobody made. Replay the
+completed milestones meanwhile with `./crucible/run.sh m1 m2 m3 m4 m5 m6`.
+
+| Scenario | Track | Proves |
+|---|---|---|
+| `a-consumption-aids.sh` | A (7.1) | mapping table on every surface, `registries.yaml` snippet deterministic and credential-free, a containerd node pulling by nominal reference, `TBY-AID-001`, FileSet badge |
+| `b-diagnostics.sh` | B (R-30) | one-gesture bundle, zero planted secret in any member, documented members only, admin only, no egress |
+| `b-supervision.sh` | B (R-11) | signed OpenAPI and metrics reference, chart alert rules and dashboard, each alert fired by its condition |
+| `b-clock.sh` | B (R-32) | clock before the build date and before a medium's production: warned and audited, never corrected |
+| `b-rebuild.sh` | B (R-27) | state directory, configuration and store restored on a fresh node: same accounts, token, certificate, import record |
+| `c-exceptions.sh` | C (R-15) | mandatory expiry, digest/repository/recipe scopes, visible re-blocking, OpenVEX input |
+| `c-provenance.sh` | C (R-17) | provenance class per repository on every surface, unmanaged-content metric, both hardening switches |
+| `c-emergency-path.sh` | C, E (R-21) | the published emergency procedure followed literally, admitted only under its declared scope |
+| `d-hardening.sh` | D (7.3) | security headers per route class, CSRF over the wire, bounded inputs, OCI clients unaffected |
+| `e-docs-offline.sh` | E (7.2) | the complete bilingual corpus served offline, no dangling target |
+| `z-crown-rke2.sh` | integration | RKE2 v1.36.5 bootstrapped air-gapped from a bare OS: OS packages and RKE2 artifacts from served FileSets, images through the zone registry via the **generated** `registries.yaml` |
+
+The crown needs an Incus **VM** with its own kernel and at least 4 vCPU and
+8 GiB for the RKE2 server node, hence a KVM host (the Elastic Metal
+acceptance host has it); the profile is added to `setup.sh` with the
+scenario.
