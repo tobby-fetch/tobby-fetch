@@ -1,0 +1,7 @@
+ok   scenario m7 started 2026-12-10T10:00:00Z
+ok   built tobby for linux/amd64
+info a fact that is not a check
+ok   FR-065: the mapping table matches the pushed content
+ok   scenario m7/crown complete — report: crucible-report-m7-z-crown-rke2.txt
+
+# Acceptance host: disposable Scaleway Elastic Metal, ref milestone-7 @ abc1234; node created 10:00Z, destroyed 11:02Z (verified HTTP 404)

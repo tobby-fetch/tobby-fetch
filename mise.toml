@@ -117,3 +117,13 @@ run = "go test -run TestReferenceScenarios -v -timeout 30m ./internal/importer/"
 description = "Reachable known vulnerabilities (govulncheck, stdlib included, reviewed allow-list)"
 # The pinned version lives in tools/govulncheck.sh (renovate hint there).
 run = "sh tools/govulncheck.sh"
+
+# Checks the v1.0.0 release criteria (DEVELOPMENT-PLAN §3) of a version from
+# real evidence — raw crucible reports, CI and release-pipeline verdicts,
+# slsa-verifier/cosign on the published artifacts, EN/FR parity, the
+# recipe-spec tag — and prints OK / KO / NON VÉRIFIABLE ICI per criterion.
+# Needs git (tag fetched), gh; slsa-verifier, cosign and crane for criterion 4.
+#   mise run release-criteria -- --version v1.0.0-rc.1
+[tasks.release-criteria]
+description = "Check the v1.0.0 release criteria of a version (--version vX.Y.Z[-pre])"
+run = "go run ./tools/release-criteria"
