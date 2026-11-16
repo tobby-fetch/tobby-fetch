@@ -316,6 +316,24 @@ the complete bilingual documentation.
   refused to remove it. Repositories imported by an earlier version stay
   classed `seed`.
 
+- **Adversarial review of milestone 7, second pass: trust decisions
+  without a key** (B-068).
+  - Inside an `allowUnsigned` scope to which no trust root applies — every
+    configured root reserved to other scopes, or none configured — a recipe
+    carrying a signature was admitted as unsigned, while the same recipe in
+    a scope with keys was refused. A present signature that no applicable
+    root verifies is now refused with `TBY-SIG-001` everywhere —
+    synchronization, plan, re-verification before a push, `media verify`,
+    `store verify` — naming the reserved root that verifies it, if any;
+    only a recipe that carries no signature at all is admitted unsigned.
+    **Visible change:** such a recipe now needs a root that applies to its
+    scope, or no signature.
+  - An ingredient refused under `trust.requireIngredientSignatures`
+    because every root is reserved elsewhere said "no trust root is
+    configured" (the B-057 message, lost for ingredients). It now says
+    every configured root is reserved, and names the reserved root its
+    signature verifies against, as for a recipe.
+
 ### Security
 
 - **An open media gate served the whole store, not what was verified**
@@ -390,6 +408,34 @@ the complete bilingual documentation.
   subjects and SAML NameIDs grammar-checked; a task record whose
   identifier does not match its file name and a media manifest with
   trailing data are refused.
+
+- **Adversarial review of milestone 7, second pass: a medium's own
+  ingredient list decided what was served** (B-066, B-063 reopened). The
+  ingredients of a delivery were read from the medium's bookkeeping
+  (`meta/recipes.json`, copied into `meta/media.json`), which is unsigned
+  by design, and never compared with the signed recipe document. Whoever
+  held the medium could add an "ingredient" of their choice to a properly
+  signed recipe, or change an ingredient's digest, then re-inventory: every
+  hash agreed, the recipe verified, and the foreign image entered the
+  served set that an open gate hands out on `/v2/` and `/files/`. The
+  verification now reads the recipe document out of the artifact it has
+  just re-hashed (layout, cooked profile and §11.3 name and version
+  checked, every byte hashed again), and the walk, the ingredient signature
+  checks and the served set follow that document's list only. A recipe
+  whose bookkeeping lists an ingredient, digest, tag or location the
+  document does not pin is blocked whole with the new `TBY-MED-016`, no
+  override; an artifact that carries no recipe document is blocked with
+  `TBY-MED-014`.
+- **Adversarial review of milestone 7, second pass: the media gate
+  answered before authentication** (B-067). The gate was mounted outside
+  the registry's authentication, and an open gate answers `/v2/_catalog`
+  and `tags/list` itself, from the verified set: an anonymous client
+  listed every verified repository and tag of a guarded destination,
+  although registry reads need the viewer role (ADR-0009). Authentication
+  now runs first on `/v2/` and on `/files/`; a FileSet declared anonymous
+  still reaches the gate without credentials. The gate's refusals no
+  longer name a medium without media ID by the store's path on the host:
+  they read `(no media ID)`, and the path goes to the instance log.
 
 ### Documentation
 
