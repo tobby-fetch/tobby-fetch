@@ -30,14 +30,18 @@
     {{if .Data.Providers}}
     <section class="t-login-federated" aria-labelledby="login-federated-heading">
       <h2 id="login-federated-heading" class="t-kick">{{.T "login.federated_heading"}}</h2>
-      {{range .Data.Providers}}
-      {{with .Unavailable}}
-      <div class="t-error-block" role="status" data-idp-unavailable>
-        <div class="t-error-block-head"><span class="t-chip t-chip--code" translate="no">{{.Code}}</span> <span class="t-error-block-title">{{.What}}</span></div>
+      {{range $i, $p := .Data.Providers}}
+      {{/* R-20: a provider known unreachable is stated in plain words
+           (login.idp_unavailable) with its code. The button stays a live
+           link — it retries, and federation comes back without a restart —
+           described by the statement rather than disabled. */}}
+      {{with $p.Unavailable}}
+      <div class="t-error-block" role="status" id="idp-unavailable-{{$i}}" data-idp-unavailable>
+        <div class="t-error-block-head"><span class="t-chip t-chip--code" translate="no">{{.Code}}</span> <span class="t-error-block-title">{{$.T "login.idp_unavailable" "Provider" $p.Name}}</span></div>
         <p>{{.Action}}</p>
       </div>
       {{end}}
-      <a class="t-btn{{if not .Unavailable}} t-btn--primary{{end}} t-login-provider" href="{{.Href}}" data-federated-login>{{$.T "login.federated" "Provider" .Name}}</a>
+      <a class="t-btn{{if not $p.Unavailable}} t-btn--primary{{end}} t-login-provider" href="{{$p.Href}}"{{if $p.Unavailable}} aria-describedby="idp-unavailable-{{$i}}"{{end}} data-federated-login>{{$.T "login.federated" "Provider" $p.Name}}</a>
       {{end}}
     </section>
     <p class="t-login-or t-muted"><span>{{.T "login.or"}}</span></p>
