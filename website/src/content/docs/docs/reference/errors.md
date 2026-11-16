@@ -69,10 +69,15 @@ its published rendering.
 ### TBY-AUTH-004
 
 - **What happened:** the form could not be submitted safely.
-- **Probable cause:** the anti-forgery token is missing or has expired —
-  the page was probably left open for a long time.
-- **Corrective action:** the form has been reloaded with a fresh token:
-  submit it again.
+- **Probable cause:** the anti-forgery token is missing, wrong or expired,
+  or the request came from a page of another site — the page was probably
+  left open for a long time. Every state-changing request authenticated by
+  the browser session carries the token, UI forms and API calls alike
+  (`X-CSRF-Token` header on the API), and is refused when the browser says
+  it comes from another origin.
+- **Corrective action:** reload the page and submit again. A script or
+  tool calling the API authenticates with a token (`Authorization:
+  Bearer`), not with the browser session.
 - **Fixable offline:** yes · **Blocks:** the submitted request only
 
 ### TBY-AUTH-005
@@ -1171,3 +1176,14 @@ FR-097: the normative state directory — the backup target of an instance besid
 - **Corrective action:** check your network link and retry; the page
   resumes as soon as the instance answers.
 - **Fixable offline:** yes · **Blocks:** the browser session's view only
+
+### TBY-SRV-004
+
+- **What happened:** the request is too large.
+- **Probable cause:** its body exceeds the `<limit>` bytes this endpoint
+  accepts; it was refused before being read (NFR-023). Every API endpoint
+  has a bound sized to its largest legitimate document; see the
+  [input validation](../../security/input-validation/) table.
+- **Corrective action:** send a smaller body. A document over the bound is
+  not one this endpoint was built for: check that the right file was sent.
+- **Fixable offline:** yes · **Blocks:** the request only

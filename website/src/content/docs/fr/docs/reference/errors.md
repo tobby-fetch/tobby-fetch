@@ -100,10 +100,16 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
 ### TBY-AUTH-004
 
 - **Quoi :** le formulaire n'a pas pu être soumis en toute sécurité.
-- **Cause probable :** le jeton anti-falsification est absent ou a expiré —
-  la page est probablement restée ouverte longtemps.
-- **Action corrective :** le formulaire a été rechargé avec un jeton neuf :
-  soumettez-le à nouveau.
+- **Cause probable :** le jeton anti-falsification est absent, erroné ou
+  expiré, ou la requête vient d'une page d'un autre site — la page est
+  probablement restée ouverte longtemps. Toute requête qui modifie l'état
+  et que la session du navigateur authentifie porte le jeton, formulaires
+  de l'interface comme appels d'API (en-tête `X-CSRF-Token` sur l'API), et
+  elle est refusée quand le navigateur indique qu'elle vient d'une autre
+  origine.
+- **Action corrective :** rechargez la page et soumettez à nouveau. Un
+  script ou un outil qui appelle l'API s'authentifie par un jeton
+  (`Authorization: Bearer`), pas par la session du navigateur.
 - **Remédiable hors-ligne :** oui · **Bloque :** la requête soumise seulement
 
 ### TBY-AUTH-005
@@ -1243,3 +1249,16 @@ FR-097 : le répertoire d'état normé — la cible de sauvegarde d'une instance
 - **Action corrective :** vérifiez votre liaison réseau et réessayez ; la
   page reprend dès que l'instance répond.
 - **Remédiable hors-ligne :** oui · **Bloque :** l'affichage de la session de navigation seulement
+
+### TBY-SRV-004
+
+- **Quoi :** la requête est trop volumineuse.
+- **Cause probable :** son corps dépasse les `<limit>` octets que ce point
+  d'accès accepte ; elle a été refusée avant d'être lue (NFR-023). Chaque
+  point d'accès de l'API a une borne dimensionnée sur son plus grand
+  document légitime ; voir le tableau de
+  [validation des entrées](../../security/input-validation/).
+- **Action corrective :** envoyez un corps plus petit. Un document au-delà
+  de la borne n'est pas de ceux que ce point d'accès traite : vérifiez que
+  le bon fichier a été envoyé.
+- **Remédiable hors-ligne :** oui · **Bloque :** la requête seulement

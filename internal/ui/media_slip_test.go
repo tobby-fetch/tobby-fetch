@@ -104,8 +104,10 @@ func TestMediaSlipFollowsTheInterfaceLanguageAndRefusesUnknownOnes(t *testing.T)
 		t.Error("the slip does not follow the negotiated interface language")
 	}
 	for _, q := range []string{"?format=pdf", "?lang=de"} {
-		if rec := get(t, mux, c, "/media/slip"+q, nil); rec.Code != http.StatusBadRequest {
-			t.Errorf("GET /media/slip%s = %d, want 400", q, rec.Code)
+		// The API mirror's refusal, taxonomized (FR-061, NFR-023).
+		if rec := get(t, mux, c, "/media/slip"+q, nil); rec.Code != http.StatusUnprocessableEntity ||
+			!strings.Contains(rec.Body.String(), "TBY-VAL-001") {
+			t.Errorf("GET /media/slip%s = %d, want 422 TBY-VAL-001", q, rec.Code)
 		}
 	}
 }

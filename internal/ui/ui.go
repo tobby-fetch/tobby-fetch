@@ -275,11 +275,11 @@ type Router interface {
 // is the wrapper it is declared with here, and docs/rbac-matrix.md is its
 // documented form (FR-074).
 func (u *UI) Mount(rt Router) {
-	// Every UI response — pages, fragments, errors, redirects, static
-	// assets — carries the browser security headers (v0.4.2 hardening,
-	// headers.go). Wrapping at mount time is what makes a route added
-	// later unable to forget them.
-	mux := securedRouter{r: rt}
+	// Every UI handler reads a bounded body (B-034, headers.go). Wrapping
+	// at mount time is what makes a route added later unable to forget
+	// it. The security headers are the listener's (NFR-022,
+	// internal/server/headers.go), stamped on every surface at once.
+	mux := boundedRouter{r: rt}
 	mux.Handle("GET /static/", StaticHandler(u.themeOverride))
 
 	// Session endpoints (outside the session gate).
@@ -535,6 +535,13 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
+	// Login CSRF: another origin's page must not be able to sign this
+	// browser in under an account of the attacker's choosing. There is no
+	// session yet, so no token; the origin check is the protection.
+	if !auth.SameOrigin(r) {
+		u.csrfRefused(w, r, "unauthenticated")
+		return
+	}
 	name := r.PostFormValue("username")
 	next := sanitizeNext(r.PostFormValue("next"))
 	origin := auth.ClientOrigin(r)
@@ -551,12 +558,22 @@ func (u *UI) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	acct, ok := u.authn.Store.VerifyPassword(name, r.PostFormValue("password"), u.now())
+	// A claimed name outside the name grammar is a failed attempt like a
+	// wrong password — same answer, same budget — but it is neither
+	// verified nor written to the trail as given (NFR-023).
+	actor := name
+	var acct auth.Account
+	ok := false
+	if auth.ValidPresentedName(name) {
+		acct, ok = u.authn.Store.VerifyPassword(name, r.PostFormValue("password"), u.now())
+	} else {
+		actor = auth.InvalidActor
+	}
 	if !ok {
 		u.authn.RecordFailure(origin)
 		u.authn.Observe(auth.MethodBasic, auth.OutcomeFailure)
 		audit.Log(r.Context(), u.logger, &audit.Event{
-			Actor: name, Action: audit.ActionLogin, Target: "ui",
+			Actor: actor, Action: audit.ActionLogin, Target: "ui",
 			Outcome: audit.OutcomeDenied, Origin: origin,
 		})
 		v := u.render.view(r, u.loginPageData(r, next,
@@ -630,10 +647,14 @@ func (u *UI) switchTheme(w http.ResponseWriter, r *http.Request) {
 	u.redirectBack(w, r)
 }
 
-// prefCSRFOK checks the CSRF token for the preference switchers: required
-// with a live session, tolerated without one (the login page has no
-// session yet, and the preference is harmless).
+// prefCSRFOK checks the CSRF protection of the preference switchers: the
+// origin check always, and the token too with a live session — tolerated
+// without one (the login page has no session yet, and the preference is
+// harmless).
 func (u *UI) prefCSRFOK(r *http.Request) bool {
+	if !auth.SameOrigin(r) {
+		return false
+	}
 	if u.authn.Disabled {
 		return true
 	}
@@ -641,7 +662,7 @@ func (u *UI) prefCSRFOK(r *http.Request) bool {
 	if !ok {
 		return true
 	}
-	return sess.CheckCSRF(r.PostFormValue("csrf"))
+	return sess.CheckCSRF(csrfToken(r))
 }
 
 // redirectBack returns to the submitted local origin page.

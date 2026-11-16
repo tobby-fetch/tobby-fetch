@@ -164,7 +164,16 @@ clients work) and the file server. The table of floors is generated from
 the routes the server actually mounts and is checked by a test, so a route
 cannot ship without a reviewed floor. The last administrator can be
 neither deleted nor demoted. Failed attempts are throttled per origin.
+
+A browser session authorizes nothing by its cookie alone. Every
+state-changing request it authenticates, in the interface and in the API
+alike, carries the session's anti-forgery token, and the request is refused
+when the browser says it comes from another origin. Every response of the
+listener carries the browser security headers, and every HTML page a
+Content-Security-Policy that allows no script without a hash.
 → [Authentication, accounts and RBAC](../auth-rbac/), [Enterprise identity](../enterprise-identity/)
+
+Every input crossing a trust boundary is bounded, decoded strictly and checked against its grammar → [Input validation](../input-validation/)
 
 ## 9. Audit
 

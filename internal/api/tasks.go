@@ -13,7 +13,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -94,13 +93,17 @@ type createImportRequest struct {
 	} `json:"platforms"`
 }
 
+// maxImportRequest bounds a unit-import request: one reference and its
+// platform list.
+const maxImportRequest = 64 << 10
+
 // create serves POST /api/v1/import: enqueue one unit-import task and
 // answer 201 with it (mirror of the screen's confirmation step).
 func (t *tasksAPI) create(w http.ResponseWriter, r *http.Request) {
 	var req createImportRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		t.api.Problem(w, r, taxonomy.New(taxonomy.CodeBadReference,
-			taxonomy.Params{"reference": ""}).WithCause(err))
+	if !t.api.decodeJSON(w, r, maxImportRequest, &req, false, func(err error) *taxonomy.Error {
+		return taxonomy.New(taxonomy.CodeBadReference, taxonomy.Params{"reference": ""}).WithCause(err)
+	}) {
 		return
 	}
 	req.Reference = strings.TrimSpace(req.Reference)

@@ -174,7 +174,16 @@ niveaux requis est généré à partir des routes que le serveur monte réelleme
 et il est vérifié par un test : une route ne peut pas être livrée sans niveau
 revu. Le dernier administrateur ne peut être ni supprimé ni rétrogradé. Les
 échecs d'authentification sont limités par origine.
+
+Une session de navigateur n'autorise rien par son seul cookie. Toute requête
+qui modifie l'état et qu'elle authentifie, dans l'interface comme dans l'API,
+porte le jeton anti-falsification de la session, et la requête est refusée
+quand le navigateur indique qu'elle vient d'une autre origine. Chaque réponse
+de l'écouteur porte les en-têtes de sécurité du navigateur, et chaque page
+HTML une Content-Security-Policy qui n'autorise aucun script sans empreinte.
 → [Authentification, comptes et RBAC](../auth-rbac/), [Identité d'entreprise](../enterprise-identity/)
+
+Chaque entrée qui franchit une frontière de confiance est bornée, décodée strictement et contrôlée selon sa grammaire → [Validation des entrées](../input-validation/)
 
 ## 9. Audit
 

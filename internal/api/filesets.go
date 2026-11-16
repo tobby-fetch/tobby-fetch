@@ -4,7 +4,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -104,9 +103,10 @@ type packRequest struct {
 // local origin, so the trail is the only record of who put it there.
 func (f *fileSetsAPI) pack(w http.ResponseWriter, r *http.Request) {
 	var req packRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
-		f.api.Problem(w, r, taxonomy.New(taxonomy.CodePackInput,
-			taxonomy.Params{"detail": err.Error()}).WithCause(err))
+	if !f.api.decodeJSON(w, r, 8<<10, &req, false, func(err error) *taxonomy.Error {
+		return taxonomy.New(taxonomy.CodePackInput,
+			taxonomy.Params{"detail": describeDecodeError(err)}).WithCause(err)
+	}) {
 		return
 	}
 	req.Source = strings.TrimSpace(req.Source)

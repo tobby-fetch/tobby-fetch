@@ -156,6 +156,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	})
 	go sweepSessions(ctx, sessions)
 	srv := server.New(cfg.Server.Addr, time.Duration(cfg.Shutdown.GracePeriod), reg, logger)
+	// The one security-header middleware of the listener (NFR-022).
+	srv.SetHeaderPolicy(server.HeaderPolicy{HTML: ui.ContentSecurityPolicy(), SecureCookies: cfg.Server.SecureCookies})
 	if serveHook != nil {
 		serveHook(srv)
 	}

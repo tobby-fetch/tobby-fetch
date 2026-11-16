@@ -526,6 +526,10 @@ const (
 	// rendered by the UI shell on transport failure; catalogued so the
 	// troubleshooting guide documents it. Never served by the instance.
 	CodeUnreachable Code = "TBY-SRV-003"
+	// CodeRequestTooLarge is a request body over its endpoint's bound,
+	// refused before it is parsed (NFR-023): limit is the bound, in
+	// bytes.
+	CodeRequestTooLarge Code = "TBY-SRV-004"
 )
 
 var catalog = map[Code]Entry{
@@ -699,4 +703,6 @@ var catalog = map[Code]Entry{
 	CodeInternal:    {Code: CodeInternal, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError},
 	CodeNotFound:    {Code: CodeNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound},
 	CodeUnreachable: {Code: CodeUnreachable, Class: ClassOperational},
+
+	CodeRequestTooLarge: {Code: CodeRequestTooLarge, Class: ClassOperational, HTTPStatus: http.StatusRequestEntityTooLarge, Params: []string{"limit"}},
 }

@@ -58,9 +58,10 @@ func (a *API) Routes() []string {
 	return out
 }
 
-// Handler returns the authenticated handler to mount at /api/v1/.
+// Handler returns the authenticated handler to mount at /api/v1/, every
+// request body bounded at maxAPIRequestBody (NFR-023, body.go).
 func (a *API) Handler() http.Handler {
-	return a.authn.API(a.mux)
+	return boundBodies(a.authn.API(a.mux))
 }
 
 // lang negotiates the problem-document language from Accept-Language: the

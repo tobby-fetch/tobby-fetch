@@ -11,7 +11,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -105,6 +104,15 @@ type createAccountRequest struct {
 	Password string `json:"password"`
 }
 
+// maxAccountRequest bounds the account, token and password documents: a
+// name, a role, a password and an expiry fit in a few hundred bytes.
+const maxAccountRequest = 8 << 10
+
+// accountInvalid is the refusal of an undecodable account document.
+func accountInvalid(err error) *taxonomy.Error {
+	return taxonomy.New(taxonomy.CodeAccountInvalid, nil).WithCause(err)
+}
+
 // createAccount serves POST /api/v1/accounts (FR-073): 201 with the
 // created account. Both outcomes are audited (FR-094).
 func (c *accountsAPI) createAccount(w http.ResponseWriter, r *http.Request) {
@@ -113,8 +121,7 @@ func (c *accountsAPI) createAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	id, _ := auth.IdentityFrom(r.Context())
 	var req createAccountRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		c.api.Problem(w, r, taxonomy.New(taxonomy.CodeAccountInvalid, nil).WithCause(err))
+	if !c.api.decodeJSON(w, r, maxAccountRequest, &req, false, accountInvalid) {
 		return
 	}
 	req.Name = strings.TrimSpace(req.Name)
@@ -156,8 +163,7 @@ func (c *accountsAPI) updateAccount(w http.ResponseWriter, r *http.Request) {
 	id, _ := auth.IdentityFrom(r.Context())
 	name := r.PathValue("name")
 	var req updateAccountRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		c.api.Problem(w, r, taxonomy.New(taxonomy.CodeAccountInvalid, nil).WithCause(err))
+	if !c.api.decodeJSON(w, r, maxAccountRequest, &req, false, accountInvalid) {
 		return
 	}
 	role, err := auth.ParseRole(req.Role)
@@ -285,15 +291,20 @@ func (c *accountsAPI) createToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req createTokenRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		c.api.Problem(w, r, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))
+	// A malformed or incomplete request is the client's to fix: the
+	// validation code (422), not the internal error it used to answer
+	// (NFR-023 — a validation failure is never presented as a fault of
+	// the instance).
+	if !c.api.decodeJSON(w, r, maxAccountRequest, &req, false, bodyInvalid) {
 		return
 	}
 	req.Name = strings.TrimSpace(req.Name)
 	role, err := auth.ParseRole(req.Role)
 	if req.Name == "" || err != nil {
-		c.api.Problem(w, r, taxonomy.New(taxonomy.CodeInternal, nil).
-			WithCause(errors.New("a token name and a valid role (viewer, operator, admin) are required")))
+		c.api.Problem(w, r, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
+			"file": "the request body", "path": "name, role",
+			"constraint": "a token name and a valid role (viewer, operator, admin) are required",
+		}))
 		return
 	}
 	id, _ := auth.IdentityFrom(r.Context())
@@ -347,10 +358,10 @@ func (c *accountsAPI) changePassword(w http.ResponseWriter, r *http.Request) {
 		c.api.Problem(w, r, e)
 	}
 	var req passwordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		// Undecodable body: the taxonomized internal error, per the surface's
-		// convention (see createToken); the wrapped cause lands in the logs.
-		c.api.Problem(w, r, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))
+	// Undecodable body: the validation code, like the token request's,
+	// rather than the internal error it used to answer (NFR-023); an
+	// over-bound one the TBY-SRV-004 refusal.
+	if !c.api.decodeJSON(w, r, maxAccountRequest, &req, false, bodyInvalid) {
 		return
 	}
 	// Same check order as the UI handler, so the same request yields the

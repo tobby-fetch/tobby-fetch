@@ -13,9 +13,7 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -163,18 +161,17 @@ func (rc *recipesAPI) sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prune := rc.opts.Prune
-	if body, rerr := io.ReadAll(io.LimitReader(r.Body, maxSyncBody)); rerr == nil && len(body) > 0 {
-		var req syncRequest
-		if uerr := json.Unmarshal(body, &req); uerr != nil {
-			rc.api.Problem(w, r, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
-				"file": "request body", "path": "prune",
-				"constraint": "the body must be a JSON object with an optional boolean \"prune\"",
-			}))
-			return
-		}
-		if req.Prune != nil {
-			prune = *req.Prune
-		}
+	var req syncRequest
+	if !rc.api.decodeJSON(w, r, maxSyncBody, &req, true, func(error) *taxonomy.Error {
+		return taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
+			"file": "request body", "path": "prune",
+			"constraint": "the body must be a JSON object with an optional boolean \"prune\"",
+		})
+	}) {
+		return
+	}
+	if req.Prune != nil {
+		prune = *req.Prune
 	}
 	id, _ := auth.IdentityFrom(r.Context())
 	task, err := rc.opts.Queue.Create(tasks.TypeSync, rc.opts.Source, id.Name, nil, tasks.WithPrune(prune))
@@ -481,8 +478,9 @@ func (rc *recipesAPI) setInterval(w http.ResponseWriter, r *http.Request) {
 	// sent, not a statement about how this instance is configured: the
 	// two answer different codes, and therefore different HTTP statuses,
 	// so a client can tell "fix your request" from "fix the instance".
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
-		rc.api.Problem(w, r, intervalInvalid("the body must be a JSON object with an \"interval\" duration string (\"30m\"): "+err.Error()))
+	if !rc.api.decodeJSON(w, r, 4<<10, &body, false, func(err error) *taxonomy.Error {
+		return intervalInvalid("the body must be a JSON object with an \"interval\" duration string (\"30m\"): " + err.Error())
+	}) {
 		return
 	}
 	d, err := time.ParseDuration(strings.TrimSpace(body.Interval))

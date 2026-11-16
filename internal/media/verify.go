@@ -218,6 +218,11 @@ func readManifest(root *os.Root) (*Manifest, *Block) {
 		// layout announces itself.
 		return nil, unreadable(err.Error())
 	}
+	// One document, nothing after it (NFR-023): bytes no decoder reads
+	// are bytes no verification vouches for.
+	if _, terr := dec.Token(); !errors.Is(terr, io.EOF) {
+		return nil, unreadable("unexpected data after the manifest document")
+	}
 	if err := validate(&m); err != nil {
 		return nil, unreadable(err.Error())
 	}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/slip"
+	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
 // mediaSlip serves GET /media/slip: the transfer slip (R-07), the Media
@@ -33,7 +34,11 @@ func (u *UI) mediaSlip(w http.ResponseWriter, r *http.Request) {
 		format = slip.FormatHTML
 	case slip.FormatHTML, slip.FormatText:
 	default:
-		http.Error(w, "format must be html or text", http.StatusBadRequest)
+		// Same refusal as the API mirror (FR-061, NFR-023): a taxonomy code,
+		// not a bare text line.
+		u.render.Error(w, r, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
+			"file": "the query", "path": "format", "constraint": "must be html or text",
+		}))
 		return
 	}
 	lang := requestLang(r)
@@ -42,15 +47,16 @@ func (u *UI) mediaSlip(w http.ResponseWriter, r *http.Request) {
 	case "en", "fr":
 		lang = q.Get("lang")
 	default:
-		http.Error(w, "lang must be en or fr", http.StatusBadRequest)
+		u.render.Error(w, r, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
+			"file": "the query", "path": "lang", "constraint": "must be en or fr",
+		}))
 		return
 	}
 
 	sl := u.slipInstance().Slip()
 	body, contentType, err := sl.Render(format, lang)
 	if err != nil {
-		u.logger.Error("rendering the transfer slip", "error", err)
-		http.Error(w, "the transfer slip could not be drawn", http.StatusInternalServerError)
+		u.render.Error(w, r, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))
 		return
 	}
 	h := w.Header()

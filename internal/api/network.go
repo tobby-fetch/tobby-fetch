@@ -31,9 +31,7 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"time"
 
@@ -137,11 +135,12 @@ type certificateResponse struct {
 func (n *networkAPI) replace(w http.ResponseWriter, r *http.Request) {
 	id, _ := auth.IdentityFrom(r.Context())
 	var req certificateRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxCertRequest)).Decode(&req); err != nil {
+	if !n.api.decodeJSON(w, r, maxCertRequest, &req, false, func(err error) *taxonomy.Error {
+		return taxonomy.New(taxonomy.CodeServerCertReplace, taxonomy.Params{
+			"detail": "the request body is not a certificate/key document: " + describeDecodeError(err),
+		})
+	}) {
 		n.audit(r, id.Name, "", audit.OutcomeFailure)
-		n.api.Problem(w, r, taxonomy.New(taxonomy.CodeServerCertReplace, taxonomy.Params{
-			"detail": "the request body is not a certificate/key document: " + err.Error(),
-		}))
 		return
 	}
 	cert, err := tlsadmin.Replace(n.opts.CertFile, n.opts.KeyFile,
