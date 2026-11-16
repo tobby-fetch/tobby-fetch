@@ -71,6 +71,22 @@ them.
   holding a medium now writes nothing there while its media gate is
   closed, discards whatever cache the medium carries, and extracts from
   the verified blobs when the verdict opens the gate.
+- **A store reset left its FileSets served** (B-059). The reset (FR-046)
+  keeps `meta/`, where the extracted FileSet cache lives, so `/files/`
+  kept serving FileSets whose blobs it had just removed. The cache is now
+  discarded and the served FileSets re-resolved after every reset.
+- **Rebuilding the FileSet cache was reported as altered bookkeeping**
+  (B-060). `meta/fileserve` sat inside the media manifest's coverage, so
+  a destination re-extracting it, or merely extracting into it, drew
+  `metadata altered` and `uncovered` findings on the next verification.
+  New manifests leave it out; a manifest written by v0.6.0 that lists it
+  is still accepted, and those entries are ignored by the verification.
+- **Requests arriving together for a FileSet about to be served could
+  get a 404** (B-061). Only the first request for a declared FileSet not
+  yet extracted waited for the resolution; the others answered 404 until
+  it finished. Every concurrent request now waits for the same resolution
+  (at most 30 seconds), including one already running in the background
+  after a push or the opening of the media gate.
 
 ### Documentation
 
