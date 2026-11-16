@@ -119,9 +119,11 @@ check "throw-away PKI: a CA and the instance certificate for IP $NODE_IP"
 m7_serve_source "$SOURCE"
 m7_keypair
 hard_recipe() { # <name>: one image and its signed recipe; prints the image digest
-    _d=$(m7_seed push "$S/library/$1:1.0") || fail "seeding $1"
-    m7_publish "$S" "$1" "$(m7_image_recipe "$1" "$S/library/$1" "$_d")" sign >/dev/null
-    printf '%s' "$_d"
+    # Not _d: m7_publish runs in this shell and sets _d to the RECIPE's
+    # digest, which the first m7 pass then took for the image's.
+    _hd=$(m7_seed push "$S/library/$1:1.0") || fail "seeding $1"
+    m7_publish "$S" "$1" "$(m7_image_recipe "$1" "$S/library/$1" "$_hd")" sign >/dev/null
+    printf '%s' "$_hd"
 }
 DIG_hard_a=$(hard_recipe hard-a)
 DIG_hard_b=$(hard_recipe hard-b)
@@ -191,8 +193,9 @@ recipe_landed() { # <recipe> <digest>: its ingredient is in the store, class rec
     _repo=$(inc exec "$NODE" -- cat "$STORE/meta/recipes.json" |
         jq -r --arg k "$1@1.0.0" '.recipes[$k].ingredients[] | select(.name == "app") | .repo')
     [ -n "$_repo" ] || fail "the recipe graph does not record $1"
-    api "$API/content/$_repo" | jq -e --arg d "$2" '.provenance.class == "recipe" and ([.tags[] | select(.digest == $d)] | length == 1)' >/dev/null ||
-        fail "$1 did not land in the store at its pinned digest as class recipe"
+    api "$API/content/$_repo" >"$WORK/landed.json"
+    jq -e --arg d "$2" '.provenance.class == "recipe" and ([.tags[] | select(.digest == $d)] | length == 1)' "$WORK/landed.json" >/dev/null ||
+        fail "$1 did not land in the store at its pinned digest $2 as class recipe: $(head -c 800 "$WORK/landed.json")"
     printf '%s' "$_repo"
 }
 startup_says() { # <unit> <push>: the LAST startup record of the switches
@@ -381,14 +384,17 @@ DOCKER_DIG=$(digest_of m7d/docker 1.0.0)
 [ -n "$DOCKER_DIG" ] || fail "FR-041: the docker push is not served back"
 $D rmi "$R/m7d/docker:1.0.0" >/dev/null 2>&1 || true
 $D pull "$R/m7d/docker:1.0.0" >/dev/null 2>&1 || fail "FR-041: docker pull failed"
-inc exec "$CLI" -- sh -c "printf '%s\n' '$ADMIN_PW' | podman login $R -u $ADMIN --password-stdin" >/dev/null 2>&1 ||
+# The same global flags as $PM: a bare `podman login` would initialise the
+# storage database with the overlay driver, and every later vfs call would
+# then refuse it ("database graph driver overlay does not match vfs").
+inc exec "$CLI" -- sh -c "printf '%s\n' '$ADMIN_PW' | podman --storage-driver=vfs --events-backend=file --cgroup-manager=cgroupfs login $R -u $ADMIN --password-stdin" >/dev/null 2>&1 ||
     fail "podman login failed"
-$PM pull "$R/m7d/docker:1.0.0" >/dev/null 2>&1 || fail "FR-041: podman pull failed"
+$PM pull "$R/m7d/docker:1.0.0" >"$WORK/podman.out" 2>&1 || fail "FR-041: podman pull failed: $(tail -3 "$WORK/podman.out")"
 $PM tag "$R/m7d/docker:1.0.0" "$R/m7d/podman:1.0.0" >/dev/null 2>&1
-$PM push "$R/m7d/podman:1.0.0" >/dev/null 2>&1 || fail "FR-041: podman push failed"
+$PM push "$R/m7d/podman:1.0.0" >"$WORK/podman.out" 2>&1 || fail "FR-041: podman push failed: $(tail -3 "$WORK/podman.out")"
 [ -n "$(digest_of m7d/podman 1.0.0)" ] || fail "FR-041: the podman push is not served back"
 $PM rmi "$R/m7d/podman:1.0.0" >/dev/null 2>&1 || true
-$PM pull "$R/m7d/podman:1.0.0" >/dev/null 2>&1 || fail "FR-041: podman pull of its own push failed"
+$PM pull "$R/m7d/podman:1.0.0" >"$WORK/podman.out" 2>&1 || fail "FR-041: podman pull of its own push failed: $(tail -3 "$WORK/podman.out")"
 
 AUTH64=$(printf '%s:%s' "$ADMIN" "$ADMIN_PW" | base64 | tr -d '\n')
 printf '{"auths":{"%s":{"auth":"%s"}}}\n' "$R" "$AUTH64" >"$WORK/helm-registry.json"
@@ -398,8 +404,10 @@ printf 'apiVersion: v2\nname: m7d\nversion: 0.1.0\n' >"$WORK/chart/m7d/Chart.yam
 helm package "$WORK/chart/m7d" -d "$WORK" >/dev/null || fail "packaging the chart"
 helm push "$WORK/m7d-0.1.0.tgz" "oci://$R/m7d/charts" --ca-file "$CA" >/dev/null 2>&1 || fail "FR-041: helm push failed"
 [ -n "$(digest_of m7d/charts/m7d 0.1.0)" ] || fail "FR-041: the helm push is not served back"
-helm pull "oci://$R/m7d/charts/m7d" --version 0.1.0 --ca-file "$CA" -d "$WORK/helm-out" >/dev/null 2>&1 ||
-    fail "FR-041: helm pull failed"
+# helm pull writes into -d and does not create it.
+mkdir -p "$WORK/helm-out"
+helm pull "oci://$R/m7d/charts/m7d" --version 0.1.0 --ca-file "$CA" -d "$WORK/helm-out" >"$WORK/helm.out" 2>&1 ||
+    fail "FR-041: helm pull failed: $(tail -3 "$WORK/helm.out")"
 printf 'an oras artifact\n' >"$WORK/oras.txt"
 ( cd "$WORK" && oras push --ca-file "$CA" -u "$ADMIN" -p "$ADMIN_PW" "$R/m7d/oras:1.0.0" oras.txt:text/plain >/dev/null 2>&1 ) ||
     fail "FR-041: oras push failed"
@@ -565,10 +573,11 @@ $D rmi "$R/m7d/docker:1.0.0" >/dev/null 2>&1 || true
 $D pull "$R/m7d/docker:1.0.0" >/dev/null 2>&1 || fail "FR-098: docker pull failed under $P_SET"
 $D pull "$R/$REPO_A@$DIG_hard_a" >/dev/null 2>&1 || fail "FR-098: docker pull of the recipe-managed image failed under $P_SET"
 $PM rmi "$R/m7d/podman:1.0.0" >/dev/null 2>&1 || true
-$PM pull "$R/m7d/podman:1.0.0" >/dev/null 2>&1 || fail "FR-098: podman pull failed under $P_SET"
+$PM pull "$R/m7d/podman:1.0.0" >"$WORK/podman.out" 2>&1 || fail "FR-098: podman pull failed under $P_SET: $(tail -3 "$WORK/podman.out")"
 rm -rf "$WORK/helm-out" "$WORK/oras-out"
-helm pull "oci://$R/m7d/charts/m7d" --version 0.1.0 --ca-file "$CA" -d "$WORK/helm-out" >/dev/null 2>&1 ||
-    fail "FR-098: helm pull failed under $P_SET"
+mkdir -p "$WORK/helm-out"
+helm pull "oci://$R/m7d/charts/m7d" --version 0.1.0 --ca-file "$CA" -d "$WORK/helm-out" >"$WORK/helm.out" 2>&1 ||
+    fail "FR-098: helm pull failed under $P_SET: $(tail -3 "$WORK/helm.out")"
 oras pull --ca-file "$CA" -u "$ADMIN" -p "$ADMIN_PW" -o "$WORK/oras-out" "$R/m7d/oras:1.0.0" >/dev/null 2>&1 ||
     fail "FR-098: oras pull failed under $P_SET"
 skopeo inspect --cert-dir "$WORK/certs" --creds "$ADMIN:$ADMIN_PW" "docker://$R/m7d/skopeo:1.0.0" >/dev/null 2>&1 ||

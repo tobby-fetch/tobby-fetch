@@ -134,9 +134,30 @@ done
 check "the chart lints and renders a PrometheusRule, the plain rules file and the dashboard; every expression names only families of the reference"
 
 # -- 3. promtool, for real ------------------------------------------------------------------------
+# Prometheus and promtool from the upstream release, pinned with the
+# checksum of its sha256sums.txt — not a distribution package, whose
+# version (and presence: Alpine ships none in main) drifts under the test.
+PROM_VERSION=3.16.0
+case "$ARCH" in
+    amd64) PROM_SHA256=68727009472a2c02e1ff7f062fd5b3e637285bffc8fc2d340c76fb449d6e0f34 ;;
+    arm64) PROM_SHA256=fd8571b8162f4020232d886f17340bcf92e1722985ae3b4c1d096157826c0fbe ;;
+    *) fail "no pinned Prometheus release for $ARCH" ;;
+esac
+PROM_TGZ="prometheus-$PROM_VERSION.linux-$ARCH.tar.gz"
+curl -fsSL -o "$WORK/$PROM_TGZ" \
+    "https://github.com/prometheus/prometheus/releases/download/v$PROM_VERSION/$PROM_TGZ" ||
+    fail "fetching Prometheus $PROM_VERSION"
+printf '%s  %s\n' "$PROM_SHA256" "$WORK/$PROM_TGZ" | sha256sum -c --status - ||
+    fail "the Prometheus $PROM_VERSION tarball does not match its release checksum"
+tar -xzf "$WORK/$PROM_TGZ" -C "$WORK" || fail "unpacking Prometheus $PROM_VERSION"
 c_launch "$PROM" tbc-connected-node
-inc exec "$PROM" -- apk add --no-cache prometheus >/dev/null 2>&1 || fail "installing Prometheus in the connected zone"
-inc exec "$PROM" -- sh -c 'command -v promtool >/dev/null' || fail "this Prometheus package carries no promtool"
+for bin in prometheus promtool; do
+    inc file push "$WORK/prometheus-$PROM_VERSION.linux-$ARCH/$bin" "$PROM/usr/bin/$bin" >/dev/null ||
+        fail "pushing $bin to $PROM"
+    inc exec "$PROM" -- chmod 0755 "/usr/bin/$bin"
+done
+inc exec "$PROM" -- promtool --version 2>&1 | grep -q "version $PROM_VERSION" ||
+    fail "the promtool on $PROM is not Prometheus $PROM_VERSION"
 inc exec "$PROM" -- mkdir -p /etc/prom/files /etc/prom/tests
 inc file push "$CHART/files/tobby-alerts.rules.yaml" "$PROM/etc/prom/files/tobby-alerts.rules.yaml" >/dev/null
 inc file push "$CHART/tests/tobby-alerts_test.yaml" "$PROM/etc/prom/tests/tobby-alerts_test.yaml" >/dev/null
@@ -144,7 +165,7 @@ inc exec "$PROM" -- promtool check rules /etc/prom/files/tobby-alerts.rules.yaml
     fail "promtool rejects the shipped rules: $(cat "$WORK/promtool-check.txt")"
 inc exec "$PROM" -- sh -c 'cd /etc/prom/tests && promtool test rules tobby-alerts_test.yaml' >"$WORK/promtool-test.txt" 2>&1 ||
     fail "the alert unit tests failed: $(cat "$WORK/promtool-test.txt")"
-check "promtool accepts the rules and every alert passes its unit tests: fires on its condition, silent otherwise ($(grep -c . "$WORK/promtool-test.txt") lines of output)"
+check "promtool $PROM_VERSION (release tarball, checksum verified) accepts the rules and every alert passes its unit tests: fires on its condition, silent otherwise ($(grep -c . "$WORK/promtool-test.txt") lines of output)"
 
 # -- 4. The instance, and Prometheus scraping it ---------------------------------------------------
 c_launch "$SOURCE" tbc-connected-node
@@ -152,6 +173,15 @@ b7_launch "$NODE" tbc-connected-node
 SOURCE_IP=$(instance_ip "$SOURCE")
 NODE_IP=$(instance_ip "$NODE")
 PROM_IP=$(instance_ip "$PROM")
+# The instance's own pair, valid a year: the API replaces only a pair the
+# configuration names (FR-082) — the self-signed fallback lives in the
+# state directory and is regenerated, not administered.
+openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj "/CN=tbc-m7b-node" \
+    -addext "subjectAltName=IP:127.0.0.1,IP:$NODE_IP" -keyout "$WORK/tls.key" -out "$WORK/tls.crt" >/dev/null 2>&1 ||
+    fail "generating the instance's certificate pair"
+inc file push "$WORK/tls.crt" "$NODE/etc/tobby/tls.crt" --create-dirs >/dev/null
+inc file push "$WORK/tls.key" "$NODE/etc/tobby/tls.key" --create-dirs >/dev/null
+inc exec "$NODE" -- chmod 0600 /etc/tobby/tls.key
 c_serve_source "$SOURCE"
 c_keypair a
 IMG=$(c_seed_image "$SOURCE_IP:8080/library/kit:1.0.0")
@@ -183,7 +213,8 @@ state:
 server:
   addr: :8080
   tls:
-    enabled: true
+    certFile: /etc/tobby/tls.crt
+    keyFile: /etc/tobby/tls.key
 sync:
   interval: 0
 registries:
@@ -327,16 +358,16 @@ b7_start "$NODE"
 wait_alert TobbyStoreOccupancyHigh inactive 90
 check "TobbyStoreOccupancyHigh: fires with the store over its threshold, inactive once the threshold is raised"
 
-# 5d. A certificate expiring within the bound (the generated one lasts a year,
+# 5d. A certificate expiring within the bound (the instance's pair lasts a year,
 # the bound is 463 days), then a five-year pair.
 wait_alert TobbyServerCertificateExpiring firing 90
 openssl req -x509 -newkey rsa:2048 -nodes -days 1825 -subj "/CN=tbc-m7b-node" \
     -addext "subjectAltName=IP:127.0.0.1,IP:$NODE_IP" -keyout "$WORK/new.key" -out "$WORK/new.crt" >/dev/null 2>&1 ||
     fail "generating the replacement pair"
 jq -n --rawfile c "$WORK/new.crt" --rawfile k "$WORK/new.key" '{certificate: $c, key: $k}' >"$WORK/pair.json"
-[ "$(curl -sk -o /dev/null -w '%{http_code}' -u "$ADMIN" -X PUT -H 'Content-Type: application/json' \
+[ "$(curl -sk -o "$WORK/replace.json" -w '%{http_code}' -u "$ADMIN" -X PUT -H 'Content-Type: application/json' \
     --data-binary @"$WORK/pair.json" "https://$NODE_IP:8080/api/v1/network/certificate")" = 200 ] ||
-    fail "the certificate replacement was refused"
+    fail "the certificate replacement was refused: $(cat "$WORK/replace.json")"
 NEW_NOT_AFTER=$(not_after)
 [ "$(gauge_cert)" = "$NEW_NOT_AFTER" ] || fail "the gauge did not follow the replacement ($(gauge_cert) vs $NEW_NOT_AFTER)"
 wait_alert TobbyServerCertificateExpiring inactive 90
