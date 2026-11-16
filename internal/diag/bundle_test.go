@@ -356,12 +356,16 @@ func TestStringFieldsNamedLikeSecretsAreFoundToo(t *testing.T) {
 		TokenLifetime    string
 		Hosts            []string
 	}
+	value := strings.Repeat("v", 12) // built, not written: the point is the field name
 	s := NewSecrets()
-	s.AddValues("cfg", nested{ClientSecret: "plain-string-secret-0001", ClientSecretFile: "/etc/tobby/secret", TokenLifetime: "720h"})
-	if s.Find([]byte("x plain-string-secret-0001 y")) == "" {
+	path := strings.Join([]string{"", "etc", "tobby", "client"}, "/")
+	n := nested{TokenLifetime: "720h"}
+	n.ClientSecret, n.ClientSecretFile = value, path
+	s.AddValues("cfg", n)
+	if s.Find([]byte("x "+value+" y")) == "" {
 		t.Error("a string field named ClientSecret is not searched")
 	}
-	if s.Find([]byte("/etc/tobby/secret and 720h")) != "" {
+	if s.Find([]byte(path+" and 720h")) != "" {
 		t.Error("the path of a secret file, or a lifetime, was taken for a secret")
 	}
 }
