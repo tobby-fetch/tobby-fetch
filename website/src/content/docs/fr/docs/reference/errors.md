@@ -62,8 +62,8 @@ n'est jamais traduit.
 | `5` | `changes-planned` | **Changements prévus** — Une exécution sans effet de bord a trouvé du travail à faire — `tobby sync --dry-run` sur un Retriever porteur de changements. C'est un succès qui a quelque chose à dire, pour qu'une barrière d'intégration puisse s'y brancher sans y voir une compilation cassée. |
 <!-- /generated:exit-codes -->
 
-La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
-`--output json`, mode non interactif — reste en anglais jusqu'au jalon 7.
+La [référence CLI](../../reference/cli/#codes-de-sortie) reprend cette table
+avec chaque commande, le contrat `--output json` et le mode non interactif.
 
 ## Authentification et comptes (TBY-AUTH)
 

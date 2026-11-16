@@ -108,10 +108,9 @@ de l'écran Média — synthèse du support, rapport de vérification, résultat
 d'analyse — exportable en HTML ou en texte, et clairement marqué comme
 **aide non signée**.
 
-:::note[À venir — jalon 6]
-Le bordereau de transfert (R-07) arrive avec le jalon 6. L'
-[écran Média](../../air-gap/import-destination/) dont il dérive est livré ;
-d'ici à ce que le bordereau lui-même arrive, le run ID, le rapport de
-vérification (téléchargeable en JSON) et les journaux sur média ci-dessus
-sont l'ossature de traçabilité sur laquelle bâtir une procédure papier.
-:::
+Le bordereau (R-07) est livré depuis la v0.6.0, à partir de
+l'[écran Média](../../air-gap/import-destination/) dont il dérive : voir
+[le bordereau de transfert](../transfer-slip/). À côté de lui, le run ID, le
+rapport de vérification (téléchargeable en JSON) et les journaux sur média
+ci-dessus restent l'ossature de traçabilité sur laquelle bâtir une procédure
+papier.

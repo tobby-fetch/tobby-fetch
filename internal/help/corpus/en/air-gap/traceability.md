@@ -103,10 +103,8 @@ bilingual transfer slip derived from the Media screen — medium summary,
 verification report, scan results — exportable as HTML or text, and clearly
 marked as an **unsigned aid**.
 
-:::note[Upcoming — milestone 6]
-The transfer slip (R-07) ships with milestone 6. The
-[Media screen](../../air-gap/import-destination/) it derives from is
-delivered; until the slip itself ships, the run ID, the verification report
-(downloadable as JSON) and the media logs above are the traceability
-backbone to build a paper procedure on.
-:::
+The slip (R-07) is delivered since v0.6.0, from the
+[Media screen](../../air-gap/import-destination/) it derives from: see
+[the transfer slip](../transfer-slip/). Beside it, the run ID, the
+verification report (downloadable as JSON) and the media logs above remain
+the traceability backbone a paper procedure is built on.

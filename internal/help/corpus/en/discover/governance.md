@@ -3,16 +3,13 @@ title: Licenses, governance, sustainability
 description: GPL-3.0 for the application, Apache-2.0 for the format — why, what it means for your legal team, how vulnerabilities are handled, and why the project stays auditable without its vendor.
 sidebar:
   order: 4
-  badge:
-    text: Partial
-    variant: caution
 ---
 
-:::caution[Partially complete]
-The licensing, DCO and security-reporting content below is current. The
-vulnerability-handling story deepens with milestone 6, when scanning with
-policy ships and gets its own documentation. Track it on the
-[project status](../../discover/status/) page.
+:::note[Vulnerabilities in the content Tobby moves]
+This page covers vulnerabilities in Tobby itself. Scanning the content
+Tobby transfers, with a blocking or advisory policy, is delivered since
+v0.6.0 and documented in
+[vulnerability scanning](../../security/vulnerability-scanning/).
 :::
 
 ## Two licenses, one boundary

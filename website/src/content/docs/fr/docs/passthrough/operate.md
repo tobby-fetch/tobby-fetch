@@ -3,17 +3,12 @@ title: Exploiter dans la durée
 description: Sondes, suivi et reprise des tâches, ce sur quoi alerter, sauvegarde, croissance du store, montées de version et arrêt propre.
 sidebar:
   order: 7
-  badge:
-    text: Partiel
-    variant: caution
 ---
 
 Une instance passthrough est conçue pour tourner sans surveillance
 pendant des mois. Cette page dit ce que cela vous coûte : ce qu'il faut
 surveiller, ce qu'il faut sauvegarder, ce qui grossit, et comment monter
-de version. Une partie de l'outillage qui rendra tout cela plus simple
-est encore devant — ces parties portent un badge ci-dessous plutôt que
-d'être passées sous silence.
+de version.
 
 ## Sondes et métriques
 
@@ -172,9 +167,12 @@ Le code de sortie `5` signifie « des changements sont prévus », distinct de
 voir un plan chargé comme une compilation cassée. Voir la
 [référence CLI](../../reference/cli/).
 
-:::note[À venir — jalon 6]
-La vérification d'intégrité du store à la demande, depuis l'interface et
-l'API (R-31), arrive avec le jalon 6.
+:::tip[Vérifier le store à la demande]
+Un plan lit des métadonnées ; pour contrôler les octets, vérifiez le store :
+chaque blob re-hashé contre son digest, les manifestes contrôlés pour leur
+complétude, les signatures de recipe contre les trust roots configurés
+maintenant, avec un rapport horodaté — depuis l'interface, l'API ou `tobby store verify`
+(R-31, depuis la v0.6.0). Voir [vérifier l'intégrité du store](../verify-store/).
 :::
 
 ## Ce que le store détient, et d'où
@@ -231,10 +229,11 @@ politique de compatibilité — ce qui est déjà stable, ce qui se fige en
   `helm.sh/resource-policy: keep`, si bien que même un `helm uninstall`
   laisse les données en place.
 
-:::note[À venir — jalon 6]
-La mise à jour de Tobby par son propre canal OCI (R-25) — la nouvelle
-release voyageant comme du contenu vérifié, entre zones et à travers
-l'air gap comme tout ce qu'il transporte — arrive avec le jalon 6.
+:::tip[Par son propre canal]
+Depuis la v0.6.0, Tobby peut aussi être mis à jour par son propre canal OCI
+(R-25) : chaque release est publiée prête pour une recipe, et voyage comme
+du contenu vérifié, entre zones et à travers l'air gap, comme tout ce qu'il
+transporte. Voir [mettre à jour Tobby en zone isolée](../../air-gap/update-tobby/).
 :::
 
 ## Arrêt propre

@@ -181,7 +181,7 @@ préfixe réservé. La liste fait partie du contrat produit (affichée sur
 | `/metrics` | Point d'accès OpenMetrics — voir [Métriques et journaux](../../reference/metrics-logs/). |
 | `/healthz`, `/readyz` | Sondes de vivacité et de disponibilité, les seules surfaces anonymes. |
 | `/files/` | Service HTTP des FileSets (dépôts de paquets d'OS) — authentification Basic pour que les identifiants dans l'URL d'`apt`/`dnf` fonctionnent ; accès anonyme possible par FileSet, sur option. |
-| `/auth/` | Réservé en amont des rappels OIDC/SAML du jalon 6. |
+| `/auth/` | Les allers-retours OIDC et SAML de l'[identité d'entreprise](../../security/enterprise-identity/) (redirections et rappels). |
 | `/static/` | Ressources d'UI embarquées. |
 
 Tout ce qui est hors de ces préfixes est une route d'UI et peut évoluer
