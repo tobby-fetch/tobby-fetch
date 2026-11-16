@@ -172,8 +172,8 @@ features:
     fr: "recipe cook : outillage d'écriture des recipes"
     status: upcoming
     note:
-      en: In development in the recipe-spec repository.
-      fr: En développement dans le dépôt recipe-spec.
+      en: Outside the v1.0 scope of Tobby; developed in the recipe-spec repository, on its own schedule.
+      fr: Hors du périmètre v1.0 de Tobby ; développé dans le dépôt recipe-spec, à son propre rythme.
   - id: "4.4"
     en: "Enterprise network: authenticated proxies, private PKI, server TLS"
     fr: "Réseau d'entreprise : proxys authentifiés, PKI privée, TLS serveur"
@@ -402,3 +402,6 @@ features:
     fr: Recette contradictoire et version 1.0 (spec gelée en v1)
     status: upcoming
     milestone: 7
+    note:
+      en: Prepared with v1.0.0-rc.1 (acceptance book, release-criteria script, spec freeze readiness); the formal acceptance with the project stakeholders and the stable v1.0.0 follow.
+      fr: Préparée avec la v1.0.0-rc.1 (cahier de recette, script des critères de release, préparation du gel de la spec) ; la recette formelle avec les parties prenantes et la v1.0.0 stable suivent.
