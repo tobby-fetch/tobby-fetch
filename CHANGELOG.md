@@ -10,8 +10,8 @@ starting with `v0.1.0`.
 
 ## [1.0.0-rc.1] - 2026-11-16
 
-Toward `v1.0.0-rc.1` — milestone 7: finishing, documentation and
-acceptance. The release candidate brings the consumption aids (mapping
+The first release candidate of 1.0 — milestone 7: finishing, documentation
+and acceptance. It brings the consumption aids (mapping
 table exports, a generated K3s/RKE2 `registries.yaml`), a redacted
 diagnostic bundle, the supervision kit (signed OpenAPI document and
 metrics reference, alert rules and a dashboard in the chart), a clock
