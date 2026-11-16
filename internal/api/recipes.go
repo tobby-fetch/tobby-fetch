@@ -23,6 +23,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/consume"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -68,6 +69,9 @@ type RecipeOptions struct {
 	// Occupancy is the latest store-footprint sample against the
 	// configured threshold (R-33); nil on an instance with no threshold.
 	Occupancy *store.OccupancyMonitor
+	// Aids computes the consumption aids (FR-065): the mapping table
+	// exports and the registries.yaml snippet.
+	Aids *consume.Service
 	// Now injects the clock for the override's recorded timestamp.
 	Now func() time.Time
 }
@@ -82,8 +86,16 @@ func RegisterRecipes(a *API, o *RecipeOptions) {
 	if rc.opts.Now == nil {
 		rc.opts.Now = time.Now
 	}
+	if rc.opts.Aids == nil {
+		// An instance wired without the aids answers TBY-AID-001, not a
+		// nil dereference.
+		rc.opts.Aids = consume.New(rc.opts.Store, &consume.Settings{})
+	}
 	a.Handle("GET /api/v1/recipes", a.RequireRole(auth.RoleViewer, rc.list))
 	a.Handle("GET /api/v1/recipes/{recipe}/mapping", a.RequireRole(auth.RoleViewer, rc.mapping))
+	a.Handle(RouteMappingAll, a.RequireRole(auth.RoleViewer, rc.mappingAll))
+	a.Handle(RouteRegistriesRecipe, a.RequireRole(auth.RoleViewer, rc.registriesRecipe))
+	a.Handle(RouteRegistriesAll, a.RequireRole(auth.RoleViewer, rc.registriesAll))
 	a.Handle("POST /api/v1/sync", a.RequireRole(auth.RoleOperator, rc.sync))
 	a.Handle("GET /api/v1/sync/prune-preview", a.RequireRole(auth.RoleOperator, rc.prunePreview))
 	a.Handle("DELETE /api/v1/content/{repo...}", a.RequireRole(auth.RoleAdmin, rc.deleteRepo))
@@ -132,6 +144,16 @@ func (rc *recipesAPI) list(w http.ResponseWriter, r *http.Request) {
 // included (FR-035, FR-065). Unknown recipes answer the shared 404.
 func (rc *recipesAPI) mapping(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("recipe")
+	// ?format= turns the answer into the exportable table (FR-065); without
+	// it the recorded versions are served as they always were.
+	if r.URL.Query().Has("format") {
+		f, ok := rc.parseFormat(w, r, "json")
+		if !ok {
+			return
+		}
+		rc.writeTable(w, r, []consume.Selector{{Name: name}}, f)
+		return
+	}
 	records, err := rc.opts.Store.RecipeRecords()
 	if err != nil {
 		rc.storeProblem(w, r, err)

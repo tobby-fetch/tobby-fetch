@@ -46,6 +46,7 @@ var pageFiles = []string{
 	"admin-store",
 	"admin-retriever",
 	"api-docs",
+	"consumption",
 	"content-list",
 	"content-manifest",
 	"content-repo",

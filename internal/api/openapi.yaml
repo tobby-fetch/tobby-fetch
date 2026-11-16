@@ -385,6 +385,86 @@ paths:
         ingredient rows — kind, local relocated repository path, tag, and
         pinned digest. Mirror of the /recipes/{recipe}/mapping screen.
         Role viewer.
+
+        With ?format=csv|json|markdown the answer is instead the
+        exportable source→destination table of every recorded version of
+        the recipe (FR-065), as GET /api/v1/mapping serves it; that form
+        needs a registry the zone pulls from (destination.registry or
+        consumption.registry) and answers TBY-AID-001 without one.
+      parameters:
+        - name: recipe
+          in: path
+          required: true
+          description: The recipe name.
+          schema:
+            type: string
+        - $ref: "#/components/parameters/MappingFormat"
+      responses:
+        "200":
+          description: >-
+            The recorded versions and their ingredient mapping, or the
+            exportable table when ?format= is given.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      recipe:
+                        type: string
+                      versions:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/RecipeRecord"
+                  - $ref: "#/components/schemas/MappingTable"
+            text/csv:
+              schema:
+                type: string
+            text/markdown:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/mapping:
+    get:
+      summary: >-
+        The source→destination mapping table of every recipe the store holds
+        (FR-065): per ingredient, FileSets included, the reference the recipe
+        names and the reference at the destination registry, with the pinned
+        digest. Computed from the recorded recipe graph, so it matches what is
+        pushed; no credential, no timestamp. Mirror of the /consumption
+        screen. Answers TBY-AID-001 when neither destination.registry nor
+        consumption.registry is set. Role viewer.
+      parameters:
+        - $ref: "#/components/parameters/MappingFormat"
+      responses:
+        "200":
+          description: The table, in the requested format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MappingTable"
+            text/csv:
+              schema:
+                type: string
+            text/markdown:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/recipes/{recipe}/registries.yaml:
+    get:
+      summary: >-
+        The K3s/RKE2 registries.yaml mirror snippet for every recorded version
+        of one recipe (FR-065). Mirror of the recipe mapping screen's
+        snippet. Role viewer.
+
+        One mirror per source registry host of the recipe's container images;
+        its endpoint is the zone registry and its rewrite maps the repository
+        onto its relocated path. The header comment states the limits of the
+        aid. The output never carries a credential and is deterministic.
+        Answers TBY-AID-001 without a registry, the shared 404 for an unknown
+        recipe.
       parameters:
         - name: recipe
           in: path
@@ -394,18 +474,25 @@ paths:
             type: string
       responses:
         "200":
-          description: The recorded versions and their ingredient mapping.
+          description: The registries.yaml document.
           content:
-            application/json:
+            application/yaml:
               schema:
-                type: object
-                properties:
-                  recipe:
-                    type: string
-                  versions:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/RecipeRecord"
+                type: string
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/registries.yaml:
+    get:
+      summary: >-
+        The K3s/RKE2 registries.yaml mirror snippet for every recipe the store
+        holds (FR-065). Mirror of the /consumption screen. Role viewer.
+      responses:
+        "200":
+          description: The registries.yaml document.
+          content:
+            application/yaml:
+              schema:
+                type: string
         default:
           $ref: "#/components/responses/Problem"
   /api/v1/sync:
@@ -1304,6 +1391,16 @@ components:
       description: The task identifier.
       schema:
         type: string
+    MappingFormat:
+      name: format
+      in: query
+      required: false
+      description: >-
+        Export format of the mapping table (FR-065): csv, json or markdown.
+        All three carry the same rows. Default json on /api/v1/mapping.
+      schema:
+        type: string
+        enum: [csv, json, markdown]
   responses:
     Problem:
       description: >-
@@ -1328,6 +1425,38 @@ components:
           schema:
             $ref: "#/components/schemas/Problem"
   schemas:
+    MappingTable:
+      type: object
+      description: >-
+        The source→destination mapping table of one destination (FR-065), as
+        the command line prints it with `tobby consumption table --output json`.
+      required: [destination, entries]
+      properties:
+        destination:
+          type: string
+          description: The registry host the destination references name.
+        entries:
+          type: array
+          items:
+            type: object
+            required: [recipe, recipeVersion, ingredient, kind, source, destination, digest]
+            properties:
+              recipe:
+                type: string
+              recipeVersion:
+                type: string
+              ingredient:
+                type: string
+              kind:
+                type: string
+              source:
+                type: string
+                description: The reference the recipe names, with its tag (or digest when it has none).
+              destination:
+                type: string
+                description: The reference at the destination registry, relocated per FR-035.
+              digest:
+                type: string
     Plan:
       type: object
       description: >-

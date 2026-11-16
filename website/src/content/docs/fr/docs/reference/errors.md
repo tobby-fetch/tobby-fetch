@@ -1138,7 +1138,7 @@ La table de correspondance et l'extrait `registries.yaml` de FR-065 : générés
 - **Quoi :** Aucune aide à la consommation ne peut être générée : cette instance ne nomme aucune registry depuis laquelle la zone tire.
 - **Cause probable :** La table de correspondance et l'extrait registries.yaml pointent vers la registry de la zone. Cette instance ne pousse vers aucune destination.registry, et consumption.registry n'est pas renseigné.
 - **Action corrective :** Renseignez destination.registry si cette instance pousse vers la registry de la zone, ou consumption.registry avec l'adresse depuis laquelle les clients de la zone tirent — cette instance elle-même quand elle sert la zone.
-- **Remédiable hors-ligne :** oui · **Bloque :** la génération de l'aide · **Statut :** réservé — émis à partir du jalon 7
+- **Remédiable hors-ligne :** oui · **Bloque :** la génération de l'aide
 
 ## Bundle de diagnostic (TBY-DIA)
 

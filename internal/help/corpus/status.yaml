@@ -341,8 +341,11 @@ features:
   - id: "7.1"
     en: UI polish and consumption aids (mapping exports, registries.yaml snippet)
     fr: Finition de l'interface et aides à la consommation (exports mapping, registries.yaml)
-    status: upcoming
+    status: partial
     milestone: 7
+    note:
+      en: Consumption aids (mapping exports, generated registries.yaml) are in; the design pass is finishing for v1.0.0-rc.1.
+      fr: Les aides à la consommation (exports mapping, registries.yaml généré) sont livrées ; la passe design se termine pour la v1.0.0-rc.1.
   - id: "7.2"
     en: Complete bilingual documentation (EN/FR, CI-checked completeness)
     fr: Documentation bilingue complète (EN/FR, complétude vérifiée en CI)

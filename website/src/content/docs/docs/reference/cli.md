@@ -37,6 +37,9 @@ tobby
 ├── import         Import a standard OCI image layout into the store
 ├── config
 │   └── dump       Print the effective configuration (secrets redacted)
+├── consumption
+│   ├── table      Print the source→destination mapping table
+│   └── registries-yaml  Print the K3s/RKE2 registries.yaml mirror snippet
 ├── fileset
 │   └── pack       Package a local directory as a FileSet in the store
 ├── media
@@ -291,6 +294,39 @@ points at. Details in the
 
 `--output json` re-encodes the same redacted document for callers that
 would rather not carry a YAML parser.
+
+### tobby consumption table
+
+```
+tobby consumption table [--recipe <name>[@<version>]]... [--destination <host[:port]>] [--output markdown|json|csv]
+```
+
+Prints the source→destination mapping table (SRS FR-065): for every
+ingredient of the selected recipes — FileSets included — the reference the
+recipe names, the reference at the destination registry, and the pinned
+digest. It reads the recipe graph of the store directory, so it works on a
+host where no instance is running, and matches what was pushed.
+
+`--recipe` is repeatable (`name` selects every recorded version,
+`name@version` one of them; none selects the whole store). The registry is
+`--destination`, else `consumption.registry`, else `destination.registry`;
+with none, the command fails with `TBY-AID-001`. `--output` chooses the
+format — `markdown` (the default), `json` or `csv` — and all three carry the
+same rows. See [consumption aids](../../passthrough/consumption-aids/).
+
+### tobby consumption registries-yaml
+
+```
+tobby consumption registries-yaml [--recipe <name>[@<version>]]... [--destination <host[:port]>]
+```
+
+Prints, on stdout and as a single YAML document, the `registries.yaml` that
+makes K3s and RKE2 pull the selected recipes' images from the zone registry:
+one mirror per source registry host, with the zone registry as endpoint and a
+rewrite onto the relocated path. `tobby consumption registries` is an alias.
+No credential is ever written; the output is deterministic and carries no
+timestamp. It is the one command that owes no `--output json`: the file it
+prints is meant to be installed on the nodes as it is.
 
 ### tobby fileset pack
 

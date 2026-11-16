@@ -139,8 +139,6 @@ type reservedOptIn struct {
 // one removes its entry — and the corresponding case of
 // TestMilestone7ReservedOptInsAreRefused — in the same change.
 var milestone7Reserved = []reservedOptIn{
-	{"consumption.registry", func(c *Config) bool { return c.Consumption.Registry != "" }, "the consumption aids (7.1)"},
-	{"consumption.caFile", func(c *Config) bool { return c.Consumption.CAFile != "" }, "the consumption aids (7.1)"},
 	{"hardening.disableUnitImport", func(c *Config) bool { return c.Hardening.DisableUnitImport }, "per-content provenance and hardening (R-17)"},
 	{"hardening.disableRegistryPush", func(c *Config) bool { return c.Hardening.DisableRegistryPush }, "per-content provenance and hardening (R-17)"},
 	{"scan.vex", func(c *Config) bool { return len(c.Scan.VEX) > 0 }, "scoped and bounded exceptions (R-15)"},
@@ -232,3 +230,8 @@ func bareRegistryHost(key, value string) error {
 	}
 	return nil
 }
+
+// CheckRegistryHost validates a bare registry host given outside the
+// configuration file (the command line's --destination) with the rules the
+// configuration applies to consumption.registry.
+func CheckRegistryHost(key, value string) error { return bareRegistryHost(key, value) }

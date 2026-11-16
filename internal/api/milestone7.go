@@ -11,10 +11,11 @@ package api
 // matrix (FR-074) and the UI/API parity of FR-061 with the screens of
 // package ui (milestone7.go there).
 const (
-	// Track A — consumption aids (FR-065, 7.1). The existing
-	// GET /api/v1/recipes/{recipe}/mapping gains ?format=csv|json|markdown
-	// (default json, unchanged); the whole store gets the same table.
-	RouteMappingAll       = "GET /api/v1/mapping"                          // viewer: ?format=csv|json|markdown
+	// Track A — consumption aids (FR-065, 7.1), registered in consumption.go.
+	// The existing GET /api/v1/recipes/{recipe}/mapping gains
+	// ?format=csv|json|markdown: without it the answer is unchanged, with
+	// it the exportable table; the whole store gets the same table.
+	RouteMappingAll       = "GET /api/v1/mapping"                          // viewer: ?format=csv|json|markdown (default json)
 	RouteRegistriesRecipe = "GET /api/v1/recipes/{recipe}/registries.yaml" // viewer
 	RouteRegistriesAll    = "GET /api/v1/registries.yaml"                  // viewer
 

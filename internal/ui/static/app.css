@@ -90,7 +90,7 @@ code {
   color: var(--tobby-text); text-decoration: none;
 }
 .t-brand svg { width: 24px; height: 24px; color: var(--tobby-accent); }
-.t-brand .t-brand-dot { color: var(--tobby-accent); }
+.t-brand .t-brand-dot { color: var(--tobby-accent-text); }
 
 .t-nav { display: flex; gap: 0.9rem; font-size: 0.82rem; }
 .t-nav a {
@@ -121,6 +121,10 @@ code {
 }
 .t-search input { all: unset; flex: 1; color: var(--tobby-text); font-size: 0.78rem; }
 .t-search input::placeholder { color: var(--tobby-muted); }
+/* The input is `all: unset`, ring included: the ring is drawn on the field
+   it sits in, or a keyboard user would type into a box that never lit up
+   (WCAG 2.4.7). */
+.t-search:focus-within { outline: var(--tobby-focus-ring); outline-offset: 2px; }
 
 /* Execution mode chip — informative, never a control (FR-001). */
 .t-modechip {
@@ -567,7 +571,7 @@ code {
 }
 .t-breadcrumb a { color: var(--tobby-muted); }
 .t-breadcrumb a:hover { color: var(--tobby-accent-text); }
-.t-breadcrumb-sep { color: var(--tobby-muted); opacity: 0.5; margin: 0 var(--tobby-space-1); }
+.t-breadcrumb-sep { color: var(--tobby-muted); margin: 0 var(--tobby-space-1); }
 /* Last segment: current page, not a link. */
 .t-breadcrumb [aria-current="page"], .t-breadcrumb-current {
   color: var(--tobby-text); font-weight: 600;
@@ -1040,7 +1044,7 @@ button.t-lang:hover { color: var(--tobby-accent-text); }
   font-size: var(--tobby-text-xs); color: var(--tobby-muted);
 }
 .t-help-cta:hover { color: var(--tobby-accent-text); }
-.t-help-cta-icon { color: var(--tobby-accent); }
+.t-help-cta-icon { color: var(--tobby-accent-text); }
 .t-page-guide { margin: -0.4rem 0 var(--tobby-space-4); }
 
 /* ---------------------------------------------------------------------

@@ -1068,7 +1068,7 @@ The mapping table and the `registries.yaml` snippet of FR-065: generated from wh
 - **What happened:** No consumption aid can be generated: this instance names no registry the zone pulls from.
 - **Probable cause:** The mapping table and the registries.yaml snippet point at the zone registry. This instance pushes to no destination.registry, and consumption.registry is not set.
 - **Corrective action:** Set destination.registry when this instance pushes to the zone registry, or consumption.registry to the address the zone's clients pull from — this instance itself when it serves the zone.
-- **Fixable offline:** yes · **Blocks:** the generation of the aid · **Status:** reserved — emitted from milestone 7
+- **Fixable offline:** yes · **Blocks:** the generation of the aid
 
 ## Diagnostic bundle (TBY-DIA)
 

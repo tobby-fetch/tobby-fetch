@@ -1,0 +1,59 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /consumption — the consumption aids (FR-065, 7.1) for the whole store:
+     the source→destination table of every recorded recipe, its exports, and
+     the registries.yaml snippet. The per-recipe form lives on the recipe
+     mapping screen; both come from one service (FR-061). */}}
+{{define "title"}}{{.T "consumption.title"}}{{end}}
+{{define "main"}}
+<section>
+  {{if .Err}}
+  {{template "error-block" .}}
+  {{else}}
+  <div class="t-titlerow">
+    <h1 class="t-page-title">{{.T "consumption.title"}}</h1>
+  </div>
+  <p class="t-page-sub">{{.T "consumption.subtitle"}}</p>
+  <p class="t-page-guide">{{template "help-cta" (withData . (.Guide "passthrough/consumption-aids"))}}</p>
+
+  {{template "aids-section" (withData . .Data.Aids)}}
+
+  {{with .Data.Aids}}{{if .Configured}}{{if not .Failure}}
+  <h2 class="t-kick">{{$.T "consumption.table_heading"}}</h2>
+  {{if not .Rows}}
+  <div class="t-empty"><p>{{$.T "consumption.no_rows"}}</p></div>
+  {{else}}
+  <div class="t-tablewrap" tabindex="0" role="region" aria-label="{{$.T "consumption.table_heading"}}">
+  <table class="t-table">
+    <caption class="t-visually-hidden">{{$.T "consumption.table_caption"}}</caption>
+    <thead>
+      <tr>
+        <th scope="col">{{$.T "consumption.th_recipe"}}</th>
+        <th scope="col">{{$.T "mapping.th_ingredient"}}</th>
+        <th scope="col">{{$.T "mapping.th_kind"}}</th>
+        <th scope="col" class="t-col-path">{{$.T "consumption.th_source"}}</th>
+        <th scope="col" class="t-col-path">{{$.T "consumption.th_destination"}}</th>
+        <th scope="col">{{$.T "mapping.th_digest"}}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Rows}}
+      <tr>
+        <td class="t-mono" translate="no">{{.Recipe}}@{{.RecipeVersion}}</td>
+        <td class="t-primary t-mono" translate="no">{{.Ingredient}}</td>
+        <td><span class="t-badge t-badge--{{kindClass .Kind}}" translate="no" lang="en">{{.Kind}}</span></td>
+        <td><span class="t-chip"><span class="t-mono t-truncate" title="{{.Source}}" translate="no">{{$.Trunc .Source 48}}</span>
+          <button type="button" class="t-chip-copy" data-copy="{{.Source}}" aria-label="{{$.T "content.copy_path" "Path" .Source}}" title="{{$.T "content.copy_path" "Path" .Source}}">⧉</button></span></td>
+        <td><span class="t-chip"><span class="t-mono t-truncate" title="{{.Destination}}" translate="no">{{$.Trunc .Destination 56}}</span>
+          <button type="button" class="t-chip-copy" data-copy="{{.Destination}}" aria-label="{{$.T "content.copy_path" "Path" .Destination}}" title="{{$.T "content.copy_path" "Path" .Destination}}">⧉</button></span></td>
+        <td><span class="t-chip"><span translate="no" title="{{.Digest}}">{{$.Trunc .Digest 26}}</span>
+          <button type="button" class="t-chip-copy" data-copy="{{.Digest}}" aria-label="{{$.T "repo.copy_digest" "Digest" .Digest}}" title="{{$.T "repo.copy_digest" "Digest" .Digest}}">⧉</button></span></td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{end}}
+  {{end}}{{end}}{{end}}
+  {{end}}
+</section>
+{{end}}

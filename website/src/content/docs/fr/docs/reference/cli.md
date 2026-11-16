@@ -37,6 +37,9 @@ tobby
 ├── import         Import a standard OCI image layout into the store
 ├── config
 │   └── dump       Print the effective configuration (secrets redacted)
+├── consumption
+│   ├── table      Print the source→destination mapping table
+│   └── registries-yaml  Print the K3s/RKE2 registries.yaml mirror snippet
 ├── fileset
 │   └── pack       Package a local directory as a FileSet in the store
 ├── media
@@ -300,6 +303,41 @@ tournerait. C'est l'outil de contrôle que désigne l'action corrective de
 
 `--output json` ré-encode le même document masqué pour les appelants qui
 préfèrent ne pas embarquer d'analyseur YAML.
+
+### tobby consumption table
+
+```
+tobby consumption table [--recipe <nom>[@<version>]]... [--destination <hôte[:port]>] [--output markdown|json|csv]
+```
+
+Affiche la table de correspondance source→destination (SRS FR-065) : pour
+chaque ingrédient des recipes retenues — FileSets compris — la référence que
+nomme la recipe, la référence dans la registry de destination et le digest
+épinglé. Elle lit le graphe de recipes du répertoire du store : elle
+fonctionne donc sur un hôte où aucune instance ne tourne, et correspond à ce
+qui a été poussé.
+
+`--recipe` est répétable (`nom` retient toutes les versions enregistrées,
+`nom@version` l'une d'elles ; aucune retient tout le store). La registry est
+`--destination`, sinon `consumption.registry`, sinon `destination.registry` ;
+sans aucune, la commande échoue avec `TBY-AID-001`. `--output` choisit le
+format — `markdown` (par défaut), `json` ou `csv` — et les trois portent les
+mêmes lignes. Voir les [aides à la consommation](../../passthrough/consumption-aids/).
+
+### tobby consumption registries-yaml
+
+```
+tobby consumption registries-yaml [--recipe <nom>[@<version>]]... [--destination <hôte[:port]>]
+```
+
+Affiche sur stdout, en un seul document YAML, le `registries.yaml` qui fait
+tirer à K3s et RKE2 les images des recipes retenues depuis la registry de la
+zone : un mirror par hôte de registry source, avec la registry de la zone pour
+endpoint et une réécriture vers le chemin relocalisé. `tobby consumption
+registries` en est un alias. Aucun identifiant n'est jamais écrit ; la sortie
+est déterministe et sans horodatage. C'est la seule commande qui ne doit pas
+`--output json` : le fichier qu'elle affiche est fait pour être installé tel
+quel sur les nœuds.
 
 ### tobby fileset pack
 

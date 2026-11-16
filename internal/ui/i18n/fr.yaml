@@ -20,6 +20,7 @@
 "nav.help": "Aide & infos"
 "nav.admin": "Administration"
 "nav.recipes": "Recipes"
+"nav.consumption": "Consommation"
 "nav.filesets": "Ensembles de fichiers"
 "nav.media": "Média"
 
@@ -963,6 +964,18 @@
 "aids.snippet_title": "registries.yaml pour K3s et RKE2"
 "aids.snippet_limits": "Ne redirige que les tirages d'images du runtime de conteneurs du nœud. Les sources de charts Helm, les contrôleurs GitOps et les politiques d'admission doivent référencer les chemins relocalisés de la table."
 "aids.no_registry": "Aucune registry de zone n'est configurée : renseignez destination.registry, ou consumption.registry quand cette instance sert elle-même la zone."
+"consumption.title": "Aides à la consommation"
+"consumption.subtitle": "Ce dont un cluster de la zone a besoin pour tirer ce que Tobby a relocalisé : la table source-destination de chaque recipe enregistrée, et le registries.yaml pour K3s et RKE2."
+"consumption.table_heading": "Table de correspondance"
+"consumption.table_caption": "Référence source et destination de chaque ingrédient de chaque recipe enregistrée"
+"consumption.no_rows": "Aucune recipe n'est encore enregistrée : la table se remplit au fil des synchronisations."
+"consumption.th_recipe": "Recipe"
+"consumption.th_source": "Référence source"
+"consumption.th_destination": "Référence destination"
+"aids.registry_line": "Registry de destination :"
+"aids.export_group": "Exporter la table de correspondance"
+"aids.copy_snippet": "Copier l'extrait"
+"aids.download_snippet": "Télécharger registries.yaml"
 
 # Piste B — exploitation et supervision (R-30, R-27, R-32, R-11).
 "diagnostics.section_title": "Bundle de diagnostic"

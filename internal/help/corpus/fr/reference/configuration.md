@@ -133,6 +133,15 @@ Syntaxe des valeurs dans l'environnement :
 | `registries.allowlist` | liste de motifs d'hôtes | *(absent = sans restriction)* | *(fichier uniquement)* | Borne les registries que l'instance peut contacter, évaluée sur l'hôte effectivement joint. Absent et `[]` sont deux déclarations différentes : absent signifie aucune restriction (signalé comme non déclaré), `[]` signifie que rien n'est autorisé. Globs : `*` à l'intérieur d'un label DNS, `**` à travers les labels. |
 | `registries.credentialsFile` | chemin | *(aucun)* | *(fichier uniquement)* | Un contenu `kubernetes.io/dockerconfigjson` ; les identifiants sont recherchés par l'hôte effectivement contacté, quel que soit le sens de circulation des octets. Doit se trouver hors du store transportable. |
 
+### Aides à la consommation
+
+Fichier de configuration uniquement. Voir les [aides à la consommation](../../passthrough/consumption-aids/).
+
+| Clé | Type | Défaut | Rôle |
+|---|---|---|---|
+| `consumption.registry` | hôte nu | *(aucun : `destination.registry`)* | L'adresse depuis laquelle les clients de la zone tirent, quand ce n'est pas `destination.registry` : une instance qui sert elle-même son `/v2/` à la zone (UC3), ou une registry de zone jointe sous un autre nom. Un hôte nu ou `hôte:port`, jamais une URL. |
+| `consumption.caFile` | chemin absolu | *(aucun)* | Chemin, **sur les nœuds du cluster**, du certificat de l'autorité qui signe cette registry. Écrit tel quel dans `configs.<hôte>.tls.ca_file` de l'extrait ; jamais lu par Tobby. |
+
 ### Flux de contenu
 
 | Clé | Type | Défaut | Env | Rôle |
@@ -216,7 +225,7 @@ seuls les FileSets listés ici sont servis sous `/files/<name>/`.
 
 | Clé | Type | Défaut | Env | Rôle |
 |---|---|---|---|---|
-| `ui.themeOverride` | chemin | *(aucun)* | `TOBBY_UI_THEME_OVERRIDE` | Feuille de style de l'opérateur servie après les tokens de design intégrés : changer l'identité visuelle sans reconstruire. Les tokens par défaut respectent WCAG AA ; les surcharges portent cette responsabilité. |
+| `ui.themeOverride` | chemin | *(aucun)* | `TOBBY_UI_THEME_OVERRIDE` | Feuille de style de l'opérateur servie après les tokens de design intégrés : changer l'identité visuelle sans reconstruire. Les tokens par défaut respectent WCAG AA ; les surcharges portent cette responsabilité. Les jetons surchargeables sont listés dans [Thème](../theming/). |
 | `ui.showUpcoming` | booléen | `false` | `TOBBY_UI_SHOW_UPCOMING` | Affiche les entrées de navigation des jalons futurs comme des emplacements inertes et étiquetés (mode démonstration). La navigation de production ne montre que ce qui fonctionne. |
 | `logging.media.file` | chemin relatif au store | `_tobby/logs/operations.log` | *(fichier uniquement)* | Où le journal des opérations est écrit **sur le support de transport** (mode mirror uniquement) : le canal d'audit de retour, pour que le destinataire du support puisse lire ce qui en a été fait. Le chemin doit se trouver hors de la couverture du manifeste du média — sous `_tobby/` — et l'instance refuse de démarrer sinon : un journal dans la couverture invalide, ligne après ligne, l'inventaire que la destination vérifie. |
 | `logging.media.maxSize` | taille | `10MiB` | *(fichier uniquement)* | Seuil de rotation par taille de ce journal. |

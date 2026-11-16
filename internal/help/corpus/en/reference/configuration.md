@@ -129,6 +129,15 @@ Value syntax in the environment:
 | `registries.allowlist` | list of host patterns | *(absent = unrestricted)* | *(file only)* | Bounds which registries the instance may contact at all, evaluated on the host actually reached. Absent and `[]` are different statements: absent means no restriction (reported as undeclared), `[]` means nothing is allowed. Globs: `*` within a DNS label, `**` across labels. |
 | `registries.credentialsFile` | path | *(none)* | *(file only)* | A `kubernetes.io/dockerconfigjson` payload; credentials are looked up by the effective host contacted, whichever direction the bytes travel. Must sit outside the transportable store. |
 
+### Consumption aids
+
+Configuration file only. See [consumption aids](../../passthrough/consumption-aids/).
+
+| Key | Type | Default | Purpose |
+|---|---|---|---|
+| `consumption.registry` | bare host | *(none: `destination.registry`)* | The address the zone's clients pull from, when it is not `destination.registry`: an instance serving its own `/v2/` to the zone (UC3), or a zone registry reached under another name. A bare host or `host:port`, never a URL. |
+| `consumption.caFile` | absolute path | *(none)* | Path, **on the cluster nodes**, of the CA certificate that signs that registry. Written as-is into the snippet's `configs.<host>.tls.ca_file`; never read by Tobby. |
+
 ### Content flow
 
 | Key | Type | Default | Env | Purpose |
@@ -210,7 +219,7 @@ listed here are served under `/files/<name>/`.
 
 | Key | Type | Default | Env | Purpose |
 |---|---|---|---|---|
-| `ui.themeOverride` | path | *(none)* | `TOBBY_UI_THEME_OVERRIDE` | Operator stylesheet served after the embedded design tokens: rebranding without rebuild. The default tokens pass WCAG AA; overrides carry that responsibility. |
+| `ui.themeOverride` | path | *(none)* | `TOBBY_UI_THEME_OVERRIDE` | Operator stylesheet served after the embedded design tokens: rebranding without rebuild. The default tokens pass WCAG AA; overrides carry that responsibility. The overridable tokens are listed in [Theming](../theming/). |
 | `ui.showUpcoming` | bool | `false` | `TOBBY_UI_SHOW_UPCOMING` | Renders future-milestone navigation entries as inert, labeled placeholders (demo mode). Production navigation shows only what works. |
 | `logging.media.file` | store-relative path | `_tobby/logs/operations.log` | *(file only)* | Where the operation log is written **on the transport medium** (mirror mode only): the return audit channel, so whoever receives the medium can read what was done with it. The path must lie outside the media manifest's coverage — under `_tobby/` — and the instance refuses to start otherwise: a log inside coverage invalidates, line by line, the inventory the destination verifies. |
 | `logging.media.maxSize` | size | `10MiB` | *(file only)* | Size-based rotation threshold of that log. |

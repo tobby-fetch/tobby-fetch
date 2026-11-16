@@ -14,40 +14,38 @@
 // credential (NFR-015), neither carries a timestamp (same store, same
 // configuration, same bytes), and Tobby never writes them to a node.
 //
-// This package carries the shapes only, reserved at the opening of the
-// milestone. Building the rows from the store, rendering the three table
-// formats and the snippet, and exposing them on the recipe mapping screen
-// (/recipes/{recipe}/mapping), the API and the command line are track A.
+// Service builds both aids from the recorded recipe graph; the recipe
+// mapping screen (/recipes/{recipe}/mapping), the API and the command line
+// (`tobby consumption`) are three projections of it (FR-061).
 package consume
 
 import "fmt"
 
 // Row is one line of the mapping table: one ingredient of one recipe, as
-// it is named at its source and at the destination.
+// it is named at its source and at the destination. Every export format
+// carries exactly these columns, in this order.
 type Row struct {
-	Recipe     string `json:"recipe"`
-	Ingredient string `json:"ingredient"`
+	Recipe        string `json:"recipe"`
+	RecipeVersion string `json:"recipeVersion"`
+	Ingredient    string `json:"ingredient"`
 	// Kind is the declared ingredient kind (RECIPE-SPEC §7).
 	Kind string `json:"kind"`
-	// Nominal is the reference the recipe names, host and repository
-	// ("docker.io/bitnami/wordpress").
-	Nominal string `json:"nominal"`
-	// Relocated is the repository at the destination, per the relocation
-	// convention (FR-035, RECIPE-SPEC §11.5).
-	Relocated string `json:"relocated"`
-	Tag       string `json:"tag"`
-	Digest    string `json:"digest"`
-}
+	// Source is the nominal reference the recipe names, canonical host
+	// included, with the tag ("docker.io/bitnami/wordpress:6.5.2"), or the
+	// digest when the ingredient has no tag.
+	Source string `json:"source"`
+	// Destination is the reference at the destination registry, per the
+	// relocation convention (FR-035, RECIPE-SPEC §11.5):
+	// "reg.zone.example/docker.io/bitnami/wordpress:6.5.2".
+	Destination string `json:"destination"`
+	Digest      string `json:"digest"`
 
-// Destination is what the aids point at.
-type Destination struct {
-	// Registry is the bare host the zone's clients pull from.
-	Registry string
-	// BasePath is the optional relocation prefix at the destination.
-	BasePath string
-	// CAFile is the CA path on the cluster nodes, written as-is into the
-	// snippet (consumption.caFile); empty writes no tls block.
-	CAFile string
+	// Nominal and Relocated are the repositories behind Source and
+	// Destination, without tag or registry host: what the registries.yaml
+	// snippet is built from. Not exported as columns.
+	Nominal   string `json:"-"`
+	Relocated string `json:"-"`
+	Tag       string `json:"-"`
 }
 
 // Format is an export format of the mapping table.
