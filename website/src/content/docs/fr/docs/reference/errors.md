@@ -663,21 +663,21 @@ Réservés à l'ouverture du jalon 6 (FR-031, FR-032) : la politique est consult
 - **Quoi :** La dérogation pour `<id>` ne couvre pas `<reference>`.
 - **Cause probable :** La dérogation est limitée à `<scope>`, et cet élément est hors de cette portée : la vulnérabilité est jugée comme si aucune dérogation n'existait.
 - **Action corrective :** Rien à faire si la portée est la bonne. Si cet élément devait être couvert, élargissez la portée de la dérogation dans la configuration — elle reste bornée par son expiration.
-- **Remédiable hors-ligne :** oui · **Bloque :** rien par lui-même — la vulnérabilité est jugée sans la dérogation · **Statut :** réservé — émis à partir du jalon 7
+- **Remédiable hors-ligne :** oui · **Bloque :** rien par lui-même — la vulnérabilité est jugée sans la dérogation
 
 ### TBY-SCN-027
 
 - **Quoi :** Le document OpenVEX `<path>` est inutilisable.
 - **Cause probable :** `<detail>`
 - **Action corrective :** Corrigez ou retirez le document listé sous scan.vex, puis redémarrez. Tobby lit les documents OpenVEX et ne les télécharge jamais : le fichier doit être un document local valide.
-- **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance · **Statut :** réservé — émis à partir du jalon 7
+- **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance
 
 ### TBY-SCN-028
 
 - **Quoi :** La dérogation du Retriever pour `<id>` n'a pas d'expiration.
 - **Cause probable :** Elle s'applique, mais sans limite dans le temps : les dérogations déclarées par une instance doivent porter une expiration, et celles des Retrievers le devront aussi à partir du format v1.
 - **Action corrective :** Demandez au responsable du Retriever de la zone de donner à la dérogation une date expires et une justification.
-- **Remédiable hors-ligne :** oui · **Bloque :** rien — la dérogation s'applique et est signalée sans limite · **Statut :** réservé — émis à partir du jalon 7
+- **Remédiable hors-ligne :** oui · **Bloque :** rien — la dérogation s'applique et est signalée sans limite
 
 ## Limites de la destination (TBY-DST)
 

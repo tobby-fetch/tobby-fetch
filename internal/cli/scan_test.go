@@ -18,6 +18,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/metrics"
 	"github.com/tobby-fetch/tobby-fetch/internal/server"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -41,7 +42,7 @@ func TestSetupScanningAnnouncesTheDegradedMode(t *testing.T) {
 	eng := engine.New(st, nil, nil, "", "", cfg.Sync)
 	reg := metrics.New()
 	var logs bytes.Buffer
-	s := setupScanning(context.Background(), &cfg, st, eng, reg, slog.New(slog.NewJSONHandler(&logs, nil)))
+	s := setupScanning(context.Background(), &cfg, st, eng, reg, slog.New(slog.NewJSONHandler(&logs, nil)), nil, hardening.Switches{})
 
 	for _, want := range []string{
 		"vulnerability scanning degraded", string(taxonomy.CodeScannerUnavailable), "vulnerability policy is advisory",
@@ -139,7 +140,7 @@ func TestScannerWorkDirIsUnpredictable(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	eng := engine.New(st, nil, nil, "", "", cfg.Sync)
-	s := setupScanning(context.Background(), &cfg, st, eng, metrics.New(), slog.New(slog.DiscardHandler))
+	s := setupScanning(context.Background(), &cfg, st, eng, metrics.New(), slog.New(slog.DiscardHandler), nil, hardening.Switches{})
 
 	if _, err := os.Lstat(filepath.Join(tmp, "tobby-scanner")); err == nil {
 		t.Fatal("the scanner used the predictable os.TempDir()/tobby-scanner")

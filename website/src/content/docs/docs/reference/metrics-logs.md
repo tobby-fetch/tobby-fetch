@@ -50,6 +50,8 @@ Domain metrics registered today:
 | `tobby_scan_db_present` | gauge | — | `1` when a vulnerability database is present, `0` in the absent-database degraded mode. |
 | `tobby_scan_db_age_seconds` | gauge | — | Database age from the build timestamp it records (R-13). Exposed **only while a database is present**: `tobby_scan_db_present` tells "absent" from "fresh". |
 | `tobby_scan_db_stale` | gauge | — | `1` while the age exceeds `scan.maxDbAge`; exposed with the age. |
+| `tobby_scan_exceptions` | gauge | `state` = `active` \| `expired`, `source` = `instance` \| `retriever` \| `vex` | Vulnerability exceptions in configuration (R-15): the instance's `scan.exceptions`, those born of the `scan.vex` OpenVEX documents, and those of the last served Retriever (none counted before the first run). An unbounded Retriever exception counts as `active` — it applies. Computed at every scrape from the configuration and the clock, so an expiry that passes on a running instance moves a series from `active` to `expired` without a restart. All six series exist from the first scrape. |
+| `tobby_scan_reblocked_items_total` | counter | — | Items refused by a blocking policy because an exception that matched one of their violating findings has expired (R-15) — each also a `scan.exception_expired` audit record. At zero from the first scrape. |
 | `tobby_integrity_verifications_total` | counter | `verdict` = `clean` \| `defects` | Completed on-demand store verifications ([`tobby store verify`](../cli/#tobby-store-verify), the Store integrity screen, `POST /api/v1/store/verify`). Orphaned content alone never makes a verdict `defects`. Both verdicts exist from the first scrape, at zero. |
 | `tobby_integrity_last_verification_timestamp_seconds` | gauge | — | End time of the last completed verification, in Unix seconds. **Absent until one has completed**: a value of `0` would read as 1970, a number where the truth is "never verified" — alert on absence, or on age. |
 | `tobby_assurance_reduced_recipes` | gauge | `scope` | Recipes currently held under [reduced assurance](../../security/reduced-assurance/), by the declared trust scope that admitted them. Computed at every scrape from the recipe graph, never counted by events. Every scope that allows unsigned recipes is present from the first scrape, at zero while it holds nothing, so clearing the last one is as visible as admitting the first. |
@@ -141,6 +143,10 @@ With the means of the current series:
 - **`tobby_scan_db_stale == 1`** — the vulnerability database has not
   crossed recently enough; findings published since it was built are
   unknown to the scanner.
+- **`increase(tobby_scan_reblocked_items_total[…]) > 0`** — an exception
+  expired and content it admitted is refused again: renew it deliberately or
+  deal with the finding. **`tobby_scan_exceptions{state="expired"} > 0`**
+  says the same before the next synchronization does.
 - **`tobby_auth_idp_reachable == 0`** — the identity provider is
   unreachable: people sign in with the local break-glass account meanwhile
   (FR-078), which **`increase(tobby_auth_local_logins_under_federation_total[…]) > 0`**

@@ -20,6 +20,7 @@ const (
 	PathDiagnosticsBundle = "/admin/diagnostics/bundle" // admin, POST
 	PathState             = "/admin/state"              // admin
 
-	// Track C — content controls (R-15, R-17).
+	// Track C — content controls (R-15, R-17). PathPolicy is registered
+	// by Mount (policy_screen.go).
 	PathPolicy = "/admin/policy" // admin: exceptions and hardening, read-only (configuration file only)
 )

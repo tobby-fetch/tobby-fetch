@@ -24,6 +24,7 @@ const (
 	RouteState             = "GET /api/v1/state"               // admin: the FR-097 inventory, never contents
 
 	// Track C — content controls (FR-031 R-15, FR-098). Provenance rides
-	// on the existing content routes (reserved fields in content.go).
+	// on the existing content routes (content.go). RoutePolicy is
+	// registered by RegisterPolicy (policy.go).
 	RoutePolicy = "GET /api/v1/policy" // viewer: exceptions with scope, source and state; hardening switches
 )

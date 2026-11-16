@@ -235,7 +235,11 @@ const (
 	ActionClockImplausible = "clock.implausible"
 	// ActionScanExceptionExpired is an item refused again because the
 	// exception that admitted it expired (FR-031 amendment, R-15): the
-	// target is the item, the exception is named. Track C.
+	// target is the item ("repository@digest"), the outcome denied, and
+	// the exception is named in the exception, exception_source and
+	// exception_expires fields — one record per expired exception that
+	// matched the refused item. Emitted by the engine beside the
+	// scan.block record of the same refusal.
 	ActionScanExceptionExpired = "scan.exception_expired"
 	// ActionHardeningRefused is a write refused by a hardening switch
 	// (FR-098, R-17): a unit import, a packing or a registry push, with
@@ -268,6 +272,15 @@ type Event struct {
 	// refusals of FR-098 (ActionHardeningRefused). Emitted as "setting"
 	// only when set (additive to the schema, like actor_name).
 	Setting string
+	// Exception, ExceptionSource and ExceptionExpires name the scan
+	// exception an event is about (ActionScanExceptionExpired, R-15): its
+	// identifier, where it was written ("instance", "retriever", or
+	// "vex:<document path>"), and its expiry, RFC 3339. Emitted as
+	// "exception", "exception_source" and "exception_expires" only when
+	// set (additive to the schema).
+	Exception        string
+	ExceptionSource  string
+	ExceptionExpires string
 }
 
 // Log emits e on logger at INFO level. The timestamp is supplied by the
@@ -288,6 +301,11 @@ func Log(ctx context.Context, logger *slog.Logger, e *Event) {
 	}
 	if e.Setting != "" {
 		attrs = append(attrs, slog.String("setting", e.Setting))
+	}
+	if e.Exception != "" {
+		attrs = append(attrs, slog.String("exception", e.Exception),
+			slog.String("exception_source", e.ExceptionSource),
+			slog.String("exception_expires", e.ExceptionExpires))
 	}
 	logger.LogAttrs(ctx, slog.LevelInfo, e.Action, attrs...)
 }

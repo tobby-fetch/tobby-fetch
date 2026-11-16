@@ -44,6 +44,8 @@ tobby
 │   └── import     Verify a transported store, then push what it cleared
 ├── store
 │   └── verify     Verify the integrity of a whole store (either mode)
+├── scan
+│   └── exceptions List the vulnerability exceptions with their origin, scope, expiry and state (R-15)
 ├── recipe
 │   └── push       Validate a recipe and publish it to a cookbook
 ├── user
@@ -486,6 +488,50 @@ Exit codes: `0` the store is intact, `1` the verification was cancelled or faile
 `4` a defect was found — a blob that
 does not match its digest, an incomplete or unreadable manifest, a
 signature that no longer verifies.
+
+### tobby scan exceptions
+
+```
+tobby scan exceptions [flags]
+```
+
+Lists the vulnerability exceptions of the scan policy (SRS FR-031,
+amendment R-15) — the same document as the
+[Content policy screen](../../security/vulnerability-scanning/#the-effective-policy)
+and `GET /api/v1/policy`: for each exception its origin (`instance`,
+`retriever`, or `vex` with the OpenVEX document), its scope, its
+justification, its expiry and its state **now** — `active`, `expired` (it no
+longer applies: the findings it covered are judged again) or `unbounded` (a
+Retriever exception of the `v1alpha1` format without expiry, applied,
+`TBY-SCN-028`). The OpenVEX documents are listed with the statements they
+admitted and ignored, and why; the hardening switches are stated.
+
+**Where it reads from.** By default, **this host's configuration**
+(`--config`, the environment) and its `scan.vex` documents, in this process,
+contacting nothing: a document that cannot be read or validated fails as it
+would refuse the start (`TBY-SCN-027`). The Retriever's exceptions are only
+known to a running instance that has served its Retriever — they are not
+listed in that mode, and the report says so (`"retriever_known": false`).
+With `--instance` (or `TOBBY_INSTANCE_URL` set) the command reads a running
+instance's effective policy instead, `GET /api/v1/policy`, the Retriever's
+exceptions included; the JSON document says which (`"source":
+"configuration"` or `"instance"`).
+
+| Flag | Purpose |
+|---|---|
+| `--config` | The configuration file to read (offline form). |
+| `--output text\|json` | `json` emits the policy document on stdout (`source`, `evaluated_at`, `mode`, `threshold`, `blocking`, `retriever_known`, `exceptions[]`, `vex_documents[]`, `hardening`). |
+| `--instance` | Base URL of the running instance to read; token (viewer role at least) from `TOBBY_API_TOKEN` or `--token-file`, sent over `http://` only to this host unless `--allow-plaintext-token`. |
+
+```sh
+tobby scan exceptions
+tobby scan exceptions --output json | jq -r '.exceptions[] | select(.state=="expired") | .id'
+tobby scan exceptions --instance https://tobby.example:8443
+```
+
+The command changes nothing. Exit codes: `0` the policy was read, whatever
+the states; `1` the configuration or a VEX document could not be read; `2`
+usage error (an instance flag without `--instance`, for instance).
 
 ### tobby recipe push
 

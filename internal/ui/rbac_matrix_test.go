@@ -142,6 +142,7 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "POST /admin/oci-layout/export", Floor: auth.RoleAdmin, Why: "writes the store's content to a host path (FR-051); audited (FR-094)", Method: "POST", Path: "/admin/oci-layout/export", Form: "output="},
 	{Pattern: "POST /admin/oci-layout/import", Floor: auth.RoleAdmin, Why: "brings outside bytes into the store (FR-051); audited (FR-094)", Method: "POST", Path: "/admin/oci-layout/import", Form: "input="},
 	{Pattern: "GET /admin/store", Floor: auth.RoleAdmin, Why: "the reset lives here (FR-046)", Method: "GET", Path: "/admin/store"},
+	{Pattern: "GET /admin/policy", Floor: auth.RoleAdmin, Why: "the effective content policy (R-15, FR-098), read-only, among the administration screens", Method: "GET", Path: "/admin/policy"},
 	{Pattern: "POST /admin/store/reset", Floor: auth.RoleAdmin, Why: "full store reset, restricted to admin by FR-046 and audited (FR-094)", Method: "POST", Path: "/admin/store/reset", Form: "confirmation=not-the-phrase"},
 	{Pattern: "GET /help", Floor: auth.RoleViewer, Method: "GET", Path: "/help"},
 	{Pattern: "GET /help/{page...}", Floor: auth.RoleViewer, Why: "the embedded operations guides (NFR-003 amendment): readable by whoever operates the instance, and by nobody who has not signed in (R-01)", Method: "GET", Path: "/help/passthrough/operate"},
@@ -181,6 +182,7 @@ var apiMatrix = []rbacRoute{
 	{Pattern: "GET /api/v1/media/verification", Floor: auth.RoleViewer, Why: "the serving gate and the verification in progress (FR-054), mirror of what the Media screen polls: reading, and pollable because it hashes nothing", Method: "GET", Path: "/api/v1/media/verification"},
 	{Pattern: "GET /api/v1/media", Floor: auth.RoleViewer, Why: "the medium's identity and the zone's last import (FR-052, R-28): reading, like every other inventory view", Method: "GET", Path: "/api/v1/media"},
 	{Pattern: "GET /api/v1/media/slip", Floor: auth.RoleViewer, Why: "the transfer slip (R-07), mirror of GET /media/slip: reading, and it hashes nothing", Method: "GET", Path: "/api/v1/media/slip"},
+	{Pattern: "GET /api/v1/policy", Floor: auth.RoleViewer, Why: "the effective content policy (R-15): the exceptions every item report already shows a viewer, gathered — reading, no secret", Method: "GET", Path: "/api/v1/policy"},
 	{Pattern: "GET /api/v1/store/verification", Floor: auth.RoleViewer, Why: "the last store verification report (FR-057), mirror of what the Store integrity screen polls: reading", Method: "GET", Path: "/api/v1/store/verification"},
 	{Pattern: "POST /api/v1/store/verify", Floor: auth.RoleOperator, Why: "re-hashing the whole store is work, not a read (FR-057), mirror of POST /integrity/verify", Method: "POST", Path: "/api/v1/store/verify"},
 	{Pattern: "POST /api/v1/store/verify/cancel", Floor: auth.RoleOperator, Why: "mirror of POST /integrity/cancel", Method: "POST", Path: "/api/v1/store/verify/cancel"},
@@ -310,6 +312,8 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	api.RegisterMedia(restAPI, &api.MediaOptions{})
 	// FR-057: registered with no service — the gate is what is probed.
 	api.RegisterIntegrity(restAPI, &api.IntegrityOptions{})
+	// R-15: registered with no policy — the gate is what is probed.
+	api.RegisterPolicy(restAPI, nil)
 	api.RegisterOpenAPI(restAPI)
 	rec.mux.Handle("/api/v1/", restAPI.Handler())
 

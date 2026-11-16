@@ -85,12 +85,20 @@ func Combine(l *Levels) Policy {
 // Blocking reports whether the policy refuses what it does not accept.
 func (p *Policy) Blocking() bool { return p.Mode == ModeBlock }
 
-// Subject names what one evaluation is about, for the reason parameters.
+// Subject names what one evaluation is about: for the reason parameters,
+// and for the scopes of the exceptions (R-15).
 type Subject struct {
 	// Reference is the item, "repository@digest" or "repository:tag".
 	Reference string
 	// Recipe is the recipe the item belongs to, "name@version".
 	Recipe string
+	// Digest is the ingredient's manifest digest, "sha256:<hex>".
+	Digest string
+	// Repository is the ingredient's nominal source repository in its
+	// canonical form (ADR-0013): host and path, a port written host_5000,
+	// no base prefix — what an exception's repository scope is matched
+	// against.
+	Repository string
 }
 
 // Freshness is the R-13 bound on the database age (scan.maxDbAge and
@@ -129,8 +137,10 @@ func (f Freshness) Stale(builtAt, now time.Time) bool {
 //     severity band when no source scores it; UNKNOWN without a score is
 //     never compared with the threshold and is listed as unscored;
 //   - a finding at or above the threshold violates the policy unless an
-//     exception that has not expired covers it; an expired exception that
-//     matched is reported as such;
+//     exception that has not expired and whose scope includes the item
+//     covers it; an expired exception that matched is reported as such,
+//     an exception whose scope excludes the item too (R-15), and an
+//     unbounded Retriever exception that applied says so;
 //   - violations make the verdict "block" under a blocking policy and
 //     "warn" otherwise; a stale database adds its note, and refuses the
 //     item when the freshness action is block.
@@ -155,6 +165,7 @@ func Evaluate(p *Policy, subj Subject, r *Result, fresh Freshness, now time.Time
 	seenUnscored := map[string]bool{}
 	seenApplied := map[string]bool{}
 	seenExpired := map[string]bool{}
+	seenOutOfScope := map[string]bool{}
 	for i := range r.Findings {
 		f := &r.Findings[i]
 		rep.Counts.Add(f.Severity)
@@ -169,9 +180,9 @@ func Evaluate(p *Policy, subj Subject, r *Result, fresh Freshness, now time.Time
 		if score < p.Threshold {
 			continue
 		}
-		active, expired := p.match(f.ID, now)
+		active, expired, outOfScope := p.match(f, &subj, now)
 		if active != nil {
-			key := string(active.Level) + "/" + active.ID
+			key := exceptionKey(active)
 			if !seenApplied[key] {
 				seenApplied[key] = true
 				ev.ExceptionsApplied = append(ev.ExceptionsApplied, *active)
@@ -179,10 +190,17 @@ func Evaluate(p *Policy, subj Subject, r *Result, fresh Freshness, now time.Time
 			continue
 		}
 		for _, ex := range expired {
-			key := string(ex.Level) + "/" + ex.ID
+			key := exceptionKey(&ex)
 			if !seenExpired[key] {
 				seenExpired[key] = true
 				ev.ExceptionsExpired = append(ev.ExceptionsExpired, ex)
+			}
+		}
+		for _, ex := range outOfScope {
+			key := exceptionKey(&ex)
+			if !seenOutOfScope[key] {
+				seenOutOfScope[key] = true
+				ev.ExceptionsOutOfScope = append(ev.ExceptionsOutOfScope, ex)
 			}
 		}
 		if !seenViolation[f.ID] {
@@ -270,7 +288,8 @@ func (r *Report) Detected(subj Subject, c *Content) {
 }
 
 // notes are the non-blocking reasons every verdict carries: an ignored
-// recipe annotation, expired exceptions, unscored findings.
+// recipe annotation, expired exceptions, exceptions whose scope excludes
+// the item, unbounded exceptions that applied, unscored findings.
 func notes(p *Policy, subj Subject, ev *Evaluation) []Reason {
 	var out []Reason
 	if p.IgnoredRecipeThreshold != nil {
@@ -287,6 +306,18 @@ func notes(p *Policy, subj Subject, ev *Evaluation) []Reason {
 			"level":   string(ex.Level),
 		}})
 	}
+	for _, ex := range ev.ExceptionsOutOfScope {
+		out = append(out, Reason{Code: taxonomy.CodeScanExceptionOutOfScope, Params: map[string]string{
+			"id":        ex.ID,
+			"reference": subj.Reference,
+			"scope":     ex.Scope.String(),
+		}})
+	}
+	for _, ex := range ev.ExceptionsApplied {
+		if ex.Unbounded() {
+			out = append(out, Reason{Code: taxonomy.CodeScanExceptionUnbounded, Params: map[string]string{"id": ex.ID}})
+		}
+	}
 	if len(ev.Unscored) > 0 {
 		out = append(out, Reason{Code: taxonomy.CodeScanUnscored, Params: map[string]string{
 			"reference": subj.Reference,
@@ -296,21 +327,51 @@ func notes(p *Policy, subj Subject, ev *Evaluation) []Reason {
 	return out
 }
 
-// match finds the exceptions naming id: the first one still in force, or
-// else every one that matched but has expired.
-func (p *Policy) match(id string, now time.Time) (active *Exception, expired []Exception) {
+// match classifies the exceptions naming the finding's identifier for the
+// item subj (R-15). The first one whose scope includes the item and which
+// is still in force covers the finding — whatever precedes it in the list:
+// an out-of-scope or expired exception for the same identifier never hides
+// one that applies. When none covers, the ones in scope but expired, and
+// the ones whose scope excludes the item, are returned for the report. An
+// exception whose scope excludes the item is reported as out of scope
+// whatever its expiry: it was never meant for this item.
+func (p *Policy) match(f *Finding, subj *Subject, now time.Time) (active *Exception, expired, outOfScope []Exception) {
 	for i := range p.Exceptions {
 		ex := &p.Exceptions[i]
-		if ex.ID != id {
+		if ex.ID != f.ID {
+			continue
+		}
+		if !ex.Scope.Covers(subj, f) {
+			outOfScope = append(outOfScope, *ex)
 			continue
 		}
 		if ex.ExpiredAt(now) {
 			expired = append(expired, *ex)
 			continue
 		}
-		return ex, nil
+		return ex, nil, nil
 	}
-	return nil, expired
+	return nil, expired, outOfScope
+}
+
+// exceptionKey identifies one declared exception within a report: two
+// VEX statements, or two products of one, may name the same identifier
+// with different scopes, and each is its own exception.
+func exceptionKey(ex *Exception) string {
+	return string(ex.Level) + "/" + ex.VEX + "/" + ex.ID + "/" + ex.Scope.String()
+}
+
+// Reblocked returns the expired exceptions of a report whose item is
+// refused on its findings by a blocking policy (R-15): the exceptions
+// that matched a violating finding and, past their expiry, no longer
+// admit it. Empty when the item is not refused, refused for another
+// reason only, or refused without an expired exception involved — the
+// transition FR-031 asks to be stated, never inferred.
+func (r *Report) Reblocked() []Exception {
+	if r == nil || r.Policy.Verdict != VerdictBlock || !r.Policy.Policy.Blocking() || len(r.Policy.Violations) == 0 {
+		return nil
+	}
+	return r.Policy.ExceptionsExpired
 }
 
 // Score is the number the policy compares with its threshold: the CVSS

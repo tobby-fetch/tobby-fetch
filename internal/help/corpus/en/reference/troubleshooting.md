@@ -116,6 +116,10 @@ report and a metric.
 | An exception no longer applies | [`TBY-SCN-021`](../errors/#tby-scn-021) | It expired. Renew it deliberately or fix the finding. |
 | Findings without a severity | [`TBY-SCN-022`](../errors/#tby-scn-022) | The advisory sources give no score; the policy cannot compare them with the threshold. |
 | An ingredient was scanned as an image although it is not declared as one | [`TBY-SCN-023`](../errors/#tby-scn-023) | Expected: what is scanned is decided by content. |
+| An exception "does not cover" an item | [`TBY-SCN-026`](../errors/#tby-scn-026) | Its scope (digest, repository, recipe) excludes the item. Widen the scope if the item was meant to be covered; `tobby scan exceptions` shows every scope. |
+| The instance refuses to start on an OpenVEX document | [`TBY-SCN-027`](../errors/#tby-scn-027) | The file under `scan.vex` cannot be read or is not a valid OpenVEX v0.2.0 document; the detail names the field. Fix or remove it. |
+| A Retriever exception "has no expiry" | [`TBY-SCN-028`](../errors/#tby-scn-028) | It applies, unbounded. Ask the Retriever's owner to add `expires` and a justification. |
+| The instance refuses to start on `scan.exceptions[i]` | [`TBY-CFG-001`](../errors/#tby-cfg-001) | Since v1.0.0-rc.1 every instance exception needs `expires` and `justification`; the message names the entry. |
 
 ## A removable medium is blocked
 

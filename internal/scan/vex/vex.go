@@ -1,58 +1,121 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright © 2026 infraBuilder SASU and contributors
 
-// Package vex is the subset of OpenVEX (https://openvex.dev, v0.2.0) that
-// Tobby reads (FR-031 amendment 2026-11-16, roadmap R-15, milestone 7).
+// Package vex reads OpenVEX documents (https://openvex.dev, specification
+// v0.2.0) for the scan policy (FR-031 amendment 2026-11-16, roadmap R-15).
 //
 // The instance may declare local OpenVEX documents (scan.vex). Each
-// not_affected statement carrying a justification becomes an exception
-// bounded by its products (the scope) and by an expiry; other statuses add
-// nothing. A document that cannot be read or validated refuses the start
-// (TBY-SCN-027). Documents are local files only — never fetched
-// (NFR-019) — and Tobby never produces or signs one: it signs nothing
-// (ADR-0006).
+// not_affected statement carrying a machine-readable justification becomes
+// exceptions scoped by its products and bounded by the expiry declared
+// beside the document; every other statement adds nothing — a statement
+// with an impact statement only included. A document that cannot be read
+// or validated refuses the start (TBY-SCN-027). Documents are local files
+// only — never fetched (NFR-019) — and Tobby never produces or signs one:
+// it signs nothing (ADR-0006).
 //
-// This package carries the document shape and its closed vocabularies,
-// reserved at the opening of the milestone. Parsing (bounded and strict,
-// NFR-023), its fuzz target (NFR-024), and the translation into
-// scan.Exception are track C.
+// The parser is bounded and strict (NFR-023): the size is capped before a
+// byte is decoded, the nesting depth and the counts of statements and
+// products are capped, every field the specification does not define is
+// refused (by its exact name: encoding/json's case-insensitive matching is
+// closed), as are duplicate keys, invalid UTF-8 and trailing data. Parse
+// is fuzzed (FuzzParse, NFR-024).
 package vex
 
 import "time"
 
-// Document is an OpenVEX document, restricted to the fields Tobby reads.
+// Context is the only @context this package reads: the OpenVEX
+// specification v0.2.0. A document of another version has another shape
+// (v0.0.x carries the vulnerability as a string) and is refused rather
+// than read approximately.
+const Context = "https://openvex.dev/ns/v0.2.0"
+
+// Document is an OpenVEX v0.2.0 document: every field the specification
+// defines, and none other.
 type Document struct {
-	Context    string      `json:"@context"`
-	ID         string      `json:"@id"`
-	Author     string      `json:"author"`
-	Timestamp  time.Time   `json:"timestamp"`
-	Version    int         `json:"version"`
-	Statements []Statement `json:"statements"`
+	Context     string      `json:"@context"`
+	ID          string      `json:"@id"`
+	Author      string      `json:"author"`
+	Role        string      `json:"role,omitempty"`
+	Timestamp   time.Time   `json:"timestamp"`
+	LastUpdated *time.Time  `json:"last_updated,omitempty"`
+	Version     int         `json:"version"`
+	Tooling     string      `json:"tooling,omitempty"`
+	Statements  []Statement `json:"statements"`
 }
 
 // Statement is one VEX statement.
 type Statement struct {
+	ID            string        `json:"@id,omitempty"`
+	Version       int           `json:"version,omitempty"`
 	Vulnerability Vulnerability `json:"vulnerability"`
-	Products      []Product     `json:"products"`
-	Status        Status        `json:"status"`
+	// Timestamp, when set, overrides the document's.
+	Timestamp   *time.Time `json:"timestamp,omitempty"`
+	LastUpdated *time.Time `json:"last_updated,omitempty"`
+	Products    []Product  `json:"products"`
+	Status      Status     `json:"status"`
+	Supplier    string     `json:"supplier,omitempty"`
+	StatusNotes string     `json:"status_notes,omitempty"`
+	// Justification is the machine-readable reason of a not_affected
+	// statement — the only thing that makes it an exception.
 	Justification Justification `json:"justification,omitempty"`
 	// ImpactStatement is the free-text alternative to a justification the
-	// format allows; Tobby requires a justification and reports this text.
-	ImpactStatement string `json:"impact_statement,omitempty"`
-	// Timestamp, when set, overrides the document's.
-	Timestamp *time.Time `json:"timestamp,omitempty"`
+	// format allows; a reviewer can read it, a policy cannot bound it, so
+	// it adds no exception (decided 2026-11-16).
+	ImpactStatement          string     `json:"impact_statement,omitempty"`
+	ActionStatement          string     `json:"action_statement,omitempty"`
+	ActionStatementTimestamp *time.Time `json:"action_statement_timestamp,omitempty"`
 }
 
 // Vulnerability names the vulnerability a statement is about.
 type Vulnerability struct {
-	// Name is the identifier, "CVE-<year>-<number>" for Tobby.
-	Name string `json:"name"`
+	ID string `json:"@id,omitempty"`
+	// Name is the identifier the scanner reports ("CVE-2024-12345").
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	// Aliases are other identifiers of the same vulnerability; each is
+	// excepted alongside Name.
+	Aliases []string `json:"aliases,omitempty"`
 }
 
-// Product identifies what a statement covers: a package URL, an OCI
-// reference or a digest, as the document writes it.
+// Product identifies what a statement covers — for Tobby an image: a
+// package URL of type oci, an OCI reference or a digest.
 type Product struct {
-	ID string `json:"@id"`
+	ID            string         `json:"@id,omitempty"`
+	Identifiers   *Identifiers   `json:"identifiers,omitempty"`
+	Hashes        *Hashes        `json:"hashes,omitempty"`
+	Subcomponents []Subcomponent `json:"subcomponents,omitempty"`
+}
+
+// Subcomponent is a component of a product — for Tobby a package inside
+// the image, named by its package URL.
+type Subcomponent struct {
+	ID          string       `json:"@id,omitempty"`
+	Identifiers *Identifiers `json:"identifiers,omitempty"`
+	Hashes      *Hashes      `json:"hashes,omitempty"`
+}
+
+// Identifiers are the software identifiers the specification defines.
+type Identifiers struct {
+	PURL  string `json:"purl,omitempty"`
+	CPE22 string `json:"cpe22,omitempty"`
+	CPE23 string `json:"cpe23,omitempty"`
+}
+
+// Hashes are the hash algorithms the specification defines. Read, never
+// used to scope: a hash says which bytes, not which manifest a scan reads.
+type Hashes struct {
+	MD5        string `json:"md5,omitempty"`
+	SHA1       string `json:"sha1,omitempty"`
+	SHA256     string `json:"sha-256,omitempty"`
+	SHA384     string `json:"sha-384,omitempty"`
+	SHA512     string `json:"sha-512,omitempty"`
+	SHA3224    string `json:"sha3-224,omitempty"`
+	SHA3256    string `json:"sha3-256,omitempty"`
+	SHA3384    string `json:"sha3-384,omitempty"`
+	SHA3512    string `json:"sha3-512,omitempty"`
+	BLAKE2s256 string `json:"blake2s-256,omitempty"`
+	BLAKE2b256 string `json:"blake2b-256,omitempty"`
+	BLAKE2b512 string `json:"blake2b-512,omitempty"`
 }
 
 // Status is a statement's status. The set is closed by the format.

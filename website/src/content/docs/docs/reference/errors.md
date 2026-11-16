@@ -619,21 +619,21 @@ Reserved at the opening of milestone 6 (FR-031, FR-032): the policy is advisory 
 - **What happened:** The exception for `<id>` does not cover `<reference>`.
 - **Probable cause:** The exception is scoped to `<scope>`, and this item lies outside that scope: the finding is judged as if no exception existed.
 - **Corrective action:** Nothing to do if the scope is right. If this item was meant to be covered, widen the exception's scope in the configuration — it stays bounded by its expiry.
-- **Fixable offline:** yes · **Blocks:** nothing by itself — the finding is judged without the exception · **Status:** reserved — emitted from milestone 7
+- **Fixable offline:** yes · **Blocks:** nothing by itself — the finding is judged without the exception
 
 ### TBY-SCN-027
 
 - **What happened:** The OpenVEX document `<path>` cannot be used.
 - **Probable cause:** `<detail>`
 - **Corrective action:** Fix or remove the document listed under scan.vex, then restart. Tobby reads OpenVEX documents and never fetches them: the file must be a valid local document.
-- **Fixable offline:** yes · **Blocks:** the start of the instance · **Status:** reserved — emitted from milestone 7
+- **Fixable offline:** yes · **Blocks:** the start of the instance
 
 ### TBY-SCN-028
 
 - **What happened:** The Retriever exception for `<id>` has no expiry.
 - **Probable cause:** It applies, but it is unbounded in time: exceptions declared by an instance must carry an expiry, and Retrievers will too from the v1 format on.
 - **Corrective action:** Ask the owner of the zone's Retriever to give the exception an expires date and a justification.
-- **Fixable offline:** yes · **Blocks:** nothing — the exception applies and is reported as unbounded · **Status:** reserved — emitted from milestone 7
+- **Fixable offline:** yes · **Blocks:** nothing — the exception applies and is reported as unbounded
 
 ## Destination limits (TBY-DST)
 

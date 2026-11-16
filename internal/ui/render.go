@@ -43,6 +43,7 @@ var pageFiles = []string{
 	"admin-accounts",
 	"admin-network",
 	"admin-oci-layout",
+	"admin-policy",
 	"admin-store",
 	"admin-retriever",
 	"api-docs",

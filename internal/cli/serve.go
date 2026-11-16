@@ -111,6 +111,15 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		})
 	}
 
+	// OpenVEX documents (FR-031 amendment 2026-11-16, R-15): read and
+	// validated before anything is opened, so a document that cannot be
+	// used refuses the start (TBY-SCN-027) instead of an instance serving
+	// a policy narrower or wider than declared.
+	vexDocs, err := loadVEX(ctx, cfg, logger)
+	if err != nil {
+		return err
+	}
+
 	// Authentication state (R-01): without the explicit FR-075 opt-out, the
 	// instance refuses to start until a local account exists — no surface is
 	// ever exposed open.
@@ -424,7 +433,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// Vulnerability scanning at retrieval (FR-031, FR-032, R-13): the
 	// pinned scanner, its database from the tobby-system delivery, the
 	// policy, the metrics — and the posture stated at startup.
-	scanning := setupScanning(ctx, cfg, st, eng, reg, logger)
+	scanning := setupScanning(ctx, cfg, st, eng, reg, logger, vexDocs, hard)
 	defer scanning.close()
 
 	// The promotion target (milestone 4, FR-013): built from the same
@@ -669,6 +678,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Scan: scanning.slipState,
 	})
 	api.RegisterIntegrity(restAPI, &api.IntegrityOptions{Verifier: integritySvc})
+	api.RegisterPolicy(restAPI, scanning.policy)
 	api.RegisterNetwork(restAPI, &api.NetworkOptions{
 		Cert:     serverCert,
 		CertFile: cfg.Server.TLS.CertFile,
@@ -715,6 +725,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Scan:               scanning.uiState,
 		Hardening:          hard,
 		ScanHistory:        scanHistory,
+		Policy:             scanning.policy,
 	})
 	webUI.Mount(srv.Mux())
 	webUI.MountFederation(srv.Mux())

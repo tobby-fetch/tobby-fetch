@@ -44,9 +44,11 @@ schéma :
   Les en-têtes de transfert ne sont volontairement pas crus pour l'origine :
   ils sont fournis par le client.
 
-Deux champs facultatifs s'y ajoutent quand ils s'appliquent : `actor_name`,
-le nom lisible d'une identité fédérée, et `setting`, la clé de configuration
-qui a décidé de l'issue d'un événement `hardening.refused`.
+Des champs facultatifs s'y ajoutent quand ils s'appliquent : `actor_name`,
+le nom lisible d'une identité fédérée ; `setting`, la clé de configuration
+qui a décidé de l'issue d'un événement `hardening.refused` ; et `exception`,
+`exception_source` et `exception_expires`, l'exception d'analyse dont parle
+un événement `scan.exception_expired`.
 
 Le schéma est versionné par `audit_schema` et n'évolue que par ajout, avec la
 même discipline de compatibilité que l'API REST
@@ -76,6 +78,7 @@ même discipline de compatibilité que l'API REST
 | `token.expire` | chaque refus d'un token échu, sous le nom du token (R-14) ; le refus d'un token révoqué est un échec `auth.authenticate` sous son nom | v0.6.x |
 | `auth.local_under_federation` | une connexion par compte local alors que OIDC ou SAML est activé — usage de secours (break-glass), gardé filtrable à part ; cible `ui` ou la surface machine (FR-078, R-20) | v0.6.x |
 | `scan.block` | un élément refusé par la politique de vulnérabilités — violation, non analysé sous une politique bloquante, ou base obsolète sous l'action block (FR-031) ; la cible est le `reference@digest` de l'élément, l'issue `denied` | v0.6.x |
+| `scan.exception_expired` | un élément refusé de nouveau parce qu'une exception d'analyse qui couvrait l'un de ses constats en violation est échue (amendement de FR-031, R-15) — un enregistrement par élément refusé et par exception échue, à côté de l'enregistrement `scan.block` du même refus. La cible est le `reference@digest` de l'élément, l'issue `denied` ; `exception` nomme la vulnérabilité, `exception_source` l'endroit où l'exception était écrite (`instance`, `retriever`, ou `vex:<chemin du document>`), `exception_expires` son échéance (RFC 3339) | v1.0.x |
 | `hardening.refused` | une écriture refusée par un interrupteur de durcissement (FR-098) : un import unitaire ou son inspection, un empaquetage de FileSet (écran, API ou `tobby fileset pack`), ou une écriture sur `/v2/` — upload de blob, montage, push de manifeste, suppression — par tout client et tout rôle. La cible est la référence, la FileSet empaquetée ou le dépôt ; l'issue `denied` ; le champ supplémentaire `setting` nomme l'interrupteur (`hardening.disableUnitImport` ou `hardening.disableRegistryPush`). Un refus, un enregistrement : aucun second refus n'est écrit à côté | v1.0.x |
 | `scan.scanner.repaired` | un binaire d'analyseur livré par tobby-system, trouvé modifié sur le disque depuis sa vérification et dépaqueté à nouveau depuis la livraison vérifiée, sans avoir été exécuté (FR-031) ; la cible est le chemin du binaire, l'issue `success`, ou `failure` quand la livraison n'a pas pu être dépaquetée à nouveau (l'analyseur est alors indisponible). Un enregistrement WARN à côté nomme les digests attendu et trouvé | v0.6.x |
 

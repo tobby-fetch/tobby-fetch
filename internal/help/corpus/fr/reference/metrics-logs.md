@@ -50,6 +50,8 @@ Métriques de domaine enregistrées aujourd'hui :
 | `tobby_scan_db_present` | gauge | — | `1` quand une base de vulnérabilités est présente, `0` dans le mode dégradé d'absence de base. |
 | `tobby_scan_db_age_seconds` | gauge | — | Âge de la base depuis l'horodatage de construction qu'elle enregistre (R-13). Exposée **uniquement tant qu'une base est présente** : `tobby_scan_db_present` distingue « absente » de « fraîche ». |
 | `tobby_scan_db_stale` | gauge | — | `1` tant que l'âge dépasse `scan.maxDbAge` ; exposée avec l'âge. |
+| `tobby_scan_exceptions` | gauge | `state` = `active` \| `expired`, `source` = `instance` \| `retriever` \| `vex` | Exceptions de vulnérabilités en configuration (R-15) : les `scan.exceptions` de l'instance, celles issues des documents OpenVEX de `scan.vex`, et celles du dernier Retriever servi (aucune comptée avant la première exécution). Une exception de Retriever sans limite compte comme `active` — elle s'applique. Calculée à chaque collecte à partir de la configuration et de l'horloge : une échéance qui passe sur une instance en marche fait passer une série d'`active` à `expired` sans redémarrage. Les six séries existent dès la première collecte. |
+| `tobby_scan_reblocked_items_total` | counter | — | Éléments refusés par une politique bloquante parce qu'une exception qui couvrait l'un de leurs constats en violation est échue (R-15) — chacun aussi un enregistrement d'audit `scan.exception_expired`. À zéro dès la première collecte. |
 | `tobby_integrity_verifications_total` | counter | `verdict` = `clean` \| `defects` | Vérifications du store à la demande terminées ([`tobby store verify`](../cli/#tobby-store-verify), l'écran d'intégrité du store, `POST /api/v1/store/verify`). Du contenu orphelin seul ne rend jamais un verdict `defects`. Les deux verdicts existent dès le premier scrape, à zéro. |
 | `tobby_integrity_last_verification_timestamp_seconds` | gauge | — | Heure de fin de la dernière vérification terminée, en secondes Unix. **Absente tant qu'aucune n'est terminée** : une valeur `0` se lirait comme 1970, un nombre là où la vérité est « jamais vérifié » — alertez sur l'absence, ou sur l'âge. |
 | `tobby_assurance_reduced_recipes` | gauge | `scope` | Recipes actuellement détenues en [assurance réduite](../../security/reduced-assurance/), par périmètre de confiance déclaré qui les a admises. Calculée à chaque scrape à partir du graphe de recipes, jamais comptée par événements. Chaque périmètre qui autorise des recipes non signées est présent dès le premier scrape, à zéro tant qu'il ne détient rien, de sorte que retirer la dernière est aussi visible qu'admettre la première. |
@@ -142,6 +144,10 @@ Avec les moyens de la série actuelle :
 - **`tobby_scan_db_stale == 1`** — la base de vulnérabilités n'a pas été mise à
   jour assez récemment ; les constats publiés depuis sa construction sont
   inconnus de l'analyseur.
+- **`increase(tobby_scan_reblocked_items_total[…]) > 0`** — une exception est
+  échue et un contenu qu'elle admettait est de nouveau refusé : la renouveler
+  délibérément ou traiter le constat. **`tobby_scan_exceptions{state="expired"} > 0`**
+  le dit avant même la synchronisation suivante.
 - **`tobby_auth_idp_reachable == 0`** — le fournisseur d'identité est
   injoignable : les personnes se connectent entre-temps avec le compte local de
   secours (FR-078), ce que montre

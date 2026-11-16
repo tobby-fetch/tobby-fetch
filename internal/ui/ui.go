@@ -104,6 +104,9 @@ type UI struct {
 	// hardening and scanHistory are the FR-098 inputs (provenance.go).
 	hardening   hardening.Switches
 	scanHistory *provenance.History
+	// policy is the effective content policy (R-15), read-only on
+	// /admin/policy; nil renders the screen empty.
+	policy PolicyViewer
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -217,6 +220,10 @@ type Options struct {
 	// ScanHistory reports the last scan of each tag on the repository
 	// page (FR-098); nil reports none.
 	ScanHistory *provenance.History
+	// Policy is the effective content policy (FR-031 amendment R-15,
+	// FR-098) shown read-only on /admin/policy — the source behind
+	// GET /api/v1/policy, so the two cannot differ (FR-061).
+	Policy PolicyViewer
 }
 
 // New assembles the UI.
@@ -266,6 +273,7 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		federation:        opts.Federation,
 		hardening:         opts.Hardening,
 		scanHistory:       opts.ScanHistory,
+		policy:            opts.Policy,
 	}
 }
 
@@ -412,6 +420,9 @@ func (u *UI) Mount(rt Router) {
 	mux.Handle("POST /admin/oci-layout/export", admin(u.layoutExport))
 	mux.Handle("POST /admin/oci-layout/import", admin(u.layoutImport))
 	mux.Handle("GET /admin/store", admin(u.storeScreen))
+	// The effective content policy (R-15): read-only — the policy lives
+	// in the configuration file and the Retriever.
+	mux.Handle("GET "+PathPolicy, admin(u.adminPolicy))
 	mux.Handle("POST /admin/store/reset", admin(u.storeReset))
 	mux.Handle("GET /help", app(u.helpScreen))
 	// The embedded documentation (R-05, NFR-003): the guides at

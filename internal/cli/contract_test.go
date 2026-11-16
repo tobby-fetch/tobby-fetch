@@ -102,6 +102,9 @@ func fixtures() []commandFixture {
 		{path: "tobby sync", args: func(*testing.T) []string {
 			return []string{"--instance", "http://127.0.0.1:1"}
 		}},
+		{path: "tobby scan exceptions", args: func(t *testing.T) []string {
+			return []string{"--config", filepath.Join(tmp(t), "absent.yaml")}
+		}},
 		{path: "tobby serve", args: func(*testing.T) []string {
 			return []string{"--mode", "sideways"}
 		}},

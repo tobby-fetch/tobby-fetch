@@ -146,6 +146,7 @@ func New() *cobra.Command {
 	})
 	root.AddCommand(newServeCmd(), newVersionCmd(), newConfigCmd(), newUserCmd(), newQuickstartCmd(),
 		newRecipeCmd(), newSyncCmd(), newExportCmd(), newImportCmd(), newFileSetCmd(), newMediaCmd(), newStoreCmd())
+	root.AddCommand(newScanCmd()) // R-15: tobby scan exceptions (scancmd.go)
 	return root
 }
 

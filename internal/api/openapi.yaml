@@ -1086,6 +1086,27 @@ paths:
                 $ref: "#/components/schemas/IntegrityStatus"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/policy:
+    get:
+      summary: >-
+        The effective content policy (FR-031 amendment R-15, FR-098) —
+        the document the /admin/policy screen renders and `tobby scan
+        exceptions --instance` reads: the scan mode and instance
+        threshold, every exception (the instance's scan.exceptions, those
+        born of the scan.vex OpenVEX documents, those of the last served
+        Retriever) with its origin, scope, justification, expiry and state
+        at the instant of the request, the OpenVEX documents with their
+        statement counts, and the two hardening switches. Read-only. Role
+        viewer.
+      responses:
+        "200":
+          description: The effective policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyView"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v1/network:
     get:
       summary: >-
@@ -2499,26 +2520,101 @@ components:
       properties:
         id: { type: string }
         justification: { type: string }
-        expires: { type: string, format: date-time }
+        expires:
+          type: string
+          format: date-time
+          description: >-
+            Absent only for a Retriever exception of the v1alpha1 format
+            that declares none: applied, and reported as unbounded
+            (TBY-SCN-028).
         level:
           type: string
           enum: [instance, retriever]
+          description: An exception born of an OpenVEX document is declared by the instance (scan.vex).
         scope:
-          description: >-
-            Reserved (R-15, milestone 7). Narrows the exception; the
-            criteria present combine with AND. Absent, the exception
-            applies to every item of its level.
-          type: object
-          properties:
-            digest: { type: string, description: "Manifest digest, sha256:<64 hex>." }
-            repository: { type: string, description: "Nominal source repository pattern, canonical form (ADR-0013)." }
-            recipe: { type: string, description: "Recipe name, optionally name@version." }
+          $ref: "#/components/schemas/ExceptionScope"
         vex:
           type: string
           description: >-
-            Reserved (R-15, milestone 7). The local OpenVEX document this
-            exception was translated from; absent for an exception written
-            by hand.
+            The local OpenVEX document this exception was translated from
+            (scan.vex[].path); absent for an exception written by hand.
+    ExceptionScope:
+      type: object
+      description: >-
+        Narrows an exception (R-15); the criteria present combine with AND.
+        Absent, the exception applies to every item of its level.
+      properties:
+        digest: { type: string, description: "Manifest digest, sha256:<64 hex>, compared exactly with the ingredient's." }
+        repository: { type: string, description: "Nominal source repository, canonical form (ADR-0013), glob grammar of trust scopes." }
+        recipe: { type: string, description: "Recipe name, optionally name@version." }
+        packages:
+          type: array
+          items: { type: string }
+          description: >-
+            For an exception born of an OpenVEX statement whose product
+            names subcomponents: the affected packages it covers; a finding
+            in another package of the item is not covered.
+    PolicyView:
+      type: object
+      required: [evaluated_at, mode, threshold, blocking, retriever_known, exceptions, vex_documents, hardening]
+      properties:
+        evaluated_at: { type: string, format: date-time, description: "The instant the states were computed at." }
+        mode: { type: string, enum: [warn, block], description: "scan.mode." }
+        threshold: { type: number, description: "scan.threshold, the instance level." }
+        blocking:
+          type: boolean
+          description: Whether the policy in force refuses — scan.mode block, or a threshold the served Retriever poses.
+        retriever_known:
+          type: boolean
+          description: >-
+            False until this instance has served a Retriever: its
+            exceptions are then not listed, which does not mean there are
+            none.
+        exceptions:
+          type: array
+          items:
+            type: object
+            required: [id, origin, state]
+            properties:
+              id: { type: string }
+              origin: { type: string, enum: [instance, retriever, vex] }
+              document: { type: string, description: "The OpenVEX document path, for origin vex." }
+              justification: { type: string }
+              scope:
+                $ref: "#/components/schemas/ExceptionScope"
+              expires: { type: string, format: date-time, description: "Absent for an unbounded Retriever exception." }
+              state:
+                type: string
+                enum: [active, expired, unbounded]
+                description: unbounded is a Retriever exception without expiry, applied (TBY-SCN-028).
+        vex_documents:
+          type: array
+          items:
+            type: object
+            properties:
+              path: { type: string }
+              document_id: { type: string, description: "The document's @id." }
+              expires: { type: string, format: date-time, description: "scan.vex[].expires, the expiry of every exception the document yields." }
+              state: { type: string, enum: [active, expired] }
+              statements: { type: integer }
+              admitted: { type: integer, description: "Statements that yielded at least one exception (not_affected with a justification and a product that can be bounded)." }
+              ignored: { type: integer }
+              exceptions: { type: integer, description: "Exceptions yielded, one per product and identifier." }
+              notes:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    statement: { type: integer }
+                    vulnerability: { type: string }
+                    product: { type: string }
+                    reason: { type: string, enum: [status, impact-statement-only, unbounded-product] }
+                    detail: { type: string }
+        hardening:
+          type: object
+          properties:
+            disableUnitImport: { type: boolean }
+            disableRegistryPush: { type: boolean }
     ScanEvaluation:
       type: object
       description: The evaluated policy of one item — verdict, reasons, exceptions applied.
@@ -2573,6 +2669,14 @@ components:
             $ref: "#/components/schemas/ScanException"
         exceptions_expired:
           type: array
+          items:
+            $ref: "#/components/schemas/ScanException"
+        exceptions_out_of_scope:
+          type: array
+          description: >-
+            Exceptions whose identifier matched a violating finding but
+            whose scope excludes the item (R-15): not applied, and
+            TBY-SCN-026 says so.
           items:
             $ref: "#/components/schemas/ScanException"
         unscored:

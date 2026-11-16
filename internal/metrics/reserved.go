@@ -106,7 +106,9 @@ const (
 	// disableRegistryPush.
 	MetricHardeningEnabled = "tobby_hardening_enabled"
 
-	// Track C — scoped and bounded exceptions (R-15).
+	// Track C — scoped and bounded exceptions (R-15): registered by
+	// RegisterScanExceptions (exceptions.go) and newScanMetrics (scan.go),
+	// and no longer listed by ReservedFamilies.
 
 	// MetricScanExceptions is the number of exceptions in configuration,
 	// VEX-born ones included: gauge, labels state = active | expired and
@@ -133,7 +135,5 @@ func ReservedFamilies() []string {
 		MetricServerCertificateExpiry,
 		MetricClockImplausible,
 		MetricDiagnosticsBundles,
-		MetricScanExceptions,
-		MetricScanReblocked,
 	}
 }

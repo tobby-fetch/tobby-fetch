@@ -439,17 +439,16 @@ const (
 	// matches a finding but whose scope (digest, repository, recipe)
 	// excludes the item: it does not apply here, and the report says why
 	// the item is still judged on the finding (FR-031 amendment, R-15).
-	// Non-blocking by itself. Reserved: emitter lands with R-15
-	// (milestone 7, track C).
+	// Non-blocking by itself.
 	CodeScanExceptionOutOfScope Code = "TBY-SCN-026"
 	// CodeScanVEXInvalid is a configured OpenVEX document that cannot be
 	// read or validated: the instance refuses to start (FR-031 amendment,
-	// R-15). Reserved: emitter lands with R-15 (milestone 7, track C).
+	// R-15), naming the file. Also the refusal of `tobby scan exceptions`
+	// reading the same configuration.
 	CodeScanVEXInvalid Code = "TBY-SCN-027"
 	// CodeScanExceptionUnbounded reports a Retriever exception without
 	// expiry, applied but stated as unbounded until the v1 format makes the
 	// expiry mandatory there too (FR-031 amendment, R-15). Non-blocking.
-	// Reserved: emitter lands with R-15 (milestone 7, track C).
 	CodeScanExceptionUnbounded Code = "TBY-SCN-028"
 
 	// On-demand store integrity verification (FR-057, R-31 — milestone
@@ -684,8 +683,9 @@ var catalog = map[Code]Entry{
 	CodeIntegrityCancelled:  {Code: CodeIntegrityCancelled, Class: ClassOperational, Params: []string{"task"}},
 	CodeIntegrityUnreadable: {Code: CodeIntegrityUnreadable, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
 
-	// Milestone 7 — reserved (see the declarations). Startup refusals and
-	// non-blocking notes carry no status: they are never a response body.
+	// Milestone 7 (see the declarations; TBY-SCN-026..028 are emitted
+	// since R-15). Startup refusals and non-blocking notes carry no
+	// status: they are never a response body.
 	CodeUnitImportDisabled:      {Code: CodeUnitImportDisabled, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"setting"}},
 	CodeRegistryPushDisabled:    {Code: CodeRegistryPushDisabled, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"setting"}},
 	CodeScanExceptionOutOfScope: {Code: CodeScanExceptionOutOfScope, Class: ClassOperational, Params: []string{"id", "reference", "scope"}},

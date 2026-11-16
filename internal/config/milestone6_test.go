@@ -79,9 +79,9 @@ func TestValidateScan(t *testing.T) {
 		{"negative threshold", func(c *Config) { c.Scan.Threshold = -1 }, []string{"scan.threshold"}},
 		{"a zero threshold hardens and is legitimate", func(c *Config) { c.Scan.Threshold = 0 }, nil},
 		{"unchecked database age", func(c *Config) { c.Scan.MaxDBAge = 0 }, []string{"scan.maxDbAge must be positive"}},
-		{"not a CVE", func(c *Config) { c.Scan.Exceptions = []ScanException{{ID: "GHSA-xxxx"}} }, []string{"scan.exceptions[0]", "CVE"}},
+		{"not a CVE", func(c *Config) { c.Scan.Exceptions = []ScanException{bounded("GHSA-xxxx", ExceptionScope{})} }, []string{"scan.exceptions[0]", "CVE"}},
 		{"duplicate exception", func(c *Config) {
-			c.Scan.Exceptions = []ScanException{{ID: "CVE-2024-1234"}, {ID: "CVE-2024-1234"}}
+			c.Scan.Exceptions = []ScanException{bounded("CVE-2024-1234", ExceptionScope{}), bounded("CVE-2024-1234", ExceptionScope{})}
 		}, []string{"scan.exceptions[1]", "already listed"}},
 		{"bad database repository", func(c *Config) { c.Scan.DBRepository = "/abs" }, []string{"scan.dbRepository"}},
 		{"path and ref", func(c *Config) { c.Scan.Trivy = Trivy{Path: "/usr/bin/trivy", Ref: "ghcr.io/x/trivy"} }, []string{"exclusive"}},

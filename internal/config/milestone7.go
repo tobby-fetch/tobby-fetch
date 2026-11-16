@@ -143,15 +143,6 @@ type reservedOptIn struct {
 var milestone7Reserved = []reservedOptIn{
 	{"consumption.registry", func(c *Config) bool { return c.Consumption.Registry != "" }, "the consumption aids (7.1)"},
 	{"consumption.caFile", func(c *Config) bool { return c.Consumption.CAFile != "" }, "the consumption aids (7.1)"},
-	{"scan.vex", func(c *Config) bool { return len(c.Scan.VEX) > 0 }, "scoped and bounded exceptions (R-15)"},
-	{"scan.exceptions[].scope", func(c *Config) bool {
-		for _, ex := range c.Scan.Exceptions {
-			if !ex.Scope.IsZero() {
-				return true
-			}
-		}
-		return false
-	}, "scoped and bounded exceptions (R-15)"},
 }
 
 // validateMilestone7 checks the milestone-7 surface.

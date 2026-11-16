@@ -15,12 +15,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
+	"github.com/tobby-fetch/tobby-fetch/internal/pathglob"
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 )
@@ -268,53 +268,9 @@ func fetchCachedKeyAt(client *http.Client, url, cachePath string) ([]byte, error
 
 // matchPattern matches a repository path against a scope pattern: "*"
 // matches within one path segment, "**" spans segments. The whole path
-// must match.
-func matchPattern(pattern, path string) bool {
-	return matchSegments(strings.Split(pattern, "/"), strings.Split(path, "/"))
-}
-
-func matchSegments(pat, parts []string) bool {
-	if len(pat) == 0 {
-		return len(parts) == 0
-	}
-	if pat[0] == "**" {
-		// "**" absorbs zero or more segments.
-		for skip := 0; skip <= len(parts); skip++ {
-			if matchSegments(pat[1:], parts[skip:]) {
-				return true
-			}
-		}
-		return false
-	}
-	if len(parts) == 0 {
-		return false
-	}
-	if !matchSegment(pat[0], parts[0]) {
-		return false
-	}
-	return matchSegments(pat[1:], parts[1:])
-}
-
-// matchSegment matches one segment with "*" wildcards (any run of
-// characters within the segment).
-func matchSegment(pat, s string) bool {
-	parts := strings.Split(pat, "*")
-	if len(parts) == 1 {
-		return pat == s
-	}
-	if !strings.HasPrefix(s, parts[0]) {
-		return false
-	}
-	s = s[len(parts[0]):]
-	for _, mid := range parts[1 : len(parts)-1] {
-		i := strings.Index(s, mid)
-		if i < 0 {
-			return false
-		}
-		s = s[i+len(mid):]
-	}
-	return strings.HasSuffix(s, parts[len(parts)-1])
-}
+// must match. The grammar lives in internal/pathglob, shared with the
+// repository scope of scan exceptions (R-15).
+func matchPattern(pattern, path string) bool { return pathglob.Match(pattern, path) }
 
 // nominalRepoOf joins a nominal reference's canonical form — the pattern
 // space of trust scopes ("registry.example.com/cookbook/wordpress").
