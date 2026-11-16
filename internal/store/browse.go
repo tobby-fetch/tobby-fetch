@@ -184,9 +184,65 @@ func (s *Store) Repositories(ctx context.Context) ([]string, error) {
 	}
 }
 
+// declaredKinds maps each repository a recorded recipe manages to the kind
+// its ingredient declares (RECIPE-SPEC §7). A repository two recipes declare
+// differently is left out: with no single declaration there is nothing to
+// prefer, and the detected kind stands. A recipe ledger that cannot be read
+// declares nothing — browsing must not fail on it.
+func (s *Store) declaredKinds() map[string]Kind {
+	records, err := s.RecipeRecords()
+	if err != nil {
+		return nil
+	}
+	declared := map[string]Kind{}
+	conflict := map[string]bool{}
+	for i := range records {
+		for _, ing := range records[i].Ingredients {
+			k := Kind(ing.Kind)
+			if ing.Repo == "" || !validKind(k) {
+				continue
+			}
+			if prev, ok := declared[ing.Repo]; ok && prev != k {
+				conflict[ing.Repo] = true
+			}
+			declared[ing.Repo] = k
+		}
+	}
+	for r := range conflict {
+		delete(declared, r)
+	}
+	return declared
+}
+
+func validKind(k Kind) bool {
+	for _, c := range Kinds() {
+		if c == k {
+			return true
+		}
+	}
+	return false
+}
+
 // RepoInfo returns the tag table of one repository. Unknown or invalid
 // names yield ErrNotFound.
+//
+// The kind is the one a recorded recipe declares for the repository when
+// there is one — the recipe is the author's statement of what the ingredient
+// is, and a FileSet or an OCI artifact is a standard image on the wire — and
+// the one detected from the manifest otherwise.
 func (s *Store) RepoInfo(ctx context.Context, name string) (*RepoInfo, error) {
+	info, err := s.repoInfo(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if k, ok := s.declaredKinds()[name]; ok {
+		info.Kind = k
+	}
+	return info, nil
+}
+
+// repoInfo is RepoInfo with the kind detected from the manifest alone.
+func (s *Store) repoInfo(ctx context.Context, name string) (*RepoInfo, error) {
 	repo, err := s.repository(ctx, name)
 	if err != nil {
 		return nil, err
@@ -236,6 +292,20 @@ func (s *Store) RepoInfo(ctx context.Context, name string) (*RepoInfo, error) {
 // ManifestInfo returns the detail of one manifest, addressed by tag or by
 // digest. Unknown repository, tag, or digest yield ErrNotFound.
 func (s *Store) ManifestInfo(ctx context.Context, name, tagOrDigest string) (*ManifestInfo, error) {
+	info, err := s.manifestInfo(ctx, name, tagOrDigest)
+	if err != nil {
+		return nil, err
+	}
+	// As for RepoInfo, the kind a recorded recipe declares for the
+	// repository prevails over the one the manifest suggests.
+	if k, ok := s.declaredKinds()[name]; ok {
+		info.Kind = k
+	}
+	return info, nil
+}
+
+// manifestInfo is ManifestInfo with the kind detected from the manifest alone.
+func (s *Store) manifestInfo(ctx context.Context, name, tagOrDigest string) (*ManifestInfo, error) {
 	repo, err := s.repository(ctx, name)
 	if err != nil {
 		return nil, err
@@ -461,6 +531,7 @@ func (s *Store) Browse(ctx context.Context, q BrowseQuery) (*BrowsePage, error) 
 		return nil, err
 	}
 
+	declared := s.declaredKinds()
 	var matched []RepoSummary
 	for _, name := range names {
 		if q.Q != "" && !strings.Contains(name, q.Q) {
@@ -469,12 +540,15 @@ func (s *Store) Browse(ctx context.Context, q BrowseQuery) (*BrowsePage, error) 
 		if q.Prefix != "" && name != q.Prefix && !strings.HasPrefix(name, q.Prefix+"/") {
 			continue
 		}
-		info, err := s.RepoInfo(ctx, name)
+		info, err := s.repoInfo(ctx, name)
 		if err != nil {
 			if errors.Is(err, ErrNotFound) {
 				continue // repository vanished between listing and detail
 			}
 			return nil, err
+		}
+		if k, ok := declared[name]; ok {
+			info.Kind = k
 		}
 		if len(q.Kinds) > 0 && !kindIn(info.Kind, q.Kinds) {
 			continue
