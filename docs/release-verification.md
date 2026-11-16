@@ -76,6 +76,32 @@ cosign verify-blob \
 The certificate identity is the release workflow of this repository; the
 transparency log entry is created at release time.
 
+### The integration kit: OpenAPI and metrics reference
+
+Two files of the release are contracts rather than binaries, and are signed
+the same way as the SBOMs — keyless, as a cosign bundle beside each file:
+
+- `openapi.yaml` — the OpenAPI 3.1 document of the REST API, byte-identical to
+  what an instance serves at `/api/v1/openapi.yaml`;
+- `metrics-reference.json` — every `tobby_*` metric family with its type,
+  labels and closed value sets, unit and requirement, generated from the
+  running registry of the tagged code (`go run ./tools/metricsref`).
+
+```bash
+for f in openapi.yaml metrics-reference.json; do
+  cosign verify-blob \
+    --new-bundle-format \
+    --bundle "$f.bundle" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/' \
+    "$f"
+done
+```
+
+The `integration-kit` job refuses to sign a metrics reference that differs
+from the one committed in `docs/metrics-reference.json`, which a unit test
+also holds to the registry.
+
 ## 4. Container image: signature and provenance
 
 The release notes state the image digest. Always verify (and deploy) by
@@ -229,7 +255,8 @@ outputs) refuses the run before anything is computed. Only the **push of a
 that event itself, not just the dry-run flag (`tools/release-meta.sh`,
 locked in CI by `tools/release-meta-test.sh`). What the rehearsal does:
 
-- builds, double-builds and compares, generates and signs the SBOMs, builds
+- builds, double-builds and compares, generates and signs the SBOMs and the
+  integration kit (OpenAPI document, metrics reference), builds
   and scans the image, packages the chart and the FileSet — the same jobs,
   the same steps;
 - publishes the image, chart and FileSet under

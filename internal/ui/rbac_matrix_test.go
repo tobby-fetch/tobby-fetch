@@ -146,6 +146,9 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "POST /admin/oci-layout/plan", Floor: auth.RoleAdmin, Why: "same selection surface as the export it estimates (FR-055)", Method: "POST", Path: "/admin/oci-layout/plan", Form: "output="},
 	{Pattern: "POST /admin/oci-layout/export", Floor: auth.RoleAdmin, Why: "writes the store's content to a host path (FR-051); audited (FR-094)", Method: "POST", Path: "/admin/oci-layout/export", Form: "output="},
 	{Pattern: "POST /admin/oci-layout/import", Floor: auth.RoleAdmin, Why: "brings outside bytes into the store (FR-051); audited (FR-094)", Method: "POST", Path: "/admin/oci-layout/import", Form: "input="},
+	{Pattern: "GET /admin/diagnostics", Floor: auth.RoleAdmin, Why: "the page that offers the diagnostic bundle (FR-095, R-30)", Method: "GET", Path: "/admin/diagnostics"},
+	{Pattern: "POST /admin/diagnostics/bundle", Floor: auth.RoleAdmin, Why: "gathers configuration, logs and task reports into one archive (FR-095); audited with the requester (FR-094)", Method: "POST", Path: "/admin/diagnostics/bundle"},
+	{Pattern: "GET /admin/state", Floor: auth.RoleAdmin, Why: "names every file of the instance's identity and its permissions, never contents (FR-097)", Method: "GET", Path: "/admin/state"},
 	{Pattern: "GET /admin/store", Floor: auth.RoleAdmin, Why: "the reset lives here (FR-046)", Method: "GET", Path: "/admin/store"},
 	{Pattern: "POST /admin/store/reset", Floor: auth.RoleAdmin, Why: "full store reset, restricted to admin by FR-046 and audited (FR-094)", Method: "POST", Path: "/admin/store/reset", Form: "confirmation=not-the-phrase"},
 	{Pattern: "GET /help", Floor: auth.RoleViewer, Method: "GET", Path: "/help"},
@@ -194,6 +197,9 @@ var apiMatrix = []rbacRoute{
 	{Pattern: "POST /api/v1/store/verify/cancel", Floor: auth.RoleOperator, Why: "mirror of POST /integrity/cancel", Method: "POST", Path: "/api/v1/store/verify/cancel"},
 	{Pattern: "POST /api/v1/media/verify", Floor: auth.RoleOperator, Why: "re-hashing a whole medium is work, not a read (FR-054); the FR-054 waivers inside it need admin, enforced in the handler", Method: "POST", Path: "/api/v1/media/verify", Body: `{}`},
 	{Pattern: "POST /api/v1/media/import", Floor: auth.RoleOperator, Why: "pushing a transported medium into the zone registry (FR-052), audited (FR-094); the waivers need admin, enforced in the handler", Method: "POST", Path: "/api/v1/media/import", Body: `{}`},
+	{Pattern: "POST /api/v1/diagnostics/bundle", Floor: auth.RoleAdmin, Why: "mirror of POST /admin/diagnostics/bundle (FR-095): the archive is the response", Method: "POST", Path: "/api/v1/diagnostics/bundle"},
+	{Pattern: "GET /api/v1/clock", Floor: auth.RoleViewer, Why: "the clock verdicts (FR-096): the same fact the banner shows every signed-in user", Method: "GET", Path: "/api/v1/clock"},
+	{Pattern: "GET /api/v1/state", Floor: auth.RoleAdmin, Why: "mirror of GET /admin/state (FR-097)", Method: "GET", Path: "/api/v1/state"},
 	{Pattern: "GET /api/v1/network", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/network"},
 	{Pattern: "PUT /api/v1/network/certificate", Floor: auth.RoleAdmin, Method: "PUT", Path: "/api/v1/network/certificate", Body: `{"certificate":"","key":""}`},
 	{Pattern: "GET /api/v1/retriever", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/retriever"},
@@ -318,6 +324,7 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	api.RegisterMedia(restAPI, &api.MediaOptions{})
 	// FR-057: registered with no service — the gate is what is probed.
 	api.RegisterIntegrity(restAPI, &api.IntegrityOptions{})
+	api.RegisterOperations(restAPI, &api.OperationsOptions{})
 	api.RegisterOpenAPI(restAPI)
 	rec.mux.Handle("/api/v1/", restAPI.Handler())
 
@@ -543,6 +550,8 @@ func TestRBACMatrixMirrorsUIFloors(t *testing.T) {
 		{"GET /recipes/prune-preview", "GET /api/v1/sync/prune-preview"},
 		{"POST /recipes/publish", "POST /api/v1/recipes/publish"},
 		{"POST /recipes/plan", "POST /api/v1/plan"},
+		{"POST /admin/diagnostics/bundle", "POST /api/v1/diagnostics/bundle"},
+		{"GET /admin/state", "GET /api/v1/state"},
 		{"GET /admin/network", "GET /api/v1/network"},
 		{"POST /admin/network/certificate", "PUT /api/v1/network/certificate"},
 		{"GET /admin/retriever", "GET /api/v1/retriever"},

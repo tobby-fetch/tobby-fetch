@@ -81,32 +81,34 @@ streaming pur.
   configuration, et les deux méritent d'être remontées.
 - Un âge de dernière synchronisation réussie qui dépasse quelques
   multiples de `sync.interval` — un proxy ou un credential cassé en
-  silence se voit d'abord ici.
+  silence se voit d'abord ici (`tobby_sync_last_success_timestamp_seconds`).
+- Un certificat du listener proche de sa fin (`tobby_server_certificate_expiry_timestamp_seconds`).
 - L'occupation du volume d'état, puisque les fichiers de reprise y
   vivent.
 
-Les familles de métriques sont listées dans
-[métriques et journaux](../../reference/metrics-logs/) — avec cette
-réserve honnête : leurs noms ne sont pas encore contractuels.
+Le chart de référence livre des règles d'alerte pour ces conditions et un
+tableau de bord d'exemple, et chaque release publie le référentiel des métriques
+auquel elles sont tenues : voir [Superviser une instance](../monitoring/). Quand
+une alerte demande d'autres yeux, collectez un
+[bundle de diagnostic](../diagnostics/) — une archive locale et expurgée. Les
+familles sont listées dans [métriques et journaux](../../reference/metrics-logs/).
 
 ## Sauvegarde : le répertoire d'état
 
 La racine d'état est **la** cible de sauvegarde. Elle détient ce que rien
-ne recrée : les comptes, les jetons, la paire TLS servie, la dérogation
-d'intervalle. Elle est petite : sauvegardez-la comme tout répertoire
-précieux — snapshots ou copies de fichiers de `state.root`, pris pendant
-que l'instance est arrêtée ou depuis un snapshot du système de fichiers.
-Le store n'a besoin d'aucune sauvegarde : tout ce qu'il contient peut
+ne recrée : les comptes, les jetons, la paire TLS servie, le registre
+d'imports, la dérogation d'intervalle. Elle est petite : sauvegardez-la comme
+tout répertoire précieux — snapshots ou copies de fichiers de `state.root`, pris
+pendant que l'instance est arrêtée ou depuis un snapshot du système de
+fichiers — avec le fichier de configuration et les fichiers secrets qu'il
+référence. Le store n'a besoin d'aucune sauvegarde : tout ce qu'il contient peut
 être récupéré de nouveau, et le perdre coûte de la bande passante, pas de
 l'identité. Ne placez jamais l'état sur le volume du store ; Tobby refuse
 l'imbrication sans discuter.
 
-:::note[À venir — jalon 7]
-Une procédure documentée de restauration et de reconstruction
-(reconstituer une instance complète à partir d'une sauvegarde d'état plus
-une re-synchronisation, R-27) est prévue pour le jalon 7. À suivre sur la
-page [État du projet](../../discover/status/).
-:::
+Le layout du répertoire d'état est documenté et contrôlé à chaque démarrage,
+`tobby state inspect` le liste, et la procédure de reconstruction est testée de
+bout en bout : [Sauvegarder et reconstruire une instance](../backup-rebuild/).
 
 ## La croissance du store, dite sans détour
 

@@ -19,6 +19,7 @@ import (
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/clock"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/help"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -41,6 +42,8 @@ var pageFiles = []string{
 	"about",
 	"account",
 	"admin-accounts",
+	"admin-diagnostics",
+	"admin-state",
 	"admin-network",
 	"admin-oci-layout",
 	"admin-store",
@@ -292,6 +295,9 @@ type Renderer struct {
 	// Scan reads the vulnerability-scanning state (FR-031, FR-032, R-13)
 	// for its banners; nil on an instance assembled without scanning.
 	Scan func() ScanState
+	// Clock holds the clock-plausibility verdicts (FR-096) for the
+	// persistent banner; nil on an instance assembled without one.
+	Clock *clock.Monitor
 }
 
 // NewRenderer parses the embedded templates.
@@ -353,6 +359,7 @@ func (rd *Renderer) view(r *http.Request, data any) *View {
 		})
 	}
 	v.Banners = append(v.Banners, rd.scanBanners(v)...)
+	v.Banners = append(v.Banners, rd.clockBanners(v)...)
 	// Operational last, and persistent by construction: it is re-read on
 	// every page, so it goes away by itself when the store comes back
 	// under the threshold (R-33) — no dismissal, no restart.

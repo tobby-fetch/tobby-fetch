@@ -7,7 +7,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
@@ -16,6 +15,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 	"github.com/tobby-fetch/tobby-fetch/internal/scan/trivy"
 	"github.com/tobby-fetch/tobby-fetch/internal/slip"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/ui"
 )
@@ -50,7 +50,7 @@ func setupScanning(ctx context.Context, cfg *config.Config, st *store.Store, eng
 	// a work directory it does not own anyway.
 	workDir, temp := "", false
 	if cfg.State.Root != "" {
-		workDir = filepath.Join(cfg.State.Root, "scanner")
+		workDir = statedir.Path(cfg.State.Root, statedir.Scanner)
 	} else if d, err := os.MkdirTemp("", "tobby-scanner-"); err == nil {
 		workDir, temp = d, true
 	} else {

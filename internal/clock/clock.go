@@ -17,8 +17,9 @@
 // The check warns and records — banner, log record, CLI output, metric
 // (tobby_clock_implausible), audit event (clock.implausible), codes
 // TBY-CLK-001/002 — and changes no verdict by itself. This package holds
-// the pure comparison; wiring it at startup and at medium opening is
-// track B of milestone 7.
+// the pure comparison (this file); the Monitor that keeps the latest verdict
+// per anchor and the warn-and-record path are in monitor.go, wired at startup
+// and at medium opening by internal/cli.
 package clock
 
 import "time"

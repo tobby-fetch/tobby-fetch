@@ -45,6 +45,9 @@ the OpenAPI one, and served by the same instance, because an automation
 that drives Tobby uses both — see the
 [CLI reference](../../reference/cli/#report-format).
 
+Every release also publishes `openapi.yaml`, signed, byte-identical to what
+the instance serves (see [Supervise an instance](../../passthrough/monitoring/)).
+
 A build-time test cross-checks the document against the registered routes:
 an endpoint cannot ship undocumented, and the document cannot describe an
 endpoint that does not exist. What your instance serves is therefore the
@@ -97,6 +100,7 @@ The surface today (from the served OpenAPI document):
 | Store integrity | `POST /api/v1/store/verify`, `POST /api/v1/store/verify/cancel`, `GET /api/v1/store/verification` |
 | Accounts and tokens | `POST /api/v1/account/password`, `GET/POST /api/v1/accounts`, `PATCH/DELETE /api/v1/accounts/{name}`, `GET/POST /api/v1/tokens`, `POST /api/v1/tokens/{name}/revoke` |
 | Network | `GET /api/v1/network`, `PUT /api/v1/network/certificate` |
+| Operations | `POST /api/v1/diagnostics/bundle`, `GET /api/v1/clock`, `GET /api/v1/state` |
 
 Four of those deserve a note, because their shape is not what a reader
 would guess from the path.
@@ -133,6 +137,18 @@ would guess from the path.
   [`TBY-AUTH-003`](../../reference/errors/#tby-auth-003), and both the
   attempt and the applied waiver are audit-logged. Nothing waives an
   integrity or signature verdict, for any role.
+
+- **`POST /api/v1/diagnostics/bundle` answers with the archive itself**
+  (`application/gzip`, `Content-Disposition: attachment`), for the
+  administrator only. It is built and checked before the first byte is sent:
+  a bundle that would carry a secret is a problem document
+  ([`TBY-DIA-002`](../../reference/errors/#tby-dia-002)), never a partial
+  download. The request is audited. See
+  [Collect a diagnostic bundle](../../passthrough/diagnostics/).
+- **`GET /api/v1/clock` and `GET /api/v1/state` are reports.** The first
+  returns the latest [clock verdict](../../air-gap/clock-check/) of each
+  anchor, for any role; the second the state-directory inventory, names, sizes
+  and permissions, for administrators.
 
 On an instance that is not the destination side of a physical transfer, the
 four media endpoints answer

@@ -146,7 +146,7 @@ func New() *cobra.Command {
 	})
 	root.AddCommand(newServeCmd(), newVersionCmd(), newConfigCmd(), newUserCmd(), newQuickstartCmd(),
 		newRecipeCmd(), newSyncCmd(), newExportCmd(), newImportCmd(), newFileSetCmd(), newMediaCmd(), newStoreCmd(),
-		newConsumptionCmd())
+		newConsumptionCmd(), newDiagnosticsCmd(), newStateCmd())
 	return root
 }
 

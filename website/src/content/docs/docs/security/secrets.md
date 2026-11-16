@@ -55,6 +55,7 @@ anywhere.
 | File | Unix | Windows |
 |---|---|---|
 | `accounts.yaml` (accounts, token digests) | `0600`, in a `0700` directory | access list granting the owning account only |
+| The state root itself | `0700` | access list granting the owning account only (inherited by what is created inside) |
 | Generated self-signed TLS key | `0600` | access list granting the owning account only |
 | Replaced TLS private key | `0600` | access list granting the owning account only |
 | Replaced TLS **certificate** | keeps the mode it had (public by construction) | inherited |
@@ -114,9 +115,21 @@ hashes and the instance identity, and it is the single backup target.
 The store holds verified public content and operation logs — valuable,
 but not secret.
 
-:::note[Upcoming — milestone 7]
-A one-command **diagnostic bundle** — version, redacted configuration,
-logs, reports, integrity results, with the redaction itself tested —
-arrives at milestone 7 (R-30). Until then, `tobby config dump` plus your
-log excerpts are the safe equivalents.
-:::
+The state root has a documented, versioned layout and is checked at every
+start: a secret entry readable by every user of the host **refuses the
+start** ([`TBY-STA-002`](../../reference/errors/#tby-sta-002)), group access
+granted by the volume (Kubernetes `fsGroup`) is tolerated, and an identity
+entry missing after a restore is reported. `tobby state inspect` lists the
+entries with their class and permissions, never their content. See
+[Back up and rebuild an instance](../../passthrough/backup-rebuild/).
+
+**Encryption at rest is the volume's job.** Tobby keeps its secret entries
+owner-only and stores the credentials it verifies hashed, but it does not
+encrypt files: use an encrypted disk, an encrypted persistent volume or
+BitLocker, and give the backups of the state root the same protection. An
+encrypted backup bundle produced by Tobby is outside version 1.
+
+To hand a problem to someone else, use the
+[diagnostic bundle](../../passthrough/diagnostics/): one archive, with the
+configuration redacted and every file searched for the secrets the instance
+knows before it is written — and not written at all if one is found.

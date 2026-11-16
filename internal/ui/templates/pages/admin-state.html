@@ -1,0 +1,53 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /admin/state — the instance state directory (FR-097, R-27): what
+     makes this instance THIS instance, entry by entry, with what a backup
+     must do with it. Names, sizes and permissions; never contents. */}}
+{{define "title"}}{{.T "state.section_title"}}{{end}}
+{{define "main"}}
+<section>
+  {{template "admin-subnav" .}}
+  <h1 class="t-page-title">{{.T "state.section_title"}}</h1>
+  <p class="t-page-sub">{{.T "state.backup_hint"}}</p>
+
+  {{if .Err}}{{template "error-block" .}}{{end}}
+
+  {{if not .Data.Configured}}
+  <p class="t-muted t-note">{{.T "state.not_configured"}}</p>
+  {{else}}
+    {{if .Data.Broad}}
+    <p class="t-form-error" role="alert">{{.T "state.broad_warning" "Names" (join .Data.Broad)}}</p>
+    {{end}}
+    <p class="t-muted t-note">{{.T "state.layout_line" "Root" .Data.Inventory.Root "Layout" .Data.Inventory.Layout "Supported" .Data.Inventory.Supported}}</p>
+    <table class="t-table">
+      <caption class="t-visually-hidden">{{.T "state.section_title"}}</caption>
+      <thead>
+        <tr>
+          <th scope="col">{{.T "state.th_entry"}}</th>
+          <th scope="col">{{.T "state.th_class"}}</th>
+          <th scope="col">{{.T "state.th_secret"}}</th>
+          <th scope="col">{{.T "state.th_present"}}</th>
+          <th scope="col">{{.T "state.th_size"}}</th>
+          <th scope="col">{{.T "state.th_mode"}}</th>
+          <th scope="col">{{.T "state.th_purpose"}}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Data.Inventory.Items}}
+        <tr>
+          <th scope="row" class="t-mono" translate="no">{{.Name}}{{if eq (printf "%s" .Kind) "dir"}}/{{end}}</th>
+          <td>{{if not .Documented}}<span class="t-muted">{{$.T "state.class_undocumented"}}</span>
+              {{else if eq (printf "%s" .Class) "identity"}}{{$.T "state.class_identity"}}
+              {{else}}{{$.T "state.class_discardable"}}{{end}}</td>
+          <td>{{if .Secret}}{{$.T "state.yes"}}{{else}}{{$.T "state.no"}}{{end}}</td>
+          <td>{{if .Present}}{{$.T "state.yes"}}{{else}}<span class="t-muted">{{$.T "state.no"}}</span>{{end}}</td>
+          <td>{{if .Present}}{{$.FmtBytes .Size}}{{end}}</td>
+          <td class="t-mono" translate="no">{{.Mode}}{{if eq (printf "%s" .Access) "broad"}} <span class="t-form-error">{{$.T "state.access_broad"}}</span>{{end}}</td>
+          <td lang="en">{{.Purpose}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    <p class="t-muted t-note">{{.T "state.cli_hint"}}</p>
+  {{end}}
+</section>
+{{end}}

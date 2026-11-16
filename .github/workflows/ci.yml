@@ -136,6 +136,20 @@ jobs:
           tar -xzf "$tmp/oras.tgz" -C "$tmp" oras
           sudo install -m 0755 "$tmp/oras" /usr/local/bin/oras
           rm -rf "$tmp"
+      # The supervision kit (R-11): the plain rules file beside the chart is
+      # the chart's own PrometheusRule at its defaults, rendered. The Go test
+      # of internal/metrics holds the file's expressions to the metrics
+      # reference; this holds the file to the chart, and the chart to
+      # `helm lint` with every optional resource on.
+      - name: Alert rules file in step with the chart; chart lints with the kit on
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          sh tools/chart-alert-rules.sh --check
+          helm lint deploy/charts/tobby \
+            --set alerting.prometheusRule.enabled=true \
+            --set alerting.rulesFile.enabled=true \
+            --set dashboard.enabled=true
       # The real-Trivy tests (milestone 6, FR-031/FR-032): the scanner
       # release Tobby pins (internal/scan/trivy/pins.go, melange.yaml —
       # the three move together), checked against its published checksum

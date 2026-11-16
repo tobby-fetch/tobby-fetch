@@ -125,6 +125,19 @@ func TestEveryReportedDocumentMatchesItsSchema(t *testing.T) {
 		assertDocument(t, "tobby user list", stdout, stderr)
 	})
 
+	t.Run("tobby diagnostics bundle", func(t *testing.T) {
+		dir := t.TempDir()
+		stdout, stderr := runJSON(t, "", "diagnostics", "bundle", "--mode", "passthrough",
+			"--storage-root", filepath.Join(dir, "store"), "--state-root", filepath.Join(dir, "state"),
+			"-o", filepath.Join(dir, "bundle.tar.gz"))
+		assertDocument(t, "tobby diagnostics bundle", stdout, stderr)
+	})
+
+	t.Run("tobby state inspect", func(t *testing.T) {
+		stdout, stderr := runJSON(t, "", "state", "inspect", "--state-root", t.TempDir())
+		assertDocument(t, "tobby state inspect", stdout, stderr)
+	})
+
 	t.Run("tobby fileset pack", func(t *testing.T) {
 		stdout, stderr := runJSON(t, "", "fileset", "pack", packTree(t), "debs:1.0.0",
 			"--storage-root", t.TempDir())

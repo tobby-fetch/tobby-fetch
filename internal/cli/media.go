@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
+	"github.com/tobby-fetch/tobby-fetch/internal/clock"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
@@ -24,6 +25,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/runid"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -389,7 +391,7 @@ func openMedia(ctx context.Context, cfg *config.Config, stderr io.Writer, intent
 	// from the medium, which has none as far as this code is concerned.
 	trustCache := ""
 	if cfg.State.Root != "" {
-		trustCache = filepath.Join(cfg.State.Root, "trust-cache")
+		trustCache = statedir.Path(cfg.State.Root, statedir.TrustCache)
 	}
 	trust, err := engine.LoadTrust(cfg.Trust, trustCache, egress)
 	if err != nil {
@@ -415,6 +417,20 @@ func openMedia(ctx context.Context, cfg *config.Config, stderr io.Writer, intent
 		return nil, err
 	}
 	eng.SetMediaImport(cfg.Zone, imports)
+
+	// FR-096: the clock is judged against the medium's resolution time as
+	// soon as the verification has read the manifest. The warning goes to
+	// the operator on stderr — the report on stdout stays the report — and
+	// the record and the audit event go through the command's logger, which
+	// in an import is teed onto the medium's own log.
+	mon := clock.NewMonitor(time.Duration(cfg.Clock.SkewTolerance))
+	mon.Observe(func(r *clock.Record) {
+		clock.Report(ctx, op.logger, r)
+		if te := r.Error(); te != nil {
+			_, _ = fmt.Fprint(stderr, "warning: ", taxonomy.Text(cliLang(), te))
+		}
+	})
+	eng.SetMediaVerdicts(func(rep *media.Report) { observeMediumClock(mon, rep) })
 
 	if intent == importMedium {
 		dest, dErr := engine.NewDestination(cfg.Destination, cfg.Registries, allowlist, egress)

@@ -75,28 +75,33 @@ and restores pure streaming.
   metrics. In a healthy zone these are zero; any step is either an
   attack or a configuration drift, and both deserve a page.
 - A last-successful-sync age beyond a few multiples of `sync.interval` —
-  a proxy or credential silently broken shows up here first.
+  a proxy or credential silently broken shows up here first
+  (`tobby_sync_last_success_timestamp_seconds`).
+- A listener certificate close to its end (`tobby_server_certificate_expiry_timestamp_seconds`).
 - State-volume usage, since resumable spools live there.
 
-The metric families are listed in
-[metrics and logs](../../reference/metrics-logs/) — with the honest caveat
-that their names are not yet contractual.
+The reference chart ships alert rules for these conditions and an example
+dashboard, and every release publishes the metrics reference they are held
+to: see [Supervise an instance](../monitoring/). When an alert needs someone
+else's eyes, collect a [diagnostic bundle](../diagnostics/) — one redacted
+local archive. The families are listed in
+[metrics and logs](../../reference/metrics-logs/).
 
 ## Backup: the state directory
 
 The state root is **the** backup target. It holds what nothing
-recreates: accounts, tokens, the served TLS pair, the interval override.
-It is small, so back it up like any precious directory — snapshots or
-file copies of `state.root`, taken while the instance is stopped or from
-a filesystem snapshot. The store needs no backup: everything in it can
-be fetched again, and losing it costs bandwidth, not identity. Never
-put the state on the store volume; Tobby refuses the nesting outright.
+recreates: accounts, tokens, the served TLS pair, the import record, the
+interval override. It is small, so back it up like any precious
+directory — snapshots or file copies of `state.root`, taken while the
+instance is stopped or from a filesystem snapshot — together with the
+configuration file and the secret files it references. The store needs no
+backup: everything in it can be fetched again, and losing it costs
+bandwidth, not identity. Never put the state on the store volume; Tobby
+refuses the nesting outright.
 
-:::note[Upcoming — milestone 7]
-A documented restore-and-rebuild procedure (rebuilding a full instance
-from a state backup plus re-synchronization, R-27) is planned for
-milestone 7. Track it on the [project status](../../discover/status/) page.
-:::
+The layout of the state directory is documented and checked at every start,
+`tobby state inspect` lists it, and the rebuild procedure is tested end to end:
+[Back up and rebuild an instance](../backup-rebuild/).
 
 ## Store growth, stated plainly
 

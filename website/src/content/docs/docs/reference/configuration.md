@@ -231,6 +231,14 @@ listed here are served under `/files/<name>/`.
 There is no configuration key for the UI language: the CLI follows the host
 locale, the web UI negotiates its language per user.
 
+### Operations
+
+| Key | Type | Default | Env | Purpose |
+|---|---|---|---|---|
+| `diagnostics.logRecords` | int | `2000` | *(file only)* | Size of the in-memory window of recent log records the [diagnostic bundle](../../passthrough/diagnostics/) carries. 1 to 100000. A window, never an archive: it is lost when the process ends. |
+| `diagnostics.tasks` | int | `20` | *(file only)* | How many of the most recent task reports the bundle carries. 1 to 500. |
+| `clock.skewTolerance` | duration | `1h` | *(file only)* | How far the local clock may be earlier than the build time of the binary or the resolution time of a medium before it is [found implausible](../../air-gap/clock-check/). 0 to `7d`. The check itself cannot be switched off: it warns and records, it changes no verdict. |
+
 ## Checking the effective configuration
 
 `tobby config dump` prints the merged result of all four layers as YAML on

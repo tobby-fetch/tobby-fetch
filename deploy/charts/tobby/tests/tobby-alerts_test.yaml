@@ -1,0 +1,259 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright © 2026 infraBuilder SASU and contributors
+#
+# promtool unit tests of the chart's alert rules (R-11): each alert fires when
+# fed the condition it is for, and stays silent when it is not.
+# Run: promtool test rules deploy/charts/tobby/tests/tobby-alerts_test.yaml
+rule_files:
+  - ../files/tobby-alerts.rules.yaml
+evaluation_interval: 1m
+tests:
+  - name: TobbySyncFailing fires
+    interval: 1m
+    input_series:
+      - series: "tobby_sync_runs_total{outcome=\"failure\",instance=\"a\"}"
+        values: "0+1x10"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: TobbySyncFailing
+        exp_alerts:
+          - exp_labels:
+              instance: "a"
+              outcome: "failure"
+              severity: "warning"
+            exp_annotations:
+              summary: "Tobby synchronizations keep failing"
+              description: "3 or more synchronization runs failed within 1h on a. Open the failed task for its taxonomy code."
+  - name: TobbySyncFailing silent
+    interval: 1m
+    input_series:
+      - series: "tobby_sync_runs_total{outcome=\"failure\",instance=\"a\"}"
+        values: "0+0x10"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: TobbySyncFailing
+        exp_alerts: []
+  - name: TobbySyncStale fires
+    interval: 1m
+    input_series:
+      - series: "tobby_sync_last_success_timestamp_seconds{instance=\"a\"}"
+        values: "0x420"
+    alert_rule_test:
+      - eval_time: 420m
+        alertname: TobbySyncStale
+        exp_alerts:
+          - exp_labels:
+              instance: "a"
+              severity: "warning"
+            exp_annotations:
+              summary: "No successful Tobby synchronization for too long"
+              description: "The last successful synchronization on a ended more than 21600 seconds ago."
+  - name: TobbySyncStale silent
+    interval: 1m
+    input_series:
+      - series: "tobby_sync_last_success_timestamp_seconds{instance=\"a\"}"
+        values: "25200x420"
+    alert_rule_test:
+      - eval_time: 420m
+        alertname: TobbySyncStale
+        exp_alerts: []
+  - name: TobbySyncNeverSucceeded fires
+    interval: 1m
+    input_series:
+      - series: "tobby_sync_runs_total{outcome=\"failure\",instance=\"a\"}"
+        values: "1x130"
+    alert_rule_test:
+      - eval_time: 130m
+        alertname: TobbySyncNeverSucceeded
+        exp_alerts:
+          - exp_labels:
+              instance: "a"
+              outcome: "failure"
+              severity: "warning"
+            exp_annotations:
+              summary: "Tobby has failed synchronizing and never succeeded since it started"
+              description: "a has not completed a single successful synchronization since it started."
+  - name: TobbySyncNeverSucceeded silent
+    interval: 1m
+    input_series:
+      - series: "tobby_sync_runs_total{outcome=\"failure\",instance=\"a\"}"
+        values: "1x130"
+      - series: "tobby_sync_last_success_timestamp_seconds{instance=\"a\"}"
+        values: "100x130"
+    alert_rule_test:
+      - eval_time: 130m
+        alertname: TobbySyncNeverSucceeded
+        exp_alerts: []
+  - name: TobbySyncSaturated fires
+    interval: 1m
+    input_series:
+      - series: "tobby_sync_transfers_inflight{instance=\"a\"}"
+        values: "3x30"
+      - series: "tobby_sync_parallelism{instance=\"a\"}"
+        values: "3x30"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: TobbySyncSaturated
+        exp_alerts:
+          - exp_labels:
+              instance: "a"
+              severity: "info"
+            exp_annotations:
+              summary: "Tobby transfers are pinned at sync.parallelism"
+              description: "a has run at its transfer bound for a sustained period: raise sync.parallelism if the link and the registries allow it."
+  - name: TobbySyncSaturated silent
+    interval: 1m
+    input_series:
+      - series: "tobby_sync_transfers_inflight{instance=\"a\"}"
+        values: "1x30"
+      - series: "tobby_sync_parallelism{instance=\"a\"}"
+        values: "3x30"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: TobbySyncSaturated
+        exp_alerts: []
+  - name: TobbyStoreOccupancyHigh fires
+    interval: 1m
+    input_series:
+      - series: "tobby_store_occupancy_exceeded{instance=\"a\"}"
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: TobbyStoreOccupancyHigh
+        exp_alerts:
+          - exp_labels:
+              instance: "a"
+              severity: "warning"
+            exp_annotations:
+              summary: "The Tobby store is beyond its occupancy threshold"
+              description: "The store of a holds more than storage.occupancyThreshold. Remove content, raise the threshold or grow the volume."
+  - name: TobbyStoreOccupancyHigh silent
+    interval: 1m
+    input_series:
+      - series: "tobby_store_occupancy_exceeded{instance=\"a\"}"
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: TobbyStoreOccupancyHigh
+        exp_alerts: []
+  - name: TobbyVulnerabilityDatabaseStale fires
+    interval: 1m
+    input_series:
+      - series: "tobby_scan_db_stale{instance=\"a\"}"
+        values: "1x90"
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: TobbyVulnerabilityDatabaseStale
+        exp_alerts:
+          - exp_labels:
+              instance: "a"
+              severity: "warning"
+            exp_annotations:
+              summary: "The Tobby vulnerability database is beyond scan.maxDbAge"
+              description: "a scans against a database older than it accepts."
+  - name: TobbyVulnerabilityDatabaseStale silent
+    interval: 1m
+    input_series:
+      - series: "tobby_scan_db_stale{instance=\"a\"}"
+        values: "0x90"
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: TobbyVulnerabilityDatabaseStale
+        exp_alerts: []
+  - name: TobbyVulnerabilityDatabaseAbsent fires
+    interval: 1m
+    input_series:
+      - series: "tobby_scan_db_present{instance=\"a\"}"
+        values: "0x90"
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: TobbyVulnerabilityDatabaseAbsent
+        exp_alerts:
+          - exp_labels:
+              instance: "a"
+              severity: "warning"
+            exp_annotations:
+              summary: "Tobby has no vulnerability database"
+              description: "a is in the absent-database degraded mode: content is reported as not scanned."
+  - name: TobbyVulnerabilityDatabaseAbsent silent
+    interval: 1m
+    input_series:
+      - series: "tobby_scan_db_present{instance=\"a\"}"
+        values: "1x90"
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: TobbyVulnerabilityDatabaseAbsent
+        exp_alerts: []
+  - name: TobbyScannerDegraded fires
+    interval: 1m
+    input_series:
+      - series: "tobby_scan_scanner_available{instance=\"a\"}"
+        values: "0x90"
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: TobbyScannerDegraded
+        exp_alerts:
+          - exp_labels:
+              instance: "a"
+              severity: "warning"
+            exp_annotations:
+              summary: "The Tobby vulnerability scanner is unavailable"
+              description: "a has no usable verified scanner binary: content is reported as not scanned."
+  - name: TobbyScannerDegraded silent
+    interval: 1m
+    input_series:
+      - series: "tobby_scan_scanner_available{instance=\"a\"}"
+        values: "1x90"
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: TobbyScannerDegraded
+        exp_alerts: []
+  - name: TobbyServerCertificateExpiring fires
+    interval: 1m
+    input_series:
+      - series: "tobby_server_certificate_expiry_timestamp_seconds{instance=\"a\"}"
+        values: "100000x30"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: TobbyServerCertificateExpiring
+        exp_alerts:
+          - exp_labels:
+              instance: "a"
+              severity: "warning"
+            exp_annotations:
+              summary: "The Tobby listener certificate is about to expire"
+              description: "The certificate presented by a expires within 1209600 seconds (or already has): replace it from /admin/network."
+  - name: TobbyServerCertificateExpiring silent
+    interval: 1m
+    input_series:
+      - series: "tobby_server_certificate_expiry_timestamp_seconds{instance=\"a\"}"
+        values: "5000000x30"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: TobbyServerCertificateExpiring
+        exp_alerts: []
+  - name: TobbyClockImplausible fires
+    interval: 1m
+    input_series:
+      - series: "tobby_clock_implausible{instance=\"a\",anchor=\"build\"}"
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: TobbyClockImplausible
+        exp_alerts:
+          - exp_labels:
+              anchor: "build"
+              instance: "a"
+              severity: "warning"
+            exp_annotations:
+              summary: "The clock of a Tobby host is earlier than a date it proves has passed"
+              description: "a reads a time earlier than build (TBY-CLK-001/002): expiries and freshness checks may be wrong."
+  - name: TobbyClockImplausible silent
+    interval: 1m
+    input_series:
+      - series: "tobby_clock_implausible{instance=\"a\",anchor=\"build\"}"
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: TobbyClockImplausible
+        exp_alerts: []

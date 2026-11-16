@@ -56,6 +56,7 @@ sont volontairement autorisés n'importe où.
 | Fichier | Unix | Windows |
 |---|---|---|
 | `accounts.yaml` (comptes, digests de tokens) | `0600`, dans un répertoire `0700` | liste d'accès n'accordant que le compte propriétaire |
+| La racine d'état elle-même | `0700` | liste d'accès n'accordant que le compte propriétaire (héritée par ce qui est créé dedans) |
 | Clé TLS auto-signée générée | `0600` | liste d'accès n'accordant que le compte propriétaire |
 | Clé privée TLS remplacée | `0600` | liste d'accès n'accordant que le compte propriétaire |
 | **Certificat** TLS remplacé | conserve le mode qu'il avait (public par construction) | hérité |
@@ -118,9 +119,23 @@ contient les hashes et l'identité de l'instance, et c'est l'unique cible de
 sauvegarde. Le store contient du contenu public vérifié et des journaux
 d'opérations — précieux, mais pas secrets.
 
-:::note[À venir — jalon 7]
-Un **bundle de diagnostic** en une commande — version, configuration expurgée,
-journaux, rapports, résultats d'intégrité, l'expurgation elle-même étant testée
-— arrive avec le jalon 7 (R-30). D'ici là, `tobby config dump` et vos extraits de
-journaux en sont les équivalents sûrs.
-:::
+La racine d'état a un layout documenté et versionné, contrôlé à chaque
+démarrage : une entrée secrète lisible par tous les utilisateurs de l'hôte
+**refuse le démarrage** ([`TBY-STA-002`](../../reference/errors/#tby-sta-002)),
+l'accès du groupe accordé par le volume (`fsGroup` Kubernetes) est toléré, et
+une entrée d'identité manquante après une restauration est signalée. `tobby
+state inspect` liste les entrées avec leur classe et leurs permissions, jamais
+leur contenu. Voir [Sauvegarder et reconstruire une instance](../../passthrough/backup-rebuild/).
+
+**Le chiffrement au repos relève du volume.** Tobby garde ses entrées secrètes
+lisibles par leur seul propriétaire et stocke hachés les identifiants qu'il
+vérifie, mais il ne chiffre pas les fichiers : utilisez un disque chiffré, un
+volume persistant chiffré ou BitLocker, et donnez aux sauvegardes de la racine
+d'état la même protection. Un bundle de sauvegarde chiffré produit par Tobby est
+hors de la version 1.
+
+Pour confier un problème à quelqu'un d'autre, utilisez le
+[bundle de diagnostic](../../passthrough/diagnostics/) : une archive, à la
+configuration expurgée, dont chaque fichier est cherché pour les secrets que
+l'instance connaît avant d'être écrit — et qui n'est pas écrite du tout si l'un
+d'eux est trouvé.

@@ -15,13 +15,14 @@ série v0.5.x actuelle expose réellement, extrait de `internal/metrics` et
 
 ## Métriques
 
-:::caution[Pas encore contractuel]
-La liste de métriques ci-dessous est réelle et exacte pour la série actuelle,
-mais ce n'est **pas un contrat de stabilité** avant la livraison du kit de
-supervision (R-11, jalon 7) — les noms et les labels peuvent encore changer
-entre versions mineures. Les clés stables du schéma de journal et le schéma
-d'audit sont contractuels dès aujourd'hui ; les métriques ne le sont pas
-encore. Suivez-le sur la page [état du projet](../../discover/status/).
+:::note[Un contrat depuis la version 1.0]
+Les familles `tobby_*` ci-dessous sont versionnées, comme l'API REST : en
+renommer ou en retirer une est un changement cassant, en ajouter une ne l'est
+pas. Le référentiel `metrics-reference.json` — chaque famille, son type, ses
+labels et leurs ensembles de valeurs fermés, son unité, l'exigence qu'elle sert
+et quand elle est présente — est **généré à partir du registre en marche** et
+publié, signé, avec chaque release ; un test échoue quand lui et l'endpoint
+divergent. Voir [Superviser une instance](../../passthrough/monitoring/).
 :::
 
 `GET /metrics` sert l'exposition OpenMetrics (négociation de contenu par-dessus
@@ -50,6 +51,14 @@ Métriques de domaine enregistrées aujourd'hui :
 | `tobby_scan_db_present` | gauge | — | `1` quand une base de vulnérabilités est présente, `0` dans le mode dégradé d'absence de base. |
 | `tobby_scan_db_age_seconds` | gauge | — | Âge de la base depuis l'horodatage de construction qu'elle enregistre (R-13). Exposée **uniquement tant qu'une base est présente** : `tobby_scan_db_present` distingue « absente » de « fraîche ». |
 | `tobby_scan_db_stale` | gauge | — | `1` tant que l'âge dépasse `scan.maxDbAge` ; exposée avec l'âge. |
+| `tobby_sync_runs_total` | counter | `outcome` = `success` \| `failure` | Exécutions de synchronisation (déclenchement miroir ou cycle passthrough). Une exécution échoue quand elle a produit une erreur ou laissé un item en échec. Les deux séries existent dès la première collecte. |
+| `tobby_sync_duration_seconds` | histogram | `outcome` = `success` \| `failure` | Durée des exécutions de synchronisation, en secondes. |
+| `tobby_sync_last_success_timestamp_seconds` | gauge | — | Fin de la dernière exécution réussie, en secondes Unix. **Absente tant qu'aucune n'a réussi** depuis le démarrage du processus. |
+| `tobby_sync_ingredients` | gauge | `status` = `new` \| `outdated` \| `up_to_date` | Ingrédients de la dernière exécution par statut (FR-026). Absente tant qu'aucune exécution n'est terminée. |
+| `tobby_sync_parallelism` | gauge | — | Le `sync.parallelism` configuré, à comparer à `tobby_sync_transfers_inflight`. |
+| `tobby_server_certificate_expiry_timestamp_seconds` | gauge | — | `NotAfter` du certificat que le listener présente (FR-082), repli auto-signé compris. Lu à chaque collecte, donc un remplacement est suivi ; absente tant que le listener sert du HTTP clair. |
+| `tobby_clock_implausible` | gauge | `anchor` = `build` \| `medium` | `1` tant que l'horloge locale est trouvée antérieure à l'ancre au-delà de `clock.skewTolerance`, `0` sinon (FR-096). `build` est contrôlée au démarrage ; `medium` est absente tant qu'aucun support n'a été ouvert. |
+| `tobby_diagnostics_bundles_total` | counter | `outcome` = `written` \| `refused` \| `failed` | [Bundles de diagnostic](../../passthrough/diagnostics/) : écrits, refusés par le contrôle d'expurgation (`TBY-DIA-002`), ou en échec (`TBY-DIA-001`). Les trois existent dès la première collecte. |
 | `tobby_integrity_verifications_total` | counter | `verdict` = `clean` \| `defects` | Vérifications du store à la demande terminées ([`tobby store verify`](../cli/#tobby-store-verify), l'écran d'intégrité du store, `POST /api/v1/store/verify`). Du contenu orphelin seul ne rend jamais un verdict `defects`. Les deux verdicts existent dès le premier scrape, à zéro. |
 | `tobby_integrity_last_verification_timestamp_seconds` | gauge | — | Heure de fin de la dernière vérification terminée, en secondes Unix. **Absente tant qu'aucune n'est terminée** : une valeur `0` se lirait comme 1970, un nombre là où la vérité est « jamais vérifié » — alertez sur l'absence, ou sur l'âge. |
 | `tobby_assurance_reduced_recipes` | gauge | `scope` | Recipes actuellement détenues en [assurance réduite](../../security/reduced-assurance/), par périmètre de confiance déclaré qui les a admises. Calculée à chaque scrape à partir du graphe de recipes, jamais comptée par événements. Chaque périmètre qui autorise des recipes non signées est présent dès le premier scrape, à zéro tant qu'il ne détient rien, de sorte que retirer la dernière est aussi visible qu'admettre la première. |
@@ -115,9 +124,13 @@ tâche et `GET /api/v1/tasks/{id}/logs`, et la rétention des tâches terminées
 Les événements d'audit circulent dans le même flux, avec leur propre schéma
 versionné — voir [Journal d'audit](../../security/audit-log/).
 
-## Sur quoi alerter aujourd'hui
+## Sur quoi alerter
 
-Avec les moyens de la série actuelle :
+Le chart de référence livre les règles des conditions qui comptent le plus —
+échecs répétés, absence de succès récent, saturation, occupation du store, base
+de vulnérabilités et scanner, certificat, horloge — et un tableau de bord
+d'exemple : voir [Superviser une instance](../../passthrough/monitoring/). Les
+signaux qui les fondent, et quelques autres :
 
 - **`readyz`** — la disponibilité passe à 503 pendant le démarrage et la
   vidange ; un 503 durable désigne une instance qui ne peut pas servir.
@@ -147,16 +160,18 @@ Avec les moyens de la série actuelle :
 - **`rate(tobby_auth_attempts_total{outcome="expired"}[…]) > 0`** — un client
   présente encore un token expiré : remplacez-le avant que ce soit celui qui
   compte.
+- **`increase(tobby_sync_runs_total{outcome="failure"}[…])`** et
+  **`time() - tobby_sync_last_success_timestamp_seconds`** — des échecs répétés,
+  et un dernier succès trop ancien. L'horodatage est absent tant qu'une
+  exécution n'a pas réussi : cette absence veut dire « jamais depuis le
+  démarrage ».
+- **`tobby_server_certificate_expiry_timestamp_seconds - time()`** — le temps
+  qui reste au certificat du listener.
+- **`tobby_clock_implausible == 1`** — l'horloge est antérieure à une date que
+  cette instance prouve révolue ; voir [Détecter une horloge fausse](../../air-gap/clock-check/).
 - **L'absence de mouvement de `tobby_promotion_pushes_total`** (ni `pushed` ni
   `skipped` n'augmente) sur une instance passthrough avec un retriever
   configuré — la boucle de réconciliation a cessé de tourner.
 - **Les enregistrements de niveau `ERROR`**, et les enregistrements `WARN` autour
   de la résolution des FileSets et des cycles ignorés (« promotion cycle
   skipped » est une coalescence informative, pas un échec).
-
-:::note[À venir — jalon 7]
-Le kit de supervision (R-11 : tableaux de bord, règles d'alerte et contrat de
-stabilité des métriques) et le bundle de diagnostic expurgé (R-30) arrivent avec
-le jalon 7. D'ici là, l'alerte s'assemble à partir des primitives ci-dessus.
-Suivez les deux sur la page [état du projet](../../discover/status/).
-:::

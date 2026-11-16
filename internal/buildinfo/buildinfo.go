@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
+	"time"
 )
 
 // Stamped by the release pipeline via
@@ -47,6 +48,18 @@ func Commit() string {
 // Date returns the build date (from SOURCE_DATE_EPOCH in release builds).
 func Date() string {
 	return date
+}
+
+// BuildTime returns the build date as a time (FR-096: the first anchor of
+// the clock-plausibility check). The zero time, and false, for a build
+// that carries none — a development build stamps "unknown" — or one whose
+// stamp is not RFC 3339: a date nobody can read proves nothing.
+func BuildTime() (time.Time, bool) {
+	t, err := time.Parse(time.RFC3339, date)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t.UTC(), true
 }
 
 // String renders a single human-readable line, e.g.

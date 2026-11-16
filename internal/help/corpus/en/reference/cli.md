@@ -47,6 +47,10 @@ tobby
 │   └── import     Verify a transported store, then push what it cleared
 ├── store
 │   └── verify     Verify the integrity of a whole store (either mode)
+├── diagnostics
+│   └── bundle     Write one redacted diagnostic archive for support
+├── state
+│   └── inspect    List the state directory: classes, sizes, permissions
 ├── recipe
 │   └── push       Validate a recipe and publish it to a cookbook
 ├── user
@@ -515,6 +519,49 @@ Exit codes: `0` the store is intact, `1` the verification was cancelled or faile
 `4` a defect was found — a blob that
 does not match its digest, an incomplete or unreadable manifest, a
 signature that no longer verifies.
+
+### tobby diagnostics bundle
+
+```
+tobby diagnostics bundle [-o <file>] [--instance <url> [--token-file <file>]] [flags]
+```
+
+Writes one local, redacted archive for support (SRS FR-095): the version and
+build, the effective configuration, recent log records, the reports of the
+most recent tasks, a metrics snapshot, the last integrity report, the state
+inventory, and a `MANIFEST.json` with the digest of every file.
+
+Redaction fails closed: every file is searched for the secret values the
+instance knows before anything is written, and a match aborts the command
+with [`TBY-DIA-002`](../../reference/errors/#tby-dia-002), naming the file.
+Tobby sends the archive nowhere. The default file name is
+`tobby-diagnostics-<UTC time>.tar.gz` in the current directory; an existing file
+is never overwritten, and the archive is written readable by its owner only.
+
+Without `--instance` the archive is assembled on the host from the
+configuration, the store and the state directory; the log window and the
+metrics belong to a running process and appear in the manifest as omitted,
+with the reason. With `--instance` (or `TOBBY_INSTANCE_URL`) the archive is
+requested from the running instance, with the administrator's token from
+`TOBBY_API_TOKEN` or `--token-file`, and includes them. The request is
+audited either way. Exit codes: `0` written, `3` refused (the redaction check,
+or the role), `1` failed. See
+[Collect a diagnostic bundle](../../passthrough/diagnostics/).
+
+### tobby state inspect
+
+```
+tobby state inspect [flags]
+```
+
+Lists the entries of the instance state directory (SRS FR-097) with their
+class — *identity* (back it up) or *discardable* — whether they are secret,
+their size and their permissions. Names, classes, sizes and modes only; never a
+content. It reads the directory without opening anything, so it is safe beside
+a running instance. A secret entry readable by every user of the host is
+flagged, and the command exits `3` with
+[`TBY-STA-002`](../../reference/errors/#tby-sta-002) — the refusal a start would
+give. See [Back up and rebuild an instance](../../passthrough/backup-rebuild/).
 
 ### tobby recipe push
 

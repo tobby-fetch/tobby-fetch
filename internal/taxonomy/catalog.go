@@ -481,36 +481,32 @@ const (
 	// destination.registry nor consumption.registry (FR-065 amendment, 7.1).
 	CodeAidsNoRegistry Code = "TBY-AID-001"
 	// CodeDiagnosticsFailed is a diagnostic bundle that could not be
-	// produced (FR-095, R-30). Reserved: emitter lands with R-30 (track B).
+	// produced (FR-095, R-30).
 	CodeDiagnosticsFailed Code = "TBY-DIA-001"
 	// CodeDiagnosticsRedaction is a diagnostic bundle aborted because a
 	// member still held a secret value the instance knows: redaction fails
-	// closed (FR-095). Names the member, never the secret. Reserved:
-	// emitter lands with R-30 (track B).
+	// closed (FR-095). Names the member, never the secret.
 	CodeDiagnosticsRedaction Code = "TBY-DIA-002"
 	// CodeClockBeforeBuild reports a local clock earlier than the build time
 	// of the running binary beyond the tolerance (FR-096, R-32).
-	// Non-blocking: it warns and records. Reserved: emitter lands with R-32
-	// (track B).
+	// Non-blocking: it warns and records.
 	CodeClockBeforeBuild Code = "TBY-CLK-001"
 	// CodeClockBeforeMedium reports a local clock earlier than the
 	// resolution time of the medium being opened beyond the tolerance
-	// (FR-096). Non-blocking. Reserved: emitter lands with R-32 (track B).
+	// (FR-096). Non-blocking.
 	CodeClockBeforeMedium Code = "TBY-CLK-002"
 	// CodeStateLayoutUnknown refuses to start on a state directory whose
-	// layout version this build does not know (FR-097, R-27). Reserved:
-	// emitter lands with R-27 (track B).
+	// layout version this build does not know (FR-097, R-27).
 	CodeStateLayoutUnknown Code = "TBY-STA-001"
 	// CodeStatePermissions refuses to start on a state directory whose
 	// secret entry is readable by every user of the host (FR-097,
 	// NFR-020); group access, which a volume's fsGroup grants, is
-	// tolerated. Reserved:
-	// emitter lands with R-27 (track B).
+	// tolerated.
 	CodeStatePermissions Code = "TBY-STA-002"
 	// CodeStateIdentityMissing reports an identity entry of the state
 	// directory missing at startup — accounts, certificate, import record —
 	// typically after an incomplete restore (FR-097). Non-blocking by
-	// itself. Reserved: emitter lands with R-27 (track B).
+	// itself.
 	CodeStateIdentityMissing Code = "TBY-STA-003"
 
 	// CodeTaskNotFound is a task identifier unknown to this instance.

@@ -60,12 +60,59 @@ them.
   `diagnostics.logRecords` (2000), `diagnostics.tasks` (20) and
   `clock.skewTolerance` (1h) are accepted with their defaults.
 
+- **Diagnostic bundle** (R-30, FR-095): `tobby diagnostics bundle`, the
+  administration screen **Diagnostics** and `POST /api/v1/diagnostics/bundle`
+  produce one local archive — version and build, the configuration redacted as
+  `tobby config dump` redacts it, a bounded window of recent log records
+  (`diagnostics.logRecords`), the reports of the latest tasks
+  (`diagnostics.tasks`), a metrics snapshot, the last integrity report, the
+  state inventory, and a manifest with every digest. **Redaction fails
+  closed**: every file is searched for the secrets the instance knows
+  (configuration, secret files, state keys, credential-like environment
+  variables, in clear and encoded) before anything is written, and a match
+  aborts the bundle with `TBY-DIA-002`. Administrator only, audited
+  (`diagnostics.bundle`), counted (`tobby_diagnostics_bundles_total`), and
+  never sent anywhere.
+- **Normative state directory** (R-27, FR-097): every writer of instance
+  state takes its path from one documented, versioned layout, and
+  `layout.json` records its version. At startup an unknown layout
+  (`TBY-STA-001`) or a secret entry readable by every user of the host
+  (`TBY-STA-002`; group access is tolerated for a Kubernetes `fsGroup`; on
+  Windows, an access list granting Everyone, Users or Authenticated Users)
+  refuses the start, and an identity entry missing after a restore is
+  reported (`TBY-STA-003`). `tobby state inspect`, the **State** screen and
+  `GET /api/v1/state` list the entries without their contents. The backup and
+  rebuild procedure is documented and tested end to end (accounts, token,
+  certificate fingerprint, import record, interval override).
+- **Clock plausibility** (R-32, FR-096): at start and each time a medium is
+  verified, the local clock is compared with the build time of the binary and
+  with the medium's resolution time (`clock.skewTolerance`). An implausible
+  clock is shown on a persistent banner, in the log, on the error output of
+  `tobby media verify|import`, in `tobby_clock_implausible` and in the audit
+  log (`clock.implausible`, `TBY-CLK-001`/`002`), and is available at
+  `GET /api/v1/clock`. It warns and records; it corrects nothing and changes
+  no verdict.
+- **Supervision kit** (R-11): the metrics `tobby_sync_runs_total`,
+  `tobby_sync_duration_seconds`, `tobby_sync_last_success_timestamp_seconds`,
+  `tobby_sync_ingredients`, `tobby_sync_parallelism` and
+  `tobby_server_certificate_expiry_timestamp_seconds`; the metrics reference,
+  generated from the registry (`go run ./tools/metricsref`,
+  `docs/metrics-reference.json`) with a freshness test; `openapi.yaml` and
+  `metrics-reference.json` as signed release artifacts; and, in the reference
+  chart and off by default, a `PrometheusRule`, the same rules as a plain
+  rules file and an example Grafana dashboard (`alerting.*` and `dashboard.*`
+  values), with `promtool` tests of every alert.
+
 ### Changed
 
 - **`tobby fileset pack` marks what it packs** with
   `dev.tobby.recipe/kind: FileSet` beside `dev.tobby.fileset/packed`.
   Packing stays deterministic, but the same tree packed by this version
   gets a new digest; FileSets already pinned are unaffected.
+- **The `diagnostics.*` and `clock.*` keys are now honoured**: they were
+  accepted with their defaults and ignored.
+- **`audit` records can carry a `detail`** (additive): the gap of an
+  implausible clock, the code and member of a refused bundle.
 
 - **Accessibility pass on the interface** (NFR-017, 7.1): audited in a real
   browser on the core screens, in English and French, in both themes. It

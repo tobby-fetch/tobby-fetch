@@ -1149,14 +1149,14 @@ L'archive locale et expurgée de FR-095. L'expurgation échoue fermée : un bund
 - **Quoi :** Le bundle de diagnostic n'a pas pu être produit.
 - **Cause probable :** `<detail>`
 - **Action corrective :** Réessayez ; en cas de nouvel échec, collectez les journaux de l'instance par les moyens du déploiement. Rien n'a été écrit ni envoyé : un bundle est uniquement local.
-- **Remédiable hors-ligne :** oui · **Bloque :** le bundle · **Statut :** réservé — émis à partir du jalon 7
+- **Remédiable hors-ligne :** oui · **Bloque :** le bundle
 
 ### TBY-DIA-002
 
 - **Quoi :** Le bundle de diagnostic a été retenu : `<member>` contenait encore un secret.
 - **Cause probable :** Avant de livrer un bundle, Tobby cherche dans chaque membre les valeurs secrètes qu'il connaît. L'une d'elles a été trouvée : le bundle n'a pas été écrit plutôt que de l'être avec elle.
 - **Action corrective :** Signalez ce défaut aux mainteneurs de Tobby avec le nom du membre — jamais avec le bundle. En attendant, collectez les informations à la main.
-- **Remédiable hors-ligne :** oui · **Bloque :** le bundle — jamais livré avec un secret dedans · **Statut :** réservé — émis à partir du jalon 7
+- **Remédiable hors-ligne :** oui · **Bloque :** le bundle — jamais livré avec un secret dedans
 
 ## Cohérence d'horloge (TBY-CLK)
 
@@ -1167,14 +1167,14 @@ FR-096 : l'horloge locale confrontée à des repères que l'instance détient sa
 - **Quoi :** L'horloge locale indique `<now>`, une date antérieure à la construction de ce binaire (`<anchor>`).
 - **Cause probable :** L'horloge retarde de `<gap>` sur une date que ce binaire prouve passée. Les expirations, les contrôles de fraîcheur et la validité des certificats sont jugés sur cette horloge.
 - **Action corrective :** Réglez l'horloge de l'hôte (source de temps de la zone, ou à la main depuis une référence de confiance), puis redémarrez. Tobby avertit et consigne ; il ne corrige pas l'horloge.
-- **Remédiable hors-ligne :** oui · **Bloque :** rien — un avertissement, consigné au journal d'audit · **Statut :** réservé — émis à partir du jalon 7
+- **Remédiable hors-ligne :** oui · **Bloque :** rien — un avertissement, consigné au journal d'audit
 
 ### TBY-CLK-002
 
 - **Quoi :** L'horloge locale indique `<now>`, une date antérieure à la production du support `<medium>` (`<anchor>`).
 - **Cause probable :** Le support a été résolu `<gap>` après l'heure que croit avoir cet hôte : l'une des deux horloges est fausse, et les contrôles de fraîcheur et d'expiration en dépendent.
 - **Action corrective :** Vérifiez l'horloge de cet hôte contre une référence de confiance avant de vous fier aux verdicts d'expiration et de fraîcheur. Tobby avertit et consigne ; il ne corrige pas l'horloge.
-- **Remédiable hors-ligne :** oui · **Bloque :** rien — un avertissement, consigné au journal d'audit · **Statut :** réservé — émis à partir du jalon 7
+- **Remédiable hors-ligne :** oui · **Bloque :** rien — un avertissement, consigné au journal d'audit
 
 ## Répertoire d'état de l'instance (TBY-STA)
 
@@ -1185,21 +1185,21 @@ FR-097 : le répertoire d'état normé — la cible de sauvegarde d'une instance
 - **Quoi :** L'instance refuse de démarrer : le répertoire d'état `<root>` a une organisation inconnue (`<version>`).
 - **Cause probable :** Il a été écrit par une autre version de Tobby, ou ce n'est pas un répertoire d'état de Tobby.
 - **Action corrective :** Démarrez la version qui l'a écrit, ou restaurez le répertoire d'état depuis une sauvegarde faite avec cette version. L'organisation documentée est le contrat de sauvegarde.
-- **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance · **Statut :** réservé — émis à partir du jalon 7
+- **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance
 
 ### TBY-STA-002
 
 - **Quoi :** L'instance refuse de démarrer : `<path>` est lisible par tous les utilisateurs de l'hôte (mode `<mode>`).
 - **Cause probable :** C'est une entrée secrète du répertoire d'état — empreintes de mots de passe ou de jetons, clé privée — que Tobby crée pour son seul propriétaire. Un mode plus large vient en général d'une restauration qui n'a pas conservé les droits.
 - **Action corrective :** Retirez l'accès des autres utilisateurs (chmod o-rwx sous Unix ; sous Windows, retirez Tout le monde et Utilisateurs de sa liste d'accès), vérifiez qui a pu la lire entre-temps, puis redémarrez. L'accès de groupe accordé par le volume (fsGroup Kubernetes) est toléré.
-- **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance · **Statut :** réservé — émis à partir du jalon 7
+- **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance
 
 ### TBY-STA-003
 
 - **Quoi :** Le répertoire d'état ne contient pas `<entry>`.
 - **Cause probable :** Une entrée d'identité manque — en général après une restauration incomplète. L'instance démarre sans elle, et se comporte comme une instance neuve pour ce qu'elle contenait.
 - **Action corrective :** Si cette instance a été restaurée, restaurez l'entrée manquante depuis la même sauvegarde et redémarrez ; sinon, rien à faire.
-- **Remédiable hors-ligne :** oui · **Bloque :** rien par lui-même — l'instance démarre sans l'entrée · **Statut :** réservé — émis à partir du jalon 7
+- **Remédiable hors-ligne :** oui · **Bloque :** rien par lui-même — l'instance démarre sans l'entrée
 
 ## Tâches (TBY-TSK)
 

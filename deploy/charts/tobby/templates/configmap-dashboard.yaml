@@ -1,0 +1,26 @@
+{{/*
+SPDX-License-Identifier: GPL-3.0-only
+Copyright © 2026 infraBuilder SASU and contributors
+
+An example Grafana dashboard (R-11) over the families of the metrics
+reference, as a ConfigMap carrying the label the Grafana sidecar watches
+(dashboard.labels). Off by default.
+*/}}
+{{- if .Values.dashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tobby.fullname" . }}-dashboard
+  {{- with .Values.dashboard.namespace }}
+  namespace: {{ . | quote }}
+  {{- end }}
+  labels:
+    {{- include "tobby.labels" . | nindent 4 }}
+    app.kubernetes.io/component: instance
+    {{- with .Values.dashboard.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+data:
+  tobby-dashboard.json: |-
+    {{- .Files.Get "files/tobby-dashboard.json" | nindent 4 }}
+{{- end }}

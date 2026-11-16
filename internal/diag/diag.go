@@ -11,16 +11,17 @@
 // it (TBY-DIA-002) rather than ship it. Producing one is an audit event
 // (diagnostics.bundle).
 //
-// This package carries the archive's layout and manifest only, reserved at
-// the opening of the milestone. Collecting each member, the in-memory log
-// window (diagnostics.logRecords), the redaction check and the surfaces —
-// `tobby diagnostics bundle`, the admin screen and its API mirror — are
-// track B.
+// The package holds the layout and manifest (this file), the secrets the
+// instance knows and the scrub and check that run over every member
+// (secrets.go), the in-memory log window (window.go), and the assembly of
+// the archive (bundle.go). The surfaces — `tobby diagnostics bundle`, the
+// admin screen and its API mirror — call Build and write what it returns.
 package diag
 
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // The members of a bundle, at fixed names so a support engineer finds the
@@ -64,8 +65,21 @@ func Known(name string) bool {
 // Manifest is MemberManifest: what the archive holds.
 type Manifest struct {
 	// Format versions the bundle layout.
-	Format  int      `json:"format"`
-	Members []Member `json:"members"`
+	Format int `json:"format"`
+	// Generated is when the archive was assembled (UTC).
+	Generated time.Time `json:"generated"`
+	Members   []Member  `json:"members"`
+	// Omitted names the documented members this archive does not carry,
+	// and why: a bundle produced on the host without a running instance
+	// has no log window, and a store never verified has no integrity
+	// report. An absence is stated, never silent.
+	Omitted []Omission `json:"omitted,omitempty"`
+}
+
+// Omission is a documented member left out of an archive.
+type Omission struct {
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
 }
 
 // Member is one file of the archive.
@@ -80,7 +94,7 @@ const FormatVersion = 1
 
 // Validate checks that a manifest only lists documented members, each
 // once — what a reader of the archive relies on.
-func (m Manifest) Validate() error {
+func (m *Manifest) Validate() error {
 	if m.Format != FormatVersion {
 		return fmt.Errorf("diag: bundle format %d, this build reads %d", m.Format, FormatVersion)
 	}
@@ -95,4 +109,10 @@ func (m Manifest) Validate() error {
 		seen[mem.Name] = true
 	}
 	return nil
+}
+
+// ArchiveName is the file name a bundle is given: the UTC time, nothing
+// that identifies the host or the site.
+func ArchiveName(t time.Time) string {
+	return "tobby-diagnostics-" + t.UTC().Format("20060102T150405Z") + ".tar.gz"
 }

@@ -21,12 +21,13 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/secretfile"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 )
 
 // accountsFile is the file holding accounts and tokens under the state
 // directory. Owner-only: it contains password hashes and token digests
 // (NFR-020, NFR-018).
-const accountsFile = "accounts.yaml"
+const accountsFile = statedir.Accounts
 
 // fileSchema is the on-disk format. Versioned like every persisted schema.
 type fileSchema struct {

@@ -47,6 +47,10 @@ tobby
 │   └── import     Verify a transported store, then push what it cleared
 ├── store
 │   └── verify     Verify the integrity of a whole store (either mode)
+├── diagnostics
+│   └── bundle     Write one redacted diagnostic archive for support
+├── state
+│   └── inspect    List the state directory: classes, sizes, permissions
 ├── recipe
 │   └── push       Validate a recipe and publish it to a cookbook
 ├── user
@@ -530,6 +534,51 @@ Codes de sortie : `0` le store est intact, `1` la vérification a été annulée
 a échoué, `4` un défaut a été trouvé — un blob qui ne correspond pas à son
 digest, un manifeste incomplet ou illisible, une signature qui ne se vérifie
 plus.
+
+### tobby diagnostics bundle
+
+```
+tobby diagnostics bundle [-o <fichier>] [--instance <url> [--token-file <fichier>]] [flags]
+```
+
+Écrit une archive locale et expurgée à remettre au support (SRS FR-095) : la
+version et le build, la configuration effective, les derniers enregistrements
+de journal, les rapports des dernières tâches, un instantané des métriques, le
+dernier rapport d'intégrité, l'inventaire d'état, et un `MANIFEST.json` avec
+l'empreinte de chaque fichier.
+
+L'expurgation échoue fermée : chaque fichier est cherché pour les secrets que
+l'instance connaît avant que rien ne soit écrit, et une correspondance abandonne
+la commande avec [`TBY-DIA-002`](../../reference/errors/#tby-dia-002), qui
+nomme le fichier. Tobby n'envoie l'archive nulle part. Le nom par défaut est
+`tobby-diagnostics-<heure UTC>.tar.gz` dans le répertoire courant ; un fichier
+existant n'est jamais écrasé, et l'archive est écrite lisible par son seul
+propriétaire.
+
+Sans `--instance`, l'archive est assemblée sur l'hôte à partir de la
+configuration, du store et du répertoire d'état ; la fenêtre de journal et les
+métriques appartiennent à un processus en marche et figurent au manifeste comme
+écartées, avec la raison. Avec `--instance` (ou `TOBBY_INSTANCE_URL`), l'archive
+est demandée à l'instance en marche, avec le jeton de l'administrateur pris dans
+`TOBBY_API_TOKEN` ou `--token-file`, et les inclut. La demande est auditée dans
+les deux cas. Codes de sortie : `0` écrite, `3` refusée (contrôle d'expurgation,
+ou rôle), `1` échec. Voir
+[Collecter un bundle de diagnostic](../../passthrough/diagnostics/).
+
+### tobby state inspect
+
+```
+tobby state inspect [flags]
+```
+
+Liste les entrées du répertoire d'état de l'instance (SRS FR-097) avec leur
+classe — *identité* (à sauvegarder) ou *jetable* —, si elles sont secrètes, leur
+taille et leurs permissions. Des noms, classes, tailles et modes seulement ;
+jamais un contenu. Elle lit le répertoire sans rien ouvrir, donc sans risque à
+côté d'une instance en marche. Une entrée secrète lisible par tous les
+utilisateurs de l'hôte est signalée, et la commande sort en `3` avec
+[`TBY-STA-002`](../../reference/errors/#tby-sta-002) — le refus qu'un démarrage
+donnerait. Voir [Sauvegarder et reconstruire une instance](../../passthrough/backup-rebuild/).
 
 ### tobby recipe push
 

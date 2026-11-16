@@ -104,6 +104,74 @@
       }
     },
 
+    "tobby diagnostics bundle": {
+      "title": "tobby diagnostics bundle --output json",
+      "type": "object",
+      "required": ["file", "bytes", "source", "members"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string", "description": "Where the archive was written." },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "source": { "enum": ["host", "instance"], "description": "Assembled on this host, or taken from a running instance." },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "size", "digest"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "size": { "type": "integer", "minimum": 0 },
+              "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+            }
+          }
+        },
+        "omitted": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "reason"],
+            "additionalProperties": false,
+            "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }
+          }
+        }
+      }
+    },
+
+    "tobby state inspect": {
+      "title": "tobby state inspect --output json",
+      "type": "object",
+      "required": ["root", "layout", "supported", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "root": { "type": "string" },
+        "layout": { "type": "integer", "description": "The layout version recorded in the directory; 0 when none." },
+        "supported": { "type": "integer", "description": "The layout version this build writes." },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "kind", "secret", "documented", "present", "size"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "kind": { "enum": ["file", "dir"] },
+              "class": { "enum": ["identity", "discardable"] },
+              "secret": { "type": "boolean" },
+              "purpose": { "type": "string" },
+              "documented": { "type": "boolean" },
+              "present": { "type": "boolean" },
+              "size": { "type": "integer", "minimum": 0 },
+              "files": { "type": "integer", "minimum": 0 },
+              "mode": { "type": "string" },
+              "access": { "enum": ["owner", "group", "broad"] },
+              "modified": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
+      }
+    },
+
     "tobby user list": {
       "title": "tobby user list --output json",
       "type": "object",

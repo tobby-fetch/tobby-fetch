@@ -24,6 +24,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/runid"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -168,7 +169,7 @@ func runStoreVerify(cmd *cobra.Command, cfg *config.Config, report *reportFlag) 
 	defer egress.CloseIdleConnections()
 	trustCache := ""
 	if cfg.State.Root != "" {
-		trustCache = filepath.Join(cfg.State.Root, "trust-cache")
+		trustCache = statedir.Path(cfg.State.Root, statedir.TrustCache)
 	}
 	trust, err := engine.LoadTrust(cfg.Trust, trustCache, egress)
 	if err != nil {
@@ -249,7 +250,7 @@ func writeIntegrityReport(cmd *cobra.Command, report *reportFlag, rep *integrity
 // servingFile is the marker a running instance keeps in its STATE directory
 // — never in the store, which is transportable and whose every byte a
 // verification must leave alone.
-const servingFile = "serving.json"
+const servingFile = statedir.Serving
 
 type servingMarker struct {
 	StorageRoot string `json:"storage_root"`
@@ -270,7 +271,7 @@ func markServing(cfg *config.Config, addr func() string) func() {
 	if err != nil {
 		return func() {}
 	}
-	path := filepath.Join(cfg.State.Root, servingFile)
+	path := statedir.Path(cfg.State.Root, servingFile)
 	var mu sync.Mutex
 	removed := false
 	go func() {
@@ -306,7 +307,7 @@ func servedAt(ctx context.Context, cfg *config.Config) string {
 	if cfg.State.Root == "" {
 		return ""
 	}
-	raw, err := os.ReadFile(filepath.Join(cfg.State.Root, servingFile))
+	raw, err := os.ReadFile(statedir.Path(cfg.State.Root, servingFile))
 	if err != nil {
 		return ""
 	}

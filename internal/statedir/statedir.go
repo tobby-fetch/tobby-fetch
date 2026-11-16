@@ -13,19 +13,45 @@
 // single backup target of an instance besides its store (FR-050), and it
 // never lives inside the store (NFR-020).
 //
-// This package carries the layout only, reserved at the opening of
-// milestone 7. The entries are still named, today, by the packages that
-// write them (auth, netx, schedule, media, blobfetch, scan/trivy, cli);
-// track B of the milestone makes those packages take their names from
-// here, adds the startup check (layout version, permissions of secret
-// entries — TBY-STA-001..003) and `tobby state inspect`. A test keeps the
-// table and the writers in step from then on.
+// The entries are named here and only here: every package that writes one
+// takes its path from Path and the constants below, and a test fails when
+// a writer joins a literal that is a documented name instead. Prepare is
+// the startup check (layout version, permissions of secret entries —
+// TBY-STA-001..003), Inspect the inventory behind `tobby state inspect`,
+// the API mirror and the diagnostic bundle.
 package statedir
 
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 )
+
+// The documented names, relative to state.root.
+const (
+	// Accounts is the local account database.
+	Accounts = "accounts.yaml"
+	// TLS is the directory of the generated or adopted server certificate.
+	TLS = "tls"
+	// Schedule is the runtime override of the refresh interval.
+	Schedule = "schedule.json"
+	// MediaImports is the per-zone import record.
+	MediaImports = "media-imports.json"
+	// TrustCache holds trust roots fetched from HTTPS URLs.
+	TrustCache = "trust-cache"
+	// Partials is the spool of resumable partial downloads.
+	Partials = "partials"
+	// Scanner is the vulnerability scanner's private work directory.
+	Scanner = "scanner"
+	// Serving is the runtime marker of the instance serving the store.
+	Serving = "serving.json"
+)
+
+// Path returns the absolute location of a documented entry (or of a file
+// inside a documented directory) under root.
+func Path(root string, elem ...string) string {
+	return filepath.Join(append([]string{root}, elem...)...)
+}
 
 // LayoutVersion is the version of the layout described by Entries. It is
 // written to LayoutFile by the build that first creates or adopts a state
@@ -78,14 +104,14 @@ type Entry struct {
 // entries is the layout of version LayoutVersion, in documentation order.
 var entries = []Entry{
 	{Name: LayoutFile, Kind: KindFile, Class: ClassIdentity, Purpose: "layout version of this state directory (FR-097)"},
-	{Name: "accounts.yaml", Kind: KindFile, Class: ClassIdentity, Secret: true, Purpose: "local accounts with their password hashes and static tokens as hashes (FR-072, FR-073)"},
-	{Name: "tls", Kind: KindDir, Class: ClassIdentity, Secret: true, Purpose: "the generated or adopted server certificate and its private key (FR-082)"},
-	{Name: "schedule.json", Kind: KindFile, Class: ClassIdentity, Purpose: "the passthrough refresh interval set at runtime by an operator (FR-013)"},
-	{Name: "media-imports.json", Kind: KindFile, Class: ClassIdentity, Purpose: "per zone, the resolution time and identifier of the last medium imported (FR-052, R-28)"},
-	{Name: "trust-cache", Kind: KindDir, Class: ClassDiscardable, Purpose: "trust roots fetched from HTTPS URLs at configuration time (FR-033); fetched again when missing"},
-	{Name: "partials", Kind: KindDir, Class: ClassDiscardable, Purpose: "resumable partial downloads (FR-029); a missing spool restarts the blob at zero"},
-	{Name: "scanner", Kind: KindDir, Class: ClassDiscardable, Purpose: "the scanner's private work directory: unpacked binary, database, scratch (FR-031, FR-032)"},
-	{Name: "serving.json", Kind: KindFile, Class: ClassDiscardable, Purpose: "runtime marker of the instance serving the store, for the local CLI (FR-066)"},
+	{Name: Accounts, Kind: KindFile, Class: ClassIdentity, Secret: true, Purpose: "local accounts with their password hashes and static tokens as hashes (FR-072, FR-073)"},
+	{Name: TLS, Kind: KindDir, Class: ClassIdentity, Secret: true, Purpose: "the generated or adopted server certificate and its private key (FR-082)"},
+	{Name: Schedule, Kind: KindFile, Class: ClassIdentity, Purpose: "the passthrough refresh interval set at runtime by an operator (FR-013)"},
+	{Name: MediaImports, Kind: KindFile, Class: ClassIdentity, Purpose: "per zone, the resolution time and identifier of the last medium imported (FR-052, R-28)"},
+	{Name: TrustCache, Kind: KindDir, Class: ClassDiscardable, Purpose: "trust roots fetched from HTTPS URLs at configuration time (FR-033); fetched again when missing"},
+	{Name: Partials, Kind: KindDir, Class: ClassDiscardable, Purpose: "resumable partial downloads (FR-029); a missing spool restarts the blob at zero"},
+	{Name: Scanner, Kind: KindDir, Class: ClassDiscardable, Purpose: "the scanner's private work directory: unpacked binary, database, scratch (FR-031, FR-032)"},
+	{Name: Serving, Kind: KindFile, Class: ClassDiscardable, Purpose: "runtime marker of the instance serving the store, for the local CLI (FR-066)"},
 }
 
 // Entries returns the documented layout, in documentation order. The

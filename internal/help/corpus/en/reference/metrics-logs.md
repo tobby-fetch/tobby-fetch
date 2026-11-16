@@ -15,13 +15,14 @@ series actually exposes, extracted from `internal/metrics` and
 
 ## Metrics
 
-:::caution[Not contractual yet]
-The metric list below is real and accurate for the current series, but it
-is **not a stability contract** before the supervision kit ships (R-11,
-milestone 7) — names and labels may still change between minor versions.
-The log schema's stable keys and the audit schema are contractual today;
-the metrics are not yet. Track it on the
-[project status](../../discover/status/) page.
+:::note[A contract since version 1.0]
+The `tobby_*` families below are versioned, like the REST API: renaming or
+removing one is a breaking change, adding one is not. The reference
+`metrics-reference.json` — every family, its type, labels and their closed
+value sets, unit, the requirement it serves and when it is present — is
+**generated from the running registry** and published, signed, with every
+release; a test fails when it and the endpoint disagree. See
+[Supervise an instance](../../passthrough/monitoring/).
 :::
 
 `GET /metrics` serves the OpenMetrics exposition (content negotiation on
@@ -50,6 +51,14 @@ Domain metrics registered today:
 | `tobby_scan_db_present` | gauge | — | `1` when a vulnerability database is present, `0` in the absent-database degraded mode. |
 | `tobby_scan_db_age_seconds` | gauge | — | Database age from the build timestamp it records (R-13). Exposed **only while a database is present**: `tobby_scan_db_present` tells "absent" from "fresh". |
 | `tobby_scan_db_stale` | gauge | — | `1` while the age exceeds `scan.maxDbAge`; exposed with the age. |
+| `tobby_sync_runs_total` | counter | `outcome` = `success` \| `failure` | Synchronization runs (a mirror trigger or a passthrough cycle). A run fails when it errored or left an item failed. Both series exist from the first scrape. |
+| `tobby_sync_duration_seconds` | histogram | `outcome` = `success` \| `failure` | Duration of synchronization runs, in seconds. |
+| `tobby_sync_last_success_timestamp_seconds` | gauge | — | End of the last successful run, Unix seconds. **Absent until one has succeeded** since the process started. |
+| `tobby_sync_ingredients` | gauge | `status` = `new` \| `outdated` \| `up_to_date` | Ingredients of the last run by status (FR-026). Absent until a run has completed. |
+| `tobby_sync_parallelism` | gauge | — | The configured `sync.parallelism`, to compare with `tobby_sync_transfers_inflight`. |
+| `tobby_server_certificate_expiry_timestamp_seconds` | gauge | — | `NotAfter` of the certificate the listener presents (FR-082), self-signed fallback included. Read at each scrape, so a replacement is followed; absent while the listener serves plain HTTP. |
+| `tobby_clock_implausible` | gauge | `anchor` = `build` \| `medium` | `1` while the local clock is found earlier than the anchor beyond `clock.skewTolerance`, `0` otherwise (FR-096). `build` is checked at start; `medium` is absent until one has been opened. |
+| `tobby_diagnostics_bundles_total` | counter | `outcome` = `written` \| `refused` \| `failed` | [Diagnostic bundles](../../passthrough/diagnostics/): written, refused by the redaction check (`TBY-DIA-002`), or failed (`TBY-DIA-001`). All three exist from the first scrape. |
 | `tobby_integrity_verifications_total` | counter | `verdict` = `clean` \| `defects` | Completed on-demand store verifications ([`tobby store verify`](../cli/#tobby-store-verify), the Store integrity screen, `POST /api/v1/store/verify`). Orphaned content alone never makes a verdict `defects`. Both verdicts exist from the first scrape, at zero. |
 | `tobby_integrity_last_verification_timestamp_seconds` | gauge | — | End time of the last completed verification, in Unix seconds. **Absent until one has completed**: a value of `0` would read as 1970, a number where the truth is "never verified" — alert on absence, or on age. |
 | `tobby_assurance_reduced_recipes` | gauge | `scope` | Recipes currently held under [reduced assurance](../../security/reduced-assurance/), by the declared trust scope that admitted them. Computed at every scrape from the recipe graph, never counted by events. Every scope that allows unsigned recipes is present from the first scrape, at zero while it holds nothing, so clearing the last one is as visible as admitting the first. |
@@ -114,9 +123,13 @@ record — this is what the task-detail screens and
 Audit events travel in the same stream, with their own versioned
 schema — see [Audit log](../../security/audit-log/).
 
-## What to alert on today
+## What to alert on
 
-With the means of the current series:
+The reference chart ships the rules for the conditions that matter most —
+repeated failures, no recent success, saturation, store occupancy, the
+vulnerability database and scanner, the certificate, the clock — and an
+example dashboard: see [Supervise an instance](../../passthrough/monitoring/).
+The signals behind them, and a few more:
 
 - **`readyz`** — readiness flips to 503 during startup and drain; a
   sustained 503 is an instance that cannot serve.
@@ -145,16 +158,17 @@ With the means of the current series:
 - **`rate(tobby_auth_attempts_total{outcome="expired"}[…]) > 0`** — a
   client still presents an expired token: replace it before it is the
   one that matters.
+- **`increase(tobby_sync_runs_total{outcome="failure"}[…])`** and
+  **`time() - tobby_sync_last_success_timestamp_seconds`** — repeated
+  failures, and a last success that is too old. The timestamp is absent
+  until a run has succeeded: that absence is "never since the start".
+- **`tobby_server_certificate_expiry_timestamp_seconds - time()`** — the
+  time left on the listener's certificate.
+- **`tobby_clock_implausible == 1`** — the clock is earlier than a date this
+  instance proves has passed; see [Detect a wrong clock](../../air-gap/clock-check/).
 - **Absence of `tobby_promotion_pushes_total` movement** (neither `pushed`
   nor `skipped` increasing) on a passthrough instance with a configured
   retriever — the reconciliation loop stopped cycling.
 - **`ERROR`-level log records**, and `WARN` records around fileset
   resolution and scheduling skips ("promotion cycle skipped" is
   informational coalescence, not a failure).
-
-:::note[Upcoming — milestone 7]
-The supervision kit (R-11: curated dashboards, alert rules, and the metric
-stability contract) and the redacted diagnostic bundle (R-30) ship with
-milestone 7. Until then, alerting is assembled from the primitives above.
-Track both on the [project status](../../discover/status/) page.
-:::
