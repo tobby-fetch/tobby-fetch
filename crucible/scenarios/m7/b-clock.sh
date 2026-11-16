@@ -121,7 +121,7 @@ RUNNER
         -c security.secureboot=false >/dev/null || fail "launching $VM"
     inc config device add "$VM" ctl disk source="$CTL" path=/mnt/ctl >/dev/null ||
         fail "sharing the control directory with $VM"
-    inc start "$VM" >/dev/null || fail "starting $VM"
+    inc start "$VM" >/dev/null || { incus info --show-log "$VM" --project tobby-crucible >&2; free -g >&2; incus list --project tobby-crucible -c ns >&2; fail "starting $VM"; }
     _n=0
     until inc exec "$VM" -- test -f /mnt/ctl/runner.sh >/dev/null 2>&1; do
         _n=$((_n + 1))

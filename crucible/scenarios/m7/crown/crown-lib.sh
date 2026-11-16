@@ -67,7 +67,7 @@ crown_vm() {
             -c limits.cpu="$3" -c limits.memory="$4" \
             -d root,size="$5" >/dev/null ||
         fail "launching VM $1"
-    inc start "$1" >/dev/null || fail "starting VM $1"
+    inc start "$1" >/dev/null || { incus info --show-log "$1" --project tobby-crucible >&2; free -g >&2; incus list --project tobby-crucible -c ns >&2; fail "starting VM $1"; }
     crown_wait_agent "$1"
 }
 
