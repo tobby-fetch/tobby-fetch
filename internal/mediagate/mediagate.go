@@ -494,10 +494,7 @@ func (g *Gate) Refusal(surface string) *taxonomy.Error {
 	if g.cleared() {
 		return nil
 	}
-	id := g.mediaID
-	if id == "" {
-		id = g.root
-	}
+	id := g.mediaLabel()
 	if g.report != nil && g.report.Verdict == media.VerdictPushable {
 		// Pushable, and yet not cleared: the verification vouched for
 		// nothing (a medium listing no recipe, B-063).
@@ -563,7 +560,8 @@ func (g *Gate) Guard(surface string, render func(http.ResponseWriter, *http.Requ
 		}
 		g.logger.LogAttrs(r.Context(), slog.LevelWarn, "refused: the medium is not verified",
 			slog.String("surface", surface), slog.String("path", r.URL.Path),
-			slog.String("media_id", g.mediaID), slog.String("code", string(refusal.Code())),
+			slog.String("media_id", g.mediaID), slog.String("store", g.root),
+			slog.String("code", string(refusal.Code())),
 			slog.String("requirement", "FR-054"))
 		render(w, r, refusal)
 	})
@@ -726,12 +724,20 @@ func (g *Gate) registry(w http.ResponseWriter, r *http.Request, h http.Handler, 
 	outside()
 }
 
-// mediaLabel names the medium in a refusal.
+// unidentifiedMedium names, in a refusal, a medium whose manifest gives
+// no identity.
+const unidentifiedMedium = "(no media ID)"
+
+// mediaLabel names the medium in a refusal: its media ID, never the
+// store's path. A refusal can reach a client that has not authenticated —
+// an anonymous FileSet on /files/ (FR-047) is refused by the gate itself —
+// and the host's directory layout is no business of such a client (B-067).
+// The instance log, which an operator reads, carries the path.
 func (g *Gate) mediaLabel() string {
 	if g.mediaID != "" {
 		return g.mediaID
 	}
-	return g.root
+	return unidentifiedMedium
 }
 
 // serveList answers a catalog or a tag list from the verified set, with

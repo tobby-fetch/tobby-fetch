@@ -349,8 +349,15 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// FR-098 (R-17): the hardening switches, stated at startup and in the
 	// metrics; the registry guard sits inside authentication, so a refused
 	// push names who asked, and records what a client pushed as seeded.
+	//
+	// The FR-054 gate sits inside authentication too (B-067): an open gate
+	// answers /v2/_catalog and tags/list itself, from the verified set, and
+	// mounted outside it handed every verified repository and tag to an
+	// anonymous client — reads need viewer (ADR-0009) — while its
+	// closed-gate refusals reached clients nobody had authenticated.
 	hard := setupHardening(ctx, cfg, st, reg, logger)
-	srv.Handle("/v2/", mediaGate.Guard("/v2/", mediagate.RegistryRefusal, authn.Registry(hardening.Registry(hard, st, logger, fileSetRefresh.Registry(st.APIHandler())))))
+	srv.Handle("/v2/", authn.Registry(mediaGate.Guard("/v2/", mediagate.RegistryRefusal,
+		hardening.Registry(hard, st, logger, fileSetRefresh.Registry(st.APIHandler())))))
 
 	// The persistent task queue lives inside the store (FR-050) and
 	// re-queues interrupted tasks at startup (FR-029). The unit-import
@@ -717,8 +724,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			anonymousNames = append(anonymousNames, f.Name)
 		}
 	}
-	srv.Handle(fileserve.RoutePrefix, mediaGate.Guard(fileserve.RoutePrefix, mediagate.FilesRefusal,
-		filesAuth(authn, anonymous, fileSetRefresh.Files(fsrv.Handler()))))
+	// Authentication first, then the FR-054 gate (B-067), as on /v2/: a
+	// FileSet declared anonymous still reaches the gate without
+	// credentials — that is what anonymous means — and the gate's refusal
+	// names the medium by its ID, never by the store's path.
+	srv.Handle(fileserve.RoutePrefix, filesAuth(authn, anonymous,
+		mediaGate.Guard(fileserve.RoutePrefix, mediagate.FilesRefusal, fileSetRefresh.Files(fsrv.Handler()))))
 
 	// The FileSets surface (FR-047 inventory, FR-048 packing), shared by
 	// the screen and the endpoints so the two give one answer (FR-061).

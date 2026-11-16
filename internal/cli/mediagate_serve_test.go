@@ -501,3 +501,81 @@ func TestServeDoesNotServeAVersionAddedAfterTheManifest(t *testing.T) {
 		}
 	}
 }
+
+// anonymousGet performs one request without credentials.
+func anonymousGet(t *testing.T, url string) (status int, body string) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // read side
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, string(raw)
+}
+
+// TestServeGateSitsInsideAuthentication (B-067, second adversarial review
+// of milestone 7): the media gate answers /v2/_catalog and tags/list
+// itself, from the verified set. Mounted outside authentication, an open
+// gate listed every verified repository and tag to an anonymous client,
+// although registry reads need viewer (ADR-0009), and its closed-gate
+// refusals reached clients nobody had authenticated.
+//
+// Proved fallible: with the gate outside authn.Registry, the anonymous
+// catalog and tag list answer 200.
+func TestServeGateSitsInsideAuthentication(t *testing.T) {
+	cfg := serveConfig(t)
+	cfg.Mode = config.ModeMirror
+	repo, digest := seedMedium(t, &cfg)
+	base := startServe(t, &cfg)
+
+	// Closed: an anonymous client is asked to authenticate, not told
+	// about the medium.
+	if status, body := anonymousGet(t, base+"/v2/"+repo+"/manifests/"+digest); status != http.StatusUnauthorized {
+		t.Errorf("anonymous GET /v2/…/manifests/… on a closed gate = %d (%s), want 401", status, body)
+	}
+
+	if status, raw := call(t, http.MethodPost, base+"/api/v1/media/verify", map[string]any{}); status != http.StatusAccepted && status != http.StatusOK {
+		t.Fatalf("verify = %d: %s", status, raw)
+	}
+	waitServing(t, base)
+
+	for _, p := range []string{"/v2/_catalog", "/v2/" + repo + "/tags/list", "/v2/" + repo + "/manifests/" + digest} {
+		if status, body := anonymousGet(t, base+p); status != http.StatusUnauthorized {
+			t.Errorf("anonymous GET %s on an open gate = %d (%s), want 401", p, status, strings.TrimSpace(body))
+		}
+		if status, body := fetch(t, base+p); status != http.StatusOK {
+			t.Errorf("authenticated GET %s on an open gate = %d (%s), want 200", p, status, strings.TrimSpace(body))
+		}
+	}
+	// The anonymous FileSet stays anonymous (FR-047).
+	if status, body := anonymousGet(t, base+fileserve.RoutePrefix+mediumFileSet+"/"+mediumFilePath); status != http.StatusOK || body != mediumFileBytes {
+		t.Errorf("anonymous GET of the anonymous FileSet = %d (%q), want 200 with its bytes", status, body)
+	}
+}
+
+// TestServeGateRefusalDoesNotNameTheStore (B-067): a FileSet declared
+// anonymous reaches the gate without credentials, so the gate's refusal
+// reaches an anonymous client. On a medium whose manifest gives no media
+// ID it used to name the medium by the store's path on the host.
+func TestServeGateRefusalDoesNotNameTheStore(t *testing.T) {
+	cfg := serveConfig(t)
+	cfg.Mode = config.ModeMirror
+	seedTransportStore(t, &cfg, false) // no manifest: no media ID
+	base := startServe(t, &cfg)
+
+	status, body := anonymousGet(t, base+fileserve.RoutePrefix+mediumFileSet+"/"+mediumFilePath)
+	if status != http.StatusForbidden || !strings.Contains(body, string(taxonomy.CodeMediaUnverified)) {
+		t.Fatalf("anonymous GET of the anonymous FileSet = %d (%s), want 403 %s", status, body, taxonomy.CodeMediaUnverified)
+	}
+	if strings.Contains(body, cfg.Storage.Root) {
+		t.Errorf("the refusal names the store's path %s to an anonymous client: %s", cfg.Storage.Root, body)
+	}
+}
