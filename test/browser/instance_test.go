@@ -27,6 +27,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/consume"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check"
@@ -246,6 +247,9 @@ func newInstance(t *testing.T, opts ...option) *instance {
 	uiOpts := &ui.Options{
 		Version: "0.3.0-e2e", Mode: "mirror", Store: st, Queue: inst.Queue, Scan: sp.scan,
 		Federation: sp.fed,
+		// The consumption aids (FR-065): a zone registry the screens can
+		// point at, so the NFR-017 pass audits them filled in.
+		Aids: consume.New(st, consume.Settings{Registry: "registry.zone.example", Version: "0.3.0-e2e"}),
 	}
 	if sp.medium {
 		seedMedium(t, st)

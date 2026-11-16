@@ -60,7 +60,27 @@ them.
   Packing stays deterministic, but the same tree packed by this version
   gets a new digest; FileSets already pinned are unaffected.
 
+- **Accessibility pass on the interface** (NFR-017, 7.1): audited in a real
+  browser on the core screens, in English and French, in both themes. It
+  fixed the search box, which showed no focus ring; the focus ring of the
+  light theme (2.97:1, now 3.7:1 with a slightly darker light `--tobby-accent`);
+  the accent-coloured text on tinted washes (`--tobby-accent-text` and the
+  light `--tobby-success-text` darkened to 5:1); and low-contrast separators
+  and decorations. **If you override these tokens with `ui.themeOverride`,
+  your override still wins**; check it against the new
+  [Theming](website/src/content/docs/docs/reference/theming.md) page.
+- **The kind a recipe declares prevails in the content browser**: a
+  FileSet or OCI artifact a recipe declares reads as such in the listing, the
+  filter and the detail screens, whatever the manifest looks like.
+
 ### Documentation
+
+- **Theming**: the design tokens are documented as the surface of
+  `ui.themeOverride`, with the accessibility contract an override takes
+  over, in English and French. A test keeps the page and the stylesheet in
+  step.
+- **Consumption aids** page (EN/FR): the mapping table, the generated
+  `registries.yaml`, and the limits of both.
 
 - **French parity** (7.2): every English page of the documentation now has
   its French counterpart, and three pages are new in both languages: the
