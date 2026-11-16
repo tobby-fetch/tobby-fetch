@@ -28,8 +28,10 @@
 #      statement with an impact statement only admits nothing.
 #   6. A Retriever exception without expiry applies and is reported
 #      unbounded (TBY-SCN-028) in the report, the log and the policy view.
-#   7. The effective policy: GET /api/v1/policy with a viewer token, and
-#      `tobby scan exceptions` offline (configuration) and --instance.
+#   7. The effective policy: GET /api/v1/policy with an admin token (a
+#      viewer token is refused, TBY-AUTH-003, like the /admin/policy
+#      screen), and `tobby scan exceptions` offline (configuration) and
+#      --instance with the admin token.
 #
 # Every step checks its own manipulation before the verdict it prepares is
 # read: B is proved to carry A's filesystem under another digest, each
@@ -237,7 +239,7 @@ refused() {
 said() { grep -qF -- "$1" "$WORK/refused.out"; }
 
 api() { curl -s -H "$AUTHZ" "$@"; }
-policy() { curl -fsS -H "Authorization: Bearer $VIEWER" "$API/policy" >"$WORK/policy.json" || fail "GET /api/v1/policy as a viewer failed"; }
+policy() { curl -fsS -H "Authorization: Bearer $TOKEN" "$API/policy" >"$WORK/policy.json" || fail "GET /api/v1/policy as an administrator failed"; }
 polq() { _f="$1"; shift; jq -e --arg cve "$CVE" "$@" "$_f" "$WORK/policy.json" >/dev/null; }
 
 # sync_run: one synchronization through the API, waited for; a blocking
@@ -567,7 +569,7 @@ polq '.retriever_known == true and any(.exceptions[]; .id == $cve and .origin ==
 [ "$(exc_metric retriever active)" = "1" ] || fail "R-15: the unbounded Retriever exception is not counted active by tobby_scan_exceptions"
 check "R-15 Retriever exception without expiry: A and B admitted with TBY-SCN-028, WARN logged (code=TBY-SCN-028), policy view origin=retriever state=unbounded, gauge retriever/active 1"
 
-# -- 7. The effective policy: API (viewer) and command line ---------------------------------------------------
+# -- 7. The effective policy: API (admin) and command line ---------------------------------------------------
 polq '.mode == "block" and .blocking == true and .threshold == 7 and .hardening.disableUnitImport == false and .hardening.disableRegistryPush == false' ||
     fail "R-15/FR-098: the policy view does not state the mode, threshold and hardening switches: $(jq -c '{mode, blocking, threshold, hardening}' "$WORK/policy.json")"
 polq 'any(.exceptions[]; .id == $o and .origin == "instance" and .state == "active" and .scope.recipe == "vuln-a" and .justification == "policy-view companion (m7c)")' \
@@ -575,20 +577,23 @@ polq 'any(.exceptions[]; .id == $o and .origin == "instance" and .state == "acti
 polq '.exceptions | length == 2' || fail "R-15: the policy view lists other exceptions than the two configured: $(jq -c '.exceptions' "$WORK/policy.json")"
 CODE=$(curl -s -o /dev/null -w '%{http_code}' "$API/policy")
 [ "$CODE" = "401" ] || fail "GET /api/v1/policy answered $CODE anonymously"
-check "R-15 GET /api/v1/policy (viewer): mode block, blocking, threshold 7, hardening both false, the instance exception (scope recipe=vuln-a, active) and the Retriever one (unbounded); anonymous 401"
+CODE=$(curl -s -o "$WORK/policy-viewer.json" -w '%{http_code}' -H "Authorization: Bearer $VIEWER" "$API/policy")
+[ "$CODE" = "403" ] && [ "$(jq -r '.code' "$WORK/policy-viewer.json")" = "TBY-AUTH-003" ] ||
+    fail "GET /api/v1/policy answered $CODE to a viewer, want 403 TBY-AUTH-003 (admin floor, like /admin/policy)"
+check "R-15 GET /api/v1/policy (admin): mode block, blocking, threshold 7, hardening both false, the instance exception (scope recipe=vuln-a, active) and the Retriever one (unbounded); anonymous 401, viewer 403 TBY-AUTH-003"
 
 inc exec "$NODE" -- sh -c 'tobby scan exceptions --output json' >"$WORK/cli-offline.json" 2>"$WORK/cli-offline.err" ||
     fail "tobby scan exceptions (offline) failed: $(cat "$WORK/cli-offline.err")"
 jq -e --arg o "$OTHER_CVE" '.source == "configuration" and .retriever_known == false and (.exceptions | length == 1) and .exceptions[0].id == $o and .exceptions[0].origin == "instance" and .exceptions[0].scope.recipe == "vuln-a"' \
     "$WORK/cli-offline.json" >/dev/null || fail "R-15: tobby scan exceptions (offline) is not the configuration's view: $(jq -c . "$WORK/cli-offline.json")"
-inc exec "$NODE" -- env TOBBY_API_TOKEN="$VIEWER" tobby scan exceptions --instance http://127.0.0.1:8080 --output json \
+inc exec "$NODE" -- env TOBBY_API_TOKEN="$TOKEN" tobby scan exceptions --instance http://127.0.0.1:8080 --output json \
     >"$WORK/cli-online.json" 2>"$WORK/cli-online.err" || fail "tobby scan exceptions --instance failed: $(cat "$WORK/cli-online.err")"
 jq -e '.source == "instance" and .instance == "http://127.0.0.1:8080" and .retriever_known == true' "$WORK/cli-online.json" >/dev/null ||
     fail "R-15: tobby scan exceptions --instance is not the instance's view: $(jq -c '{source, instance, retriever_known}' "$WORK/cli-online.json")"
 policy
 [ "$(jq -cS '.exceptions' "$WORK/cli-online.json")" = "$(jq -cS '.exceptions' "$WORK/policy.json")" ] ||
     fail "FR-061: tobby scan exceptions --instance and GET /api/v1/policy list different exceptions"
-check "R-15 tobby scan exceptions: offline source=configuration, retriever_known=false (the instance exception only); --instance with a viewer token source=instance, retriever_known=true, the very exceptions of GET /api/v1/policy"
+check "R-15 tobby scan exceptions: offline source=configuration, retriever_known=false (the instance exception only); --instance with an admin token source=instance, retriever_known=true, the very exceptions of GET /api/v1/policy"
 
 cleanup
 trap - EXIT

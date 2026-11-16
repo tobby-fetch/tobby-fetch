@@ -5,6 +5,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,10 +14,12 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/ocilayout"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
+	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
 // `tobby export` and `tobby import` — the OCI image layout half of the
@@ -147,7 +150,13 @@ Entries are independent: one image that did not survive the medium fails
 on its own line and the rest still lands.
 
 Run it against a stopped instance, or use POST /api/v1/oci-layout/import
-on a running one.`,
+on a running one.
+
+What lands is recorded as a unit import of origin oci-layout: content no
+recipe manages, never pruned, individually removable. On an instance
+hardened with hardening.disableUnitImport (read from --config, or from the
+default configuration path when it exists) the import is refused with
+TBY-POL-005, as on the API and the interface.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkFormat(format); err != nil {
@@ -198,7 +207,13 @@ func openInteropService(cmd *cobra.Command, flags *commonFlags) (*interop.Servic
 	}
 	// No queue: the command IS the worker, and a task history nobody will
 	// read is not what an operator standing in front of a medium needs.
-	return interop.New(st, nil, cfg.Storage.BasePrefix, logger), func() {
+	svc := interop.New(st, nil, cfg.Storage.BasePrefix, logger)
+	// Not exempt from hardening.disableUnitImport (FR-098, B-071): the
+	// switch is read from the configuration the instance serves with, so
+	// an operator on the host cannot import a layout into a store whose
+	// instance refuses unit imports by running the command beside it.
+	svc.SetUnitImportDisabled(cfg.Hardening.DisableUnitImport)
+	return svc, func() {
 		if err := st.Close(); err != nil {
 			logger.LogAttrs(context.Background(), slog.LevelWarn, "closing the store",
 				slog.String("error", err.Error()))
@@ -333,6 +348,13 @@ func runImport(cmd *cobra.Command, svc *interop.Service, req *interop.ImportRequ
 	}
 	res, err := svc.Import(cmd.Context(), req, logger, nil)
 	if err != nil {
+		var te *taxonomy.Error
+		if errors.As(err, &te) && te.Code() == taxonomy.CodeUnitImportDisabled {
+			// The refusal is its own record (FR-098), not a failed import.
+			hardening.AuditRefused(cmd.Context(), logger, audit.ActorLocal, audit.OriginLocal,
+				req.Input, hardening.SettingDisableUnitImport)
+			return err
+		}
 		event.Outcome = audit.OutcomeFailure
 		audit.Log(cmd.Context(), logger, event)
 		return err

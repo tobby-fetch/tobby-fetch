@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/ocilayout"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -48,6 +49,9 @@ func (s *Service) StartExport(actor string, req *ExportRequest) (*tasks.Task, er
 
 // StartImport enqueues an import (FR-051).
 func (s *Service) StartImport(actor string, req *ImportRequest) (*tasks.Task, error) {
+	if s.unitImportDisabled {
+		return nil, hardening.UnitImportRefusal()
+	}
 	if req.Input == "" {
 		return nil, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
 			"file": "the import request", "path": "input",

@@ -75,7 +75,7 @@ L'autre sens existe aussi : deux réglages, désactivés par défaut, qui
 
 | Interrupteur | Ce qu'il ferme | Ce qui fonctionne toujours |
 | --- | --- | --- |
-| `hardening.disableUnitImport` | l'import unitaire et l'empaquetage de FileSets, à l'écran, par l'API **et** en ligne de commande — [TBY-POL-005](../../reference/errors/#tby-pol-005) | les synchronisations de recipes |
+| `hardening.disableUnitImport` | l'import unitaire, l'import d'OCI image layout et l'empaquetage de FileSets, à l'écran, par l'API **et** en ligne de commande — [TBY-POL-005](../../reference/errors/#tby-pol-005) | les synchronisations de recipes, les imports de support |
 | `hardening.disableRegistryPush` | toute écriture dans la registry embarquée, pour tous les clients et tous les rôles, administrateurs compris — `DENIED` OCI portant [TBY-POL-006](../../reference/errors/#tby-pol-006) | les pulls, les synchronisations de recipes |
 
 Avec les deux, le contenu n'entre dans le store que par des recipes
@@ -87,6 +87,16 @@ métrique `tobby_hardening_enabled` — et chaque refus est un événement
 d'audit `hardening.refused` : un opérateur ne prend jamais un refus pour une
 panne. Alimenter l'instance par push (UC3) devient alors impossible, à
 dessein.
+
+Un **import de support** (`tobby media import`, l'écran des supports et son
+API) n'est pas un import unitaire, et aucun des deux interrupteurs ne le
+ferme : c'est la voie normale par laquelle le contenu atteint une zone de
+destination. Il n'apporte que ce que livrent les recipes signées du
+support, après vérification du support contre les trust roots de cette
+instance, et le pousse dans le registre de la zone. Sur l'instance de
+destination, le contenu du support porte la classe `recipe`, tirée du
+graphe de recipes que le support transporte ; rien de ce qu'il livre n'est
+enregistré comme `seed`.
 
 Interrupteurs activés ou non, chaque dépôt porte sa **classe de
 provenance** — `recipe`, `unit-import` ou `seed` — dans le navigateur de

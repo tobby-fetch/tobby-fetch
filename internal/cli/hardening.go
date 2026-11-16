@@ -33,9 +33,9 @@ func setupHardening(ctx context.Context, cfg *config.Config, st *store.Store, re
 		slog.Bool(hardening.SettingDisableRegistryPush, sw.DisableRegistryPush),
 		slog.String("requirement", "FR-098"))
 	if sw.DisableUnitImport {
-		logger.LogAttrs(ctx, slog.LevelWarn, "unit imports and FileSet packing are disabled",
+		logger.LogAttrs(ctx, slog.LevelWarn, "unit imports, OCI layout imports and FileSet packing are disabled",
 			slog.String("setting", hardening.SettingDisableUnitImport),
-			slog.String("effect", "the import screen, its API and every packing surface refuse with TBY-POL-005; recipe synchronizations are unaffected"),
+			slog.String("effect", "the import screen, its API, every OCI layout import surface and every packing surface refuse with TBY-POL-005; recipe synchronizations and media imports are unaffected"),
 			slog.String("requirement", "FR-098"))
 	}
 	if sw.DisableRegistryPush {

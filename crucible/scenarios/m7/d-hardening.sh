@@ -30,8 +30,9 @@
 #   2. hardening.disableUnitImport: stated by the dump, the startup record
 #      and its warning, the metric; the import screen (shown disabled,
 #      naming the setting), its inspection and its submission, the import
-#      API (inspect and create), the FileSets screen and API, and
-#      `tobby fileset pack` (exit 3) refuse with TBY-POL-005 naming the
+#      API (inspect and create), the FileSets screen and API, the OCI layout
+#      screen and API, `tobby fileset pack` and `tobby import` (exit 3)
+#      refuse with TBY-POL-005 naming the
 #      setting, nothing is written, no task is created, each refusal is one
 #      hardening.refused audit event; a recipe synchronization still works.
 #   3. hardening.disableRegistryPush: stated the same way, and on the content
@@ -287,7 +288,7 @@ need() { # <label> <headers> <name> <substring>
 }
 common() { # <label> <headers>
     need "$1" "$2" X-Content-Type-Options nosniff
-    need "$1" "$2" Referrer-Policy no-referrer
+    need "$1" "$2" Referrer-Policy same-origin
     need "$1" "$2" Strict-Transport-Security max-age=
 }
 for path in /content /help; do
@@ -420,12 +421,13 @@ restart
 login
 dump_says true false || fail "FR-098: the configuration dump does not show $U_SET on"
 startup_says true false || fail "FR-098: the startup record does not state $U_SET on"
-inc exec "$NODE" -- sh -c "grep -F 'unit imports and FileSet packing are disabled' $LOG | grep -qF '\"setting\":\"$U_SET\"'" ||
+inc exec "$NODE" -- sh -c "grep -F 'OCI layout imports and FileSet packing are disabled' $LOG | grep -qF '\"setting\":\"$U_SET\"'" ||
     fail "FR-098: no startup warning names $U_SET"
 gauge_says 1 0 || fail "FR-098: tobby_hardening_enabled does not read disableUnitImport=1, disableRegistryPush=0"
 check "FR-098: $U_SET stated by the dump, the startup record and its warning, and the metric"
 
 TASKS_BEFORE=$(api "$API/tasks?type=unit-import" | jq -r '.total')
+LAYOUT_TASKS_BEFORE=$(api "$API/tasks?type=layout-import" | jq -r '.total')
 REFUSED_BEFORE=$(refusals "$U_SET")
 # The import screen: shown, disabled, naming the setting.
 curl -s $C -b "$JAR" -o "$WORK/import.html" "$BASE/import"
@@ -461,6 +463,28 @@ CODE=$(api -o "$WORK/a-pack.json" -w '%{http_code}' -H 'Content-Type: applicatio
     -d '{"source":"/srv/pack/notes2","name":"notes2","version":"1.0.0"}' "$API/filesets/pack")
 [ "$CODE" = "403" ] && [ "$(code_of "$WORK/a-pack.json")" = "TBY-POL-005" ] ||
     fail "FR-098: the pack API answered $CODE $(code_of "$WORK/a-pack.json"), want 403 TBY-POL-005"
+# The OCI layout import is a unit import too (B-071): the screen shown
+# disabled, its submission, the API and the command line refuse. The
+# refusal comes before the layout is read, so the path need not exist.
+curl -s $C -b "$JAR" -o "$WORK/layout.html" "$BASE/admin/oci-layout"
+grep -q 'data-hardening="disableUnitImport"' "$WORK/layout.html" &&
+    grep -q 'aria-describedby="layout-import-hardened"' "$WORK/layout.html" ||
+    fail "FR-098: the OCI layout screen does not show its import disabled naming the setting"
+CSRF=$(m7_csrf "$WORK/layout.html")
+CODE=$(curl -s $C -b "$JAR" -o "$WORK/ui-layout.html" -w '%{http_code}' --data-urlencode "csrf=$CSRF" \
+    --data-urlencode "input=/srv/pack/none.tar" "$BASE/admin/oci-layout/import")
+[ "$CODE" = "403" ] && grep -q TBY-POL-005 "$WORK/ui-layout.html" ||
+    fail "FR-098: the OCI layout screen's import answered $CODE without TBY-POL-005"
+CODE=$(api -o "$WORK/a-layout.json" -w '%{http_code}' -H 'Content-Type: application/json' \
+    -d '{"input":"/srv/pack/none.tar"}' "$API/oci-layout/import")
+[ "$CODE" = "403" ] && [ "$(code_of "$WORK/a-layout.json")" = "TBY-POL-005" ] ||
+    fail "FR-098: the OCI layout import API answered $CODE $(code_of "$WORK/a-layout.json"), want 403 TBY-POL-005"
+RC=0
+inc exec "$NODE" -- tobby import /srv/pack/none.tar >/dev/null 2>"$WORK/cli-layout.err" || RC=$?
+[ "$RC" = "3" ] && grep -q TBY-POL-005 "$WORK/cli-layout.err" && grep -q '"action":"hardening.refused"' "$WORK/cli-layout.err" ||
+    fail "FR-098: tobby import exited $RC under $U_SET, want 3 with TBY-POL-005 and its hardening.refused record: $(cat "$WORK/cli-layout.err")"
+[ "$(api "$API/tasks?type=layout-import" | jq -r '.total')" = "$LAYOUT_TASKS_BEFORE" ] ||
+    fail "FR-098: a refused OCI layout import created a task"
 # The command line, beside the running instance, reading the same file.
 RC=0
 inc exec "$NODE" -- tobby fileset pack /srv/pack/cli2 cli2:1.0.0 >/dev/null 2>"$WORK/cli-pack.err" || RC=$?
@@ -476,8 +500,8 @@ done
     fail "FR-098: the refused packing is listed by the content API"
 [ "$(api "$API/tasks?type=unit-import" | jq -r '.total')" = "$TASKS_BEFORE" ] || fail "FR-098: a refused unit import created a task"
 N=$(( $(refusals "$U_SET") - REFUSED_BEFORE ))
-[ "$N" = "5" ] || fail "FR-094/FR-098: $N hardening.refused records for the five refusals of the instance (screen inspect and submit, API inspect, import and pack), want 5"
-check "FR-098: the import screen (disabled, inspect, submit), the import API, the FileSets screen and API and tobby fileset pack (exit 3) refuse with TBY-POL-005 naming $U_SET; nothing written or queued; one hardening.refused record each"
+[ "$N" = "7" ] || fail "FR-094/FR-098: $N hardening.refused records for the seven refusals of the instance (screen inspect and submit, API inspect, import and pack, OCI layout screen and API), want 7"
+check "FR-098: the import screen (disabled, inspect, submit), the import API, the FileSets screen and API, the OCI layout screen and API, tobby fileset pack and tobby import (exit 3) refuse with TBY-POL-005 naming $U_SET; nothing written or queued; one hardening.refused record each"
 
 retriever hard-a hard-b
 sync_ok "$U_SET"

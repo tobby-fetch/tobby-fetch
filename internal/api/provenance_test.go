@@ -25,6 +25,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
+	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/provenance"
 	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -154,6 +155,9 @@ func provenanceAPI(t *testing.T, p *provenanceStore, sw hardening.Switches, logs
 		t.Fatal(err)
 	}
 	api.RegisterTasks(a, q, p.st, time.Second, nil)
+	layouts := interop.New(p.st, q, "", logger)
+	layouts.SetUnitImportDisabled(sw.DisableUnitImport)
+	api.RegisterOCILayout(a, layouts, q)
 	root := t.TempDir()
 	api.RegisterFileSets(a, &fileserve.Surface{
 		Catalog:            catalogOf{p.st},
@@ -285,6 +289,8 @@ func TestImportAndPackEndpointsRefusedWhenHardened(t *testing.T) {
 		{http.MethodPost, "/api/v1/import", `{"reference":"docker.io/library/redis:8","platforms":[{"name":"linux/amd64","digest":"sha256:` + strings.Repeat("0", 64) + `"}]}`},
 		{http.MethodGet, "/api/v1/import/inspect?ref=docker.io/library/redis:8", ""},
 		{http.MethodPost, "/api/v1/filesets/pack", `{"source":"/tmp","name":"docs","version":"2.0.0"}`},
+		// An OCI layout import is a unit import too (B-071).
+		{http.MethodPost, "/api/v1/oci-layout/import", `{"input":"/tmp/payload.tar"}`},
 	} {
 		w := chefDo(t, mux, c.method, c.target, c.body)
 		var prob struct {
@@ -296,13 +302,14 @@ func TestImportAndPackEndpointsRefusedWhenHardened(t *testing.T) {
 			t.Errorf("%s %s = %d %s, want 403 TBY-POL-005 naming the setting", c.method, c.target, w.Code, w.Body)
 		}
 	}
-	if n := strings.Count(logs.String(), `"action":"hardening.refused"`); n != 3 {
+	if n := strings.Count(logs.String(), `"action":"hardening.refused"`); n != 4 {
 		t.Errorf("%d hardening.refused records, want one per refusal:\n%s", n, logs)
 	}
 	if !strings.Contains(logs.String(), `"setting":"hardening.disableUnitImport"`) {
 		t.Errorf("the audit record does not name the setting:\n%s", logs)
 	}
-	if strings.Contains(logs.String(), `"action":"import.create"`) || strings.Contains(logs.String(), `"action":"fileset.pack"`) {
+	if strings.Contains(logs.String(), `"action":"import.create"`) || strings.Contains(logs.String(), `"action":"fileset.pack"`) ||
+		strings.Contains(logs.String(), `"action":"layout.import"`) {
 		t.Errorf("a refused operation was also audited as performed:\n%s", logs)
 	}
 

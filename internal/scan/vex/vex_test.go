@@ -226,7 +226,7 @@ func TestScopeOfProducts(t *testing.T) {
 		"bare digest":              {Product{ID: digestA}, &scan.ExceptionScope{Digest: digestA}, ""},
 		"pinned reference":         {Product{ID: "docker.io/library/nginx@" + digestA}, &scan.ExceptionScope{Digest: digestA, Repository: "docker.io/library/nginx"}, ""},
 		"repository":               {Product{ID: "ghcr.io/team/app"}, &scan.ExceptionScope{Repository: "ghcr.io/team/app"}, ""},
-		"subcomponents":            {Product{ID: digestA, Subcomponents: []Subcomponent{{ID: "pkg:deb/debian/libxml2@2.9.14"}, {Identifiers: &Identifiers{PURL: "pkg:golang/github.com/x/net@v0.1.0"}}}}, &scan.ExceptionScope{Digest: digestA, Packages: []string{"debian/libxml2", "debian:libxml2", "github.com.x:net", "github.com/x/net", "libxml2", "net"}}, ""},
+		"subcomponents":            {Product{ID: digestA, Subcomponents: []Subcomponent{{ID: "pkg:deb/debian/libxml2@2.9.14"}, {Identifiers: &Identifiers{PURL: "pkg:golang/github.com/x/net@v0.1.0"}}}}, &scan.ExceptionScope{Digest: digestA, Packages: []string{"pkg:deb/debian/libxml2@2.9.14", "pkg:golang/github.com/x/net@v0.1.0"}}, ""},
 		"oci purl, name only":      {Product{ID: "pkg:oci/nginx"}, nil, "every image called nginx"},
 		"oci purl, tag version":    {Product{ID: "pkg:oci/nginx@1.27"}, nil, "manifest digest"},
 		"repository mismatch":      {Product{ID: "pkg:oci/nginx@sha256:" + hexA + "?repository_url=docker.io/library/httpd"}, nil, "does not end with"},
@@ -238,6 +238,7 @@ func TestScopeOfProducts(t *testing.T) {
 		"CPE":                      {Product{ID: "cpe:2.3:a:nginx:nginx:1.27:*:*:*:*:*:*:*"}, nil, "registry host"},
 		"pattern":                  {Product{ID: "docker.io/library/*"}, nil, "pattern"},
 		"subcomponent not a purl":  {Product{ID: digestA, Subcomponents: []Subcomponent{{ID: "libxml2"}}}, nil, "not a package URL"},
+		"subcomponent subpath":     {Product{ID: digestA, Subcomponents: []Subcomponent{{ID: "pkg:deb/debian/libxml2#usr/lib"}}}, nil, "subpath"},
 		"no identifier":            {Product{Identifiers: &Identifiers{CPE23: "cpe:2.3:a:x"}}, nil, "neither an @id nor a package URL"},
 	}
 	for name, c := range cases {
@@ -307,5 +308,47 @@ func TestReadFile(t *testing.T) {
 	}
 	if _, err := ReadFile(filepath.Join(dir, "absent.json")); err == nil {
 		t.Error("an absent file was read")
+	}
+}
+
+// TestSubcomponentDoesNotWidenBeyondItsPackageURL (B-070): a subcomponent
+// narrows an exception to one package — its type, namespace and name, and
+// its version when declared. A statement for one Go module must not cover
+// a Debian or PyPI package of the same last segment, nor another module;
+// a statement for openssl@3.0.11 must not cover openssl 1.1.1 in a later
+// image of the same repository-scoped product.
+func TestSubcomponentDoesNotWidenBeyondItsPackageURL(t *testing.T) {
+	const repo = "registry.example.com/team/app"
+	scope, err := ScopeOf(&Product{
+		ID: repo,
+		Subcomponents: []Subcomponent{
+			{ID: "pkg:golang/github.com/good/yaml@v1.2.3"},
+			{ID: "pkg:deb/debian/openssl@3.0.11"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	subj := &scan.Subject{Repository: repo, Digest: digestA}
+	for _, f := range []scan.Finding{
+		{ID: "CVE-X", Package: "yaml", InstalledVersion: "0.1", PURL: "pkg:deb/debian/yaml@0.1"},
+		{ID: "CVE-X", Package: "yaml", InstalledVersion: "0.1", PURL: "pkg:pypi/yaml@0.1"},
+		{ID: "CVE-X", Package: "yaml", InstalledVersion: "v1.2.3"},
+		{ID: "CVE-X", Package: "github.com/evil/yaml", InstalledVersion: "v1.2.3", PURL: "pkg:golang/github.com/evil/yaml@v1.2.3"},
+		{ID: "CVE-X", Package: "github.com/good/yaml", InstalledVersion: "v1.2.4", PURL: "pkg:golang/github.com/good/yaml@v1.2.4"},
+		{ID: "CVE-X", Package: "openssl", InstalledVersion: "1.1.1w-0+deb11u1", PURL: "pkg:deb/debian/openssl@1.1.1w-0+deb11u1?arch=amd64&distro=debian-11"},
+		{ID: "CVE-X", Package: "openssl", InstalledVersion: "3.0.11"},
+	} {
+		if scope.Covers(subj, &f) {
+			t.Errorf("exception for %v covers finding in %q %s (%s): widened beyond the subcomponent's purl", scope.Packages, f.Package, f.InstalledVersion, f.PURL)
+		}
+	}
+	for _, f := range []scan.Finding{
+		{ID: "CVE-X", Package: "github.com/good/yaml", InstalledVersion: "v1.2.3", PURL: "pkg:golang/github.com/good/yaml@v1.2.3"},
+		{ID: "CVE-X", Package: "openssl", InstalledVersion: "3.0.11", PURL: "pkg:deb/debian/openssl@3.0.11?arch=amd64&distro=debian-12"},
+	} {
+		if !scope.Covers(subj, &f) {
+			t.Errorf("exception for %v does not cover its own package %s", scope.Packages, f.PURL)
+		}
 	}
 }

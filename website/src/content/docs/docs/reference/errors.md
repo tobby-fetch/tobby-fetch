@@ -1269,3 +1269,18 @@ FR-097: the normative state directory — the backup target of an instance besid
 - **Corrective action:** send a smaller body. A document over the bound is
   not one this endpoint was built for: check that the right file was sent.
 - **Fixable offline:** yes · **Blocks:** the request only
+
+### TBY-SRV-005
+
+- **What happened:** the request body is not of a type this endpoint
+  accepts.
+- **Probable cause:** it is declared `<type>` (or carries no
+  `Content-Type`); the endpoint decodes `<want>` only, which is
+  `application/json` on every API endpoint that reads a document. A browser
+  page of another origin cannot send that type without a CORS preflight
+  the instance never grants, which is why nothing else is read (NFR-012,
+  NFR-023).
+- **Corrective action:** send the body with `Content-Type: application/json`
+  (curl: `-H 'Content-Type: application/json'`). The CLI and the interface
+  already do.
+- **Fixable offline:** yes · **Blocks:** the request only

@@ -27,5 +27,5 @@ const (
 	// Track C — content controls (FR-031 R-15, FR-098). Provenance rides
 	// on the existing content routes (content.go). RoutePolicy is
 	// registered by RegisterPolicy (policy.go).
-	RoutePolicy = "GET /api/v1/policy" // viewer: exceptions with scope, source and state; hardening switches
+	RoutePolicy = "GET /api/v1/policy" // admin: exceptions with scope, source and state; VEX documents; hardening switches
 )

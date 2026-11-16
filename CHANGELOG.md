@@ -40,6 +40,13 @@ the complete bilingual documentation.
 - **API request bodies are decoded strictly** (NFR-023): unknown members
   and data after the JSON document are refused, and a body over its bound
   answers 413 `TBY-SRV-004` before it is parsed.
+- **API request bodies must be declared `Content-Type: application/json`**
+  (B-069): any other type, or none, answers 415 `TBY-SRV-005`. The CLI and
+  the interface already send it; a script that posts JSON with `curl -d`
+  needs `-H 'Content-Type: application/json'`.
+- **`GET /api/v1/policy` requires the admin role**, like the
+  `/admin/policy` screen it mirrors: `tobby scan exceptions --instance`
+  needs an admin token.
 
 ### Added
 
@@ -200,10 +207,17 @@ the complete bilingual documentation.
   it is reserved to (optional parameters `reserved` and `reservedto`);
   with every root reserved it says so instead of "no trust root is
   configured".
+- **Adversarial review of milestone 7, second pass: the effective policy
+  is an administration document.** `GET /api/v1/policy` now requires the
+  admin role, the floor of the `/admin/policy` screen it mirrors (FR-061):
+  it describes the instance's configuration, the local paths of its
+  OpenVEX documents included. The exceptions applied to an item stay
+  visible to a viewer in that item's scan report. `tobby scan exceptions
+  --instance` needs an admin token.
 - **The sign-in page states an unreachable identity provider** in plain
   words beside `TBY-AUTH-016`; local sign-in still works and the provider
   button stays a link that retries (R-20).
-- `Referrer-Policy` is now `no-referrer` and the UI's CSP uses
+- `Referrer-Policy` is now `same-origin` and the UI's CSP uses
   `base-uri 'none'`. A mutating API call with only a session cookie
   answers 403 `TBY-AUTH-004` instead of 401. Invalid token-creation and
   password-change bodies answer 422 `TBY-VAL-001` instead of 500. The task
@@ -397,7 +411,7 @@ the complete bilingual documentation.
   reservation follows the key: the same public key configured again under
   a name no scope lists stays reserved.
 - **One listener-wide security-header middleware** (NFR-022): nosniff,
-  no-referrer, frame denial, HSTS under TLS or `server.secureCookies`, a
+  a same-origin referrer policy, frame denial, HSTS under TLS or `server.secureCookies`, a
   CSP on every response and `Cache-Control: no-store` on authenticated
   ones; `/api/v1`, `/v2/`, `/files/` and the probes carried none before.
 - **FileSet files served from `/files/` are sandboxed** by their CSP: an
@@ -406,6 +420,46 @@ the complete bilingual documentation.
   API (NFR-012): refused cross-origin even with a valid token; sign-in and
   the FR-075 override refuse cross-origin changes too; a forged request
   never renews the victim's session.
+- **Adversarial review of milestone 7, second pass: forgery under the
+  authentication override, VEX subcomponents, OCI layout import.**
+  - **`Origin: null` no longer passes the origin check** (B-069). Under the
+    FR-075 override the origin check is the only protection against forged
+    requests, and it treated `null` as no origin: a page served with
+    `Referrer-Policy: no-referrer`, or a sandboxed frame, makes the browser
+    send it on a cross-origin POST, without `Sec-Fetch-Site` over plain
+    HTTP — so another site could change the instance as its anonymous
+    administrator. The instance now answers `Referrer-Policy: same-origin`,
+    under which browsers send the real `Origin` on its own posts, and
+    refuses `null` (`TBY-AUTH-004`), with or without a session. The API
+    also decoded JSON whatever the `Content-Type`, so a `text/plain` fetch
+    needed no CORS preflight: a body must now be declared
+    `application/json` (415 `TBY-SRV-005`). The `Host` header is not
+    validated — the instance has no configured public name — so DNS
+    rebinding stays possible under the override; the authentication page
+    says how to deploy against it.
+  - **A VEX subcomponent covered packages beyond its purl** (B-070). The
+    translation kept only package names: the type and the version were
+    dropped, and a namespaced purl added its bare last segment, so
+    `pkg:golang/github.com/good/yaml` covered any `yaml` (Debian, PyPI…) and
+    `pkg:deb/debian/openssl@3.0.11` covered openssl 1.1.1 in every later
+    image of a repository-scoped product. A subcomponent now covers a
+    finding only when the package URL the scanner gives it (Trivy's
+    `PkgIdentifier.PURL`, now kept on every finding as `purl`) matches
+    exactly: type, namespace, name, the declared version and epoch, the
+    declared qualifiers. A finding without a package URL is not covered by
+    any subcomponent; a subcomponent with a subpath makes its product
+    unbounded.
+  - **The OCI layout import escaped `hardening.disableUnitImport` and read
+    as seeded content** (B-071). `POST /api/v1/oci-layout/import`,
+    `/admin/oci-layout` and `tobby import` brought in content no recipe
+    manages on an instance hardened against it, and recorded no provenance,
+    so it showed as `seed` — not removable, counted as seed by
+    `tobby_store_unmanaged_repositories`. All of them, and a queued task
+    resumed after a restart, now refuse with `TBY-POL-005`, audited as
+    `hardening.refused`; what lands otherwise is a `unit-import` of origin
+    `oci-layout`. A media import stays open under the switch: it is the
+    destination's normal path, delivering only what the medium's verified
+    recipes deliver, and its content is class `recipe`.
 - **Bounded inputs** (NFR-023): claimed user names are bounded before
   verification and audit, identity-provider responses to 2 MiB, OIDC
   subjects and SAML NameIDs grammar-checked; a task record whose

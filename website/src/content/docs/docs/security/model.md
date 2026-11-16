@@ -73,7 +73,7 @@ a way in** rather than open one (SRS FR-098).
 
 | Switch | What it closes | What still works |
 | --- | --- | --- |
-| `hardening.disableUnitImport` | unit imports and FileSet packing, on the screen, the API **and** the command line — [TBY-POL-005](../../reference/errors/#tby-pol-005) | recipe synchronizations |
+| `hardening.disableUnitImport` | unit imports, OCI image layout imports and FileSet packing, on the screen, the API **and** the command line — [TBY-POL-005](../../reference/errors/#tby-pol-005) | recipe synchronizations, media imports |
 | `hardening.disableRegistryPush` | every write to the embedded registry, for every client and every role, administrators included — OCI `DENIED` carrying [TBY-POL-006](../../reference/errors/#tby-pol-006) | pulls, recipe synchronizations |
 
 With both set, content enters the store only through recipes verified
@@ -84,6 +84,15 @@ startup log, `tobby config dump`, the screen whose action it disables
 — and every refusal is a `hardening.refused` audit event, so an operator
 never mistakes a refusal for a fault. Seeding the instance by push (UC3) is
 then impossible, by design.
+
+A **media import** (`tobby media import`, the media screen and its API) is
+not a unit import and neither switch closes it: it is the normal way
+content reaches a destination zone. It brings in only what the medium's
+signed recipes deliver, after the medium is verified against this
+instance's trust roots, and pushes it into the zone registry. On the
+destination instance, the medium's content carries the class `recipe` from
+the recipe graph the medium carries; nothing it delivers is recorded as
+`seed`.
 
 Whether the switches are on or not, every repository carries its
 **provenance class** — `recipe`, `unit-import` or `seed` — in the content

@@ -1344,3 +1344,19 @@ FR-097 : le répertoire d'état normé — la cible de sauvegarde d'une instance
   de la borne n'est pas de ceux que ce point d'accès traite : vérifiez que
   le bon fichier a été envoyé.
 - **Remédiable hors-ligne :** oui · **Bloque :** la requête seulement
+
+### TBY-SRV-005
+
+- **Quoi :** le corps de la requête n'est pas d'un type que ce point
+  d'accès accepte.
+- **Cause probable :** il est déclaré `<type>` (ou ne porte aucun
+  `Content-Type`) ; le point d'accès ne décode que `<want>`, c'est-à-dire
+  `application/json` sur tous les points d'accès de l'API qui lisent un
+  document. Une page d'une autre origine ne peut pas envoyer ce type sans
+  une vérification préalable CORS que l'instance n'accorde jamais : c'est
+  pourquoi rien d'autre n'est lu (NFR-012, NFR-023).
+- **Action corrective :** envoyez le corps avec
+  `Content-Type: application/json` (curl :
+  `-H 'Content-Type: application/json'`). La CLI et l'interface le font
+  déjà.
+- **Remédiable hors-ligne :** oui · **Bloque :** la requête seulement

@@ -1566,12 +1566,15 @@ the records that concern the repository (FR-090), and counted by a metric of
 class (FR-091). The class is a fact about this store, never written into
 any registry.
 - **Hardening options, per instance.** Two settings, off by default, remove
-  a way in: `hardening.disableUnitImport` refuses unit imports (FR-023) and
-  local packing (FR-048) on every surface — UI, API and command line — and
+  a way in: `hardening.disableUnitImport` refuses unit imports (FR-023),
+  OCI image layout imports (FR-051, recorded as unit imports of origin
+  `oci-layout`; amended by B-071) and local packing (FR-048) on every
+  surface — UI, API and command line — and
   `hardening.disableRegistryPush` makes the embedded registry read-only for
   every client and every role, refusing every push with the OCI `DENIED`
-  error carrying a dedicated code. Recipe-driven writes (FR-027) are
-  unaffected by both. They are hardening, not relaxation: they need no
+  error carrying a dedicated code. Recipe-driven writes (FR-027) and media
+  imports (FR-052, which deliver only what the medium's verified recipes
+  deliver) are unaffected by both. They are hardening, not relaxation: they need no
   acknowledgement, but they are reported like every security setting — at
   startup, in the configuration dump, on the screens whose action they
   disable (the action shown disabled, naming the setting), and in the
@@ -1754,7 +1757,9 @@ finds none.
 
 **NFR-022 — HTTP security headers. *(amendment 2026-11-16, 7.3)***
 Every response of the single listener SHALL carry `X-Content-Type-Options:
-nosniff` and `Referrer-Policy: no-referrer`; every HTML response its
+nosniff` and `Referrer-Policy: same-origin` (amended by B-069: it was
+`no-referrer`, under which browsers send `Origin: null` on the instance's own
+form posts); every HTML response its
 `Content-Security-Policy` (no inline script without a hash, `frame-ancestors
 'none'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`) and
 `X-Frame-Options: DENY`; every response to an authenticated request

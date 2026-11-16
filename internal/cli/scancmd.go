@@ -77,8 +77,9 @@ that mode, and the report says so.
 With --instance (or ` + EnvInstanceURL + ` set) the command reads a running
 instance's effective policy instead — GET /api/v1/policy, the document of
 its /admin/policy screen — which includes the exceptions of the last
-Retriever it served. Authenticate with a static API token, viewer role at
-least: ` + EnvAPIToken + `, or --token-file.
+Retriever it served. Authenticate with a static API token of the admin
+role, the floor of that endpoint and of its screen: ` + EnvAPIToken + `,
+or --token-file.
 
 The command changes nothing; it exits 0 whatever the states, and with the
 error's class when the configuration or a document cannot be read (1, 2 for

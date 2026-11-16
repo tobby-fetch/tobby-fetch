@@ -206,7 +206,7 @@ func TestSecurityHeadersOnEveryRoute(t *testing.T) {
 		name := p.method + " " + p.path
 		for k, want := range map[string]string{
 			"X-Content-Type-Options":    "nosniff",
-			"Referrer-Policy":           "no-referrer",
+			"Referrer-Policy":           "same-origin",
 			"X-Frame-Options":           "DENY",
 			"Strict-Transport-Security": "max-age=31536000",
 		} {

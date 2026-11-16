@@ -557,6 +557,12 @@ const (
 	// refused before it is parsed (NFR-023): limit is the bound, in
 	// bytes.
 	CodeRequestTooLarge Code = "TBY-SRV-004"
+	// CodeUnsupportedMediaType is a request body whose declared
+	// Content-Type is not the one its endpoint decodes (B-069): type is
+	// what was declared, want what the endpoint accepts. On the API it is
+	// what keeps a page of another origin from posting a document without
+	// a CORS preflight.
+	CodeUnsupportedMediaType Code = "TBY-SRV-005"
 )
 
 var catalog = map[Code]Entry{
@@ -737,5 +743,6 @@ var catalog = map[Code]Entry{
 	CodeNotFound:    {Code: CodeNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound},
 	CodeUnreachable: {Code: CodeUnreachable, Class: ClassOperational},
 
-	CodeRequestTooLarge: {Code: CodeRequestTooLarge, Class: ClassOperational, HTTPStatus: http.StatusRequestEntityTooLarge, Params: []string{"limit"}},
+	CodeRequestTooLarge:      {Code: CodeRequestTooLarge, Class: ClassOperational, HTTPStatus: http.StatusRequestEntityTooLarge, Params: []string{"limit"}},
+	CodeUnsupportedMediaType: {Code: CodeUnsupportedMediaType, Class: ClassOperational, HTTPStatus: http.StatusUnsupportedMediaType, Params: []string{"type", "want"}},
 }

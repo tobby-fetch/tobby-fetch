@@ -130,7 +130,7 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `GET /api/v1/media/slip` | viewer | `GET /media/slip` (`format=html\|text\|json`, `lang=en\|fr`, `download=1`) |
 | `POST /api/v1/media/verify` | operator | `POST /media/verify` |
 | `POST /api/v1/media/import` | operator | `POST /media/import` |
-| `GET /api/v1/policy` | viewer | the document behind `GET /admin/policy`. Viewer, deliberately below the screen: it gathers the exceptions every item report already shows a viewer (FR-031), holds no secret, and is what `tobby scan exceptions --instance` and monitoring read with a viewer token |
+| `GET /api/v1/policy` | admin | the document behind `GET /admin/policy`, at the screen's floor (FR-061): it describes the instance's configuration, the local paths of its OpenVEX documents included. `tobby scan exceptions --instance` reads it with an admin token. The exceptions applied to an item stay visible to a viewer in that item's scan report (FR-031) |
 | `GET /api/v1/store/verification` | viewer | the last store verification report — what `GET /integrity` polls |
 | `POST /api/v1/store/verify` | operator | `POST /integrity/verify` |
 | `POST /api/v1/store/verify/cancel` | operator | `POST /integrity/cancel` |

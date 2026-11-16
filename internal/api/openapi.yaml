@@ -23,6 +23,10 @@ info:
     Request bodies are bounded (16 MiB for any request, tighter per
     endpoint; over the bound: 413 TBY-SRV-004) and decoded strictly: an
     unknown member, or data after the JSON document, is refused (NFR-023).
+    A request body must be declared Content-Type: application/json (a
+    charset parameter is accepted); any other type, or none, is refused
+    with 415 TBY-SRV-005, so a page of another origin cannot post a
+    document without a CORS preflight the instance never grants.
     A signed-in browser page may call a mutating endpoint with the session
     cookie only when it sends the session's anti-forgery token in the
     X-CSRF-Token header from the instance's own origin; otherwise the call
@@ -1039,8 +1043,11 @@ paths:
         carrying an absolute path, a traversal or a link is refused with
         TBY-LAY-002 before anything is read (NFR-011). Compressed archives
         are refused. Entries are independent: one that did not survive the
-        medium fails on its own task item. Enqueues a task and answers it.
-        Audited (FR-094). Role admin.
+        medium fails on its own task item. What lands is recorded as a
+        unit import of origin oci-layout (FR-098). Refused with TBY-POL-005
+        on an instance hardened with hardening.disableUnitImport, audited as
+        hardening.refused. Enqueues a task and answers it. Audited
+        (FR-094). Role admin.
       requestBody:
         required: true
         content:
@@ -1184,7 +1191,8 @@ paths:
         Retriever) with its origin, scope, justification, expiry and state
         at the instant of the request, the OpenVEX documents with their
         statement counts, and the two hardening switches. Read-only. Role
-        viewer.
+        admin, like the screen: the document describes the instance's
+        configuration, local OpenVEX document paths included.
       responses:
         "200":
           description: The effective policy.
@@ -2207,7 +2215,10 @@ components:
           enum: [recipe, unit-import, seed]
         origin:
           type: string
-          description: Refines unit-import; "local-pack" for a packed FileSet (FR-048).
+          description: >-
+            Refines unit-import; "local-pack" for a packed FileSet (FR-048),
+            "oci-layout" for content imported from an OCI image layout
+            (FR-051).
         recipes:
           type: array
           description: The recipes managing the repository, for class recipe.
@@ -2757,6 +2768,12 @@ components:
             CVSS base score compared with the threshold — the highest when
             several sources score the finding. Absent when none does.
         package: { type: string }
+        purl:
+          type: string
+          description: >-
+            The affected package's URL as the scanner identifies it; what a
+            VEX subcomponent is matched against. Absent when the scanner
+            gives none.
         installed_version: { type: string }
         fixed_version: { type: string }
         source: { type: string }
@@ -2797,8 +2814,11 @@ components:
           items: { type: string }
           description: >-
             For an exception born of an OpenVEX statement whose product
-            names subcomponents: the affected packages it covers; a finding
-            in another package of the item is not covered.
+            names subcomponents: the package URLs of the affected packages
+            it covers. A finding is covered only when its own purl matches
+            one exactly (type, namespace, name, and the version and
+            qualifiers declared); a finding in another package of the item,
+            or without a purl, is not covered.
     PolicyView:
       type: object
       required: [evaluated_at, mode, threshold, blocking, retriever_known, exceptions, vex_documents, hardening]

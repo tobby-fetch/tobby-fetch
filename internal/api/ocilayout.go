@@ -165,6 +165,15 @@ func (l *layoutAPI) importLayout(w http.ResponseWriter, r *http.Request) {
 	if !l.decode(w, r, &body) {
 		return
 	}
+	// A layout import is a unit import (FR-098, B-071): refused under
+	// hardening.disableUnitImport, with one hardening.refused record.
+	target := strings.TrimSpace(body.Input)
+	if target == "" {
+		target = "oci-layout"
+	}
+	if l.api.refuseUnitImport(w, r, target) {
+		return
+	}
 	id, _ := auth.IdentityFrom(r.Context())
 	task, err := l.svc.StartImport(id.Name, &interop.ImportRequest{
 		Input:      strings.TrimSpace(body.Input),

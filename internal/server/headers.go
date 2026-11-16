@@ -28,7 +28,7 @@ import (
 // Per response class:
 //
 //	every response   X-Content-Type-Options: nosniff
-//	                 Referrer-Policy: no-referrer
+//	                 Referrer-Policy: same-origin
 //	                 X-Frame-Options: DENY
 //	                 Strict-Transport-Security, when TLS is served here
 //	                 or terminated in front (server.secureCookies)
@@ -54,8 +54,14 @@ import (
 // nosniff, the referrer policy, the frame options, the CSP or HSTS.
 const (
 	contentTypeOptions = "nosniff"
-	referrerPolicy     = "no-referrer"
-	frameOptions       = "DENY"
+	// referrerPolicy: same-origin, not no-referrer (B-069). No referrer
+	// ever leaves the instance for another origin — the property
+	// no-referrer was chosen for — but the browser sends the real Origin
+	// on the instance's own form posts, where no-referrer made it send
+	// "null", the value a forging page can also choose. The CSRF origin
+	// check can then refuse null outright (auth.SameOrigin).
+	referrerPolicy = "same-origin"
+	frameOptions   = "DENY"
 	// hstsValue: one year, no includeSubDomains and no preload — the
 	// instance does not own its parent domain and must not decide for the
 	// other services under it.

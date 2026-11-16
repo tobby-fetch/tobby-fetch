@@ -73,6 +73,11 @@ type Finding struct {
 	CVSS *float64 `json:"cvss,omitempty"`
 	// Package is the affected package name.
 	Package string `json:"package"`
+	// PURL is the affected package's URL as the scanner identifies it
+	// (pkg:type/namespace/name@version?qualifiers): what a VEX
+	// subcomponent is matched against (B-070). Empty when the scanner
+	// gives none; such a finding is never covered by a subcomponent.
+	PURL string `json:"purl,omitempty"`
 	// InstalledVersion is the version found in the content.
 	InstalledVersion string `json:"installed_version,omitempty"`
 	// FixedVersion is the first version carrying the fix; empty when the

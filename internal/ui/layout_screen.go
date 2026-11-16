@@ -23,6 +23,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/interop"
 	"github.com/tobby-fetch/tobby-fetch/internal/ocilayout"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -36,6 +37,10 @@ type layoutData struct {
 	Configured bool
 	// Recipes lists the recorded recipes an export can be narrowed to.
 	Recipes []string
+	// ImportDisabled is hardening.disableUnitImport (FR-098, B-071): a
+	// layout import is a unit import, so its form is shown disabled with
+	// the setting named.
+	ImportDisabled bool
 
 	// Submitted values, preserved across a re-render.
 	Output     string
@@ -92,7 +97,7 @@ func (u *UI) layoutScreen(w http.ResponseWriter, r *http.Request) {
 
 // layoutScreenData snapshots what the form needs.
 func (u *UI) layoutScreenData() *layoutData {
-	d := &layoutData{Configured: u.interop != nil}
+	d := &layoutData{Configured: u.interop != nil, ImportDisabled: u.hardening.DisableUnitImport}
 	records, err := u.store.RecipeRecords()
 	if err != nil {
 		return d
@@ -159,6 +164,17 @@ func (u *UI) layoutImport(w http.ResponseWriter, r *http.Request) {
 	d.Repository = strings.TrimSpace(r.PostFormValue("repository"))
 
 	actor := layoutActor(r)
+	if u.hardening.DisableUnitImport {
+		// One hardening.refused record is the trail of the refusal
+		// (FR-098): no layout.import record beside it.
+		target := d.Input
+		if target == "" {
+			target = "oci-layout"
+		}
+		hardening.AuditRefused(r.Context(), u.logger, actor, auth.ClientOrigin(r), target, hardening.SettingDisableUnitImport)
+		u.renderLayout(w, r, d, hardening.UnitImportRefusal())
+		return
+	}
 	task, err := u.interop.StartImport(actor, &interop.ImportRequest{
 		Input: d.Input, Repository: d.Repository,
 	})
@@ -228,7 +244,11 @@ func (u *UI) storeReset(w http.ResponseWriter, r *http.Request) {
 		d := u.storeScreenData(r)
 		ev := errView(requestLang(r), asTaxonomyError(err))
 		d.Err = ev
-		u.render.render(w, r, "admin-store", ev.Status, u.render.view(r, d))
+		// The page's error block reads the view's Err, not the data's:
+		// without it the refusal had its status and no explanation.
+		v := u.render.view(r, d)
+		v.Err = ev
+		u.render.render(w, r, "admin-store", ev.Status, v)
 		return
 	}
 	d := u.storeScreenData(r)
@@ -243,7 +263,10 @@ func (u *UI) storeReset(w http.ResponseWriter, r *http.Request) {
 func (u *UI) renderLayout(w http.ResponseWriter, r *http.Request, d *layoutData, err error) {
 	ev := errView(requestLang(r), asTaxonomyError(err))
 	d.Err = ev
-	u.render.render(w, r, "admin-oci-layout", ev.Status, u.render.view(r, d))
+	// The page's error block reads the view's Err, not the data's.
+	v := u.render.view(r, d)
+	v.Err = ev
+	u.render.render(w, r, "admin-oci-layout", ev.Status, v)
 }
 
 // layoutActor names who acted: the authenticated identity, or the

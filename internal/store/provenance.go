@@ -26,7 +26,8 @@ import (
 //     FR-044 removal guard and the FR-045 prune read too.
 //  2. Otherwise the ledger's class, as recorded: recipe (a stale entry of a
 //     recipe no longer recorded, named from the entry itself), unit-import
-//     (with its origin, local-pack for a packed FileSet), or seed.
+//     (with its origin: local-pack for a packed FileSet, oci-layout for an
+//     OCI layout import), or seed.
 //  3. A repository with no entry at all is seed: content pushed through
 //     /v2/ by a standard client, which stores written before R-17 never
 //     recorded.
@@ -41,7 +42,8 @@ import (
 type Classification struct {
 	Class ProvenanceClass
 	// Origin refines unit-import: OriginLocalPack for a FileSet packed on
-	// this host (FR-048).
+	// this host (FR-048), OriginOCILayout for an OCI layout import
+	// (FR-051).
 	Origin ProvenanceOrigin
 	// Recipes names the managing recipes ("name@version", sorted) for
 	// class recipe.
@@ -172,6 +174,13 @@ func (s *Store) RecordSeed(repo string) (bool, error) {
 // seeded, so the pushed tags do not become removable along with it.
 func (s *Store) RecordUnitImport(repo string) (bool, error) {
 	return s.recordIfUnknown(repo, &Provenance{Class: ProvenanceUnitImport})
+}
+
+// RecordUnitImportFrom records repo as a unit import of the given local
+// origin (OriginOCILayout for an OCI layout import), under the same
+// never-downgrade rule as RecordUnitImport.
+func (s *Store) RecordUnitImportFrom(repo string, origin ProvenanceOrigin) (bool, error) {
+	return s.recordIfUnknown(repo, &Provenance{Class: ProvenanceUnitImport, Origin: origin})
 }
 
 func (s *Store) recordIfUnknown(repo string, p *Provenance) (bool, error) {

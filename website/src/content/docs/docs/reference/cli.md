@@ -285,6 +285,14 @@ Entries are independent: one image that did not survive the medium fails on
 its own line and the rest still lands. An import that lost entries exits
 `1` and names them.
 
+What lands is recorded as a unit import of origin `oci-layout`: content no
+recipe manages, never pruned, individually removable. The command honours
+`hardening.disableUnitImport`, read from the same configuration file as the
+instance (`--config`, or the default path when it exists): on a hardened
+instance it refuses with [TBY-POL-005](../errors/#tby-pol-005), writes
+nothing, records a `hardening.refused` audit event on stderr, and exits
+with the policy code `3`.
+
 ### tobby config dump
 
 ```
@@ -604,7 +612,7 @@ exceptions included; the JSON document says which (`"source":
 |---|---|
 | `--config` | The configuration file to read (offline form). |
 | `--output text\|json` | `json` emits the policy document on stdout (`source`, `evaluated_at`, `mode`, `threshold`, `blocking`, `retriever_known`, `exceptions[]`, `vex_documents[]`, `hardening`). |
-| `--instance` | Base URL of the running instance to read; token (viewer role at least) from `TOBBY_API_TOKEN` or `--token-file`, sent over `http://` only to this host unless `--allow-plaintext-token`. |
+| `--instance` | Base URL of the running instance to read; token (**admin** role, the floor of `GET /api/v1/policy` and of its screen) from `TOBBY_API_TOKEN` or `--token-file`, sent over `http://` only to this host unless `--allow-plaintext-token`. |
 
 ```sh
 tobby scan exceptions
