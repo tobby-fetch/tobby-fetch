@@ -323,28 +323,6 @@ jobs:
           GOOS=darwin  GOARCH=amd64 go build -trimpath -o /dev/null ./cmd/tobby
           GOOS=darwin  GOARCH=arm64 go build -trimpath -o /dev/null ./cmd/tobby
 
-  fuzz:
-    # NFR-024: every parser of untrusted input has a native fuzz target
-    # with a committed seed corpus (testdata/fuzz/<Target>), run here for a
-    # bounded time on every change. A crasher found here becomes a seed
-    # before its fix is merged.
-    name: Fuzz (${{ matrix.target }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { target: FuzzParse, package: ./internal/scan/vex/ }
-          - { target: FuzzInspect, package: ./internal/scan/detect/ }
-          - { target: FuzzSAMLResponse, package: ./internal/federation/ }
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - name: Fuzz ${{ matrix.target }} for 60s
-        run: go test -run='^$' -fuzz='^${{ matrix.target }}$' -fuzztime=60s ${{ matrix.package }}
-
   licenses:
     name: License compliance (GPL-3.0 compatibility)
     runs-on: ubuntu-latest
@@ -537,6 +515,8 @@ jobs:
         run: go run ./tools/i18ncheck
 
   # Hardening (DEVELOPMENT-PLAN §2.7): every native fuzz target, bounded.
+  # NFR-024: every parser of untrusted input has one, with a committed
+  # seed corpus (testdata/fuzz/<Target>).
   # Targets are discovered by tools/fuzz.sh, so a new one joins the gate on
   # its own; the longer run is .github/workflows/fuzz.yml (scheduled). A
   # failing input is kept as an artifact and must be committed under
