@@ -6,8 +6,8 @@ package engine
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -107,10 +107,39 @@ func (e *Engine) promoteRecipe(ctx context.Context, sink *taskSink, logger *slog
 		return false
 	}
 
+	// FR-033 (B-062): the ingredients' own signatures, re-checked over
+	// the local bytes before ANY of the recipe crosses. Informational by
+	// default; under trust.requireIngredientSignatures a refusal withholds
+	// the delivery whole (RECIPE-SPEC §12.3: the affected item is the
+	// recipe) — the same rule, and the same verdict, as `media verify`.
+	sigs, refusals := e.checkPromotedSignatures(ctx, logger, f, rid, org)
+	if len(refusals) > 0 {
+		names := make([]string, 0, len(refusals))
+		for n := range refusals {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for i := range f.Recipe.Spec.Ingredients {
+			ing := &f.Recipe.Spec.Ingredients[i]
+			if refusal, ok := refusals[ing.Name]; ok {
+				_ = e.pushFailed(sink, logger, rid, ing.Name, refusal, ing.Ref)
+				sink.update(func(t *tasks.Task) bool {
+					itemFor(t, pushItemPrefix+rid+"/"+ing.Name).Signature = sigs[i]
+					return true
+				})
+			}
+		}
+		_ = e.pushFailed(sink, logger, rid, "recipe", refusals[names[0]], rid)
+		logger.LogAttrs(ctx, slog.LevelWarn, "recipe not promoted: an ingredient signature is required and does not verify",
+			slog.String("recipe", rid), slog.String("ingredients", strings.Join(names, ",")),
+			slog.String("requirement", "FR-033/R-19"))
+		return false
+	}
+
 	allPushed := true
 	for i := range f.Recipe.Spec.Ingredients {
 		ing := &f.Recipe.Spec.Ingredients[i]
-		if err := e.promoteIngredient(ctx, sink, logger, ing, rid, org); err != nil {
+		if err := e.promoteIngredient(ctx, sink, logger, ing, rid, org, sigs[i]); err != nil {
 			allPushed = false
 		}
 	}
@@ -138,7 +167,11 @@ func (e *Engine) promoteRecipe(ctx context.Context, sink *taskSink, logger *slog
 // registry it does not own, and one HEAD replaces that belief with the
 // current truth. Re-asking costs a request and can only ever prevent a
 // missing push; believing the record can only ever hide one.
-func (e *Engine) promoteIngredient(ctx context.Context, sink *taskSink, logger *slog.Logger, ing *spec.Ingredient, rid string, org *origin) error {
+//
+// sig is the verdict on the ingredient's own signature that
+// checkPromotedSignatures took on this cycle, recorded on the push item
+// and its resolution row; it blocks nothing here.
+func (e *Engine) promoteIngredient(ctx context.Context, sink *taskSink, logger *slog.Logger, ing *spec.Ingredient, rid string, org *origin, sig *sigverify.Inspection) error {
 	logger = logger.With(slog.String("ingredient", ing.Name), slog.String("digest", ing.Digest))
 	itemName := pushItemPrefix + rid + "/" + ing.Name
 
@@ -161,13 +194,10 @@ func (e *Engine) promoteIngredient(ctx context.Context, sink *taskSink, logger *
 	if err := e.dest.Accepts(ctx, dst); err != nil {
 		return e.pushFailed(sink, logger, rid, ing.Name, err, ing.Ref)
 	}
-	// An ingredient that carries a signature locally must still verify
-	// before it crosses. One that carries none rides on the recipe's own
-	// signature, which pins this exact digest (§12.2): that chain was
-	// established at import and re-established above, on this same cycle.
-	if err := e.verifySignedStored(ctx, local, ing.Ref, ing.Digest, ing.Ref+"@"+ing.Digest); err != nil {
-		return e.pushFailed(sink, logger, rid, ing.Name, err, ing.Ref)
-	}
+	// The ingredient's authenticity is the recipe's signature, which pins
+	// this exact digest (§12.2) and was re-verified above, on this same
+	// cycle. Its own signature, if any, was checked by
+	// checkPromotedSignatures and travels with it below.
 
 	// FR-026, against the destination and before any transfer.
 	status, err := e.dest.Status(ctx, dst, ing.Version, ing.Digest)
@@ -177,10 +207,13 @@ func (e *Engine) promoteIngredient(ctx context.Context, sink *taskSink, logger *
 	res := tasks.Resolution{
 		Recipe: rid, Ingredient: ing.Name, Requested: ing.Version, Resolved: ing.Version,
 		Digest: ing.Digest, Destination: dst.String(), DestinationStatus: string(status),
+		Signature: sig,
 	}
 	if status == importer.StatusUpToDate {
 		sink.update(func(t *tasks.Task) bool {
-			itemFor(t, itemName).Status = tasks.StatusSkipped
+			item := itemFor(t, itemName)
+			item.Status = tasks.StatusSkipped
+			item.Signature = sig
 			t.Resolutions = append(t.Resolutions, res)
 			return true
 		})
@@ -194,6 +227,7 @@ func (e *Engine) promoteIngredient(ctx context.Context, sink *taskSink, logger *
 		item := itemFor(t, itemName)
 		item.Status = tasks.StatusRunning
 		item.Digest = ing.Digest
+		item.Signature = sig
 		return true
 	})
 
@@ -518,25 +552,6 @@ func (e *Engine) verifyStored(ctx context.Context, localRepo, nominalRepo, manif
 		"fingerprints": "none — no trust root is configured",
 		"scope":        d.Scope,
 	})
-}
-
-// verifySignedStored is verifyStored for subjects whose signature is
-// optional: it verifies what is there and stays silent about what is
-// not. Ingredients are pinned by digest inside a recipe whose own
-// signature covers them, so an unsigned ingredient is not an unverified
-// one; an ingredient with a signature that does NOT verify is, and that
-// one never crosses.
-func (e *Engine) verifySignedStored(ctx context.Context, localRepo, nominalRepo, manifestDigest, subject string) error {
-	d := e.decideStored(nominalRepo)
-	if d.Keys == nil {
-		return nil
-	}
-	src := &storeManifests{src: e.store, repo: localRepo}
-	_, err := sigverify.Verify(ctx, src, localRepo, manifestDigest, d.Keys)
-	if err == nil || errors.Is(err, sigverify.ErrNoSignature) {
-		return nil
-	}
-	return fmt.Errorf("re-verifying %s before pushing it: %w", subject, withScope(d.Scope, err))
 }
 
 // pushFailed records one promotion failure on its task item and returns

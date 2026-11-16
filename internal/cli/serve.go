@@ -397,6 +397,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
+	logIngredientSignaturePosture(ctx, logger, trust)
 	eng := engine.New(st, remotes, trust, cfg.Retriever.Source, cfg.Storage.BasePrefix, cfg.Sync)
 	// The FR-055 pre-flight: the safety margin, and the explicit opt-out
 	// that turns the gate into a report. The opt-out is announced at
@@ -1173,4 +1174,23 @@ func resumeDisabledReason(cfg *config.Config) string {
 		return "transfer.resumeThreshold is 0"
 	}
 	return "no state.root is configured, and partial downloads never live in the transportable store"
+}
+
+// logIngredientSignaturePosture states at startup how ingredients' own
+// signatures are treated (FR-033, FR-075: a posture is never silent).
+// The default is informational: the signature is copied, verified for
+// the record, and blocks nothing — the recipe signature pins every
+// digest. The opt-in makes it a requirement, on every path.
+func logIngredientSignaturePosture(ctx context.Context, logger *slog.Logger, trust *engine.TrustPolicy) {
+	if trust.RequiresIngredientSignatures() {
+		logger.LogAttrs(ctx, slog.LevelInfo, "ingredient signatures required",
+			slog.String("setting", "trust.requireIngredientSignatures"),
+			slog.String("effect", "an ingredient without a signature the applicable trust roots verify blocks its recipe (TBY-SIG-001), outside allowUnsigned scopes"),
+			slog.String("requirement", "FR-033/FR-075"))
+		return
+	}
+	logger.LogAttrs(ctx, slog.LevelInfo, "ingredient signatures informational",
+		slog.String("setting", "trust.requireIngredientSignatures"),
+		slog.String("effect", "an ingredient's own signature is copied and verified for the record; it never blocks"),
+		slog.String("requirement", "FR-033/FR-075"))
 }

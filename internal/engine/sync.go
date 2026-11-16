@@ -467,6 +467,18 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	}
 	wg.Wait()
 
+	// FR-033 (B-062): each ingredient's own signature, read in the local
+	// store where it was just copied (§12.2). Recorded on every surface
+	// and, by default, nothing more: the recipe signature verified above
+	// pins every digest. Under trust.requireIngredientSignatures, an
+	// ingredient without a verifiable one withholds the recipe whole
+	// (R-19) — before it is scanned, stored, recorded or pushed.
+	if refusals := e.checkFetchedSignatures(ctx, sink, logger, recipe, records, rid); len(refusals) > 0 {
+		resolved.failed()
+		e.withholdRecipe(ctx, sink, logger, fetched, rid, refusals, withheldBySignatures)
+		return
+	}
+
 	// FR-031: every image is scanned at retrieval — a declared container
 	// image, and any ingredient whose content is one (ADR-0017) — in
 	// passthrough as in mirror mode, and before anything of the recipe is
@@ -476,7 +488,7 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	system := recipe.Metadata.Name == scan.SystemRecipe && verified && scopeName == ""
 	if refusals := e.scanRecipe(ctx, sink, logger, fetched, rid, zonePol, system); len(refusals) > 0 {
 		resolved.failed()
-		e.withholdRecipe(ctx, sink, logger, fetched, rid, refusals)
+		e.withholdRecipe(ctx, sink, logger, fetched, rid, refusals, withheldByScan)
 		return
 	}
 

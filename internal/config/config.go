@@ -212,6 +212,20 @@ type Preflight struct {
 type Trust struct {
 	Roots  []TrustRoot  `yaml:"roots,omitempty"`
 	Scopes []TrustScope `yaml:"scopes,omitempty"`
+	// RequireIngredientSignatures is the opt-in hardening of ingredient
+	// signatures (FR-033, RECIPE-SPEC §12.2: a consumer policy decision).
+	// Off — the default — an ingredient's own signature is copied along,
+	// verified for information and recorded, and never blocks: the
+	// delivery's authenticity comes from the recipe signature, which pins
+	// every ingredient digest. On, every ingredient must carry a signature
+	// the applicable trust roots verify — the same scope resolution as a
+	// recipe, on the ingredient's canonical nominal repository — or its
+	// recipe is blocked whole (TBY-SIG-001), identically by the
+	// synchronization, the promotion, `media verify` and the media
+	// import. An ingredient inside an allowUnsigned scope is not required
+	// to carry one. Never omitted from the effective configuration
+	// (FR-075: a posture is always visible).
+	RequireIngredientSignatures bool `yaml:"requireIngredientSignatures"`
 }
 
 // TrustRoot is one trusted public key (cosign key-based, multi-key set for

@@ -165,6 +165,12 @@ type RecipeVerdict struct {
 	// for the recipe — what the SOURCE zone decided. A claim of an
 	// unsigned document: shown beside Assurance, never instead of it.
 	SourceAssurance *assurance.Marker `json:"sourceAssurance,omitempty"`
+	// Ingredients are the verdicts on the ingredients' own signatures,
+	// taken once the recipe itself verified (FR-033, B-062). Recorded
+	// whatever they say; blocking only under
+	// trust.requireIngredientSignatures, and then Reason names the
+	// ingredient.
+	Ingredients []IngredientVerdict `json:"ingredients,omitempty"`
 	// Files and Bytes are what this recipe reaches on the medium.
 	Files int   `json:"files"`
 	Bytes int64 `json:"bytes"`

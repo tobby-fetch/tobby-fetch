@@ -59,9 +59,12 @@ rouvre, et aucun verdict ne survit à un redémarrage (FR-054 — livré en v0.5
 
 **Registry amont compromis.** Un registry qui sert du contenu altéré ne peut pas
 le faire accepter par Tobby : chaque ingrédient est épinglé par digest dans une
-recipe cuite, chaque signature de recipe et d'ingrédient est vérifiée contre
-les trust roots configurés à l'import *et* de nouveau avant le push (FR-033 —
-livré en v0.3.0), et les registries hors liste d'autorisation sont refusés
+recipe cuite, chaque signature de recipe est vérifiée contre les trust roots
+configurés à l'import *et* de nouveau avant le push (FR-033 — livré en
+v0.3.0), de sorte qu'un ingrédient altéré ne correspond plus au digest
+qu'épingle une signature vérifiée — la signature amont propre à un ingrédient
+est consignée en plus, et exigée seulement sous
+`trust.requireIngredientSignatures` — et les registries hors liste d'autorisation sont refusés
 avant tout transfert (FR-030 — livré en v0.4.0). Un registry compromis peut au
 pire provoquer un déni de service, pas injecter du contenu.
 

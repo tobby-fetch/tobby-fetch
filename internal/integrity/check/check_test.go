@@ -48,6 +48,10 @@ func (t trust) Decide(string) media.TrustDecision {
 	return media.TrustDecision{Keys: t.keys, AllowUnsigned: t.allowUnsigned, Scope: t.scope}
 }
 
+// DecideIngredient completes media.Trust; the store verification judges
+// recipes, not ingredients' own signatures.
+func (t trust) DecideIngredient(n string) media.TrustDecision { return t.Decide(n) }
+
 func keysOf(t *testing.T, kp *sigtest.KeyPair) *sigverify.Keys { return checktest.KeysOf(t, kp) }
 func newKeyPair(t *testing.T) *sigtest.KeyPair                 { return checktest.NewKeyPair(t) }
 func blobPathOf(d string) string                               { return checktest.BlobPath(d) }

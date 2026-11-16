@@ -167,6 +167,7 @@ bypass. The full model is on
 |---|---|---|
 | `trust.roots[]` | list | Trusted public keys (cosign, key-based). Each root has a `name` and exactly one of `key` (inline PEM), `keyFile`, `keyURL` (`https://` only, fetched and cached at configuration time — never at verification time). Multiple roots enable rotation by overlap. |
 | `trust.scopes[]` | list | Declared relaxation perimeters, evaluated in order, first match wins. Each scope has a `name`, `repositories` glob patterns on the recipe's **canonical nominal** cookbook path (`*` within a segment, `**` across; a port's `:` is written `_`), and must change something: `allowUnsigned: true` and/or a `roots` restriction. Relaxed scopes are reported on every surface, never silent. |
+| `trust.requireIngredientSignatures` | bool (default `false`) | Opt-in hardening of ingredients' **own** signatures. Off, an ingredient's signature is copied along, verified for information against the applicable roots and recorded (verified by / present, not verifiable / none) — it never blocks: the recipe signature pins every ingredient digest. On, every ingredient must carry a signature the applicable roots verify (same scope resolution as a recipe, on the ingredient's canonical nominal path), or its recipe is blocked whole with `TBY-SIG-001` — identically at synchronization, before every push, in `media verify` and in the media import. An ingredient inside an `allowUnsigned` scope is not required to carry one. Always shown by `tobby config dump`; the posture is logged at startup. |
 
 ### Vulnerability scanning
 

@@ -51,10 +51,20 @@ type trustFor struct {
 	keys          *sigverify.Keys
 	allowUnsigned bool
 	scope         string
+	// requireIngredients is trust.requireIngredientSignatures; the
+	// ingredient decision lifts it inside an allowUnsigned scope, as the
+	// engine's policy does.
+	requireIngredients bool
 }
 
 func (t trustFor) Decide(string) media.TrustDecision {
 	return media.TrustDecision{Keys: t.keys, AllowUnsigned: t.allowUnsigned, Scope: t.scope}
+}
+
+func (t trustFor) DecideIngredient(n string) media.TrustDecision {
+	d := t.Decide(n)
+	d.RequireSignature = t.requireIngredients && !d.AllowUnsigned
+	return d
 }
 
 func newFixture(t *testing.T) *fixture {

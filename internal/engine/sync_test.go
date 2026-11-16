@@ -18,6 +18,7 @@ import (
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
+	"github.com/tobby-fetch/tobby-fetch/internal/sigverify/sigtest"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 )
@@ -35,6 +36,7 @@ type happyEnv struct {
 	modelDig string
 	manDig   string // recipe artifact manifest digest
 	trust    *TrustPolicy
+	kp       *sigtest.KeyPair // the trusted key that signed the recipe
 }
 
 const testZone = "zone-lab"
@@ -85,6 +87,7 @@ func newHappyEnv(t *testing.T) *happyEnv {
 		src: src, dst: dst, eng: eng, trust: trust,
 		hostRepo: strings.ReplaceAll(src.addr, ":", "_"),
 		idx:      idx, chartDig: chartDig, modelDig: modelDig, manDig: manDig,
+		kp: kp,
 	}
 }
 
