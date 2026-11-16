@@ -36,6 +36,9 @@ type TrustPolicy struct {
 	roots  map[string]*sigverify.Keys
 	all    *sigverify.Keys
 	scopes []config.TrustScope
+	// requireIngredients is trust.requireIngredientSignatures (B-062):
+	// see DecideIngredient.
+	requireIngredients bool
 }
 
 // Decision is the trust verdict for one nominal cookbook repository.
@@ -49,6 +52,10 @@ type Decision struct {
 	// Keys is the key set to verify against (the full root set by
 	// default; a scope may restrict it).
 	Keys *sigverify.Keys
+	// RequireSignature is set on an INGREDIENT decision only
+	// (DecideIngredient): the ingredient must carry a signature Keys
+	// verifies, or its recipe is blocked.
+	RequireSignature bool
 }
 
 // LoadTrust resolves the configured trust roots into key material: inline
@@ -64,7 +71,10 @@ type Decision struct {
 // whole startup. A nil egress is the unconfigured direct one.
 func LoadTrust(cfg config.Trust, cacheDir string, eg *netx.Egress) (*TrustPolicy, error) {
 	client := netx.Or(eg).Client(trustFetchTimeout)
-	p := &TrustPolicy{roots: map[string]*sigverify.Keys{}, scopes: cfg.Scopes}
+	p := &TrustPolicy{
+		roots: map[string]*sigverify.Keys{}, scopes: cfg.Scopes,
+		requireIngredients: cfg.RequireIngredientSignatures,
+	}
 	var allPEM [][]byte
 	for _, r := range cfg.Roots {
 		var pem []byte

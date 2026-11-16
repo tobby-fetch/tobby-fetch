@@ -472,6 +472,13 @@ its published rendering.
   `roots` list it, or that the recipe belongs under another scope (see
   [Signatures, trust roots and allowlist](../../security/content-trust/)). An
   unverified recipe is never admitted.
+- **Ingredients:** an ingredient's own signature raises this code only on
+  an instance that sets `trust.requireIngredientSignatures: true`. The
+  subject then reads *ingredient \<name\> of \<recipe\> (\<repository\>@\<digest\>)*,
+  the fingerprints are those the ingredient's applicable roots offered (or
+  "no signature artifact found"), and the whole recipe is withheld. Without
+  that setting, an ingredient signature that does not verify is recorded
+  and blocks nothing.
 - **Fixable offline:** yes, when the right public key is available locally (trust roots are destination configuration); a genuinely unsigned or wrongly signed recipe must be re-signed upstream · **Blocks:** the recipe concerned (verification class, exit 4); never overridable
 
 ### TBY-SIG-002

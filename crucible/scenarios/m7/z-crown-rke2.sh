@@ -325,19 +325,23 @@ mkdir -p "$WORK/cooked"
     printf '}\n'
 } >"$WORK/digests-rke2.json"
 APP_DIGEST=$(crown_resolve_digest "$APP_IMAGE") && [ -n "$APP_DIGEST" ] || fail "resolving $APP_IMAGE upstream"
-# Upstream signatures travel with their subject (§11.5), and the
-# destination re-verifies any it finds before pushing (FR-033,
-# engine.verifySignedStored): one the zone's trust roots cannot verify
-# blocks the ingredient — and its whole recipe — at import. As of
+# Upstream signatures travel with their subject (RECIPE-SPEC §12.2). An
+# ingredient's own signature is a consumer policy decision: by default the
+# zone verifies it for the record and never blocks on it (FR-033 as amended
+# for B-062) — the recipe signature pins every digest. As of
 # v1.36.5+rke2r1, registry.rancher.com/rancher/mirrored-pause carries a
 # legacy cosign ".sig" tag no crucible key verifies (found by the local
-# proof of 7.1). Listed here so that an import failure on it reads as that
-# known behaviour, not as damage.
+# proof of 7.1, where it blocked the whole rke2 recipe at import: B-062).
+# Every such ingredient is listed here and held to the new default after
+# the import: delivered, its signature carried, the verdict recorded as
+# "unverifiable" by `media verify` and on the push item.
+: >"$WORK/upstream-signed.tsv"
 while read -r img; do
     ref=${img%:*}
     d=$(jq -r --arg n "${ref##*/}" '.[$n]' "$WORK/digests-rke2.json")
     if crown_resolve_digest "$ref:$(printf '%s' "$d" | tr ':' '-').sig" >/dev/null 2>&1; then
-        note "upstream cosign signature on $ref@$d — the zone must be able to verify it, or the import refuses it (TBY-SIG-001)"
+        printf '%s\t%s\t%s\n' "${ref##*/}" "$ref" "$d" >>"$WORK/upstream-signed.tsv"
+        note "upstream cosign signature on $ref@$d — recorded, never blocking (B-062)"
     fi
 done <"$WORK/release-images.txt"
 printf '{"busybox": "%s"}\n' "$APP_DIGEST" >"$WORK/digests-crown-app.json"
@@ -509,6 +513,23 @@ for r in rke2:1.36.5 rocky9-rke2-host:1.36.5 crown-app:1.0.0; do
         fail "recipe $r is not in the zone cookbook"
 done
 check "import: all $N_ING ingredients at their relocated paths with their pinned digests, the three recipes in the zone cookbook ($(elapsed "$T_IMPORT"))"
+# B-062: an ingredient signed upstream with a key the zone does not know is
+# delivered with its signature, and both `media verify` and the import
+# record what that signature is — they judge on one rule.
+N_UPSTREAM=0
+while IFS="$(printf '\t')" read -r name ref dgst; do
+    [ -n "$name" ] || continue
+    N_UPSTREAM=$((N_UPSTREAM + 1))
+    jq -e --arg n "$name" '.recipes[] | select(.name == "rke2") | .ingredients[] | select(.name == $n)
+        | .signature.state == "unverifiable" and (.required | not)' "$WORK/verify.json" >/dev/null ||
+        fail "B-062: media verify does not record the upstream signature of $name as unverifiable: $(jq -c --arg n "$name" '[.recipes[] | select(.name == "rke2") | .ingredients[]? | select(.name == $n)]' "$WORK/verify.json")"
+    jq -e --arg i "push/rke2@1.36.5/$name" '.task.items[] | select(.name == $i)
+        | .status != "failed" and .signature.state == "unverifiable"' "$WORK/import-task.json" >/dev/null ||
+        fail "B-062: the import item of $name does not carry its unverifiable signature verdict: $(jq -c --arg i "push/rke2@1.36.5/$name" '[.task.items[] | select(.name == $i)]' "$WORK/import-task.json")"
+    sig=$(crown_manifest_digest "$DEST" "$(crown_relocate "$ref")" "$(printf '%s' "$dgst" | tr ':' '-').sig")
+    [ -n "$sig" ] || fail "B-062: the upstream signature of $ref@$dgst did not travel to the zone registry"
+done <"$WORK/upstream-signed.tsv"
+check "B-062: $N_UPSTREAM upstream-signed ingredient(s) delivered with their signature, recorded unverifiable by media verify and the import, blocking nothing"
 
 # -- 9. Consumption aids (feature 7.1) -------------------------------------------
 crown_generate_registries_yaml "$WORK/registries.yaml"

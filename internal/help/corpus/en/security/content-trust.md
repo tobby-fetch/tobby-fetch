@@ -9,7 +9,7 @@ Tobby verifies cosign **key-based** signatures, fully offline — no
 Fulcio, no Rekor, no online service (FR-033, ADR-0007 — delivered
 v0.3.0). Keyless signing depends on services unreachable from restricted
 zones, so it is not the model; the organization's own keys are.
-Verification runs twice on every item: at import into the store, and
+Recipe verification runs twice: at import into the store, and
 again before any push to a destination — so tampering at rest or in
 transit is caught at the last gate, not just the first. On the
 destination side of a physical transfer the same checks replay against
@@ -102,6 +102,55 @@ A scope can also **restrict** rather than relax: its `roots` fence a
 dedicated key, such as the organization's emergency key, to one cookbook.
 That is the mechanism behind the documented
 [emergency path](../../recipes/emergency-path/).
+
+## Ingredient signatures — recorded, required only on request
+
+A recipe's signature is what authenticates a delivery: signing a cooked
+recipe covers its document, and with it the pinned digest of every
+ingredient (RECIPE-SPEC §12.2). An ingredient may *also* carry a cosign
+signature of its own — its upstream publisher's, typically: Rancher,
+`registry.k8s.io` and Chainguard sign their images, often keyless, with
+keys your zone has no reason to know. Verifying those is, per the
+specification, a consumer policy decision. Tobby's default:
+
+- the ingredient's signature is **copied** along with it, in either
+  layout, through the store, the medium and the destination registry —
+  so it stays verifiable downstream;
+- it is **verified for information** against the trust roots that apply
+  to the ingredient, and the outcome is recorded — on the task item, on
+  the resolution row, in the `media verify` report and in the log —
+  as one of: *verified by* a named root, *present, not verifiable by this
+  zone's trust roots* (with the keys tried), or *none*;
+- it **never blocks**: not the synchronization, not the promotion, not
+  `media verify`, not the media import.
+
+To make ingredient signatures a requirement, opt in:
+
+```yaml
+trust:
+  requireIngredientSignatures: true
+```
+
+Every ingredient must then carry a signature that the applicable trust
+roots verify — resolved exactly as for a recipe, with scopes matched on
+the ingredient's canonical nominal repository and a scope's `roots`
+restriction honoured. An ingredient that is unsigned, or signed only by
+an unknown key, blocks its **recipe whole** (R-19): nothing of it is
+stored as a cookbook entry, recorded for a medium, or pushed, and
+sibling recipes are unaffected. The refusal is
+[`TBY-SIG-001`](../../reference/errors/#tby-sig-001), naming the
+ingredient, its recipe, its digest and the fingerprints tried. The same
+rule runs, unchanged, at the synchronization, before every push, in
+`media verify` and in the media import — so a delivery `media verify`
+calls pushable is one the import pushes. An ingredient that falls inside
+an `allowUnsigned` scope is not required to carry a signature: the scope
+is the declared perimeter for unsigned content, and the opt-in does not
+override it.
+
+The setting is part of the effective configuration
+(`tobby config dump`), and an instance states its posture at startup —
+"ingredient signatures informational" or "ingredient signatures
+required" (FR-075).
 
 ## The two accepted signature formats
 

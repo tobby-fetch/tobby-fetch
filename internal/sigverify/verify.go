@@ -153,6 +153,14 @@ func Verify(ctx context.Context, src Manifests, repo, manifestDigest string, key
 	if keys == nil || len(keys.keys) == 0 {
 		return "", errors.New("sigverify: no trust roots configured")
 	}
+	return verify(ctx, src, repo, manifestDigest, keys)
+}
+
+// verify is Verify without the empty-key-set refusal. With an empty set
+// it still tells the three shapes apart — nothing published, a
+// well-formed signature no key verifies, a malformed artifact — which is
+// what Inspect needs and what Verify must never pretend is a verdict.
+func verify(ctx context.Context, src Manifests, repo, manifestDigest string, keys *Keys) (fingerprint string, err error) {
 	subjectHex, err := parseSHA256Digest(manifestDigest)
 	if err != nil {
 		return "", fmt.Errorf("sigverify: subject digest: %w", err)

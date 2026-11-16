@@ -25,6 +25,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/runid"
+	"github.com/tobby-fetch/tobby-fetch/internal/sigverify"
 	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
@@ -398,6 +399,7 @@ func openMedia(ctx context.Context, cfg *config.Config, stderr io.Writer, intent
 		op.close()
 		return nil, err
 	}
+	logIngredientSignaturePosture(ctx, op.logger, trust)
 	// The remote access is built without substitutions on purpose: an
 	// isolated zone reads nothing upstream (NFR-019), and the media path
 	// never fetches — it pushes what the medium already carries.
@@ -511,6 +513,7 @@ func writeReport(cmd *cobra.Command, report *reportFlag, rep *media.Report) erro
 		}
 		_, _ = fmt.Fprintf(out, "  BLOCKED   %s@%s — %s at %s%s\n", v.Name, v.Version, v.Reason.Code, where, assuranceNote(v))
 	}
+	writeIngredientSignatures(out, rep)
 	for i := range rep.Findings {
 		_, _ = fmt.Fprintf(out, "  reported  %s %s (never pushed)\n", rep.Findings[i].Code, rep.Findings[i].Path)
 	}
@@ -533,6 +536,9 @@ func writeImportReport(cmd *cobra.Command, report *reportFlag, task *tasks.Task)
 		if item.Assurance.Reduced() {
 			mark = " [reduced assurance: scope " + item.Assurance.Scope + "]"
 		}
+		if sig := item.Signature; sig != nil && sig.State != sigverify.StateNone {
+			mark += " [ingredient signature: " + sig.String() + "]"
+		}
 		if item.Error == nil {
 			_, _ = fmt.Fprintf(out, "  %-8s %s%s\n", item.Status, item.Name, mark)
 			continue
@@ -554,4 +560,26 @@ func assuranceNote(v *media.RecipeVerdict) string {
 		note += " [source zone declares reduced assurance: scope " + v.SourceAssurance.Scope + "]"
 	}
 	return note
+}
+
+// writeIngredientSignatures lists, under the verdicts, the ingredients
+// whose own signature has something to say (FR-033, B-062): one that is
+// present — verified or not — or one the requirement applied to. An
+// unsigned ingredient on an instance that does not require signatures is
+// the common case, and stays off the screen.
+func writeIngredientSignatures(out io.Writer, rep *media.Report) {
+	for i := range rep.Recipes {
+		v := &rep.Recipes[i]
+		for j := range v.Ingredients {
+			ing := &v.Ingredients[j]
+			if ing.Signature.State == sigverify.StateNone && !ing.Required {
+				continue
+			}
+			required := ""
+			if ing.Required {
+				required = " (required)"
+			}
+			_, _ = fmt.Fprintf(out, "  signature %s@%s/%s: %s%s\n", v.Name, v.Version, ing.Name, ing.Signature, required)
+		}
+	}
 }

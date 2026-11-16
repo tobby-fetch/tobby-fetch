@@ -323,7 +323,10 @@ func logScanReport(ctx context.Context, logger *slog.Logger, ing *spec.Ingredien
 // manifest is built from that graph, FR-054), and nothing of it is pushed
 // to a destination — the refused ingredient's push item and the recipe's
 // own say why. The other recipes of the run are unaffected.
-func (e *Engine) withholdRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, f *FetchedRecipe, rid string, refusals map[string]*taxonomy.Error) {
+//
+// why names the policy that refused, for the log line: the vulnerability
+// policy (FR-031) or the ingredient-signature requirement (FR-033).
+func (e *Engine) withholdRecipe(ctx context.Context, sink *taskSink, logger *slog.Logger, f *FetchedRecipe, rid string, refusals map[string]*taxonomy.Error, why withholding) {
 	names := make([]string, 0, len(refusals))
 	for n := range refusals {
 		names = append(names, n)
@@ -358,12 +361,20 @@ func (e *Engine) withholdRecipe(ctx context.Context, sink *taskSink, logger *slo
 	// nothing — no recipe record reaches them, so no destination verifies
 	// nor pushes them, and `tobby store verify` lists them as orphans
 	// (TBY-INT-003). Said here, where the operator reads the refusal.
-	logger.LogAttrs(ctx, slog.LevelWarn, "recipe withheld by the vulnerability policy",
+	logger.LogAttrs(ctx, slog.LevelWarn, "recipe withheld by "+why.policy,
 		slog.String("recipe", rid), slog.String("ingredients", strings.Join(names, ",")),
 		slog.String("code", string(first.Code())),
 		slog.String("content", "fetched content stays in the store, reachable from no recipe: never delivered, reported as orphaned by the store verification"),
-		slog.String("requirement", "FR-031/R-19"))
+		slog.String("requirement", why.requirement+"/R-19"))
 }
+
+// withholding names the policy behind a withheld recipe.
+type withholding struct{ policy, requirement string }
+
+var (
+	withheldByScan       = withholding{"the vulnerability policy", "FR-031"}
+	withheldBySignatures = withholding{"the ingredient signature requirement", "FR-033"}
+)
 
 // refreshAfter calls the Refresh hook when a recorded recipe may have
 // delivered the scanner's database or binary.

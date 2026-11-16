@@ -57,6 +57,11 @@ type TrustDecision struct {
 	// Keys is the key set to verify against. Nil means no trust root
 	// applies, which — outside a declared scope — blocks the recipe.
 	Keys *sigverify.Keys
+	// RequireSignature is set on an INGREDIENT decision only
+	// (Trust.DecideIngredient): trust.requireIngredientSignatures is on
+	// and no allowUnsigned scope covers the ingredient, so it must carry
+	// a signature Keys verifies or its recipe is blocked (B-062).
+	RequireSignature bool
 }
 
 // Trust is the destination instance's trust policy.
@@ -71,6 +76,11 @@ type Trust interface {
 	// Decide returns the verdict for a recipe's nominal cookbook
 	// repository, in the canonical form trust scopes match (ADR-0013).
 	Decide(nominalRepo string) TrustDecision
+	// DecideIngredient returns the verdict for an ingredient's own
+	// signature, on the ingredient's canonical nominal repository: the
+	// same scope resolution, plus whether a verifiable signature is
+	// required (CheckIngredientSignature).
+	DecideIngredient(nominalRepo string) TrustDecision
 }
 
 // VerifyOptions parameterizes one verification.
@@ -424,6 +434,17 @@ func verifyRecipes(ctx context.Context, src Reader, c *checker, m *Manifest, opt
 			continue
 		}
 		decide(ctx, src, r, &v, opts.Trust)
+		if v.Pushable {
+			// The recipe verified: its ingredients' own signatures are
+			// recorded, and block the delivery whole only under
+			// trust.requireIngredientSignatures — the rule the import's
+			// promotion applies again before any push (B-062, R-19).
+			var refusal *Reason
+			v.Ingredients, refusal = checkIngredients(ctx, src, r, opts.Trust)
+			if refusal != nil {
+				v.Pushable, v.Reason = false, refusal
+			}
+		}
 		out = append(out, v)
 	}
 	return out

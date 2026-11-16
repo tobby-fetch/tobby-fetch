@@ -59,6 +59,15 @@ them.
   at startup until their feature lands — never silently ignored;
   `diagnostics.logRecords` (2000), `diagnostics.tasks` (20) and
   `clock.skewTolerance` (1h) are accepted with their defaults.
+- **`trust.requireIngredientSignatures`** (FR-033, opt-in, off by default):
+  every ingredient must carry a signature the applicable trust roots
+  verify — the same scope resolution as a recipe, on the ingredient's
+  canonical nominal repository; an ingredient inside an `allowUnsigned`
+  scope is exempt — or its recipe is blocked whole with `TBY-SIG-001`,
+  naming the ingredient and the fingerprints tried. Applied identically
+  at synchronization, before every push, by `media verify` and by the
+  media import. Shown in `tobby config dump`; the posture is logged at
+  startup.
 
 - **Diagnostic bundle** (R-30, FR-095): `tobby diagnostics bundle`, the
   administration screen **Diagnostics** and `POST /api/v1/diagnostics/bundle`
@@ -129,6 +138,20 @@ them.
 
 ### Fixed
 
+- **An image signed by its publisher with a key the zone does not know
+  blocked its whole recipe at import** (B-062). An ingredient whose own
+  signature did not verify against the zone's trust roots was refused
+  before the push (`TBY-SIG-001`) — every image signed upstream
+  (`registry.rancher.com/rancher/mirrored-pause`, `registry.k8s.io`,
+  Chainguard…) as soon as a trust root was configured — while
+  `media verify` had called the same delivery pushable. An ingredient's own
+  signature is a consumer policy decision (RECIPE-SPEC §12.2): the recipe
+  signature pins every ingredient digest. It is now copied along,
+  verified for information and recorded — verified by a named root,
+  present but not verifiable by this zone's trust roots, or none — on the
+  task item, the resolution row, the `media verify` report (`ingredients`)
+  and the log, and it never blocks, unless `trust.requireIngredientSignatures`
+  asks for it, in which case every path applies the same rule.
 - **A FileSet that arrived other than by a synchronization was only
   served after a restart** (B-058). `/files/` re-resolved its FileSets at
   startup and after a sync task, and never otherwise: a FileSet brought

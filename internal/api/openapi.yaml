@@ -2516,6 +2516,8 @@ components:
                 description: >-
                   What actually crossed for this item. Zero on an
                   up-to-date item is the FR-028 differential, per row.
+              signature:
+                $ref: "#/components/schemas/IngredientSignature"
         items_total:
           type: integer
         items_done:
@@ -2546,6 +2548,38 @@ components:
           $ref: "#/components/schemas/ScanReport"
         assurance:
           $ref: "#/components/schemas/Assurance"
+        signature:
+          $ref: "#/components/schemas/IngredientSignature"
+    IngredientSignature:
+      type: object
+      description: >-
+        The verdict on an ingredient's OWN signature (FR-033, RECIPE-SPEC
+        §12.2), against the trust roots applicable to the ingredient:
+        verified by a named root, present but not verifiable by this
+        zone's trust roots, or none. Informational — it blocks nothing —
+        unless trust.requireIngredientSignatures is on, in which case an
+        ingredient that does not verify blocks its recipe whole with
+        TBY-SIG-001.
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [verified, unverifiable, none]
+        fingerprint:
+          type: string
+          description: The trust root that verified, when state is verified.
+        tried:
+          type: array
+          items: { type: string }
+          description: >-
+            The fingerprints tried, when a well-formed signature exists
+            and none of them verifies it.
+        detail:
+          type: string
+          description: >-
+            Why the signature is unverifiable when the answer is not a
+            question of keys: a malformed artifact, no trust root applying,
+            a store that could not be read.
     Assurance:
       type: object
       description: >-
@@ -3333,6 +3367,34 @@ components:
                   The marker the media manifest claims for this recipe —
                   the source zone's decision, re-displayed beside this
                   instance's own (FR-037), never instead of it.
+              ingredients:
+                type: array
+                description: >-
+                  The verdicts on the ingredients' own signatures, taken
+                  once the recipe itself verified (FR-033). Recorded
+                  whatever they say; blocking only under
+                  trust.requireIngredientSignatures, and then reason names
+                  the ingredient.
+                items:
+                  type: object
+                  required: [name, repo, digest, signature]
+                  properties:
+                    name: { type: string }
+                    repo:
+                      type: string
+                      description: >-
+                        The canonical nominal repository the trust decision
+                        was taken on (ADR-0013).
+                    digest: { type: string }
+                    signature:
+                      $ref: "#/components/schemas/IngredientSignature"
+                    trustScope: { type: string }
+                    required:
+                      type: boolean
+                      description: >-
+                        True when trust.requireIngredientSignatures applied
+                        to this ingredient (never inside an allowUnsigned
+                        scope).
               files: { type: integer }
               bytes: { type: integer, format: int64 }
         findings:
