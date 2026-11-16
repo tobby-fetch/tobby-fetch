@@ -103,7 +103,11 @@ trusted.
   a medium has no effect, by requirement and by test.
 - **Until a verification clears the medium whole, the destination serves
   nothing** from it: `/v2/` and `/files/` answer `403` (`TBY-MED-030`), for
-  every role, with no setting to reopen them.
+  every role, with no setting to reopen them. Once cleared, it serves only
+  the content the pushable recipes reach, as that verification hashed it,
+  read-only (`TBY-MED-033` for anything else); a referrers listing is built
+  from the referring manifests themselves, never from the index on the
+  medium.
 
 The only two waivers (a medium addressed to another zone, a medium older
 than the last imported) are anti-accident guards: they are not security

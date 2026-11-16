@@ -774,7 +774,11 @@ an instance restart. On a destination instance holding a transported
 medium, no extraction SHALL be written before the verification required by
 FR-054 has cleared the medium, and the served content SHALL be extracted
 from the verified blobs, never taken from an extraction carried on the
-medium.
+medium. On such an instance a FileSet SHALL resolve only inside the content
+the verification cleared (FR-054, B-063) — its version among the verified
+tags, its platform among the verified manifests — and the extraction SHALL
+check every manifest and layer it reads against its digest and size before
+committing (milestone-7 review, A1).
 *Acceptance:* a FileSet enabled by configuration is returned by a GET
 under `/files/` immediately after it is packed through the API, after a
 unit import settles, and after a push through `/v2/`; on a destination
@@ -877,6 +881,17 @@ list it; on the destination, a rebuilt cache produces no finding; a manifest
 listing the cache in the earlier format is not refused and its cache entries
 produce no finding. *(ADR-0016 §3)*
 
+*Amendment 2026-11-16 (milestone-7 review, A9) — out of coverage, not out of
+sight.* A FileSet cache present on the medium SHALL be reported by the
+verification in one non-blocking summary finding naming its file count and
+size; any entry under it that does not have the shape of an extraction
+(`<name>/<digest>/rootfs/…`, `<name>/<digest>/.complete`) SHALL be reported
+as uncovered content. This supersedes "produces no finding" above: the cache
+produces exactly its summary.
+*Acceptance:* a medium carrying a cache yields one `TBY-MED-023` finding with
+its file count and bytes; a file planted beside the extraction shape yields a
+`TBY-MED-020` finding naming it. *(ADR-0016 §3)*
+
 *Amendment 2026-08-26 (R-19) — granularity of the block.* The sentence
 "integrity or completeness failure SHALL block with no override" above was
 written as a global verdict, while RECIPE-SPEC §12.3 point 4 requires failing
@@ -924,6 +939,11 @@ one left implicit.
   hands. A passthrough instance and a source-side mirror instance both serve
   unconditionally: the latter's store carries a manifest because it *wrote*
   it, and the zone identity is what tells the two sides apart.
+  *Amended 2026-11-16 (milestone-7 review, R9):* a destination-side instance
+  whose storage root holds content but **no** media manifest is guarded too —
+  an absent manifest blocks the medium as a whole (R-19 above), it does not
+  exempt it. Only a destination store holding nothing at all is left
+  unguarded, having nothing to withhold.
 - **What is withheld.** The embedded registry (FR-040) and the FileSet surface
   (FR-047), in whole, for every role. Nothing else: the web UI, the API, the
   probes and the metrics stay available, because they are what an operator
@@ -935,6 +955,19 @@ one left implicit.
   out whole serves nothing while its intact recipes remain pushable into the
   zone registry, which then serves them. No verdict is cached across a
   restart: the question is whether the bytes are right now.
+- **What an open gate serves** *(amendment 2026-11-16, B-063)*. Only the
+  content reachable from the pushable recipes — "content present on the media
+  but not reachable from a verified recipe SHALL NOT be pushed", and serving
+  is held to the same set. The verification SHALL compute that set during its
+  walk (recipe artifacts and their signatures, ingredients and their own
+  signatures, and everything those name, every file re-hashed) and record its
+  digest in the report; the gate SHALL serve it read-only and nothing else:
+  a tag resolves to the digest it was verified at, catalog and tag lists are
+  answered from the set, referrers are chosen among its manifests, FileSets
+  resolve within it, and every other request — content outside the set, any
+  write — SHALL be refused with `403` naming the taxonomy code. A
+  verification that clears no content (no recipe on the medium) SHALL NOT
+  open the gate.
 - **How the refusal reads.** Both surfaces SHALL answer `403` with the error
   taxonomy's what/cause/action, in the shape their clients understand — the
   OCI error envelope on `/v2/`, plain text on `/files/` — naming the medium
@@ -952,7 +985,10 @@ the taxonomy code on `GET /v2/<repo>/manifests/<digest>` and on
 `GET /files/<set>/<path>` for content the store demonstrably holds, while
 `/healthz` and `/readyz` answer `200`; the same instance serves both after a
 verification clears the medium; a source-side mirror instance holding the same
-store serves both immediately.
+store serves both immediately. After the gate opens, a FileSet version and an
+image stored on the medium after its manifest was written are refused on both
+surfaces; a destination store whose manifest was removed is refused; a medium
+listing no recipe does not open the gate.
 
 **FR-055 — Pre-flight checks.**
 Before starting a mirror synchronization or an export, Tobby SHALL compute and

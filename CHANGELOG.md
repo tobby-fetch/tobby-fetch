@@ -187,6 +187,68 @@ them.
   it finished. Every concurrent request now waits for the same resolution
   (at most 30 seconds), including one already running in the background
   after a push or the opening of the media gate.
+- **A miss on one failing FileSet re-extracted every failing FileSet**
+  (milestone-7 review, A6). The lazy resolution of a request for a declared
+  FileSet that is not served ran a full refresh, so N FileSets whose
+  extraction fails cost N² extractions every ten seconds. A miss now
+  resolves only the FileSet asked for, a digest whose extraction failed is
+  retried after a backoff (10 s doubling up to 10 min) rather than on every
+  miss — new content arriving by a task, a pack or a push still retries at
+  once — and at most 64 requests wait on a resolution at a time.
+
+### Security
+
+- **An open media gate served the whole store, not what was verified**
+  (B-063, FR-054). The verdict that opens the gate depended on the recipes
+  only, so content no verified recipe reaches — an image or a FileSet
+  version stored on the medium after its manifest was written, an
+  inventoried file nothing reaches — was handed out by `/v2/` and
+  `/files/`, never hashed; a FileSet with no pinned version resolved to the
+  highest local tag, whoever had added it; and a medium listing no recipe
+  read *pushable* and opened the gate on everything. The verification now
+  computes the **served set** — what the pushable recipes reach, recipe and
+  ingredient signatures included, every file re-hashed — and records its
+  digest in the report; the gate serves that set and nothing else,
+  read-only: tags resolve to the digest they were verified at, catalog and
+  tag lists come from the set, FileSets resolve inside it, and anything
+  else, writes included, answers `403` `TBY-MED-033`. A verification that
+  clears nothing keeps the gate closed (`TBY-MED-034`). **Visible change:**
+  on a destination instance, pushing to `/v2/` of the medium and pulling
+  content no pushable recipe delivers are now refused.
+- **A destination store without media manifest was served whole** (B-063,
+  R9). The gate armed only when `meta/media.json` was present, so removing
+  it served everything, carried FileSet cache included. An instance with a
+  `zone:` whose store holds content is now guarded whether or not the
+  manifest is there, and its verification blocks on `TBY-MED-001`.
+  **Visible change:** a `zone:`-configured instance over a populated store
+  without manifest no longer serves until a medium with a manifest is in
+  place.
+- **The Referrers API served forged indexes, and a read wrote to the
+  medium** (B-064). The listing trusted `meta/referrers/`, bookkeeping whose
+  alteration is only a finding: an invented subject, artifact type or
+  annotations — a fake VEX document attached to a verified image, say —
+  were served as is; and a GET with no index rebuilt and persisted one
+  under `meta/` (on a read-only medium: a `500` and a full re-enumeration
+  on every call). Every candidate is now re-read and kept only if its own
+  payload hashes to its digest and names the subject, described from that
+  payload; a read derives a missing index in memory and writes nothing; on
+  a guarded instance the candidates are the verified manifests themselves.
+  The index no longer stores annotations, and a subject is capped at 4096
+  referrers (the PUT past the cap is refused before it is stored).
+- **The FileSet extraction did not check what it read** (milestone-7
+  review, A1). The manifest and the layers were applied as read from the
+  store, so a blob replaced between the verification and the extraction —
+  or before a re-extraction — was extracted as found. The manifest bytes
+  are now checked against their digest and every layer stream against its
+  descriptor's digest and size, and the extraction is discarded before it
+  is committed when one disagrees.
+- **A FileSet cache carried on a medium crossed the gap without a trace**
+  (milestone-7 review, A9). `meta/fileserve/` is outside coverage (B-060)
+  and produced no finding at all, so anything under it — and it stays on
+  the medium after `tobby media import` — travelled unreported in both
+  directions. The verification now summarizes it (`TBY-MED-023`: files and
+  bytes, ignored and rebuilt) and reports as uncovered (`TBY-MED-020`)
+  every entry that does not have the shape of an extraction.
 
 ### Documentation
 
