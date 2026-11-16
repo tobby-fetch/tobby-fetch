@@ -56,9 +56,12 @@ survives a restart (FR-054 — delivered v0.5.0).
 
 **Compromised upstream registry.** A registry that serves altered content
 cannot make Tobby accept it: every ingredient is pinned by digest in a
-cooked recipe, every recipe and ingredient signature is verified against
-the configured trust roots at import *and* again before push (FR-033 —
-delivered v0.3.0), and registries outside the allowlist are refused
+cooked recipe, every recipe signature is verified against the configured
+trust roots at import *and* again before push (FR-033 — delivered v0.3.0),
+so an altered ingredient no longer matches the digest a verified
+signature pins — an ingredient's own upstream signature is recorded on
+top, and required only under `trust.requireIngredientSignatures` — and
+registries outside the allowlist are refused
 before any transfer (FR-030 — delivered v0.4.0). A compromised registry
 can at worst deny service, not inject content.
 

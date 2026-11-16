@@ -536,15 +536,34 @@ code; deleting the database yields the visible degraded mode; a destination
 instance with no database still verifies and imports a medium.
 
 **FR-033 — Signature verification.**
-Tobby SHALL verify cosign (key-based) signatures of Recipes and of Ingredients
-against configured trust roots, at import and before any push to a destination;
-verification failures SHALL block the affected item. Enforcement SHALL be on by
-default and MAY be relaxed only per explicitly declared trust-root scope (no
-global bypass), per RECIPE-SPEC §12.3.
-*Acceptance:* an unsigned or wrongly-signed Recipe/Ingredient is rejected with the
-key fingerprint(s) tried; a correctly signed one passes; trust roots are configurable
-without rebuild, provided inline, as files, or as HTTPS URLs fetched at configuration
-time (RECIPE-SPEC §12.3); relaxation applies only to the declared scope. *(ADR-0007)*
+Tobby SHALL verify cosign (key-based) signatures of Recipes against configured
+trust roots, at import and before any push to a destination; verification
+failures SHALL block the affected item. Enforcement SHALL be on by default and
+MAY be relaxed only per explicitly declared trust-root scope (no global bypass),
+per RECIPE-SPEC §12.3.
+An Ingredient's own signature is a consumer policy decision (RECIPE-SPEC §12.2):
+the delivery is authenticated by the Recipe signature, which pins every
+Ingredient digest. By default Tobby SHALL copy an Ingredient's signature along
+with it, verify it for information against the trust roots applicable to the
+Ingredient, and record the outcome — verified by a named root, present but not
+verifiable by the zone's trust roots, or none — on the task item, the report
+and the log, without blocking. When `trust.requireIngredientSignatures` is set
+(off by default, shown in the effective configuration and logged at startup,
+FR-075), every Ingredient SHALL carry a signature the applicable trust roots
+verify — the same scope resolution as a Recipe, on the Ingredient's canonical
+nominal repository; an Ingredient inside an `allowUnsigned` scope is exempt —
+or its Recipe SHALL be blocked whole (RECIPE-SPEC §12.3) with the Ingredient
+and the fingerprints tried named. The same rule SHALL apply identically at
+synchronization, before every push, in media verification and at media import.
+*Acceptance:* an unsigned or wrongly-signed Recipe is rejected with the key
+fingerprint(s) tried; a correctly signed one passes; an Ingredient signed by a
+key unknown to the zone is imported and pushed with its signature, the outcome
+recorded, and media verification and import agree; with
+`trust.requireIngredientSignatures`, an unsigned or foreign-signed Ingredient
+blocks its Recipe on every path, `media verify` included; trust roots are
+configurable without rebuild, provided inline, as files, or as HTTPS URLs fetched
+at configuration time (RECIPE-SPEC §12.3); relaxation applies only to the
+declared scope. *(ADR-0007; amended for B-062)*
 
 **FR-034 — Recipe propagation.**
 Tobby SHALL push the Recipes themselves (as OCI artifacts, signatures attached) to

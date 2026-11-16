@@ -10,7 +10,7 @@ Fulcio, ni Rekor, aucun service en ligne (FR-033, ADR-0007 — livré en
 v0.3.0). La signature sans clé (keyless) dépend de services inaccessibles
 depuis les zones restreintes ; ce n'est donc pas le modèle retenu, celui-ci
 repose sur les clés de l'organisation.
-La vérification a lieu deux fois pour chaque élément : à l'import dans le
+La vérification d'une recipe a lieu deux fois : à l'import dans le
 store, puis de nouveau avant tout push vers une destination. Une altération
 au repos ou en transit est ainsi arrêtée à la dernière barrière, pas
 seulement à la première. Côté destination d'un transfert physique, les mêmes
@@ -106,6 +106,57 @@ Un périmètre peut aussi **restreindre** plutôt qu'assouplir : ses `roots`
 cantonnent une clé dédiée, comme la clé d'urgence de l'organisation, à un seul
 cookbook. C'est le mécanisme de la [voie d'urgence](../../recipes/emergency-path/)
 documentée.
+
+## Signatures des ingrédients — consignées, exigées seulement sur demande
+
+C'est la signature de la recipe qui authentifie une livraison : signer une
+recipe cuisinée couvre son document, et avec lui le digest épinglé de chaque
+ingrédient (RECIPE-SPEC §12.2). Un ingrédient peut *aussi* porter sa propre
+signature cosign — celle de son éditeur amont, le plus souvent : Rancher,
+`registry.k8s.io` et Chainguard signent leurs images, souvent en keyless,
+avec des clés que votre zone n'a aucune raison de connaître. Les vérifier
+relève, selon la spécification, d'une politique du consommateur. Par défaut,
+Tobby :
+
+- **recopie** la signature de l'ingrédient avec lui, dans l'une ou l'autre
+  disposition, à travers le store, le média et le registry de destination —
+  elle reste ainsi vérifiable en aval ;
+- la **vérifie à titre informatif** contre les trust roots applicables à
+  l'ingrédient, et consigne le résultat — sur l'élément de tâche, sur la
+  ligne de résolution, dans le rapport de `media verify` et dans le journal —
+  sous l'une de ces formes : *vérifiée par* une clé nommée, *présente, non
+  vérifiable par les trust roots de cette zone* (avec les clés essayées), ou
+  *aucune* ;
+- ne **bloque jamais** : ni la synchronisation, ni la promotion, ni
+  `media verify`, ni l'import de média.
+
+Pour faire des signatures d'ingrédients une exigence, activez le
+durcissement :
+
+```yaml
+trust:
+  requireIngredientSignatures: true
+```
+
+Chaque ingrédient doit alors porter une signature que les trust roots
+applicables vérifient — résolues exactement comme pour une recipe : les
+périmètres sont comparés au dépôt nominal canonique de l'ingrédient, et la
+restriction `roots` d'un périmètre est respectée. Un ingrédient non signé, ou
+signé seulement par une clé inconnue, bloque **sa recipe entière** (R-19) :
+rien d'elle n'est enregistré comme entrée de cookbook, consigné pour un
+média ni poussé, et les recipes voisines ne sont pas affectées. Le refus est
+[`TBY-SIG-001`](../../reference/errors/#tby-sig-001), qui nomme l'ingrédient,
+sa recipe, son digest et les empreintes essayées. La même règle s'applique,
+à l'identique, à la synchronisation, avant chaque push, dans `media verify`
+et à l'import de média : une livraison que `media verify` déclare poussable
+est une livraison que l'import pousse. Un ingrédient qui relève d'un
+périmètre `allowUnsigned` n'est pas tenu de porter une signature : le
+périmètre est le cadre déclaré du contenu non signé, et le durcissement ne
+passe pas outre.
+
+Le réglage fait partie de la configuration effective (`tobby config dump`),
+et une instance annonce sa posture au démarrage — « ingredient signatures
+informational » ou « ingredient signatures required » (FR-075).
 
 ## Les deux formats de signature acceptés
 

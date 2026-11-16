@@ -515,6 +515,13 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
   (voir
   [Signatures, clés de confiance et liste blanche](../../security/content-trust/)).
   Une recipe non vérifiée n'est jamais admise.
+- **Ingrédients :** la signature propre d'un ingrédient ne lève ce code que
+  sur une instance qui règle `trust.requireIngredientSignatures: true`. Le
+  sujet se lit alors *ingredient \<nom\> of \<recipe\> (\<dépôt\>@\<digest\>)*,
+  les empreintes sont celles des clés applicables à l'ingrédient (ou « no
+  signature artifact found »), et la recipe entière est retenue. Sans ce
+  réglage, une signature d'ingrédient non vérifiable est consignée et ne
+  bloque rien.
 - **Remédiable hors-ligne :** oui, quand la bonne clé publique est disponible localement (les clés de confiance sont la configuration de la destination) ; une recipe réellement non signée ou mal signée doit être re-signée en amont · **Bloque :** la recipe concernée (classe vérification, sortie 4) ; jamais dérogeable
 
 ### TBY-SIG-002
