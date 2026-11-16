@@ -60,3 +60,36 @@ func TestRecordCarriesFullSchema(t *testing.T) {
 		t.Errorf("got %d records, %d audit; want 2 records, 1 audit", total, auditRecords)
 	}
 }
+
+// TestOptionalFieldsOnlyWhenSet checks that actor_name and detail are
+// additive: emitted when set, absent otherwise (FR-096 detail).
+func TestOptionalFieldsOnlyWhenSet(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logging.New(&buf, slog.LevelInfo)
+	Log(context.Background(), logger, &Event{
+		Actor: "u", Action: "clock.implausible", Target: "clock", Outcome: OutcomeSuccess, Origin: "local",
+		ActorName: "Operator", Detail: "gap 3h",
+	})
+	Log(context.Background(), logger, &Event{Actor: "u", Action: "a", Target: "t", Outcome: OutcomeSuccess, Origin: "o"})
+
+	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n"))
+	if len(lines) != 2 {
+		t.Fatalf("got %d records, want 2", len(lines))
+	}
+	var full, bare map[string]any
+	if err := json.Unmarshal(lines[0], &full); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(lines[1], &bare); err != nil {
+		t.Fatal(err)
+	}
+	if full["actor_name"] != "Operator" || full["detail"] != "gap 3h" {
+		t.Errorf("optional fields missing when set: %v", full)
+	}
+	if _, ok := bare["actor_name"]; ok {
+		t.Error("actor_name emitted while unset")
+	}
+	if _, ok := bare["detail"]; ok {
+		t.Error("detail emitted while unset")
+	}
+}
