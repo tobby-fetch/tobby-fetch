@@ -80,6 +80,13 @@ func fixtures() []commandFixture {
 		{path: "tobby store verify", args: func(t *testing.T) []string {
 			return []string{"--storage-root", tmp(t)}
 		}},
+		{path: "tobby diagnostics bundle", args: func(t *testing.T) []string {
+			return []string{"--mode", "passthrough", "--storage-root", tmp(t), "--state-root", tmp(t),
+				"--output-file", filepath.Join(tmp(t), "bundle.tar.gz")}
+		}},
+		{path: "tobby state inspect", args: func(t *testing.T) []string {
+			return []string{"--state-root", tmp(t)}
+		}},
 		{path: "tobby recipe push", args: func(t *testing.T) []string {
 			file := filepath.Join(tmp(t), "recipe.yaml")
 			if err := os.WriteFile(file, []byte("not: a recipe\n"), 0o600); err != nil {

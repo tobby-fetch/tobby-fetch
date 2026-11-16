@@ -26,6 +26,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/blobfetch"
 	"github.com/tobby-fetch/tobby-fetch/internal/buildinfo"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/diag"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
@@ -43,6 +44,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/relocate"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/server"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -76,12 +78,28 @@ func newServeCmd() *cobra.Command {
 // caller sets it.
 var serveHook func(*server.Server)
 
+// stateExpectations says which identity entries of the state directory this
+// configuration depends on (FR-097).
+func stateExpectations(cfg *config.Config) statedir.Expect {
+	return statedir.Expect{
+		Accounts:     !cfg.Auth.Disabled,
+		Certificate:  cfg.Server.TLS.Serves() && cfg.Server.TLS.CertFile == "",
+		ImportRecord: cfg.Zone != "",
+	}
+}
+
 func runServe(ctx context.Context, cfg *config.Config) error {
 	level, err := logging.ParseLevel(cfg.Logging.Level)
 	if err != nil {
 		return err
 	}
 	logger := logging.New(os.Stdout, level)
+	// The bounded window of recent records the diagnostic bundle carries
+	// (FR-095, diagnostics.logRecords): a second sink of the same schema,
+	// in memory only. Everything derived from this logger — the task
+	// loggers, the audit trail — reaches it.
+	window := diag.NewWindow(cfg.Diagnostics.LogRecords)
+	logger = logging.Tee(logger, logging.New(window, level))
 
 	logger.LogAttrs(ctx, slog.LevelInfo, "tobby starting",
 		slog.String("version", buildinfo.Version()),
@@ -112,6 +130,23 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// Authentication state (R-01): without the explicit FR-075 opt-out, the
 	// instance refuses to start until a local account exists — no surface is
 	// ever exposed open.
+	// The state directory (FR-097, R-27): layout version and permissions of
+	// the secret entries are checked before anything reads from it, and an
+	// identity entry a restore left behind is reported — the instance still
+	// starts, as what it can be without it.
+	if cfg.State.Root != "" {
+		rep, serr := statedir.Prepare(cfg.State.Root, stateExpectations(cfg), buildinfo.Version())
+		if serr != nil {
+			return serr
+		}
+		for _, missing := range rep.Missing {
+			logger.LogAttrs(ctx, slog.LevelWarn, "state directory entry missing",
+				slog.String("code", string(taxonomy.CodeStateIdentityMissing)),
+				slog.String("entry", missing),
+				slog.String("action", "restore it from the same backup if this instance was restored, then restart"),
+				slog.String("requirement", "FR-097"))
+		}
+	}
 	var accounts *auth.Store
 	if !cfg.Auth.Disabled {
 		if cfg.State.Root == "" {
@@ -126,6 +161,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		}
 	}
 	reg := metrics.New()
+	reg.SetSyncParallelism(cfg.Sync.Parallelism)
 	authMetrics := metrics.RegisterAuth(reg)
 	sessions := auth.NewSessions(time.Duration(cfg.Auth.SessionTTL))
 	authn := &auth.Authenticator{
@@ -182,6 +218,16 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			slog.String("requirement", "FR-082"))
 	}
 
+	// The certificate's end of life, read at every scrape so a replacement
+	// is followed without a restart (R-11).
+	reg.SetServerCertificate(func() (time.Time, bool) {
+		c, cerr := tlsadmin.Describe(serverCert)
+		if cerr != nil || c == nil {
+			return time.Time{}, false
+		}
+		return c.NotAfter, true
+	})
+
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
@@ -211,6 +257,15 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		logger.LogAttrs(ctx, slog.LevelInfo, "operation log written onto the medium",
 			slog.String("path", mediaLog.Path()),
 			slog.String("requirement", "FR-053/FR-056"))
+	}
+
+	// Clock plausibility (FR-096, R-32): checked once at startup against the
+	// build time of this binary, again each time a medium is verified. The
+	// verdict is warned about on every channel and changes no behaviour.
+	clockMon := newClockMonitor(cfg, reg, func() *slog.Logger { return logger })
+	if rec, ok := clockMon.CheckBuild(); ok && !rec.Implausible {
+		logger.LogAttrs(ctx, slog.LevelDebug, "clock plausible against the build time of this binary",
+			slog.Time("now", rec.Now.UTC()), slog.String("requirement", "FR-096"))
 	}
 
 	st, err := store.Open(ctx, cfg.Storage.Root, logger)
@@ -355,7 +410,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if resumer.Threshold() > 0 {
 		logger.LogAttrs(ctx, slog.LevelInfo, "large transfers are resumable",
 			slog.String("threshold", cfg.Transfer.ResumeThreshold.String()),
-			slog.String("partials", filepath.Join(cfg.State.Root, "partials")),
+			slog.String("partials", statedir.Path(cfg.State.Root, statedir.Partials)),
 			slog.String("requirement", "FR-029"))
 	} else {
 		logger.LogAttrs(ctx, slog.LevelInfo, "large transfers are not resumable",
@@ -384,7 +439,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	remotes.SetResumer(blobfetch.New(egress, remotes.Keychain(), cfg.State.Root, cfg.Transfer.ResumeThreshold))
 	trustCache := ""
 	if cfg.State.Root != "" {
-		trustCache = filepath.Join(cfg.State.Root, "trust-cache")
+		trustCache = statedir.Path(cfg.State.Root, statedir.TrustCache)
 	}
 	trust, err := engine.LoadTrust(cfg.Trust, trustCache, egress)
 	if err != nil {
@@ -483,12 +538,20 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
+	if cfg.Zone != "" {
+		if err := imports.Ensure(); err != nil {
+			return err
+		}
+	}
 	eng.SetMediaImport(cfg.Zone, imports)
 	// FR-054: every verification this engine performs reaches the serving
 	// gate, and the gate's own Verify step is this engine. One funnel in
 	// each direction, so no surface can reach a verdict the gate does not
 	// hear, and no screen can open the gate by any other means.
-	eng.SetMediaVerdicts(mediaGate.Observe)
+	eng.SetMediaVerdicts(func(rep *media.Report) {
+		mediaGate.Observe(rep)
+		observeMediumClock(clockMon, rep)
+	})
 
 	// FR-037 (R-22): how many recipes this instance holds under reduced
 	// assurance, per declared scope, read from the recipe graph at every
@@ -539,6 +602,25 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		reg.ObserveIntegrityVerification(string(rep.Verdict), rep.FinishedAt)
 	})
 	integritySvc.Register()
+
+	// The diagnostic bundle (FR-095, R-30) and the state inventory
+	// (FR-097): one service behind the screen, the API and — through the
+	// API — the command line, so their archives and their audit trail are
+	// the same.
+	diagSvc := (&diag.Service{
+		Secrets: diagSecrets(cfg),
+		Sources: (&instanceSources{
+			cfg: cfg, window: window, reg: reg, queue: queue, integrity: integritySvc.Latest,
+		}).sources(),
+		Tasks:   cfg.Diagnostics.Tasks,
+		Logger:  logger,
+		Metrics: reg,
+	})
+	var inspectState func() (*statedir.Inventory, error)
+	if cfg.State.Root != "" {
+		root := cfg.State.Root
+		inspectState = func() (*statedir.Inventory, error) { return statedir.Inspect(root) }
+	}
 	eng.SetDestination(destination)
 	if destination != nil {
 		logger.LogAttrs(ctx, slog.LevelInfo, "promotion destination configured",
@@ -556,7 +638,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	refreshFileSets(ctx)
 	queue.Register(tasks.TypeSync, func(runCtx context.Context, t *tasks.Task, taskLogger *slog.Logger, save func()) error {
+		started := time.Now()
 		err := eng.Runner()(runCtx, t, taskLogger, save)
+		reg.ObserveSync(syncRunOf(t, err, started, time.Now()))
 		refreshFileSets(runCtx)
 		// A cycle may have delivered a new database or scanner binary
 		// (tobby-system): the banner and the metrics follow at once.
@@ -664,6 +748,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	})
 	api.RegisterOCILayout(restAPI, interopSvc, queue)
 	api.RegisterFileSets(restAPI, fileSets)
+	api.RegisterOperations(restAPI, &api.OperationsOptions{Diagnostics: diagSvc, Clock: clockMon, State: inspectState})
 	api.RegisterOpenAPI(restAPI)
 	srv.Handle("/api/v1/", restAPI.Handler())
 
@@ -698,6 +783,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		MediaZone:          eng,
 		MediaGate:          mediaGate,
 		Integrity:          integritySvc,
+		Diagnostics:        diagSvc,
+		Clock:              clockMon,
+		State:              inspectState,
 		Federation:         fed,
 		Scan:               scanning.uiState,
 	})

@@ -84,6 +84,9 @@ possible at all.
 | `POST /admin/oci-layout/plan` | admin | The side-effect-free estimate of the export (FR-055): same selection surface, same floor. |
 | `POST /admin/oci-layout/export` | admin | Writes the store's content to a path on the host filesystem — an administrative capability, not an operator one (FR-051). Audited (FR-094). |
 | `POST /admin/oci-layout/import` | admin | Brings outside bytes into the store (FR-051). Audited (FR-094). |
+| `GET /admin/diagnostics` | admin | The page that offers the diagnostic bundle (FR-095, R-30) and states what the archive holds. |
+| `POST /admin/diagnostics/bundle` | admin | Gathers configuration, recent logs and task reports into one archive; redaction fails closed (`TBY-DIA-002`). Audited with the requester (FR-094). |
+| `GET /admin/state` | admin | The state-directory inventory (FR-097, R-27): every entry of the instance's identity, its class and permissions — never contents. |
 | `GET /admin/store` | admin | What the store holds, and the reset that empties it (FR-046). |
 | `POST /admin/store/reset` | admin | Full store reset, restricted to the admin role by FR-046, behind a typed confirmation and audited (FR-094). |
 | `GET /help`, `GET /about`, `GET /about/third-party`, `GET /api-docs` | viewer | |
@@ -127,6 +130,9 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `GET /api/v1/store/verification` | viewer | the last store verification report — what `GET /integrity` polls |
 | `POST /api/v1/store/verify` | operator | `POST /integrity/verify` |
 | `POST /api/v1/store/verify/cancel` | operator | `POST /integrity/cancel` |
+| `POST /api/v1/diagnostics/bundle` | admin | `POST /admin/diagnostics/bundle` — the archive is the response (FR-095) |
+| `GET /api/v1/clock` | viewer | the clock verdicts of FR-096 — the fact the persistent banner shows every signed-in user |
+| `GET /api/v1/state` | admin | `GET /admin/state` |
 | `GET /api/v1/network` | admin | `GET /admin/network` |
 | `PUT /api/v1/network/certificate` | admin | `POST /admin/network/certificate` |
 | `GET /api/v1/retriever` | admin | `GET /admin/retriever` |

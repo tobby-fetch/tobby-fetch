@@ -4,10 +4,10 @@
 package api
 
 // Routes reserved at the opening of milestone 7, so its tracks mount their
-// endpoints in known places instead of negotiating them. None is
-// registered yet, and none is in openapi.yaml: TestOpenAPICoversEveryRoute
-// holds the document to the registered routes, so a track documents a
-// route in the change that registers it. Every route follows the RBAC
+// endpoints in known places instead of negotiating them. A track registers
+// its routes and documents them in openapi.yaml in the same change:
+// TestOpenAPICoversEveryRoute holds the document to the registered routes.
+// Track B's three are registered by RegisterOperations (operations.go). Every route follows the RBAC
 // matrix (FR-074) and the UI/API parity of FR-061 with the screens of
 // package ui (milestone7.go there).
 const (

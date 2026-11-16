@@ -263,6 +263,11 @@ type Event struct {
 	// Actor. Emitted as "actor_name" only when set (additive to the
 	// schema).
 	ActorName string
+	// Detail is optional free context that is not the target — the gap of
+	// a clock found implausible, for one (FR-096). Emitted as "detail"
+	// only when set (additive to the schema). Never a secret: the same
+	// rule as every field of the trail.
+	Detail string
 }
 
 // Log emits e on logger at INFO level. The timestamp is supplied by the
@@ -280,6 +285,9 @@ func Log(ctx context.Context, logger *slog.Logger, e *Event) {
 	}
 	if e.ActorName != "" {
 		attrs = append(attrs, slog.String("actor_name", e.ActorName))
+	}
+	if e.Detail != "" {
+		attrs = append(attrs, slog.String("detail", e.Detail))
 	}
 	logger.LogAttrs(ctx, slog.LevelInfo, e.Action, attrs...)
 }

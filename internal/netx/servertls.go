@@ -25,6 +25,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/secretfile"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
@@ -37,7 +38,7 @@ const selfSignedValidity = 365 * 24 * time.Hour
 // the state directory — never on the transportable store, where a private
 // key must never travel (R-16, FR-054).
 const (
-	selfSignedDir  = "tls"
+	selfSignedDir  = statedir.TLS
 	selfSignedCert = "self-signed.crt"
 	selfSignedKey  = "self-signed.key"
 	// An adopted pair is written beside the generated one under its own
@@ -227,7 +228,7 @@ func Fingerprint(der []byte) string {
 func newSelfSigned(hosts []string, stateRoot string) (*ServerCert, error) {
 	dir := ""
 	if stateRoot != "" {
-		dir = filepath.Join(stateRoot, selfSignedDir)
+		dir = statedir.Path(stateRoot, selfSignedDir)
 	}
 	if dir != "" {
 		if pair, err := loadPersistedSelfSigned(dir); err == nil {
@@ -277,7 +278,7 @@ func (s *ServerCert) Destination() (certPath, keyPath string, ok bool) {
 	if s.stateRoot == "" {
 		return "", "", false
 	}
-	dir := filepath.Join(s.stateRoot, selfSignedDir)
+	dir := statedir.Path(s.stateRoot, selfSignedDir)
 	return filepath.Join(dir, adoptedCert), filepath.Join(dir, adoptedKey), true
 }
 

@@ -61,8 +61,9 @@ const (
 // ReservedFamilies in the change that registers it. Timestamp gauges are
 // absent until they have measured something — never 0.
 const (
-	// Track B — supervision kit (R-11): the minimum FR-091 names, and what
-	// an alert on staleness needs.
+	// Track B — supervision kit (R-11), clock plausibility (R-32, FR-096)
+	// and the diagnostic bundle (R-30, FR-095): registered in New since
+	// they are fed — see ops.go.
 
 	// MetricSyncRuns counts synchronization runs (mirror trigger or
 	// passthrough cycle): counter, label outcome = success | failure.
@@ -80,16 +81,10 @@ const (
 	// listener presents (FR-082), self-signed fallback included: gauge,
 	// Unix seconds; absent while the listener serves plain HTTP.
 	MetricServerCertificateExpiry = "tobby_server_certificate_expiry_timestamp_seconds"
-
-	// Track B — clock plausibility (R-32, FR-096).
-
 	// MetricClockImplausible is 1 while the local clock was found earlier
 	// than an anchor beyond the tolerance, 0 otherwise: gauge, label
 	// anchor = build | medium.
 	MetricClockImplausible = "tobby_clock_implausible"
-
-	// Track B — diagnostic bundle (R-30, FR-095).
-
 	// MetricDiagnosticsBundles counts diagnostic bundles: counter, label
 	// outcome = written | refused (redaction failed closed) | failed.
 	MetricDiagnosticsBundles = "tobby_diagnostics_bundles_total"
@@ -124,13 +119,7 @@ func ReservedFamilies() []string {
 		// (scan.go, auth.go, integrity.go): nothing of it stays reserved.
 
 		// Milestone 7.
-		MetricSyncRuns,
-		MetricSyncDuration,
-		MetricSyncLastSuccess,
-		MetricSyncIngredients,
-		MetricServerCertificateExpiry,
-		MetricClockImplausible,
-		MetricDiagnosticsBundles,
+		// Track B (R-11, R-32, R-30) registers its families now (ops.go).
 		MetricStoreUnmanaged,
 		MetricHardeningEnabled,
 		MetricScanExceptions,

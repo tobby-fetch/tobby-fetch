@@ -1275,6 +1275,81 @@ paths:
                     $ref: "#/components/schemas/Task"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v1/diagnostics/bundle:
+    post:
+      summary: >-
+        Produce the diagnostic bundle (FR-095, R-30) and return it: one
+        gzip-compressed tar archive holding the version and build, the
+        effective configuration redacted as `tobby config dump` redacts it,
+        the bounded window of recent log records (diagnostics.logRecords)
+        and, on a mirror instance, the tail of the medium's log, the reports
+        of the most recent tasks (diagnostics.tasks), a metrics snapshot,
+        the last on-demand integrity report, the state-directory inventory
+        (names, sizes, modes — never contents) and a MANIFEST.json listing
+        every file with its digest and every member omitted with its
+        reason. The archive is built and checked in memory before the first
+        byte is sent: redaction fails closed, and a member that still holds
+        a secret the instance knows aborts the bundle with 500 TBY-DIA-002
+        (naming the member, never the secret) instead of shipping it. Tobby
+        sends it nowhere (NFR-019): it is the response to this request.
+        Audited (FR-094): a diagnostics.bundle event with the requester and
+        the outcome. Mirror of the /admin/diagnostics screen. Role admin.
+      responses:
+        "200":
+          description: The archive.
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+              description: attachment; filename="tobby-diagnostics-<UTC time>.tar.gz"
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/clock:
+    get:
+      summary: >-
+        The clock-plausibility verdicts of the instance (FR-096, R-32): the
+        local clock compared with the build time of the binary (checked at
+        start) and, once a medium has been opened, with that medium's
+        resolution time, each judged against clock.skewTolerance. An
+        implausible verdict carries TBY-CLK-001 or TBY-CLK-002; Tobby warns
+        and records, it does not correct the clock and it changes no verdict
+        by itself. The same fact the persistent banner shows. A development
+        build carries no build time and yields no build verdict. Role
+        viewer.
+      responses:
+        "200":
+          description: The latest verdict per anchor.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClockStatus"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v1/state:
+    get:
+      summary: >-
+        The inventory of the instance state directory (FR-097, R-27):
+        every documented entry with its class (identity, to be backed up, or
+        discardable), whether it is secret, whether it is present, its size
+        and its permissions — and whatever else is found there. Names,
+        sizes and modes only; never the content of any entry. The same
+        document `tobby state inspect` prints and the diagnostic bundle
+        records. A problem document (TBY-CFG-001) when the instance runs
+        without a state directory. Mirror
+        of the /admin/state screen. Role admin.
+      responses:
+        "200":
+          description: The inventory.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateInventory"
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     basicAuth:
@@ -3153,3 +3228,90 @@ components:
       properties:
         files: { type: integer }
         bytes: { type: integer, format: int64 }
+    ClockStatus:
+      type: object
+      description: The clock verdicts (FR-096).
+      required: [now, verdicts]
+      properties:
+        now:
+          type: string
+          format: date-time
+          description: The local clock when answering.
+        verdicts:
+          type: array
+          description: >-
+            One entry per anchor already checked; empty on a build that
+            carries no build time until a medium has been opened.
+          items:
+            type: object
+            required: [anchor, anchor_time, now, gap_seconds, tolerance_seconds, implausible]
+            properties:
+              anchor:
+                type: string
+                enum: [build, medium]
+              medium:
+                type: string
+                description: The medium of a "medium" verdict.
+              anchor_time:
+                type: string
+                format: date-time
+                description: The date the clock was compared with.
+              now:
+                type: string
+                format: date-time
+                description: The local clock when the comparison was made.
+              gap_seconds:
+                type: integer
+                format: int64
+                description: >-
+                  How far the clock is behind the anchor; zero or negative
+                  when it is not.
+              tolerance_seconds: { type: integer, format: int64 }
+              implausible: { type: boolean }
+              code:
+                type: string
+                enum: [TBY-CLK-001, TBY-CLK-002]
+                description: Present when implausible.
+    StateInventory:
+      type: object
+      description: The state-directory inventory (FR-097). Never contents.
+      required: [root, layout, supported, items]
+      properties:
+        root: { type: string }
+        layout:
+          type: integer
+          description: The layout version recorded in the directory; 0 when none.
+        supported:
+          type: integer
+          description: The layout version this build writes.
+        items:
+          type: array
+          items:
+            type: object
+            required: [name, kind, secret, documented, present, size]
+            properties:
+              name: { type: string }
+              kind: { type: string, enum: [file, dir] }
+              class:
+                type: string
+                enum: [identity, discardable]
+                description: Absent for an entry the layout does not document.
+              secret: { type: boolean }
+              purpose: { type: string }
+              documented: { type: boolean }
+              present: { type: boolean }
+              size: { type: integer, format: int64 }
+              files:
+                type: integer
+                description: Files under a directory entry.
+              mode:
+                type: string
+                description: >-
+                  The Unix permission, or the ACL verdict on Windows.
+              access:
+                type: string
+                enum: [owner, group, broad]
+                description: >-
+                  Who besides the owner can read a secret entry. "broad"
+                  refuses the start (TBY-STA-002).
+              modified: { type: string, format: date-time }

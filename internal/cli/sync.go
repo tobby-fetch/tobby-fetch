@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"path/filepath"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -20,6 +19,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 	"github.com/tobby-fetch/tobby-fetch/internal/ui/format"
@@ -195,7 +195,7 @@ func runPlan(cmd *cobra.Command, cfg *config.Config, f planFlags) error {
 	remotes.SetResumer(blobfetch.New(egress, remotes.Keychain(), cfg.State.Root, cfg.Transfer.ResumeThreshold))
 	trustCache := ""
 	if cfg.State.Root != "" {
-		trustCache = filepath.Join(cfg.State.Root, "trust-cache")
+		trustCache = statedir.Path(cfg.State.Root, statedir.TrustCache)
 	}
 	trust, err := engine.LoadTrust(cfg.Trust, trustCache, egress)
 	if err != nil {

@@ -1,0 +1,46 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /admin/diagnostics — the diagnostic bundle (FR-095, R-30): one local,
+     redacted archive an administrator hands to support. The page says what
+     it holds and what it will not do (send it anywhere, NFR-019) before
+     offering the gesture. The form posts and the response is the download:
+     boost is off, since an htmx swap cannot receive a file. */}}
+{{define "title"}}{{.T "diagnostics.section_title"}}{{end}}
+{{define "main"}}
+<section>
+  {{template "admin-subnav" .}}
+  <h1 class="t-page-title">{{.T "diagnostics.section_title"}}</h1>
+  <p class="t-page-sub">{{.T "diagnostics.subtitle"}}</p>
+
+  {{if .Err}}{{template "error-block" .}}{{end}}
+
+  <div class="t-card">
+    <h2 class="t-kick">{{.T "diagnostics.members_title"}}</h2>
+    <ul>
+      <li>{{.T "diagnostics.m_version"}}</li>
+      <li>{{.T "diagnostics.m_config"}}</li>
+      <li>{{.T "diagnostics.m_logs"}}</li>
+      <li>{{.T "diagnostics.m_medialog"}}</li>
+      <li>{{.T "diagnostics.m_tasks"}}</li>
+      <li>{{.T "diagnostics.m_metrics"}}</li>
+      <li>{{.T "diagnostics.m_integrity"}}</li>
+      <li>{{.T "diagnostics.m_state"}}</li>
+      <li>{{.T "diagnostics.m_manifest"}}</li>
+    </ul>
+    <p class="t-muted t-note">{{.T "diagnostics.redaction_note"}}</p>
+    <p class="t-muted t-note">{{.T "diagnostics.local_only"}}</p>
+  </div>
+
+  {{if .Data.Available}}
+  <form class="t-form t-card" method="post" action="/admin/diagnostics/bundle" hx-boost="false">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <p>{{.T "diagnostics.generate_help"}}</p>
+    <div class="t-row">
+      <button type="submit" class="t-btn t-btn--primary">{{.T "diagnostics.generate_action"}}</button>
+    </div>
+  </form>
+  {{else}}
+  <p class="t-muted t-note">{{.T "diagnostics.unavailable"}}</p>
+  {{end}}
+  <p class="t-muted t-note">{{.T "diagnostics.cli_hint"}}</p>
+</section>
+{{end}}

@@ -905,3 +905,36 @@ func ReadAll(storeRoot string) ([]*Task, error) {
 	}
 	return out, nil
 }
+
+// Load reads the task records of the store at storeRoot without opening a
+// queue: nothing is written, no interrupted task is marked resumed, no
+// retention is applied. It is how a command on the host reads the history
+// of a store (the diagnostic bundle, FR-095) beside — or without — a
+// running instance. Newest first; a file that cannot be parsed is skipped.
+func Load(storeRoot string) ([]*Task, error) {
+	dir := filepath.Join(storeRoot, tasksDir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("tasks: reading %s: %w", dir, err)
+	}
+	var out []*Task
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // G304: enumerated task files under the store
+		if err != nil {
+			continue
+		}
+		var t Task
+		if json.Unmarshal(raw, &t) != nil || t.ID == "" {
+			continue
+		}
+		out = append(out, &t)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Created.After(out[j].Created) })
+	return out, nil
+}

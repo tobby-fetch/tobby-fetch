@@ -12,6 +12,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/clock"
 	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
@@ -19,6 +20,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -99,6 +101,11 @@ type UI struct {
 	mediaGate *mediagate.Gate
 	// integrity runs the on-demand store verification (FR-057, R-31).
 	integrity IntegrityVerifier
+	// diagnostics backs the diagnostic bundle screen (FR-095, R-30);
+	// state backs the state-directory inventory (FR-097, R-27). Nil on an
+	// instance wired without them: the screen then says so.
+	diagnostics BundleGenerator
+	state       func() (*statedir.Inventory, error)
 	// Now injects time in tests.
 	Now func() time.Time
 }
@@ -195,6 +202,14 @@ type Options struct {
 	// cannot verify.
 	Integrity IntegrityVerifier
 
+	// Diagnostics, Clock and State back the operations screens of
+	// milestone 7 (R-30, R-32, R-27) — the services the API mirrors read,
+	// so screen and endpoint answer alike (FR-061). Clock feeds the
+	// persistent banner of an implausible clock (FR-096).
+	Diagnostics BundleGenerator
+	Clock       *clock.Monitor
+	State       func() (*statedir.Inventory, error)
+
 	// Federation is the federated sign-in (FR-070, FR-071, FR-078): the
 	// provider buttons of the sign-in page and the /auth/ round trips
 	// (MountFederation). Nil offers local sign-in only.
@@ -220,6 +235,7 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		render.Occupancy = opts.Occupancy.Current
 	}
 	render.Scan = opts.Scan
+	render.Clock = opts.Clock
 	return &UI{
 		render:            render,
 		authn:             authn,
@@ -249,6 +265,8 @@ func New(authn *auth.Authenticator, logger *slog.Logger, opts *Options) *UI {
 		mediaZone:         opts.MediaZone,
 		mediaGate:         opts.MediaGate,
 		integrity:         opts.Integrity,
+		diagnostics:       opts.Diagnostics,
+		state:             opts.State,
 		federation:        opts.Federation,
 	}
 }
@@ -395,6 +413,14 @@ func (u *UI) Mount(rt Router) {
 	mux.Handle("POST /admin/oci-layout/plan", admin(u.layoutEstimate))
 	mux.Handle("POST /admin/oci-layout/export", admin(u.layoutExport))
 	mux.Handle("POST /admin/oci-layout/import", admin(u.layoutImport))
+	// Operations (FR-095, FR-097; R-30, R-27): the diagnostic bundle and the
+	// state-directory inventory. Admin on both — the first gathers logs and
+	// configuration into one archive, the second names every file of the
+	// instance's identity. The API mirrors are POST /api/v1/diagnostics/bundle
+	// and GET /api/v1/state.
+	mux.Handle("GET "+PathDiagnostics, admin(u.adminDiagnostics))
+	mux.Handle("POST "+PathDiagnosticsBundle, admin(u.adminDiagnosticsBundle))
+	mux.Handle("GET "+PathState, admin(u.adminState))
 	mux.Handle("GET /admin/store", admin(u.storeScreen))
 	mux.Handle("POST /admin/store/reset", admin(u.storeReset))
 	mux.Handle("GET /help", app(u.helpScreen))
