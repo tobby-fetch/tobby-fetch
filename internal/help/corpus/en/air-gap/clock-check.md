@@ -16,8 +16,16 @@ clock against them.
 
 | Anchor | Where it comes from | Checked |
 |---|---|---|
-| **The build** | The build time of the binary (`SOURCE_DATE_EPOCH` of the reproducible build). | At startup. |
-| **The medium** | The resolution time written in the medium's manifest. | Every time a medium is verified or imported — `tobby media verify`, `tobby media import`, the Media screen, the API. |
+| **The build** | The build time of the binary (`SOURCE_DATE_EPOCH` of the reproducible build). | At startup, then again every five minutes while the instance runs. |
+| **The medium** | The resolution time written in the medium's manifest — the **latest** among the media verified since the start. | Every time a medium is verified or imported — `tobby media verify`, `tobby media import`, the Media screen, the API — then again every five minutes. |
+
+A date proven passed stays proven: opening an older medium next, or one whose
+manifest carries no resolution time, does not replace the anchor of a later
+one, so it cannot hide a gap already found. A medium whose verification
+**blocked** is no anchor at all — the block may be its signature failing, and
+a date read from such a manifest is not believed. The periodic re-judgment
+catches a clock set back while the instance runs, and clears the warning once
+the clock is put right.
 
 A local clock **earlier** than an anchor by more than `clock.skewTolerance`
 (default `1h`, between `0` and `7d`) is **implausible**. The tolerance absorbs
@@ -35,8 +43,9 @@ nothing else**:
   (build) or [`TBY-CLK-002`](../../reference/errors/#tby-clk-002) (medium,
   naming it), the gap and the tolerance.
 - **A banner** on every page of the interface, naming the code, the local time,
-  the gap and the anchor. It is read at each page: it disappears by itself when
-  a later check is plausible, with no dismissal and no restart.
+  the gap and the anchor. It is read at each page: it disappears by itself once
+  the clock is no longer behind the anchors — at the next re-judgment — with no
+  dismissal and no restart.
 - **The command line**: `tobby media verify` and `tobby media import` print the
   warning on the error output — the report on the standard output stays the
   report — and the verdict is unchanged.
@@ -45,8 +54,8 @@ nothing else**:
 - **The audit log**: a `clock.implausible` event, whose target is `build` or the
   medium and whose detail carries the gap, the tolerance and the code.
 
-`GET /api/v1/clock` returns the latest verdict of each anchor to any signed-in
-role.
+`GET /api/v1/clock` returns the current verdict of each anchor to any
+signed-in role.
 
 ## What it does not do
 
@@ -61,6 +70,6 @@ misleading in the other direction, which is why the warning names the medium.
 ## What to do
 
 Check the host's clock against a trusted reference of the zone — a local time
-server, or a hand-set value from a trusted source — then restart for the build
-check or verify the medium again. If the **medium** is the one in advance, the
+server, or a hand-set value from a trusted source. The warning clears by itself
+within five minutes; no restart is needed. If the **medium** is the one in advance, the
 source zone's clock is the suspect: say so to whoever produced it.

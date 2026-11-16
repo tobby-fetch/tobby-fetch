@@ -260,14 +260,17 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			slog.String("requirement", "FR-053/FR-056"))
 	}
 
-	// Clock plausibility (FR-096, R-32): checked once at startup against the
-	// build time of this binary, again each time a medium is verified. The
-	// verdict is warned about on every channel and changes no behaviour.
+	// Clock plausibility (FR-096, R-32): checked at startup against the
+	// build time of this binary, each time a medium is verified, and again
+	// against both anchors at the pace of the store occupancy sample — a
+	// clock set back while the instance runs is caught too. The verdict is
+	// warned about on every channel and changes no behaviour.
 	clockMon := newClockMonitor(cfg, reg, func() *slog.Logger { return logger })
 	if rec, ok := clockMon.CheckBuild(); ok && !rec.Implausible {
 		logger.LogAttrs(ctx, slog.LevelDebug, "clock plausible against the build time of this binary",
 			slog.Time("now", rec.Now.UTC()), slog.String("requirement", "FR-096"))
 	}
+	go clockMon.Run(ctx, store.OccupancySampleEvery)
 
 	st, err := store.Open(ctx, cfg.Storage.Root, logger)
 	if err != nil {

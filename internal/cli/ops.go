@@ -39,9 +39,13 @@ func newClockMonitor(cfg *config.Config, reg *metrics.Registry, logger func() *s
 }
 
 // observeMediumClock judges the clock against the medium a verification
-// report describes (FR-096). A report without a manifest has no anchor.
+// report describes (FR-096). A report without a manifest has no anchor,
+// and a blocked one has none worth believing: the block may be the
+// manifest's signature or trust failing, and a date read from such a
+// manifest must neither raise a banner nor become the anchor later media
+// are judged against.
 func observeMediumClock(mon *clock.Monitor, rep *media.Report) {
-	if mon == nil || rep == nil || rep.Media == nil {
+	if mon == nil || rep == nil || rep.Media == nil || rep.Verdict == media.VerdictBlocked {
 		return
 	}
 	mon.CheckMedium(rep.Media.MediaID, rep.Media.ResolvedAt)

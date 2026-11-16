@@ -101,7 +101,7 @@
     {
       "name": "tobby_clock_implausible",
       "type": "gauge",
-      "help": "1 while the local clock was found earlier than an anchor beyond clock.skewTolerance, 0 otherwise, by anchor: build (checked at start) or medium (once one has been opened) (FR-096).",
+      "help": "1 while the local clock was found earlier than an anchor beyond clock.skewTolerance, 0 otherwise, by anchor: build (checked at start, then periodically) or medium (the latest resolution time among the media opened since the start) (FR-096).",
       "labels": [
         {
           "name": "anchor",

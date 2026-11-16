@@ -106,7 +106,7 @@ func newOps(reg *prometheus.Registry) *ops {
 		ingredientsDesc: prometheus.NewDesc(MetricSyncIngredients,
 			"Ingredients of the last synchronization run by status (FR-026): new, outdated, up_to_date; absent until a run has completed.", []string{"status"}, nil),
 		clockDesc: prometheus.NewDesc(MetricClockImplausible,
-			"1 while the local clock was found earlier than an anchor beyond clock.skewTolerance, 0 otherwise, by anchor: build (checked at start) or medium (once one has been opened) (FR-096).", []string{"anchor"}, nil),
+			"1 while the local clock was found earlier than an anchor beyond clock.skewTolerance, 0 otherwise, by anchor: build (checked at start, then periodically) or medium (the latest resolution time among the media opened since the start) (FR-096).", []string{"anchor"}, nil),
 		certDesc: prometheus.NewDesc(MetricServerCertificateExpiry,
 			"NotAfter of the certificate the listener presents, in Unix seconds, self-signed fallback included; absent while the listener serves plain HTTP (FR-082).", nil, nil),
 	}
