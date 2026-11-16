@@ -484,6 +484,20 @@ La [référence CLI](../../reference/cli/) — commandes, drapeaux, contrat
   résolu. Republier le document identique est un no-op, pas cette erreur.
 - **Remédiable hors-ligne :** non (une nouvelle version signée vient de la chaîne de qualification) · **Bloque :** la publication seulement (classe politique, sortie 3) ; jamais dérogeable
 
+### TBY-POL-005
+
+- **Quoi :** Cette instance n'accepte pas d'import unitaire.
+- **Cause probable :** Elle est durcie par `<setting>` : le contenu n'entre dans son store que par des recipes vérifiées, et un import unitaire ou un empaquetage local serait un contenu qu'aucune recipe ne garantit.
+- **Action corrective :** Livrez ce contenu par une recipe signée. Si l'import unitaire est nécessaire sur cette instance, un administrateur retire `<setting>` de sa configuration et la redémarre.
+- **Remédiable hors-ligne :** oui · **Bloque :** l'import ou l'empaquetage ; les synchronisations de recipes ne sont pas concernées · **Statut :** réservé — émis à partir du jalon 7
+
+### TBY-POL-006
+
+- **Quoi :** Ce registre est en lecture seule : les push sont refusés.
+- **Cause probable :** L'instance est durcie par `<setting>` : sa registry embarquée sert du contenu et n'en accepte d'aucun client, quel que soit son rôle. Les synchronisations de recipes écrivent toujours dans le store.
+- **Action corrective :** Tirez depuis ce registre, ou poussez vers la registry de la zone. Alimenter cette instance par push exige qu'un administrateur retire `<setting>` et la redémarre.
+- **Remédiable hors-ligne :** oui · **Bloque :** le push ; les tirages et les synchronisations de recipes ne sont pas concernés · **Statut :** réservé — émis à partir du jalon 7
+
 ## Vérification des signatures et digests (TBY-SIG)
 
 ### TBY-SIG-001
@@ -626,6 +640,27 @@ Réservés à l'ouverture du jalon 6 (FR-031, FR-032) : la politique est consult
 - **Cause probable :** C'est une livraison de l'analyseur lui-même. La refuser au nom de la politique qu'elle arme laisserait la zone sans moyen d'armer un analyseur, ni de mettre à jour sa base.
 - **Action corrective :** Rien à faire. Ses vulnérabilités restent rapportées ; la confiance dans ce contenu repose sur la signature de la recipe tobby-system.
 - **Remédiable hors-ligne :** oui · **Bloque :** rien
+
+### TBY-SCN-026
+
+- **Quoi :** La dérogation pour `<id>` ne couvre pas `<reference>`.
+- **Cause probable :** La dérogation est limitée à `<scope>`, et cet élément est hors de cette portée : la vulnérabilité est jugée comme si aucune dérogation n'existait.
+- **Action corrective :** Rien à faire si la portée est la bonne. Si cet élément devait être couvert, élargissez la portée de la dérogation dans la configuration — elle reste bornée par son expiration.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien par lui-même — la vulnérabilité est jugée sans la dérogation · **Statut :** réservé — émis à partir du jalon 7
+
+### TBY-SCN-027
+
+- **Quoi :** Le document OpenVEX `<path>` est inutilisable.
+- **Cause probable :** `<detail>`
+- **Action corrective :** Corrigez ou retirez le document listé sous scan.vex, puis redémarrez. Tobby lit les documents OpenVEX et ne les télécharge jamais : le fichier doit être un document local valide.
+- **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance · **Statut :** réservé — émis à partir du jalon 7
+
+### TBY-SCN-028
+
+- **Quoi :** La dérogation du Retriever pour `<id>` n'a pas d'expiration.
+- **Cause probable :** Elle s'applique, mais sans limite dans le temps : les dérogations déclarées par une instance doivent porter une expiration, et celles des Retrievers le devront aussi à partir du format v1.
+- **Action corrective :** Demandez au responsable du Retriever de la zone de donner à la dérogation une date expires et une justification.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien — la dérogation s'applique et est signalée sans limite · **Statut :** réservé — émis à partir du jalon 7
 
 ## Limites de la destination (TBY-DST)
 
@@ -1093,6 +1128,78 @@ qu'un refus qui nomme l'entrée fautive.
   `files.packRoots` dans le fichier de configuration puis redémarrez
   l'instance.
 - **Corrigeable hors ligne :** oui · **Bloque :** l'empaquetage concerné ; rien n'est écrit
+
+## Aides à la consommation (TBY-AID)
+
+La table de correspondance et l'extrait `registries.yaml` de FR-065 : générés depuis ce que contient le store, pour la registry depuis laquelle la zone tire.
+
+### TBY-AID-001
+
+- **Quoi :** Aucune aide à la consommation ne peut être générée : cette instance ne nomme aucune registry depuis laquelle la zone tire.
+- **Cause probable :** La table de correspondance et l'extrait registries.yaml pointent vers la registry de la zone. Cette instance ne pousse vers aucune destination.registry, et consumption.registry n'est pas renseigné.
+- **Action corrective :** Renseignez destination.registry si cette instance pousse vers la registry de la zone, ou consumption.registry avec l'adresse depuis laquelle les clients de la zone tirent — cette instance elle-même quand elle sert la zone.
+- **Remédiable hors-ligne :** oui · **Bloque :** la génération de l'aide · **Statut :** réservé — émis à partir du jalon 7
+
+## Bundle de diagnostic (TBY-DIA)
+
+L'archive locale et expurgée de FR-095. L'expurgation échoue fermée : un bundle qui porterait un secret n'est pas écrit.
+
+### TBY-DIA-001
+
+- **Quoi :** Le bundle de diagnostic n'a pas pu être produit.
+- **Cause probable :** `<detail>`
+- **Action corrective :** Réessayez ; en cas de nouvel échec, collectez les journaux de l'instance par les moyens du déploiement. Rien n'a été écrit ni envoyé : un bundle est uniquement local.
+- **Remédiable hors-ligne :** oui · **Bloque :** le bundle · **Statut :** réservé — émis à partir du jalon 7
+
+### TBY-DIA-002
+
+- **Quoi :** Le bundle de diagnostic a été retenu : `<member>` contenait encore un secret.
+- **Cause probable :** Avant de livrer un bundle, Tobby cherche dans chaque membre les valeurs secrètes qu'il connaît. L'une d'elles a été trouvée : le bundle n'a pas été écrit plutôt que de l'être avec elle.
+- **Action corrective :** Signalez ce défaut aux mainteneurs de Tobby avec le nom du membre — jamais avec le bundle. En attendant, collectez les informations à la main.
+- **Remédiable hors-ligne :** oui · **Bloque :** le bundle — jamais livré avec un secret dedans · **Statut :** réservé — émis à partir du jalon 7
+
+## Cohérence d'horloge (TBY-CLK)
+
+FR-096 : l'horloge locale confrontée à des repères que l'instance détient sans aucun réseau. Ces codes avertissent et consignent ; ils ne changent aucun verdict.
+
+### TBY-CLK-001
+
+- **Quoi :** L'horloge locale indique `<now>`, une date antérieure à la construction de ce binaire (`<anchor>`).
+- **Cause probable :** L'horloge retarde de `<gap>` sur une date que ce binaire prouve passée. Les expirations, les contrôles de fraîcheur et la validité des certificats sont jugés sur cette horloge.
+- **Action corrective :** Réglez l'horloge de l'hôte (source de temps de la zone, ou à la main depuis une référence de confiance), puis redémarrez. Tobby avertit et consigne ; il ne corrige pas l'horloge.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien — un avertissement, consigné au journal d'audit · **Statut :** réservé — émis à partir du jalon 7
+
+### TBY-CLK-002
+
+- **Quoi :** L'horloge locale indique `<now>`, une date antérieure à la production du support `<medium>` (`<anchor>`).
+- **Cause probable :** Le support a été résolu `<gap>` après l'heure que croit avoir cet hôte : l'une des deux horloges est fausse, et les contrôles de fraîcheur et d'expiration en dépendent.
+- **Action corrective :** Vérifiez l'horloge de cet hôte contre une référence de confiance avant de vous fier aux verdicts d'expiration et de fraîcheur. Tobby avertit et consigne ; il ne corrige pas l'horloge.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien — un avertissement, consigné au journal d'audit · **Statut :** réservé — émis à partir du jalon 7
+
+## Répertoire d'état de l'instance (TBY-STA)
+
+FR-097 : le répertoire d'état normé — la cible de sauvegarde d'une instance, en plus de son store — vérifié au démarrage.
+
+### TBY-STA-001
+
+- **Quoi :** L'instance refuse de démarrer : le répertoire d'état `<root>` a une organisation inconnue (`<version>`).
+- **Cause probable :** Il a été écrit par une autre version de Tobby, ou ce n'est pas un répertoire d'état de Tobby.
+- **Action corrective :** Démarrez la version qui l'a écrit, ou restaurez le répertoire d'état depuis une sauvegarde faite avec cette version. L'organisation documentée est le contrat de sauvegarde.
+- **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance · **Statut :** réservé — émis à partir du jalon 7
+
+### TBY-STA-002
+
+- **Quoi :** L'instance refuse de démarrer : `<path>` est lisible par tous les utilisateurs de l'hôte (mode `<mode>`).
+- **Cause probable :** C'est une entrée secrète du répertoire d'état — empreintes de mots de passe ou de jetons, clé privée — que Tobby crée pour son seul propriétaire. Un mode plus large vient en général d'une restauration qui n'a pas conservé les droits.
+- **Action corrective :** Retirez l'accès des autres utilisateurs (chmod o-rwx sous Unix ; sous Windows, retirez Tout le monde et Utilisateurs de sa liste d'accès), vérifiez qui a pu la lire entre-temps, puis redémarrez. L'accès de groupe accordé par le volume (fsGroup Kubernetes) est toléré.
+- **Remédiable hors-ligne :** oui · **Bloque :** le démarrage de l'instance · **Statut :** réservé — émis à partir du jalon 7
+
+### TBY-STA-003
+
+- **Quoi :** Le répertoire d'état ne contient pas `<entry>`.
+- **Cause probable :** Une entrée d'identité manque — en général après une restauration incomplète. L'instance démarre sans elle, et se comporte comme une instance neuve pour ce qu'elle contenait.
+- **Action corrective :** Si cette instance a été restaurée, restaurez l'entrée manquante depuis la même sauvegarde et redémarrez ; sinon, rien à faire.
+- **Remédiable hors-ligne :** oui · **Bloque :** rien par lui-même — l'instance démarre sans l'entrée · **Statut :** réservé — émis à partir du jalon 7
 
 ## Tâches (TBY-TSK)
 

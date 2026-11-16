@@ -442,6 +442,20 @@ its published rendering.
   twice is a no-op, not this error.
 - **Fixable offline:** no (a new signed version comes from the authoring pipeline) · **Blocks:** the publication only (policy class, exit 3); never overridable
 
+### TBY-POL-005
+
+- **What happened:** This instance does not accept unit imports.
+- **Probable cause:** It is hardened with `<setting>`: content enters its store through verified recipes only, and a unit import or a local packing would be content no recipe vouches for.
+- **Corrective action:** Deliver the content through a signed recipe. If unit imports are needed on this instance, an administrator removes `<setting>` from its configuration and restarts it.
+- **Fixable offline:** yes · **Blocks:** the import or packing; recipe synchronizations are unaffected · **Status:** reserved — emitted from milestone 7
+
+### TBY-POL-006
+
+- **What happened:** This registry is read-only: pushes are refused.
+- **Probable cause:** The instance is hardened with `<setting>`: its embedded registry serves content and accepts none from clients, whatever their role. Recipe synchronizations still write to the store.
+- **Corrective action:** Pull from this registry, or push to the zone registry instead. Seeding this instance by push requires an administrator to remove `<setting>` and restart it.
+- **Fixable offline:** yes · **Blocks:** the push; pulls and recipe synchronizations are unaffected · **Status:** reserved — emitted from milestone 7
+
 ## Signature and digest verification (TBY-SIG)
 
 ### TBY-SIG-001
@@ -583,6 +597,27 @@ Reserved at the opening of milestone 6 (FR-031, FR-032): the policy is advisory 
 - **Probable cause:** It is the scanner's own delivery. Refusing it with the policy it arms would leave the zone unable to arm a scanner, or to update its database.
 - **Corrective action:** Nothing to do. Its findings stay reported; the trust in this content rests on the tobby-system recipe's signature.
 - **Fixable offline:** yes · **Blocks:** nothing
+
+### TBY-SCN-026
+
+- **What happened:** The exception for `<id>` does not cover `<reference>`.
+- **Probable cause:** The exception is scoped to `<scope>`, and this item lies outside that scope: the finding is judged as if no exception existed.
+- **Corrective action:** Nothing to do if the scope is right. If this item was meant to be covered, widen the exception's scope in the configuration — it stays bounded by its expiry.
+- **Fixable offline:** yes · **Blocks:** nothing by itself — the finding is judged without the exception · **Status:** reserved — emitted from milestone 7
+
+### TBY-SCN-027
+
+- **What happened:** The OpenVEX document `<path>` cannot be used.
+- **Probable cause:** `<detail>`
+- **Corrective action:** Fix or remove the document listed under scan.vex, then restart. Tobby reads OpenVEX documents and never fetches them: the file must be a valid local document.
+- **Fixable offline:** yes · **Blocks:** the start of the instance · **Status:** reserved — emitted from milestone 7
+
+### TBY-SCN-028
+
+- **What happened:** The Retriever exception for `<id>` has no expiry.
+- **Probable cause:** It applies, but it is unbounded in time: exceptions declared by an instance must carry an expiry, and Retrievers will too from the v1 format on.
+- **Corrective action:** Ask the owner of the zone's Retriever to give the exception an expires date and a justification.
+- **Fixable offline:** yes · **Blocks:** nothing — the exception applies and is reported as unbounded · **Status:** reserved — emitted from milestone 7
 
 ## Destination limits (TBY-DST)
 
@@ -1023,6 +1058,78 @@ directory it came from would be worse than a refusal naming the entry.
   filesystem rights, or add the directory to `files.packRoots` in the
   configuration file and restart the instance.
 - **Fixable offline:** yes · **Blocks:** the packing concerned; nothing is written
+
+## Consumption aids (TBY-AID)
+
+The mapping table and the `registries.yaml` snippet of FR-065: generated from what the store holds, for the registry the zone pulls from.
+
+### TBY-AID-001
+
+- **What happened:** No consumption aid can be generated: this instance names no registry the zone pulls from.
+- **Probable cause:** The mapping table and the registries.yaml snippet point at the zone registry. This instance pushes to no destination.registry, and consumption.registry is not set.
+- **Corrective action:** Set destination.registry when this instance pushes to the zone registry, or consumption.registry to the address the zone's clients pull from — this instance itself when it serves the zone.
+- **Fixable offline:** yes · **Blocks:** the generation of the aid · **Status:** reserved — emitted from milestone 7
+
+## Diagnostic bundle (TBY-DIA)
+
+The local, redacted archive of FR-095. Redaction fails closed: a bundle that would carry a secret is not written.
+
+### TBY-DIA-001
+
+- **What happened:** The diagnostic bundle could not be produced.
+- **Probable cause:** `<detail>`
+- **Corrective action:** Retry; if it fails again, collect the instance logs by the means of the deployment. Nothing was written or sent: a bundle is local only.
+- **Fixable offline:** yes · **Blocks:** the bundle · **Status:** reserved — emitted from milestone 7
+
+### TBY-DIA-002
+
+- **What happened:** The diagnostic bundle was withheld: `<member>` still contained a secret.
+- **Probable cause:** Before releasing a bundle, Tobby searches every member for the secret values it knows. One was found, so the bundle was not written rather than written with it.
+- **Corrective action:** Report this defect to the Tobby maintainers with the member name — never with the bundle. Meanwhile, collect the information by hand.
+- **Fixable offline:** yes · **Blocks:** the bundle — never shipped with a secret in it · **Status:** reserved — emitted from milestone 7
+
+## Clock plausibility (TBY-CLK)
+
+FR-096: the local clock checked against anchors the instance holds without any network. These codes warn and record; they change no verdict.
+
+### TBY-CLK-001
+
+- **What happened:** The local clock reads `<now>`, earlier than the build of this binary (`<anchor>`).
+- **Probable cause:** The clock is `<gap>` behind a date this binary proves has passed. Expiries, freshness checks and certificate validity are judged against this clock.
+- **Corrective action:** Set the host's clock (time source of the zone, or by hand from a trusted reference), then restart. Tobby warns and records; it does not correct the clock.
+- **Fixable offline:** yes · **Blocks:** nothing — a warning, recorded in the audit log · **Status:** reserved — emitted from milestone 7
+
+### TBY-CLK-002
+
+- **What happened:** The local clock reads `<now>`, earlier than the production of medium `<medium>` (`<anchor>`).
+- **Probable cause:** The medium was resolved `<gap>` after the time this host believes it is: one of the two clocks is wrong, and freshness and expiry checks depend on it.
+- **Corrective action:** Check this host's clock against a trusted reference before trusting expiry and freshness verdicts. Tobby warns and records; it does not correct the clock.
+- **Fixable offline:** yes · **Blocks:** nothing — a warning, recorded in the audit log · **Status:** reserved — emitted from milestone 7
+
+## Instance state directory (TBY-STA)
+
+FR-097: the normative state directory — the backup target of an instance besides its store — checked at startup.
+
+### TBY-STA-001
+
+- **What happened:** The instance refuses to start: the state directory `<root>` has an unknown layout (`<version>`).
+- **Probable cause:** It was written by another version of Tobby, or it is not a Tobby state directory.
+- **Corrective action:** Start the version that wrote it, or restore the state directory from a backup made with this version. The documented layout is the backup contract.
+- **Fixable offline:** yes · **Blocks:** the start of the instance · **Status:** reserved — emitted from milestone 7
+
+### TBY-STA-002
+
+- **What happened:** The instance refuses to start: `<path>` is readable by every user of the host (mode `<mode>`).
+- **Probable cause:** It is a secret entry of the state directory — password or token hashes, a private key — which Tobby creates for its owner only. A broader mode usually comes from a restore that did not keep permissions.
+- **Corrective action:** Remove the access of other users (chmod o-rwx on Unix; on Windows, remove Everyone and Users from its access list), check who could read it meanwhile, then restart. Group access granted by the volume (Kubernetes fsGroup) is tolerated.
+- **Fixable offline:** yes · **Blocks:** the start of the instance · **Status:** reserved — emitted from milestone 7
+
+### TBY-STA-003
+
+- **What happened:** The state directory holds no `<entry>`.
+- **Probable cause:** An identity entry is missing — typically after an incomplete restore. The instance starts without it, and behaves as a new instance for what it held.
+- **Corrective action:** If this instance was restored, restore the missing entry from the same backup and restart; otherwise nothing to do.
+- **Fixable offline:** yes · **Blocks:** nothing by itself — the instance starts without the entry · **Status:** reserved — emitted from milestone 7
 
 ## Tasks (TBY-TSK)
 

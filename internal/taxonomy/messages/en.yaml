@@ -155,6 +155,14 @@
 "TBY-POL-004.cause": "{{.reference}} already points at {{.published}}; the document offered would publish {{.candidate}}. A cooked recipe is immutable (RECIPE-SPEC §8)."
 "TBY-POL-004.action": "Publish the change under a new metadata.version and tag. Republishing a version onto different content would silently change what zones already resolved."
 
+"TBY-POL-005.what": "This instance does not accept unit imports."
+"TBY-POL-005.cause": "It is hardened with {{.setting}}: content enters its store through verified recipes only, and a unit import or a local packing would be content no recipe vouches for."
+"TBY-POL-005.action": "Deliver the content through a signed recipe. If unit imports are needed on this instance, an administrator removes {{.setting}} from its configuration and restarts it."
+
+"TBY-POL-006.what": "This registry is read-only: pushes are refused."
+"TBY-POL-006.cause": "The instance is hardened with {{.setting}}: its embedded registry serves content and accepts none from clients, whatever their role. Recipe synchronizations still write to the store."
+"TBY-POL-006.action": "Pull from this registry, or push to the zone registry instead. Seeding this instance by push requires an administrator to remove {{.setting}} and restart it."
+
 "TBY-SIG-001.what": "The recipe signature could not be verified."
 "TBY-SIG-001.cause": "{{if .scope}}No trust root allowed by the trust scope {{.scope}} validates the signature of {{.recipe}} (keys tried: {{.fingerprints}}). A key that is valid for another scope does not apply inside this one.{{else}}No configured trust root validates the signature of {{.recipe}} (keys tried: {{.fingerprints}}).{{end}}"
 "TBY-SIG-001.action": "{{if .scope}}Check the roots listed by the scope {{.scope}} (trust.scopes[].roots): they must include the key that signed this recipe, or the recipe belongs under another scope.{{else}}Check that the zone's trust roots include the key that signed this recipe.{{end}} An unverified recipe is never admitted."
@@ -355,6 +363,18 @@
 "TBY-SCN-025.cause": "It is the scanner's own delivery. Refusing it with the policy it arms would leave the zone unable to arm a scanner, or to update its database."
 "TBY-SCN-025.action": "Nothing to do. Its findings stay reported; the trust in this content rests on the tobby-system recipe's signature."
 
+"TBY-SCN-026.what": "The exception for {{.id}} does not cover {{.reference}}."
+"TBY-SCN-026.cause": "The exception is scoped to {{.scope}}, and this item lies outside that scope: the finding is judged as if no exception existed."
+"TBY-SCN-026.action": "Nothing to do if the scope is right. If this item was meant to be covered, widen the exception's scope in the configuration — it stays bounded by its expiry."
+
+"TBY-SCN-027.what": "The OpenVEX document {{.path}} cannot be used."
+"TBY-SCN-027.cause": "{{.detail}}"
+"TBY-SCN-027.action": "Fix or remove the document listed under scan.vex, then restart. Tobby reads OpenVEX documents and never fetches them: the file must be a valid local document."
+
+"TBY-SCN-028.what": "The Retriever exception for {{.id}} has no expiry."
+"TBY-SCN-028.cause": "It applies, but it is unbounded in time: exceptions declared by an instance must carry an expiry, and Retrievers will too from the v1 format on."
+"TBY-SCN-028.action": "Ask the owner of the zone's Retriever to give the exception an expires date and a justification."
+
 "TBY-INT-001.what": "The blob {{.path}} does not match its digest."
 "TBY-INT-001.cause": "Its content hashes to {{.actual}} instead of {{.expected}}: the file was damaged or altered on disk."
 "TBY-INT-001.action": "The verification changes nothing. Re-synchronize the recipes that reach this blob to fetch it again, or restore the store from a sound copy; check the disk for errors."
@@ -378,6 +398,40 @@
 "TBY-INT-006.what": "The store verification was cancelled."
 "TBY-INT-006.cause": "Verification {{.task}} was stopped before it reached a verdict, so it says nothing about the store."
 "TBY-INT-006.action": "Start a new verification when you want an answer. Nothing was changed: a verification only reads."
+
+# Milestone 7 — reserved at the opening of the milestone.
+
+"TBY-AID-001.what": "No consumption aid can be generated: this instance names no registry the zone pulls from."
+"TBY-AID-001.cause": "The mapping table and the registries.yaml snippet point at the zone registry. This instance pushes to no destination.registry, and consumption.registry is not set."
+"TBY-AID-001.action": "Set destination.registry when this instance pushes to the zone registry, or consumption.registry to the address the zone's clients pull from — this instance itself when it serves the zone."
+
+"TBY-DIA-001.what": "The diagnostic bundle could not be produced."
+"TBY-DIA-001.cause": "{{.detail}}"
+"TBY-DIA-001.action": "Retry; if it fails again, collect the instance logs by the means of the deployment. Nothing was written or sent: a bundle is local only."
+
+"TBY-DIA-002.what": "The diagnostic bundle was withheld: {{.member}} still contained a secret."
+"TBY-DIA-002.cause": "Before releasing a bundle, Tobby searches every member for the secret values it knows. One was found, so the bundle was not written rather than written with it."
+"TBY-DIA-002.action": "Report this defect to the Tobby maintainers with the member name — never with the bundle. Meanwhile, collect the information by hand."
+
+"TBY-CLK-001.what": "The local clock reads {{.now}}, earlier than the build of this binary ({{.anchor}})."
+"TBY-CLK-001.cause": "The clock is {{.gap}} behind a date this binary proves has passed. Expiries, freshness checks and certificate validity are judged against this clock."
+"TBY-CLK-001.action": "Set the host's clock (time source of the zone, or by hand from a trusted reference), then restart. Tobby warns and records; it does not correct the clock."
+
+"TBY-CLK-002.what": "The local clock reads {{.now}}, earlier than the production of medium {{.medium}} ({{.anchor}})."
+"TBY-CLK-002.cause": "The medium was resolved {{.gap}} after the time this host believes it is: one of the two clocks is wrong, and freshness and expiry checks depend on it."
+"TBY-CLK-002.action": "Check this host's clock against a trusted reference before trusting expiry and freshness verdicts. Tobby warns and records; it does not correct the clock."
+
+"TBY-STA-001.what": "The instance refuses to start: the state directory {{.root}} has an unknown layout ({{.version}})."
+"TBY-STA-001.cause": "It was written by another version of Tobby, or it is not a Tobby state directory."
+"TBY-STA-001.action": "Start the version that wrote it, or restore the state directory from a backup made with this version. The documented layout is the backup contract."
+
+"TBY-STA-002.what": "The instance refuses to start: {{.path}} is readable by every user of the host (mode {{.mode}})."
+"TBY-STA-002.cause": "It is a secret entry of the state directory — password or token hashes, a private key — which Tobby creates for its owner only. A broader mode usually comes from a restore that did not keep permissions."
+"TBY-STA-002.action": "Remove the access of other users (chmod o-rwx on Unix; on Windows, remove Everyone and Users from its access list), check who could read it meanwhile, then restart. Group access granted by the volume (Kubernetes fsGroup) is tolerated."
+
+"TBY-STA-003.what": "The state directory holds no {{.entry}}."
+"TBY-STA-003.cause": "An identity entry is missing — typically after an incomplete restore. The instance starts without it, and behaves as a new instance for what it held."
+"TBY-STA-003.action": "If this instance was restored, restore the missing entry from the same backup and restart; otherwise nothing to do."
 
 "TBY-TSK-001.what": "The task does not exist."
 "TBY-TSK-001.cause": "No task with identifier {{.id}} on this instance — wrong link, or the store was reset."

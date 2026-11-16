@@ -172,8 +172,8 @@ features:
     fr: "recipe cook : outillage d'écriture des recipes"
     status: upcoming
     note:
-      en: In development in the recipe-spec repository.
-      fr: En développement dans le dépôt recipe-spec.
+      en: Outside the v1.0 scope of Tobby; developed in the recipe-spec repository, on its own schedule.
+      fr: Hors du périmètre v1.0 de Tobby ; développé dans le dépôt recipe-spec, à son propre rythme.
   - id: "4.4"
     en: "Enterprise network: authenticated proxies, private PKI, server TLS"
     fr: "Réseau d'entreprise : proxys authentifiés, PKI privée, TLS serveur"
@@ -348,6 +348,9 @@ features:
     fr: Documentation bilingue complète (EN/FR, complétude vérifiée en CI)
     status: upcoming
     milestone: 7
+    note:
+      en: English and French pages are at parity, with the security model, troubleshooting and the emergency path; the pages of this milestone's new features and the CI completeness check remain.
+      fr: Les pages anglaises et françaises sont à parité, avec le modèle de sécurité, le dépannage et la voie d'urgence ; restent les pages des nouvelles features du jalon et le contrôle de complétude en CI.
   - id: "R-30"
     en: One-step redacted diagnostic bundle
     fr: Bundle de diagnostic expurgé en un geste
@@ -385,12 +388,12 @@ features:
   - id: "R-21"
     en: Documented emergency path (scoped, visible, organization-signed)
     fr: Voie d'urgence encadrée (périmètre déclaré, visible, signée par l'organisation)
-    status: upcoming
+    status: available
     milestone: 7
     security: true
     note:
-      en: Documentation-only feature; no code path.
-      fr: Feature purement documentaire ; aucun chemin de code.
+      en: Documentation-only feature, no code path. Procedure on the emergency path page.
+      fr: Feature purement documentaire, sans chemin de code. Procédure sur la page voie d'urgence.
   - id: "R-17"
     en: Per-content provenance and trust class, visible everywhere
     fr: Provenance et confiance visibles contenu par contenu
@@ -402,3 +405,6 @@ features:
     fr: Recette contradictoire et version 1.0 (spec gelée en v1)
     status: upcoming
     milestone: 7
+    note:
+      en: Prepared with v1.0.0-rc.1 (acceptance book, release-criteria script, spec freeze readiness); the formal acceptance with the project stakeholders and the stable v1.0.0 follow.
+      fr: Préparée avec la v1.0.0-rc.1 (cahier de recette, script des critères de release, préparation du gel de la spec) ; la recette formelle avec les parties prenantes et la v1.0.0 stable suivent.

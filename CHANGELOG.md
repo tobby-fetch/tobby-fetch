@@ -8,6 +8,59 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+Toward `v1.0.0-rc.1` — milestone 7: finishing, documentation and
+acceptance. The release candidate brings the consumption aids (mapping
+table exports, a generated K3s/RKE2 `registries.yaml`), a redacted
+diagnostic bundle, the supervision kit (signed OpenAPI document and
+metrics reference, alert rules and a dashboard in the chart), a clock
+plausibility check, a normative state directory with a tested rebuild,
+scoped and bounded vulnerability exceptions with OpenVEX input, provenance
+shown per repository with two hardening switches, the 7.3 hardening, and
+the complete bilingual documentation.
+
+**Announced breaking change, landing in this release:** every
+`scan.exceptions[]` entry of the instance configuration will need an
+`expires` timestamp and a `justification`; an instance whose configuration
+lists an exception without them will refuse to start, naming the entry.
+To prepare, give every exception both fields now — v0.6.0 already reads
+them.
+
+### Added
+
+- **A FileSet reads as a FileSet** in the content browser and the API.
+  RECIPE-SPEC §7.4 now reserves a manifest marker,
+  `dev.tobby.recipe/kind: FileSet`, which the browser reads — on a
+  manifest, or on the index of a multi-platform FileSet — as well as the
+  marker of FileSets packed by `tobby fileset pack`. Display only: what is
+  scanned is still decided by content (ADR-0017), what is trusted by
+  signatures and pinned digests. An unmarked FileSet still reads as the
+  image it is.
+- **Milestone-7 configuration keys, reserved**: `consumption.registry`,
+  `consumption.caFile`, `hardening.disableUnitImport`,
+  `hardening.disableRegistryPush`, `scan.vex[]` and
+  `scan.exceptions[].scope` are part of the documented surface and refused
+  at startup until their feature lands — never silently ignored;
+  `diagnostics.logRecords` (2000), `diagnostics.tasks` (20) and
+  `clock.skewTolerance` (1h) are accepted with their defaults.
+
+### Changed
+
+- **`tobby fileset pack` marks what it packs** with
+  `dev.tobby.recipe/kind: FileSet` beside `dev.tobby.fileset/packed`.
+  Packing stays deterministic, but the same tree packed by this version
+  gets a new digest; FileSets already pinned are unaffected.
+
+### Documentation
+
+- **French parity** (7.2): every English page of the documentation now has
+  its French counterpart, and three pages are new in both languages: the
+  security model, troubleshooting by symptom (with the `TBY-*` codes and
+  their corrective actions), and the emergency path (R-21), the end-to-end
+  procedure for a locally written recipe signed with the organization's
+  emergency key and admitted under a declared `emergency` trust scope.
+  Pages describing the stale "upcoming" state of the milestone 6 controls
+  (scanning, OIDC, SAML) were brought up to date.
+
 ## [0.6.0] - 2026-11-12
 
 Milestone 6: hardened controls and enterprise identity. Every container

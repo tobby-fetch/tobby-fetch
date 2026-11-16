@@ -13,7 +13,9 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -50,10 +52,14 @@ type contentOccupancy struct {
 
 // contentRepoItem is one row of the repository listing.
 type contentRepoItem struct {
-	Name      string `json:"name"`
-	Kind      string `json:"kind"`
-	Tags      int    `json:"tags"`
-	SizeBytes int64  `json:"sizeBytes"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	// Provenance is the repository's provenance class (FR-098). Reserved
+	// at the opening of milestone 7: empty, hence omitted, until R-17
+	// lands (track C).
+	Provenance string `json:"provenance,omitempty"`
+	Tags       int    `json:"tags"`
+	SizeBytes  int64  `json:"sizeBytes"`
 }
 
 // contentListResponse mirrors the /content listing page.
@@ -118,9 +124,29 @@ type contentTag struct {
 
 // contentRepoResponse mirrors the repository detail page.
 type contentRepoResponse struct {
-	Name string       `json:"name"`
-	Kind string       `json:"kind"`
-	Tags []contentTag `json:"tags"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	// Provenance is reserved at the opening of milestone 7 (FR-098,
+	// R-17, track C): nil, hence omitted, until the feature lands.
+	Provenance *contentProvenance `json:"provenance,omitempty"`
+	Tags       []contentTag       `json:"tags"`
+}
+
+// contentProvenance is the Provenance schema of the OpenAPI document
+// (FR-098). Reserved for track C of milestone 7.
+type contentProvenance struct {
+	Class     string                 `json:"class"`
+	Origin    string                 `json:"origin,omitempty"`
+	Recipes   []string               `json:"recipes,omitempty"`
+	Assurance *assurance.Marker      `json:"assurance,omitempty"`
+	LastScan  *contentProvenanceScan `json:"lastScan,omitempty"`
+}
+
+// contentProvenanceScan is the last scan of a repository's tags.
+type contentProvenanceScan struct {
+	Verdict         string    `json:"verdict"`
+	ScannedAt       time.Time `json:"scannedAt"`
+	DatabaseBuiltAt time.Time `json:"databaseBuiltAt,omitzero"`
 }
 
 // contentPlatform is one platform entry of the manifest detail; Present is

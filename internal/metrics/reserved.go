@@ -3,7 +3,7 @@
 
 package metrics
 
-// Reserved metric families of milestone 6 (FR-091, ADR-0012).
+// Reserved metric families of milestones 6 and 7 (FR-091, ADR-0012).
 //
 // The names, types and labels below are reserved at the opening of the
 // milestone so that its three tracks plug into one documented surface
@@ -55,12 +55,85 @@ const (
 	MetricAssuranceReduced = "tobby_assurance_reduced_recipes"
 )
 
+// Reserved metric families of milestone 7 (FR-091 amendment 2026-11-16,
+// R-11; FR-096; FR-098; FR-031 amendment R-15). Same rule as above: none
+// is registered before it is fed, and a track moves a name out of
+// ReservedFamilies in the change that registers it. Timestamp gauges are
+// absent until they have measured something — never 0.
+const (
+	// Track B — supervision kit (R-11): the minimum FR-091 names, and what
+	// an alert on staleness needs.
+
+	// MetricSyncRuns counts synchronization runs (mirror trigger or
+	// passthrough cycle): counter, label outcome = success | failure.
+	MetricSyncRuns = "tobby_sync_runs_total"
+	// MetricSyncDuration is the duration of synchronization runs:
+	// histogram, seconds, label outcome = success | failure.
+	MetricSyncDuration = "tobby_sync_duration_seconds"
+	// MetricSyncLastSuccess is the end time of the last successful
+	// synchronization: gauge, Unix seconds.
+	MetricSyncLastSuccess = "tobby_sync_last_success_timestamp_seconds"
+	// MetricSyncIngredients is the per-status ingredient count of the last
+	// run (FR-026): gauge, label status = new | outdated | up_to_date.
+	MetricSyncIngredients = "tobby_sync_ingredients"
+	// MetricServerCertificateExpiry is the NotAfter of the certificate the
+	// listener presents (FR-082), self-signed fallback included: gauge,
+	// Unix seconds; absent while the listener serves plain HTTP.
+	MetricServerCertificateExpiry = "tobby_server_certificate_expiry_timestamp_seconds"
+
+	// Track B — clock plausibility (R-32, FR-096).
+
+	// MetricClockImplausible is 1 while the local clock was found earlier
+	// than an anchor beyond the tolerance, 0 otherwise: gauge, label
+	// anchor = build | medium.
+	MetricClockImplausible = "tobby_clock_implausible"
+
+	// Track B — diagnostic bundle (R-30, FR-095).
+
+	// MetricDiagnosticsBundles counts diagnostic bundles: counter, label
+	// outcome = written | refused (redaction failed closed) | failed.
+	MetricDiagnosticsBundles = "tobby_diagnostics_bundles_total"
+
+	// Track C — provenance and hardening (R-17, FR-098).
+
+	// MetricStoreUnmanaged is the number of repositories not managed by a
+	// verified recipe: gauge, label class = unit-import | seed.
+	MetricStoreUnmanaged = "tobby_store_unmanaged_repositories"
+	// MetricHardeningEnabled is 1 for each hardening switch set, 0
+	// otherwise: gauge, label setting = disableUnitImport |
+	// disableRegistryPush.
+	MetricHardeningEnabled = "tobby_hardening_enabled"
+
+	// Track C — scoped and bounded exceptions (R-15).
+
+	// MetricScanExceptions is the number of exceptions in configuration,
+	// VEX-born ones included: gauge, labels state = active | expired and
+	// source = instance | retriever | vex.
+	MetricScanExceptions = "tobby_scan_exceptions"
+	// MetricScanReblocked counts items refused again because the exception
+	// that admitted them expired: counter.
+	MetricScanReblocked = "tobby_scan_reblocked_items_total"
+)
+
 // ReservedFamilies lists every reserved name, for the test that keeps
 // them distinct from what is registered and the tracks honest about
 // moving a name from here to New.
 func ReservedFamilies() []string {
 	return []string{
-		// All three tracks register their families now (scan.go,
-		// auth.go, integrity.go): nothing of milestone 6 stays reserved.
+		// All three tracks of milestone 6 register their families now
+		// (scan.go, auth.go, integrity.go): nothing of it stays reserved.
+
+		// Milestone 7.
+		MetricSyncRuns,
+		MetricSyncDuration,
+		MetricSyncLastSuccess,
+		MetricSyncIngredients,
+		MetricServerCertificateExpiry,
+		MetricClockImplausible,
+		MetricDiagnosticsBundles,
+		MetricStoreUnmanaged,
+		MetricHardeningEnabled,
+		MetricScanExceptions,
+		MetricScanReblocked,
 	}
 }

@@ -40,13 +40,13 @@ func TestModeAndExceptionAccessors(t *testing.T) {
 		t.Error("Mode.Valid does not match the closed set {warn, block}")
 	}
 	now := time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)
-	if (Exception{ID: "CVE-2024-1"}).ExpiredAt(now) {
+	if (&Exception{ID: "CVE-2024-1"}).ExpiredAt(now) {
 		t.Error("an exception without expiry expired")
 	}
-	if !(Exception{Expires: now.Add(-time.Second)}).ExpiredAt(now) {
+	if !(&Exception{Expires: now.Add(-time.Second)}).ExpiredAt(now) {
 		t.Error("an exception past its expiry still applies")
 	}
-	if (Exception{Expires: now.Add(time.Hour)}).ExpiredAt(now) {
+	if (&Exception{Expires: now.Add(time.Hour)}).ExpiredAt(now) {
 		t.Error("an exception before its expiry no longer applies")
 	}
 }

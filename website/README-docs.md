@@ -8,9 +8,9 @@ fully offline.
 ## Layout and languages
 
 - English is canonical. Slugs are English and never change.
-- French exists today for: the docs home, the whole *Try* and *air-gap*
-  sections, and `reference/errors`. The rest falls back to English until
-  milestone 7. A French page mirrors the exact path under `fr/docs/`.
+- Every English page has a French counterpart that mirrors the exact path
+  under `fr/docs/` (same file name, same `sidebar.order`). A page added in
+  English is not finished until its French page exists.
 
 ## Frontmatter
 

@@ -944,3 +944,39 @@
 "integrity.findings_note": "Content that no recorded recipe and no protected root (unit imports, seeded content, the vulnerability database) reaches. Nothing here is deleted by the verification; prune to the Retriever or remove the recipe that used to hold it to reclaim the space. Content a synchronization is still writing can appear here until it finishes."
 "integrity.link": "Verify the store's integrity"
 "integrity.cancel_action": "Cancel the verification"
+
+# ── Milestone 7 (reserved at the opening of the milestone) ───────────────
+# One block per track: each track adds its labels INSIDE its own block, so
+# parallel branches never edit the same lines. Labels not yet rendered by
+# any template are reserved; the completeness test still holds them to
+# EN/FR, and the orphan check of track D (FR-063 amendment) must exempt
+# this block until each track renders its labels — or run last.
+
+# Track A — consumption aids and UI polish (7.1).
+"aids.section_title": "Consumption aids"
+"aids.export_csv": "Export as CSV"
+"aids.export_json": "Export as JSON"
+"aids.export_markdown": "Export as Markdown"
+"aids.snippet_title": "registries.yaml for K3s and RKE2"
+"aids.snippet_limits": "Redirects image pulls by the node's container runtime only. Helm chart sources, GitOps controllers and admission policies must reference the relocated paths of the table."
+"aids.no_registry": "No zone registry is configured: set destination.registry, or consumption.registry when this instance serves the zone itself."
+
+# Track B — operations and supervision (R-30, R-27, R-32, R-11).
+"diagnostics.section_title": "Diagnostic bundle"
+"diagnostics.generate_action": "Generate a diagnostic bundle"
+"diagnostics.local_only": "The bundle is a local file, redacted before it is written. Tobby never sends it anywhere: you choose whom to give it to."
+"banner.clock_implausible": "The clock of this host reads {{.Now}}, {{.Gap}} earlier than {{.Anchor}}: expiries and freshness checks may be wrong."
+"state.section_title": "Instance state"
+"state.backup_hint": "Back up the state directory, the configuration file and the secret files it references: with the store, they are everything this instance is."
+
+# Track C — content controls and hardening (R-15, R-17, 7.3).
+"provenance.label": "Provenance"
+"provenance.recipe": "Managed by a verified recipe"
+"provenance.unit_import": "Unit import"
+"provenance.local_pack": "Packed on this instance"
+"provenance.seed": "Pushed directly"
+"provenance.last_scan": "Last scanned {{.When}}: {{.Verdict}}"
+"hardening.unit_import_disabled": "Unit imports are disabled on this instance (hardening.disableUnitImport)."
+"hardening.registry_push_disabled": "The embedded registry is read-only on this instance (hardening.disableRegistryPush)."
+"scan.exception_out_of_scope": "Exception {{.ID}} does not cover this item"
+"scan.exception_vex": "From the VEX document {{.Document}}"
