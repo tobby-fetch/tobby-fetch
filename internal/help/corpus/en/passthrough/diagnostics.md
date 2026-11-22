@@ -2,7 +2,7 @@
 title: Collect a diagnostic bundle
 description: One local, redacted archive to hand to support — what it holds, how to produce it from the command line, the interface or the API, and how redaction fails closed.
 sidebar:
-  order: 10
+  order: 11
 ---
 
 When something goes wrong, the person helping you needs the same dozen
@@ -13,7 +13,7 @@ into **one archive** — and it is built so that you can hand it over without
 reading it line by line for secrets.
 
 Tobby sends the archive nowhere. There is no upload, no call home, no
-address to configure (NFR-019): it is a file you write or download, and you
+address to configure: it is a file you write or download, and you
 choose who receives it.
 
 ## What it holds
@@ -163,3 +163,6 @@ a channel your organisation approves for personal data over a public ticket.
 |---|---|---|
 | `diagnostics.logRecords` | `2000` | 1 to 100000 — the size of the in-memory window. |
 | `diagnostics.tasks` | `20` | 1 to 500 — how many recent task reports. |
+
+The bundle is the last step of a diagnosis, not the first: the checks to
+run before it are on [Troubleshooting](../../reference/troubleshooting/).

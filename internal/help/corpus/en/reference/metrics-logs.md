@@ -110,7 +110,7 @@ fixed by the log schema and safe to build extraction rules on:
 | `digest` | The content digest concerned. |
 | `assurance` | Present **only** on records concerning content admitted under a relaxed trust scope, with the value `reduced` ([reduced assurance](../../security/reduced-assurance/)). Filter on its presence to find them. |
 | `assurance_scope` | The declared trust scope behind `assurance`, on the same records and only there. |
-| `provenance` | The [provenance class](../../security/model/#hardening-switches) of the repository a record concerns — `recipe`, `unit-import` or `seed` — on the unit-import record (`unit import recorded`), the push and manifest-deletion records of the embedded registry (`manifest pushed`, `manifest deleted`), the FileSet packing record (`fileset packed`) and the removal record (`repository removed`). |
+| `provenance` | The [provenance class](../../security/model/#hardening-switches) of the repository a record concerns — `recipe`, `unit-import` or `seed` — on the unit-import record (`unit import recorded`), the push and manifest-deletion records of the embedded registry (`manifest pushed`, `manifest deleted`), the FileSet packing record (`fileset packed`), the OCI layout import record (`layout import recorded`) and the removal record (`repository removed`). |
 
 Other fields are contextual per message (many notable lines carry a
 `requirement` field naming the SRS requirement they implement) and are not

@@ -2,7 +2,7 @@
 title: Supported platforms
 description: The feature matrix per operating system — what is validated on Linux, on Windows and on macOS, how each is verified, and the platform-specific behaviour an operator has to know about.
 sidebar:
-  order: 7
+  order: 8
 ---
 
 Tobby ships as a single statically linked binary for Linux and Windows on

@@ -20,7 +20,7 @@ Tobby relocates every ingredient under its **nominal source host**:
 
 `docker.io/bitnami/wordpress` is pullable at
 `registry.zone.example/docker.io/bitnami/wordpress`, with an unchanged
-digest. The rule ([ADR-0013](../../reference/srs-adr/), FR-035) buys three
+digest. The rule ([ADR-0013](../../reference/srs-adr/)) buys three
 things at the cost of longer names:
 
 - **No collisions.** A flattened `registry.zone/bitnami/wordpress`
@@ -72,7 +72,7 @@ name fails explicitly, before the push.
 
 You never compute those paths by hand. Each recipe exposes its
 source→destination table — every ingredient's nominal reference, its
-relocated repository, tag, and pinned digest (FR-065):
+relocated repository, tag, and pinned digest:
 
 - **UI**: the recipe's mapping view at `/recipes/{recipe}/mapping`, with
   copyable references.
@@ -149,7 +149,7 @@ signatures, the exact thing it exists to preserve.
 ## Logging in
 
 The embedded registry and the zone-facing surfaces use the instance's
-own accounts (FR-076) — the same ones as the UI:
+own accounts — the same ones as the UI:
 
 ```sh
 docker login registry.tobby.zone.example
@@ -164,7 +164,7 @@ Create dedicated read-only accounts or CI tokens for consumers; see
 
 A `FileSet` ingredient can package an apt or rpm repository, and Tobby
 can serve its verified content read-only over HTTP under
-`/files/<name>/…` (FR-047) — making a bare host installable with no
+`/files/<name>/…` — making a bare host installable with no
 other infrastructure. Serving is **off by default** and enabled per
 FileSet:
 
@@ -184,7 +184,7 @@ default. `anonymous: true` exists for the bootstrap case — a bare host
 that cannot authenticate before it has installed anything — and is never
 silent: every anonymously served FileSet is named in a permanent UI
 banner and reported by the API, like every other relaxation of the
-secure default (FR-075).
+secure default.
 
 ```sh
 # /etc/apt/sources.list.d/zone.list on a client host
@@ -225,7 +225,7 @@ Two limits, stated because they are the point:
   instance is restarted. The command prints the exact block to add.
 
 The command reads the host's filesystem with the rights of whoever runs it.
-The same operation on the interface and the API (`POST /filesets/pack`) is
+The same operation on the interface and the API (the `/filesets` form and `POST /api/v1/filesets/pack`) is
 restricted to administrators **and** confined to the directories
 `files.packRoots` names — with no entry configured, the form is not offered
 at all. This is the only way local files enter a store, and it is

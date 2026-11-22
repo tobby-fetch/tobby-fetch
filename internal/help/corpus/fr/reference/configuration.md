@@ -6,7 +6,7 @@ sidebar:
 ---
 
 Cette page documente la configuration en couches telle qu'elle est implémentée
-dans la série v0.5.x actuelle (`internal/config/`). Chaque clé ci-dessous
+dans la version qui accompagne cette documentation (`internal/config/`). Chaque clé ci-dessous
 existe dans le code aujourd'hui.
 
 ## Superposition des couches

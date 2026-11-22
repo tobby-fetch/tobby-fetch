@@ -8,8 +8,18 @@ sidebar:
 The destination instance is the same application, in the isolated zone,
 pointed at the transported store. It treats the medium as untrusted until
 proven otherwise, and the order is the guarantee rather than a sequence of
-steps: **nothing is pushed, served or written before the whole medium has
-been re-verified** (FR-054).
+steps: **nothing is pushed, served or written to the store before the whole
+medium has been re-verified**. One exception: an import, and a running
+destination instance, write their operation log (by default under
+`_tobby/logs/`) and, for the instance, its task records (under
+`_tobby/tasks/`) on the medium, outside the manifest's coverage, from the
+start. `tobby media verify` writes nothing at all.
+
+:::tip[In short]
+- On the isolated side, set `zone:` (and `destination.registry` to push), then run `tobby media verify --storage-root <store> --zone <zone>`: it writes nothing, and exits `0` when every delivery is pushable. [Details](#from-the-command-line)
+- `tobby media import --config <file>` re-verifies, then pushes what verified: exit `0` imported, `1` a push failed, `3` refused by policy (zone identity, freshness), `4` a verification failure. [Details](#what-blocks-what)
+- From the screen, the same sequence is Verify, Report, Push, and the instance serves nothing until a verification has cleared the medium. [Details](#the-media-screen) · [Serving gate](#an-unverified-medium-serves-nothing)
+:::
 
 ## What makes an instance a destination
 
@@ -30,9 +40,13 @@ destination:
 A source-side instance reads its zone from the Retriever it resolves and
 sets nothing here. A destination has no Retriever — its content arrives on a
 medium — and without `zone:` it cannot tell whether a medium is addressed to
-it at all. `tobby media verify`, `tobby media import` and the four
-`/api/v1/media` endpoints refuse to run without it, naming the setting
-([`TBY-CFG-001`](../../reference/errors/#tby-cfg-001)).
+it at all. Without it, `tobby media verify`, `tobby media import`, the
+screen's Verify and Push buttons and `POST /api/v1/media/verify` refuse,
+naming the setting ([`TBY-CFG-001`](../../reference/errors/#tby-cfg-001)).
+`POST /api/v1/media/import` accepts the request and answers `201`; the task
+it creates then fails with that code. `GET /api/v1/media` answers `200`
+with an empty `zone`, and `GET /api/v1/media/verification` answers `200`
+with no verification session.
 
 Verifying needs nothing else. **Importing additionally needs
 `destination.registry`**: verification reads, the push writes, and the push
@@ -74,8 +88,10 @@ same content as a printable, bilingual, **unsigned** page, or as an HTML or
 text file, to hand over with the disk.
 
 Reading the screen is a `viewer` action. Verifying and importing are
-`operator` actions. Waiving one of the two refusals below is an
-administrator's, and the waiver checkboxes are rendered only for one.
+`operator` actions. On the screen and the API, waiving one of the two
+refusals below needs the `admin` role, and the waiver checkboxes are
+rendered only for an administrator. The command line has no roles: see
+[below](#four-refusals-stay-medium-wide).
 
 ## What blocks what
 
@@ -121,8 +137,8 @@ Per-recipe salvage is meaningless for these, so they block everything:
 |---|---|---|
 | Manifest absent, unreadable, or in a format this build does not read | [`TBY-MED-001`](../../reference/errors/#tby-med-001), [`TBY-MED-002`](../../reference/errors/#tby-med-002), [`TBY-MED-003`](../../reference/errors/#tby-med-003), [`TBY-MED-004`](../../reference/errors/#tby-med-004) | **none** |
 | The recipe graph (`meta/recipes.json`) does not match its inventory entry | [`TBY-MED-005`](../../reference/errors/#tby-med-005) | **none** |
-| The medium is addressed to another zone | [`TBY-MED-006`](../../reference/errors/#tby-med-006) | administrator, audited |
-| The medium is older than the last one imported for this zone | [`TBY-MED-007`](../../reference/errors/#tby-med-007) | administrator, audited |
+| The medium is addressed to another zone | [`TBY-MED-006`](../../reference/errors/#tby-med-006) | `admin` on the screen and the API, anyone on the host's command line |
+| The medium is older than the last one imported for this zone | [`TBY-MED-007`](../../reference/errors/#tby-med-007) | `admin` on the screen and the API, anyone on the host's command line |
 
 The first two leave nothing to reason about — without the inventory there is
 no completeness question to ask, and the graph *is* the reachability set, so
@@ -131,11 +147,34 @@ an altered one makes every per-recipe verdict meaningless.
 The last two are addressed to someone else, or to an earlier moment. They
 are **anti-accident guards, not security controls**: the manifest is
 unsigned, so a hostile party can forge either field. That is exactly why
-they are the only two an administrator may waive — `--allow-zone-mismatch`
-and `--allow-stale` on the command line, checkboxes on the screen,
-`allowZoneMismatch` and `allowStale` on the API — and why both the attempt
-and the applied waiver are written to the
-[audit log](../../security/audit-log/) with the actor and the origin.
+they are the only two that may be waived: `--allow-zone-mismatch` and
+`--allow-stale` on the command line, checkboxes on the screen,
+`allowZoneMismatch` and `allowStale` on the API.
+
+Who may waive, and what is recorded, depends on the surface:
+
+- **Screen and API.** A waiver needs the `admin` role. A refused attempt by a
+  lesser role is written to the [audit log](../../security/audit-log/)
+  (`media.override`, outcome `denied`). A waiver applied **when an import is
+  requested** is written too, with the actor and the origin
+  (`media.override`, then `media.import`).
+- **Command line.** There is no role check. Whoever can run `tobby media` on
+  the host, against the store, can waive. On `tobby media import` the waiver
+  is recorded with the actor `local`. Access to the host is the control.
+- **At the Verify step, no audit record.** A waiver ticked on the screen's
+  Verify step, sent to `POST /api/v1/media/verify`, or passed to
+  `tobby media verify` is applied without any audit record. The only trace
+  is a `WARN` line in the instance log (stderr for `tobby media verify`),
+  without actor or origin. On the screen and the API this matters: a waived
+  verification can reach a `pushable` verdict and open the [serving
+  gate](#an-unverified-medium-serves-nothing), so an administrator can make
+  the instance serve a medium addressed to another zone, or an older one,
+  with no `media.override` record. This is a known defect. On the screen
+  there is no audited path: the waiver can only be ticked at the Verify
+  step, which opens the gate unaudited; it is recorded only if Push is then
+  clicked. Until it is fixed, waive through `POST /api/v1/media/import` (or
+  `tobby media import`) directly, without a waived verification, where the
+  waiver is audited before anything is served.
 
 **No role waives an integrity or a signature verdict.** There is no flag, no
 confirmation dialog and no configuration key for it, for anyone,
@@ -156,8 +195,8 @@ no verified recipe reaches is reported by name and stays where it is.
 
 ## An unverified medium serves nothing
 
-"Verification precedes any push, any **serving**, and any local write" has
-three verbs. A destination instance holding a transported medium withholds
+"Verification precedes any push, any **serving**, and any write to the
+store" has three verbs. A destination instance holding a transported medium withholds
 `/v2/` and `/files/` until a verification it performed has cleared the
 medium.
 
@@ -230,7 +269,7 @@ the transfer.
 
 | Command | `0` | `1` | `3` | `4` |
 |---|---|---|---|---|
-| `tobby media verify` | every delivery is pushable | — | refused by policy (zone identity, freshness) | a verification failure |
+| `tobby media verify` | every delivery is pushable | the verification could not run (configuration, store unreadable) | refused by policy (zone identity, freshness) | a verification failure |
 | `tobby media import` | imported | a push failed | refused by policy | a verification failure |
 
 These commands run in their own process, against the store directory
@@ -246,6 +285,9 @@ makes re-importing last month's medium a refusal rather than a silent
 rollback — and the zone registry now serves the transferred content.
 Connecting the zone's clusters and hosts to it works identically in both
 modes: see [connect your clients](../../passthrough/connect-clients/).
+
+A medium that stays blocked: [Troubleshooting — a removable medium is
+blocked](../../reference/troubleshooting/#a-removable-medium-is-blocked) lists the causes by symptom.
 
 Media that come back for a second cycle, and the housekeeping that keeps
 them a sane size, are on

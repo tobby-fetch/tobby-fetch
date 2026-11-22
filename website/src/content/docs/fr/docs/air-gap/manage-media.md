@@ -31,8 +31,7 @@ Trois propriétés de cette garde méritent d'être dites :
   le support serait réécrit par qui détient le support.
 - Il n'avance que sur les **imports terminés**. Une vérification qui a eu
   lieu et un push qui n'a pas eu lieu ne déplacent rien.
-- La borne **ne recule jamais**, y compris quand un administrateur lève le
-  refus pour restaurer volontairement une livraison plus ancienne.
+- La borne **ne recule jamais**, y compris quand le refus est levé pour restaurer volontairement une livraison plus ancienne.
 
 Ce n'est pas un contrôle de sécurité. Le manifeste est non signé, donc
 l'horodatage se forge ; la garde prévient un accident, et c'est pour cela
@@ -173,7 +172,7 @@ c'est un processus de trop. Les mêmes opérations sont sur l'écran
 ## Repartir d'un support propre
 
 `/admin/store` montre ce que le store détient et propose la remise à zéro
-qui le vide (FR-046). Elle est réservée aux administrateurs, exige la
+qui le vide. Elle est réservée aux administrateurs, exige la
 confirmation tapée exacte `RESET`, et est consignée à l'audit — y compris la
 tentative refusée, parce que quelqu'un qui tape le mauvais mot dans ce champ
 est le premier signal de la piste. Sur une instance qui tourne avec la
@@ -201,14 +200,14 @@ a pas de `tobby store reset` en ligne de commande.
 ## Les horloges, et Tobby lui-même
 
 **La cohérence d'horloge.** Les comparaisons de fraîcheur supposent des
-horloges plausibles. Depuis la v1.0.0-rc.1 (R-32), une horloge implausible —
+horloges plausibles. Depuis la v1.0.0-rc.1 une horloge implausible —
 antérieure à la compilation du binaire au démarrage, ou à la production d'un
 support à son ouverture — est signalée et consignée à l'audit, jamais
 corrigée en silence : une bannière, un enregistrement de journal, la sortie
 d'erreur de la ligne de commande, une métrique et un événement d'audit
 nomment l'écart. Voir [détecter une horloge fausse](../clock-check/).
 
-**Mettre à jour Tobby lui-même dans la zone.** Depuis la v0.6.0 (R-25),
+**Mettre à jour Tobby lui-même dans la zone.** Depuis la v0.6.0,
 chaque release est publiée en artefacts OCI prêts à référencer dans une
 recipe, si bien que les mises à jour de Tobby traversent le flux miroir
 standard comme n'importe quel contenu, signées par la chaîne de

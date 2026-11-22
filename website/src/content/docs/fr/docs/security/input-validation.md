@@ -2,7 +2,7 @@
 title: Validation des entrées
 description: Chaque entrée qui franchit une frontière de confiance, avec sa borne de taille, son décodeur et son contrôle de grammaire — corps de requête, paramètres de chemin et de requête, configuration, documents lus dans un store ou sur un support, réponses des registries et des fournisseurs d'identité (NFR-023).
 sidebar:
-  order: 9
+  order: 10
 ---
 
 Tobby lit des entrées venant de parties qu'il ne contrôle pas : navigateurs

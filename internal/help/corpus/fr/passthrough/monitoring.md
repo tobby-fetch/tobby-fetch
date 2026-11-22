@@ -2,7 +2,7 @@
 title: Superviser une instance
 description: Le référentiel des métriques, les règles d'alerte et le tableau de bord livrés avec le chart, et le document OpenAPI signé — sur quoi alerter, et ce que la release publie pour cela.
 sidebar:
-  order: 11
+  order: 12
 ---
 
 Une instance qui se réconcilie pendant des mois doit être surveillée par autre
@@ -95,8 +95,9 @@ opérateur le décide : une borne sur l'âge du dernier succès n'alerterait
 personne utilement, mettez donc `alerting.thresholds.syncMaxAgeSeconds` à `0`.
 Les règles sont des **points de départ, non réglés pour votre site** : observez
 ce que fait votre instance pendant une semaine, puis déplacez les bornes.
-`/metrics` est derrière la même authentification que le reste ; la collecte a
-donc besoin d'identifiants (`metrics.serviceMonitor.basicAuth`).
+`/metrics` est **sans authentification**, comme les sondes : la collecte n'a
+besoin d'aucun identifiant ; `metrics.serviceMonitor.basicAuth` ne sert que si
+vous placez un proxy authentifiant devant l'instance.
 
 Chaque expression ne nomme que des familles du référentiel publié, et les labels
 sur lesquels elle sélectionne sont dans les ensembles fermés que le référentiel
@@ -118,3 +119,6 @@ transferts face à la borne, octets, occupation du store, temps restant du
 certificat, base de vulnérabilités, horloge, refus par code, connexions et
 bundles. Le JSON est `deploy/charts/tobby/files/tobby-dashboard.json` ;
 importez-le à la main si vous n'avez pas le sidecar.
+
+Que faire quand une alerte se déclenche : voir la page
+[Dépannage](../../reference/troubleshooting/), organisée par symptôme.

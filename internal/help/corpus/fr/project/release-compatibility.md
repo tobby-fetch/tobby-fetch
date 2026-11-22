@@ -20,6 +20,11 @@ d'après le
 | v0.2.x | Aperçu UX | v0.2.0 — 2026-08-12 | interface, authentification par défaut, taxonomie d'erreurs, tâches, `/api/v1` |
 | v0.3.x | Moteur de recipes | v0.3.0 — 2026-08-16 | recipes signées, vérification à l'entrée, cascade |
 | v0.4.x | Passthrough | v0.4.0 — 2026-08-18 | promotion continue, liste d'autorisation, RBAC, réseau d'entreprise |
+| v0.5.x | Miroir et air-gap | v0.5.0 — 2026-08-27 | miroir sur un store transportable, parcours média, mode plan, FileSets |
+| v0.6.x | Contrôles renforcés et identité d'entreprise | v0.6.0 — 2026-11-12 | analyse de vulnérabilités avec politique, OIDC et SAML, vérification du store |
+
+Le jalon 7 (finitions, documentation et recette) vise `v1.0.0-rc.1`, puis la
+1.0.0.
 
 L'état courant et le chemin vers la 1.0 sont sur la page
 [état du projet](../../discover/status/) — la source de vérité unique pour le
@@ -52,6 +57,10 @@ travers ses précédents :
   chaîne d'outils. Aucune fonctionnalité — et la version a été ré-acceptée en
   rejouant la suite crucible **entière**, m1 à m4, sur un hôte jetable neuf.
 
+La ligne 0.5 a suivi le même schéma : **v0.5.1** (2026-11-07) et
+**v0.5.2** (2026-11-09) ont été des versions correctives sur la ligne mineure
+courante.
+
 Les correctifs de sécurité suivent
 [SECURITY.md](https://github.com/tobby-fetch/tobby-fetch/blob/main/SECURITY.md) :
 correctif sur la ligne mineure courante, divulgation coordonnée, seule la
@@ -63,7 +72,7 @@ Certaines surfaces ont été déclarées stables bien avant la 1.0, parce que le
 opérateurs écrivent des scripts dessus dès le premier jour :
 
 - **Codes de sortie de la CLI** — 0 succès, 1 échec, 2 usage, 3 refus de
-  politique, 4 échec de vérification, selon les classes de la taxonomie
+  politique, 4 échec de vérification, 5 changements planifiés (`sync --dry-run`), selon les classes de la taxonomie
   d'erreurs depuis la v0.2.0. Voir la [référence CLI](../../reference/cli/).
 - **Codes d'erreur `TBY-*`** — des identifiants courts et stables ; un code ne
   change jamais de sens. Voir

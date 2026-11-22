@@ -112,7 +112,7 @@ d'extraction :
 | `digest` | Le digest du contenu concerné. |
 | `assurance` | Présent **uniquement** sur les enregistrements concernant du contenu admis sous un périmètre de confiance assoupli, avec la valeur `reduced` ([assurance réduite](../../security/reduced-assurance/)). Filtrez sur sa présence pour les retrouver. |
 | `assurance_scope` | Le périmètre de confiance déclaré derrière `assurance`, sur les mêmes enregistrements et seulement là. |
-| `provenance` | La [classe de provenance](../../security/model/#interrupteurs-de-durcissement) du dépôt que concerne l'enregistrement — `recipe`, `unit-import` ou `seed` — sur l'enregistrement d'import unitaire (`unit import recorded`), les enregistrements de push et de suppression de manifeste de la registry embarquée (`manifest pushed`, `manifest deleted`), celui d'empaquetage de FileSet (`fileset packed`) et celui de retrait (`repository removed`). |
+| `provenance` | La [classe de provenance](../../security/model/#interrupteurs-de-durcissement) du dépôt que concerne l'enregistrement — `recipe`, `unit-import` ou `seed` — sur l'enregistrement d'import unitaire (`unit import recorded`), les enregistrements de push et de suppression de manifeste de la registry embarquée (`manifest pushed`, `manifest deleted`), celui d'empaquetage de FileSet (`fileset packed`), celui d'import de layout OCI (`layout import recorded`) et celui de retrait (`repository removed`). |
 
 Les autres champs sont contextuels à chaque message (de nombreuses lignes
 notables portent un champ `requirement` qui nomme l'exigence du SRS qu'elles

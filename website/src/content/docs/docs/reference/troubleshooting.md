@@ -2,7 +2,7 @@
 title: Troubleshooting
 description: Start from what you observe — the instance will not start, a sign-in fails, a recipe is refused, a medium is blocked, a scan degrades — and reach the TBY code, its probable cause and the corrective action.
 sidebar:
-  order: 5
+  order: 6
 ---
 
 This page is organized by **symptom**: what you see, not what Tobby calls
@@ -134,8 +134,8 @@ each blocked recipe and the file at fault.
 | The medium did not come out whole | [`TBY-MED-032`](../errors/#tby-med-032) | Read the report. Re-copy the medium and verify again; intact recipes can still be pushed. |
 | "carries no media manifest", or it is unreadable | [`TBY-MED-001`](../errors/#tby-med-001), [`TBY-MED-002`](../errors/#tby-med-002) | The store was not written as a medium, or the file is truncated. Re-copy from the source. |
 | Unsupported format version | [`TBY-MED-003`](../errors/#tby-med-003), [`TBY-MED-004`](../errors/#tby-med-004) | Medium and instance are on different major versions. Update the destination ([update Tobby](../../air-gap/update-tobby/)). |
-| "addressed to another zone" | [`TBY-MED-006`](../errors/#tby-med-006) | Check you have the right medium. An administrator may waive this; the waiver is audited. |
-| "older than the last one imported" | [`TBY-MED-007`](../errors/#tby-med-007) | Check you plugged in the current medium. An administrator may waive it, for example to restore an older delivery on purpose. |
+| "addressed to another zone" | [`TBY-MED-006`](../errors/#tby-med-006) | Check you have the right medium. It can be waived deliberately (`admin` role in the web interface and the API); a waiver applied at import is audited. |
+| "older than the last one imported" | [`TBY-MED-007`](../errors/#tby-med-007) | Check you plugged in the current medium. It can be waived the same way, for example to restore an older delivery on purpose. |
 | A file is missing, the wrong size, or does not match its digest | [`TBY-MED-010`](../errors/#tby-med-010), [`TBY-MED-011`](../errors/#tby-med-011), [`TBY-MED-012`](../errors/#tby-med-012), [`TBY-MED-015`](../errors/#tby-med-015) | Re-copy the store from the source. The recipe reaching the file is blocked; no override exists. |
 | A file or a manifest is not covered, or not readable | [`TBY-MED-013`](../errors/#tby-med-013), [`TBY-MED-014`](../errors/#tby-med-014), [`TBY-MED-005`](../errors/#tby-med-005) | The inventory does not match the content: re-copy from the source. |
 | The medium's recipe graph lists an ingredient the signed recipe does not pin | [`TBY-MED-016`](../errors/#tby-med-016) | The bookkeeping was altered: do not import; re-produce the medium from the source. No override exists. |

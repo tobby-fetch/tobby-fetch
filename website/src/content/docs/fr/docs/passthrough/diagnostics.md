@@ -2,7 +2,7 @@
 title: Collecter un bundle de diagnostic
 description: Une archive locale et expurgée à remettre au support — ce qu'elle contient, comment la produire en ligne de commande, dans l'interface ou par l'API, et comment l'expurgation échoue fermée.
 sidebar:
-  order: 10
+  order: 11
 ---
 
 Quand quelque chose se passe mal, la personne qui vous aide a besoin des mêmes
@@ -13,7 +13,7 @@ fait ses dernières tâches, ce que disent les métriques, si le store se vérif
 puissiez la remettre sans la relire ligne à ligne pour y chercher des secrets.
 
 Tobby n'envoie l'archive nulle part. Il n'y a ni téléversement, ni appel
-sortant, ni adresse à configurer (NFR-019) : c'est un fichier que vous écrivez
+sortant, ni adresse à configurer : c'est un fichier que vous écrivez
 ou téléchargez, et c'est vous qui choisissez qui le reçoit.
 
 ## Ce qu'il contient
@@ -170,3 +170,6 @@ personnelles à un ticket public.
 |---|---|---|
 | `diagnostics.logRecords` | `2000` | 1 à 100000 — la taille de la fenêtre en mémoire. |
 | `diagnostics.tasks` | `20` | 1 à 500 — combien de rapports de tâches récentes. |
+
+Le bundle est la dernière étape d'un diagnostic, pas la première : les
+contrôles à faire avant sont sur la page [Dépannage](../../reference/troubleshooting/).

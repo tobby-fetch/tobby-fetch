@@ -2,7 +2,7 @@
 title: Sauvegarder et reconstruire une instance
 description: Ce qui fait qu'une instance est cette instance, le seul répertoire à sauvegarder en plus du store, le contrôle que Tobby lui applique au démarrage, et une procédure de reconstruction testée de bout en bout.
 sidebar:
-  order: 9
+  order: 10
 ---
 
 Une instance, ce sont deux choses : son **contenu** et son **identité**. Le
@@ -32,7 +32,7 @@ emporter. Rien d'autre n'y est écrit.
 | `scanner/` | jetable | non | Le répertoire de travail privé du scanner de vulnérabilités. | Reconstruit à partir de la livraison. |
 | `serving.json` | jetable | non | Marque l'instance qui sert le store, pour la ligne de commande locale. | Recréé au démarrage suivant. |
 
-Le répertoire d'état vit hors du store, jamais dedans (NFR-020) : le store
+Le répertoire d'état vit hors du store, jamais dedans : le store
 quitte le site sur un support, l'état non.
 
 ## Quoi sauvegarder
@@ -112,7 +112,7 @@ refus ne sont pas soustraites : retirez plutôt l'entrée d'autorisation large.
 **L'accès du groupe est toléré** : un `fsGroup` Kubernetes, comme dans le chart
 de référence, attribue les fichiers du volume au groupe du pod, et le refuser
 reviendrait à refuser tout déploiement réel. Le contrôle porte sur les fichiers
-de clé dans `tls/` — tout nom finissant par `.key`, `.pem`, `.p8`, `.p12`,
+de clé dans `tls/` — tout nom finissant par `.key`, `.pem`, `.p8`, `.pk8`, `.p12`,
 `.pfx` ou contenant `key`, jugé sur le fichier vers lequel pointe un lien
 symbolique (le `tls.key -> ..data/tls.key` d'un volume projeté) — pas sur le
 certificat à côté (`.crt`, `.cer`), qui est public.

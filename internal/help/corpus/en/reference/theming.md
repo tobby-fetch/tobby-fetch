@@ -2,7 +2,7 @@
 title: "Theming: the design tokens"
 description: The CSS custom properties that make up the web interface's design system, in both themes, as the documented surface of ui.themeOverride — plus the accessibility contract an override takes over.
 sidebar:
-  order: 8
+  order: 9
 ---
 
 The web interface is styled from a single set of **design tokens**: CSS custom

@@ -2,7 +2,7 @@
 title: Dépannage
 description: Partez de ce que vous observez — l'instance ne démarre pas, une connexion échoue, une recipe est refusée, un média est bloqué, une analyse se dégrade — et retrouvez le code TBY, la cause probable et l'action corrective.
 sidebar:
-  order: 5
+  order: 6
 ---
 
 Cette page est organisée par **symptôme** : ce que vous voyez, pas le nom que
@@ -134,8 +134,8 @@ chaque recipe bloquée et le fichier en cause.
 | Le média n'est pas ressorti intègre | [`TBY-MED-032`](../errors/#tby-med-032) | Lire le rapport. Recopier le média et vérifier à nouveau ; les recipes intactes peuvent quand même être poussées. |
 | « ne porte aucun manifeste de média », ou il est illisible | [`TBY-MED-001`](../errors/#tby-med-001), [`TBY-MED-002`](../errors/#tby-med-002) | Le store n'a pas été écrit comme un média, ou le fichier est tronqué. Recopier depuis la source. |
 | Version de format non prise en charge | [`TBY-MED-003`](../errors/#tby-med-003), [`TBY-MED-004`](../errors/#tby-med-004) | Le média et l'instance sont sur des versions majeures différentes. Mettre à jour la destination ([mettre à jour Tobby](../../air-gap/update-tobby/)). |
-| « adressé à une autre zone » | [`TBY-MED-006`](../errors/#tby-med-006) | Vérifier que c'est le bon média. Un administrateur peut passer outre ; la dérogation est auditée. |
-| « plus ancien que le dernier importé » | [`TBY-MED-007`](../errors/#tby-med-007) | Vérifier que c'est le média courant. Un administrateur peut passer outre, par exemple pour restaurer volontairement une livraison plus ancienne. |
+| « adressé à une autre zone » | [`TBY-MED-006`](../errors/#tby-med-006) | Vérifier que c'est le bon média. Une dérogation délibérée est possible (rôle `admin` dans l'interface web et l'API) ; appliquée à l'import, elle est auditée. |
+| « plus ancien que le dernier importé » | [`TBY-MED-007`](../errors/#tby-med-007) | Vérifier que c'est le média courant. La même dérogation est possible, par exemple pour restaurer volontairement une livraison plus ancienne. |
 | Un fichier est absent, de mauvaise taille, ou ne correspond pas à son digest | [`TBY-MED-010`](../errors/#tby-med-010), [`TBY-MED-011`](../errors/#tby-med-011), [`TBY-MED-012`](../errors/#tby-med-012), [`TBY-MED-015`](../errors/#tby-med-015) | Recopier le store depuis la source. La recipe qui atteint le fichier est bloquée ; aucune dérogation n'existe. |
 | Un fichier ou un manifeste n'est pas couvert, ou illisible | [`TBY-MED-013`](../errors/#tby-med-013), [`TBY-MED-014`](../errors/#tby-med-014), [`TBY-MED-005`](../errors/#tby-med-005) | L'inventaire ne correspond pas au contenu : recopier depuis la source. |
 | Le graphe de recipes du support liste un ingrédient que la recipe signée n'épingle pas | [`TBY-MED-016`](../errors/#tby-med-016) | La comptabilité a été modifiée : n'importez pas ; reproduisez le support depuis la source. Aucune dérogation n'existe. |

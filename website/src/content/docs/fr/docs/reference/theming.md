@@ -2,7 +2,7 @@
 title: "Thème : les jetons de design"
 description: Les propriétés CSS personnalisées qui forment le système de design de l'interface web, dans les deux thèmes, comme surface documentée de ui.themeOverride — et le contrat d'accessibilité qu'une surcharge reprend à son compte.
 sidebar:
-  order: 8
+  order: 9
 ---
 
 L'interface web est habillée à partir d'un seul jeu de **jetons de design** :

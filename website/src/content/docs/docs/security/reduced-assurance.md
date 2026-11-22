@@ -2,7 +2,7 @@
 title: The reduced-assurance marker
 description: How content admitted under a relaxed trust scope stays visible — in task reports, the API, the interface, logs, metrics and the media manifest — and why the destination re-reads the marker as a claim, never as a verdict.
 sidebar:
-  order: 7
+  order: 8
 ---
 
 A [relaxation scope](../content-trust/#relaxation-scopes--and-their-visibility)

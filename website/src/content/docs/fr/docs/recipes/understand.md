@@ -17,7 +17,8 @@ trouve, et cette page y renvoie au lieu de le répéter.
 ## Le vocabulaire
 
 La métaphore est celle d'une cuisine, et elle porte du sens : chaque mot
-désigne un objet précis.
+désigne un objet précis. Le reste du vocabulaire du produit est dans le
+[glossaire](../../discover/glossary/).
 
 | Terme | Ce que c'est |
 | --- | --- |

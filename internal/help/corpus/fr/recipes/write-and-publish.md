@@ -97,8 +97,9 @@ exemple :
 
 Le [README des exemples](https://github.com/tobby-fetch/tobby-fetch/blob/main/examples/README.md)
 développe chaque cas, ainsi que trois leçons que l'on apprend d'ordinaire au
-prix fort : les libellés de plateforme sont comparés exactement, tout ce qui
-est multiplateforme ne l'est pas vraiment, et les données mutables (une base
+prix fort : un libellé de plateforme qui nomme une variante ne retient que
+celle-ci, un libellé sans variante les accepte toutes, tout ce qui est
+multiplateforme ne l'est pas vraiment, et les données mutables (une base
 de vulnérabilités, par exemple) appartiennent à leur propre recipe, à leur
 propre cadence.
 
@@ -231,7 +232,7 @@ d'artefact et sa disposition, jamais par le titre.
 
 ## Cuisiner un brouillon
 
-:::note[À venir — R-39]
+:::note[À venir]
 `recipe cook` — la commande qui résout les contraintes d'un brouillon,
 enregistre chaque digest et émet le document publiable — est prévue dans
 l'outillage de la spécification, sur le site de celle-ci et non ici, car

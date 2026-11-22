@@ -32,7 +32,8 @@ compris le manifeste et tout fichier de trust root qui y serait placé.
 Contrôles : vérification côté destination de la complétude du manifeste et des
 sommes de contrôle, puis des fichiers de chaque recipe contre leurs digests
 épinglés et de sa signature cosign contre les trust roots de *cette* instance,
-avant tout push, tout service et toute écriture locale ; chaque fichier couvert
+avant tout push, tout service et toute écriture dans le store (hors journal
+d'opération et enregistrements de tâches sous `_tobby/`, hors couverture) ; chaque fichier couvert
 est contrôlé contre sa propre adresse de contenu autant que contre l'inventaire,
 si bien que réécrire l'inventaire non signé pour qu'il s'accorde avec un blob
 corrompu ne change rien ; le contenu non atteignable depuis une recipe vérifiée
@@ -44,12 +45,17 @@ v0.5.0). L'ordre de vérification et sa justification :
 
 **Un support venu du mauvais endroit ou du mauvais mois.** Un support adressé
 à une autre zone, ou plus ancien que le dernier importé par cette zone, est
-refusé avant que quoi que ce soit en soit lu (R-28). Ces deux refus sont des
+refusé juste après le contrôle du manifeste et du graphe de recipes, avant la
+lecture du moindre contenu de recipe (R-28). Ces deux refus sont des
 **garde-fous contre l'accident, pas des contrôles de sécurité** — le manifeste
 n'est pas signé, donc un tiers hostile peut forger l'un ou l'autre champ —, ce
-qui explique précisément pourquoi ce sont les deux seuls qu'un administrateur
-peut lever, avec audit (FR-094), et pourquoi le point haut enregistré ne recule
-jamais quand l'un d'eux est levé.
+qui explique précisément pourquoi ce sont les deux seuls que l'on peut lever,
+et pourquoi le point haut enregistré ne recule jamais quand l'un d'eux est
+levé. Sur l'écran et l'API, une dérogation exige le rôle `admin` ; en ligne
+de commande il n'y a aucun contrôle de rôle, et l'accès à l'hôte est le
+contrôle. Une dérogation appliquée à un import est auditée (FR-094) ; une
+dérogation donnée à l'étape Vérifier ne l'est pas, alors que sur l'écran et
+l'API elle peut ouvrir le verrou de service. Cet écart est un défaut connu.
 
 **Un client qui demande du contenu à une instance non vérifiée.** Une instance
 de destination qui détient un support transporté retient `/v2/` et `/files/`
@@ -93,6 +99,18 @@ vulnérabilités. L'analyse (FR-031, FR-032, ADR-0008 — livrée en v0.6.0) ré
 admis sous un périmètre assoupli reste marqué élément par élément (R-22 —
 livré en v0.6.0). Voir [analyse de vulnérabilités](../vulnerability-scanning/)
 et le [marqueur d'assurance réduite](../reduced-assurance/).
+
+**Qui peut écrire le Retriever.** Le Retriever n'est volontairement pas
+signé. Il porte la même confiance que la configuration de l'instance, car
+son emplacement, `retriever.source`, est fixé au démarrage et ne peut être
+changé ni par l'interface ni par l'API (l'écran de plan et
+`POST /api/v1/plan` acceptent un document candidat, pour un plan à blanc
+seulement). Le document est relu à chaque synchronisation. Quand
+`retriever.source` est une URL ou une référence OCI, quiconque peut écrire à
+cet emplacement peut donc changer l'état désiré de la zone et assouplir sa
+politique d'analyse (relever le seuil, ajouter des exceptions ; voir
+[analyse de vulnérabilités](../vulnerability-scanning/)). Protégez cet
+emplacement comme le fichier de configuration lui-même.
 
 ## Frontières de confiance par mode
 
@@ -157,10 +175,10 @@ l'être.
 | Interface, `/api/v1`, registry `/v2/`, `/files/` | entrant | un seul listener, authentifié (FR-075), TLS possible (FR-082) | identique |
 | `/healthz`, `/readyz`, `/metrics` | entrant | non authentifiés, aucun contenu d'instance | identique |
 | Registries sources et dépôts Helm | sortant | filtré par la liste d'autorisation (FR-030), compatible proxy (FR-080), CA privées sans désactiver TLS (FR-081) | côté source uniquement ; aucun côté destination |
-| Source du Retriever (fichier, HTTPS, OCI) | sortant | point d'accès configuré (FR-010) | côté source uniquement |
+| Source du Retriever (fichier, HTTP(S), OCI) | sortant | point d'accès configuré (FR-010) ; le document n'est pas signé | côté source uniquement |
 | Registry de la zone de destination | sortant | push différentiel du contenu vérifié (FR-028) | côté destination, depuis le store transporté |
 | URL de trust roots | sortant | récupérées à la configuration uniquement, jamais à la vérification (FR-033) | formes en ligne ou fichier à la place |
-| Fournisseur d'identité | sortant | OIDC/SAML (FR-070, FR-071 — livrés en v0.6.0) | comptes locaux |
+| Fournisseur d'identité | sortant | OIDC/SAML (FR-070, FR-071 — livrés en v0.6.0) | OIDC/SAML si configurés, comme en passthrough ; une zone isolée n'a souvent que des comptes locaux |
 | Télémétrie, vérification de mise à jour, rapports de plantage | sortant | **aucun, jamais** (NFR-019) | aucun |
 
 **Aucune autre destination, jamais.** NFR-019 exige qu'aucune connexion
@@ -182,7 +200,7 @@ proxy qui capture la sortie et consigne chaque tentative de connexion
 | Aucune sortie non configurée | NFR-019, ADR-0012 | livré en v0.1.x, prouvé par canari |
 | Hygiène des secrets, CSRF, traversée de chemin, échappement | NFR-011–NFR-015 | livré |
 | Déploiement de référence au moindre privilège | NFR-014 | livré en v0.4.0 |
-| Vérification du support avant tout push, service ou écriture locale | FR-054, ADR-0006, ADR-0016 | livré en v0.5.0 |
+| Vérification du support avant tout push, service ou écriture dans le store | FR-054, ADR-0006, ADR-0016 | livré en v0.5.0 |
 | Blocage par recipe, sans contournement sur l'intégrité ou la signature | R-19 | livré en v0.5.0 |
 | Secrets jamais sur un support, imposé au démarrage | R-16, NFR-020 | livré en v0.5.0 |
 | Analyse Trivy avec politique, base hors ligne portée par Tobby | FR-031, FR-032, ADR-0008 — [Analyse de vulnérabilités](../vulnerability-scanning/) | v0.6.0 |

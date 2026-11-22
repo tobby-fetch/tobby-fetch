@@ -17,7 +17,8 @@ there, and this page links to it rather than restating it.
 ## The vocabulary
 
 The metaphor is a kitchen, and it is load-bearing: each word names one
-precise object.
+precise object. The rest of the product's vocabulary is in the
+[glossary](../../discover/glossary/).
 
 | Term | What it is |
 | --- | --- |

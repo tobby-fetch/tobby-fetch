@@ -5,8 +5,8 @@ sidebar:
   order: 1
 ---
 
-This page documents the command-line interface as shipped in the current
-v0.5.x series, extracted from the binary itself (`tobby <command> --help`)
+This page documents the command-line interface as shipped in the release
+this documentation comes with, extracted from the binary itself (`tobby <command> --help`)
 and from the CLI source (`internal/cli/`).
 
 The CLI carries a **contract an automation can depend on across versions**
@@ -44,6 +44,7 @@ tobby
 │   └── pack       Package a local directory as a FileSet in the store
 ├── media
 │   ├── verify     Re-verify a transported store without pushing anything
+│   ├── slip       Draw the printable transfer slip of a store
 │   └── import     Verify a transported store, then push what it cleared
 ├── store
 │   └── verify     Verify the integrity of a whole store (either mode)
@@ -101,7 +102,7 @@ destination as a positional argument, symmetric with `tobby import <path>`.
 
 | Value | Where | Meaning |
 |---|---|---|
-| `text` | default everywhere except `config dump` | The human report. |
+| `text` | default, except on `config dump` (`yaml`) and `consumption table` (`markdown`) | The human report. `media slip` also accepts `html`; `consumption table` also accepts `csv`. |
 | `json` | every reporting command | The machine document, alone on stdout. |
 | `yaml` | `config dump` only, and its default | The configuration as a file you can write back. |
 
@@ -393,7 +394,7 @@ digest is pushable; any other is blocked whole, with no override, and its
 neighbours on the same medium are unaffected. A missing or unreadable
 manifest and an altered recipe graph block the medium as a whole with no
 override; a medium addressed to another zone or older than the last one
-imported here block it too, and those two an administrator may waive.
+imported here block it too, and those two can be waived with the flags below. The command line checks no role: whoever can run `tobby media` on the host can waive.
 
 | Flag | Purpose |
 |---|---|
@@ -558,10 +559,11 @@ is never overwritten, and the archive is written readable by its owner only.
 Without `--instance` the archive is assembled on the host from the
 configuration, the store and the state directory; the log window and the
 metrics belong to a running process and appear in the manifest as omitted,
-with the reason. With `--instance` (or `TOBBY_INSTANCE_URL`) the archive is
+with the reason. With `--instance` the archive is
 requested from the running instance, with the administrator's token from
-`TOBBY_API_TOKEN` or `--token-file`, and includes them. The request is
-audited either way. Exit codes: `0` written, `3` refused (the redaction check,
+`TOBBY_API_TOKEN` or `--token-file`, and includes them. `TOBBY_INSTANCE_URL`
+alone does not select this form: it only supplies the URL once the flag is
+given. The request is audited either way. Exit codes: `0` written, `3` refused (the redaction check,
 or the role), `1` failed. See
 [Collect a diagnostic bundle](../../passthrough/diagnostics/).
 

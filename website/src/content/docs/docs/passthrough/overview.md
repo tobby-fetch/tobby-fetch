@@ -5,9 +5,8 @@ sidebar:
   order: 1
 ---
 
-A passthrough instance is Tobby's delivered use case (milestone 4,
-train v0.4.x): a long-lived service standing between two connected
-network zones. On one side it reads from source registries — directly,
+A passthrough instance is Tobby's delivered use case (available since v0.4.0): a long-lived
+service standing between two connected network zones. On one side it reads from source registries — directly,
 or through the enterprise proxy. On the other side it pushes into the
 zone's registry, the one your clusters and hosts actually pull from.
 In between sits its own store and an embedded OCI registry, so the zone
@@ -60,28 +59,28 @@ The loop is deliberately simple, and each step is a requirement you can
 audit:
 
 1. **Re-read the Retriever.** At every cycle the instance re-fetches the
-   desired-state document from `retriever.source` (FR-010) and resolves
+   desired-state document from `retriever.source` and resolves
    every listed recipe from the cookbook, honouring version constraints
    (`~`, `^`, `12.x`) at each pass — a patch release lands by being
    published, with no file to edit.
 2. **Reconcile.** The destination registry is compared against what the
    recipes pin. Only what is missing moves.
 3. **Push differentially.** Blobs and manifests already present at the
-   destination are never re-sent (FR-028). A second cycle over unchanged
+   destination are never re-sent. A second cycle over unchanged
    content transfers zero bytes — the crucible plays exactly that
    scenario.
 4. **Re-verify before every push.** Signatures are checked against the
-   local copy before each push, not once at import (FR-033). A store
+   local copy before each push, not once at import. A store
    that was tampered with between cycles does not propagate.
 5. **Propagate the recipes.** The signed recipe artifacts themselves are
-   pushed to the zone's cookbook alongside their ingredients (FR-034),
+   pushed to the zone's cookbook alongside their ingredients,
    so the zone's cookbook always reflects what the zone actually holds —
    and a further downstream zone can chain from it.
 
 The cycle runs every `sync.interval` (default 15m). The interval is
 changeable at runtime from the administration screen and the API without
-redeploying (FR-013), and that change is audited as sensitive
-configuration (FR-094). A synchronization can also be triggered by hand,
+redeploying, and that change is audited as sensitive
+configuration. A synchronization can also be triggered by hand,
 from the recipes screen or with `POST /api/v1/sync`.
 
 Ingredients land at the destination under their nominal source host —
@@ -101,8 +100,7 @@ the naming rule and its consequences for your clients are the subject of
 - Network reach to the source registries, directly or through a forward
   proxy, and to the destination registry.
 - A destination registry that accepts nested repository paths — Tobby
-  probes for this before pushing and fails explicitly when it does not
-  (FR-035).
+  probes for this before pushing and fails explicitly when it does not.
 - A Retriever document and signed recipes in a cookbook. To understand
   those first, read [recipes, cookbook, retriever](../../recipes/understand/).
 
@@ -121,10 +119,21 @@ The pages are ordered the way a deployment actually proceeds:
 4. **[Connect your clients](../../passthrough/connect-clients/)** — why the
    paths look the way they do, containerd mirrors, GitOps pitfalls, and
    the OS-package endpoint.
-5. **[One-off imports](../../passthrough/one-off-import/)** — pulling a
+5. **[Consumption aids](../../passthrough/consumption-aids/)** — the
+   source-to-destination table and the K3s/RKE2 `registries.yaml`
+   generated from what the store holds.
+6. **[One-off imports](../../passthrough/one-off-import/)** — pulling a
    single image or chart in by reference, outside any recipe.
-6. **[Operate over time](../../passthrough/operate/)** — probes, task
+7. **[Operate over time](../../passthrough/operate/)** — probes, task
    tracking and resume, backup, growth, upgrades.
+8. **[Verify the store's integrity](../../passthrough/verify-store/)** —
+   re-hash blobs, check manifests and recipe signatures on demand.
+9. **[Back up and rebuild an instance](../../passthrough/backup-rebuild/)**
+   — the state directory, the check at startup, and a tested rebuild.
+10. **[Collect a diagnostic bundle](../../passthrough/diagnostics/)** — one
+    redacted local archive to hand to support.
+11. **[Supervise an instance](../../passthrough/monitoring/)** — the
+    metrics reference, alert rules and dashboard shipped with the chart.
 
 If you have not run Tobby at all yet, the ten-minute
 [install and start](../../try/install-and-start/) path and the

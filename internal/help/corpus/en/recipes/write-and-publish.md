@@ -95,9 +95,10 @@ example:
 
 The [examples README](https://github.com/tobby-fetch/tobby-fetch/blob/main/examples/README.md)
 develops each case, plus three lessons usually learned the expensive way:
-platform labels are matched exactly, not everything multi-platform is
-multi-platform, and mutable data (a vulnerability database, for instance)
-belongs in its own recipe on its own cadence.
+a platform label that names a variant binds to that variant while one
+without matches any, not everything multi-platform is multi-platform, and
+mutable data (a vulnerability database, for instance) belongs in its own recipe on its own
+cadence.
 
 ## Validate with `recipe lint`
 
@@ -221,7 +222,7 @@ type and layout, never by the title.
 
 ## Cooking a draft
 
-:::note[Upcoming — R-39]
+:::note[Upcoming]
 `recipe cook` — the command that resolves a draft's constraints, records
 every digest, and emits the publishable document — is planned as part of
 the specification's tooling, on the spec site rather than here, because

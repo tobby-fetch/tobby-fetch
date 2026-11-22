@@ -6,7 +6,7 @@ sidebar:
 ---
 
 Cette page documente l'interface en ligne de commande telle que livrée dans la
-série v0.5.x actuelle, extraite du binaire lui-même (`tobby <command> --help`)
+version qui accompagne cette documentation, extraite du binaire lui-même (`tobby <command> --help`)
 et du code source de la CLI (`internal/cli/`).
 
 La CLI porte un **contrat sur lequel une automatisation peut compter d'une
@@ -44,6 +44,7 @@ tobby
 │   └── pack       Package a local directory as a FileSet in the store
 ├── media
 │   ├── verify     Re-verify a transported store without pushing anything
+│   ├── slip       Draw the printable transfer slip of a store
 │   └── import     Verify a transported store, then push what it cleared
 ├── store
 │   └── verify     Verify the integrity of a whole store (either mode)
@@ -103,7 +104,7 @@ prend sa destination en argument positionnel, symétrique de
 
 | Valeur | Où | Signification |
 |---|---|---|
-| `text` | défaut partout sauf pour `config dump` | Le rapport pour humains. |
+| `text` | défaut, sauf sur `config dump` (`yaml`) et `consumption table` (`markdown`) | Le rapport pour humains. `media slip` accepte aussi `html` ; `consumption table` accepte aussi `csv`. |
 | `json` | toute commande qui rapporte | Le document machine, seul sur stdout. |
 | `yaml` | `config dump` uniquement, et son défaut | La configuration sous forme de fichier que l'on peut réécrire. |
 
@@ -406,7 +407,7 @@ entièrement, sans levée possible, et ses voisines sur le même support ne sont
 pas touchées. Un manifeste absent ou illisible et un graphe de recipes altéré
 bloquent le support dans son ensemble, sans levée possible ; un support adressé
 à une autre zone ou plus ancien que le dernier importé ici le bloquent aussi,
-et ces deux-là, un administrateur peut les lever.
+et ces deux-là peuvent être levés avec les options ci-dessous. La ligne de commande ne contrôle aucun rôle : quiconque peut lancer `tobby media` sur l'hôte peut les lever.
 
 | Option | Rôle |
 |---|---|
@@ -576,10 +577,11 @@ propriétaire.
 Sans `--instance`, l'archive est assemblée sur l'hôte à partir de la
 configuration, du store et du répertoire d'état ; la fenêtre de journal et les
 métriques appartiennent à un processus en marche et figurent au manifeste comme
-écartées, avec la raison. Avec `--instance` (ou `TOBBY_INSTANCE_URL`), l'archive
+écartées, avec la raison. Avec `--instance`, l'archive
 est demandée à l'instance en marche, avec le jeton de l'administrateur pris dans
-`TOBBY_API_TOKEN` ou `--token-file`, et les inclut. La demande est auditée dans
-les deux cas. Codes de sortie : `0` écrite, `3` refusée (contrôle d'expurgation,
+`TOBBY_API_TOKEN` ou `--token-file`, et les inclut. `TOBBY_INSTANCE_URL` seule
+ne choisit pas cette forme : elle ne fournit l'URL qu'une fois l'option donnée.
+La demande est auditée dans les deux cas. Codes de sortie : `0` écrite, `3` refusée (contrôle d'expurgation,
 ou rôle), `1` échec. Voir
 [Collecter un bundle de diagnostic](../../passthrough/diagnostics/).
 

@@ -2,7 +2,7 @@
 title: SRS et ADR
 description: Index de la spécification des exigences et des registres de décisions d'architecture, hiérarchie des sources entre les deux, et processus des ADR.
 sidebar:
-  order: 6
+  order: 7
 ---
 
 Deux documents gouvernent ce que Tobby doit faire et pourquoi il est construit
@@ -50,6 +50,15 @@ recette de Tobby v1.0.0. Sa structure :
 - Les amendements sont datés sur place (par ex. *« FR-005 — amendement
   2026-08-12 »*), de sorte que l'historique d'une exigence se lit dans son
   propre texte.
+- Trois autres familles d'identifiants apparaissent à côté. `UC1` à `UC3`
+  sont les trois cas d'usage de la SRS (promotion passthrough,
+  synchronisation miroir, registre de substitution ou d'amorçage). `R-nn`
+  numérote un élément de feuille de route ajouté après la spécification
+  initiale ; la
+  [feuille de route](https://tobbyfetch.dev/roadmap.html)
+  les liste, et l'amendement de la SRS qui en implémente un le cite.
+  `B-nnn` numérote un défaut, cité par l'entrée du changelog de son
+  correctif.
 
 La façon dont la pyramide des exigences se traduit en preuves exécutables est
 décrite dans [Tests et preuves de qualité](../../project/tests-and-proofs/).
@@ -97,7 +106,7 @@ GitHub. Les titres des ADR sont ceux du dépôt (en anglais).
 | [ADR-0003](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0003-repo-and-licensing-split.md) | Repository & licensing split: recipe-spec (Apache-2.0) / tobby (GPL-3.0) | 2026-07-11, amendé 2026-08-04 | Le format de recipe et son SDK sont Apache-2.0 pour que quiconque puisse l'implémenter ; l'application est GPL-3.0. |
 | [ADR-0004](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0004-embedded-registry-cncf-distribution.md) | Embedded OCI registry: CNCF distribution v3 as a library | 2026-07-11 | L'instance embarque CNCF distribution comme store et surface `/v2/` standard, au lieu de s'appuyer sur une registry externe. |
 | [ADR-0005](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0005-direct-to-storage-import.md) | Direct-to-storage import (no self-push loopback) | 2026-07-11 | Les imports écrivent directement dans le store au lieu de pousser vers le point d'accès HTTP de la registry de l'instance elle-même. |
-| [ADR-0006](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0006-removable-media-transport.md) | Removable-media transport: self-contained store + OCI image layout export | 2026-07-11 | Le franchissement de l'air-gap est le store lui-même, autonome et transportable, avec un export OCI image-layout interopérable. |
+| [ADR-0006](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0006-removable-media-transport.md) | Removable-media transport: self-contained store + OCI image layout export | 2026-07-11, amendé 2026-08-26 | Le franchissement de l'air-gap est le store lui-même, autonome et transportable, avec un export OCI image-layout interopérable. Amendé : la destination de l'export est un argument positionnel, `--output` nomme le format du rapport. |
 | [ADR-0007](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0007-signing-cosign-key-based.md) | Signing & verification: Sigstore/cosign, key-based for air-gap | 2026-07-11 | Signatures cosign à clé, vérifiables sans aucun service en ligne — la forme qui fonctionne en zone isolée. |
 | [ADR-0008](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0008-vulnerability-scanning-trivy.md) | Vulnerability scanning: Trivy, offline DB shipped as OCI artifact | 2026-07-11, amendé 2026-08-04, 2026-08-12 et 2026-11-11 | Analyse avec Trivy comme binaire externe épinglé, sous une politique CVSS numérique affinée par le Retriever et la recipe ; la base de CVE franchit l'air-gap comme artefact OCI porté par Tobby lui-même. |
 | [ADR-0009](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0009-authentication-oidc-saml-tokens-basic.md) | Authentication: OIDC, SAML, static tokens, basic auth; minimal RBAC | 2026-07-11 | Quatre méthodes d'authentification sur un RBAC minimal à trois rôles ; les mêmes comptes servent l'UI, l'API et les clients de registry. |
@@ -107,6 +116,8 @@ GitHub. Les titres des ADR sont ceux du dépôt (en anglais).
 | [ADR-0013](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0013-ingredient-relocation-destination-naming.md) | Ingredient relocation and destination naming | 2026-08-03 | La convention de nommage déterministe : `docker.io/x` devient `<zone-registry>/docker.io/x`, hôtes canoniques, port `:` écrit `_`. |
 | [ADR-0014](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0014-crucible-test-infrastructure-incus.md) | Crucible test infrastructure: Incus | 2026-08-04 | Le crucible de recette : topologies multi-zones réelles sur Incus, scénarios par jalon, rapports bruts conservés. |
 | [ADR-0015](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0015-ui-invariants.md) | Web UI invariants: canonical URLs, reserved prefixes, htmx doctrine | 2026-08-12 | Les règles que toute contribution à l'UI applique : schéma d'URL canonique avec le séparateur `/-/`, préfixes de chemin réservés, et doctrine d'usage de htmx. |
+| [ADR-0016](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0016-media-manifest.md) | Media manifest: an unsigned inventory, and what verification actually rests on | 2026-08-26 | Le manifeste du média est un inventaire non signé qui aide l'opérateur à lire un support ; la confiance repose sur la vérification de chaque artefact, pas sur le manifeste. |
+| [ADR-0017](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0017-scan-by-content.md) | Scanning by content, whatever the declared kind | 2026-11-12 | L'analyse est décidée par ce que contient un artefact, pas par le type qu'il déclare. |
 
 La correspondance exigences ↔ mécanismes ↔ preuves construite sur ces
 documents est dans [Conformité](../../project/compliance/), et les preuves de

@@ -46,7 +46,7 @@ la page HTML, le texte brut, et le `"signed": false` de la forme JSON.
 | **Inventaire** | Une ligne par recipe (digest, date de résolution, assurance) et une par ingrédient (type, tag, digest). |
 | **Rapport de vérification** | Le verdict, les refus portant sur le support entier (avec la possibilité pour un administrateur de les outrepasser, et s'il l'a fait), les trois étapes — manifeste, sommes de contrôle, signatures — et une ligne par livraison qui nomme le fichier fautif quand elle est bloquée. |
 | **Analyse de vulnérabilités** | La politique en vigueur et la base utilisée avec son âge ; puis, **par recipe et par élément**, le verdict, le mode d'évaluation du rapport (**consultatif** ou **bloquant**), le seuil, l'âge de la base *contre laquelle ce rapport a été produit*, les comptes par sévérité, les violations et les principaux résultats. |
-| **Assurance réduite** | Chaque recipe admise sous un scope de confiance assoupli, avec le scope et ce qu'il a levé ([R-22](../../security/reduced-assurance/)). |
+| **Assurance réduite** | Chaque recipe admise sous un scope de confiance assoupli, avec le scope et ce qu'il a levé ([assurance réduite](../../security/reduced-assurance/)). |
 
 Les **marqueurs d'assurance réduite** ne sont pas seulement rassemblés dans
 leur propre section. Ils figurent aussi à côté de la recipe qu'ils qualifient

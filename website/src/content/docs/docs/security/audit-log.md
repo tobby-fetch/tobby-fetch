@@ -2,7 +2,7 @@
 title: Audit log
 description: The versioned six-field audit schema, the event catalogue dated by delivered version, durability guarantees, and how to ingest the trail into a SIEM.
 sidebar:
-  order: 5
+  order: 6
 ---
 
 Tobby emits a dedicated category of security audit events with a stable,
@@ -26,7 +26,7 @@ Six fields on every record, plus the marker and the schema version:
   "action": "token.create",
   "target": "ci-deploy",
   "outcome": "success",
-  "origin": "10.20.30.40:52114"
+  "origin": "10.20.30.40"
 }
 ```
 
@@ -66,7 +66,7 @@ only, with the same compatibility discipline as the REST API
 | `import.create`, `sync.create`, `recipe.publish`, `content.delete` | content-affecting actions with their actor | v0.4.x |
 | `config.promotion_interval`, `config.server_certificate` | sensitive configuration changes on a running instance (FR-013, FR-082) | v0.4.x |
 | `media.import` | a transported medium pushed into the zone (FR-052) | v0.5.x |
-| `media.override` | one of the two waivable media guards, attempted or applied (FR-054) | v0.5.x |
+| `media.override` | one of the two waivable media guards: an attempt refused for lack of the `admin` role, or a waiver applied when an import is requested (FR-054). A waiver given at the Verify step writes no record (see below) | v0.5.x |
 | `store.reset` | the confirmed store reset, including a refused confirmation (FR-046) | v0.5.x |
 | `layout.export`, `layout.import` | OCI image layout leaving or entering the store (FR-051) | v0.5.x |
 | `fileset.pack` | a host directory packed into the store as a FileSet (FR-048) | v0.5.x |
@@ -82,11 +82,21 @@ only, with the same compatibility discipline as the REST API
 | `hardening.refused` | a write refused by a hardening switch (FR-098): a unit import or its inspection, a FileSet packing (screen, API or `tobby fileset pack`), or a `/v2/` write — blob upload, mount, manifest put, deletion — by any client and role. The target is the reference, the packed FileSet or the repository; the outcome `denied`; the additional `setting` field names the switch (`hardening.disableUnitImport` or `hardening.disableRegistryPush`). One refusal, one record: no second denial is written beside it | v1.0.x |
 | `scan.scanner.repaired` | a scanner binary delivered by tobby-system, found changed on disk since it was verified and unpacked again from the verified delivery, without being run (FR-031); the target is the binary's path, the outcome `success`, or `failure` when the delivery could not be unpacked again (the scanner is then unavailable). A WARN record beside it names the expected and the found digests | v0.6.x |
 
-The media events joined the catalogue with v0.5.0: the two audited waivers
-of a media import — a medium addressed to another zone and a medium older
-than the last one imported here — and the confirmed store reset (FR-046).
-Both the attempt and the applied waiver are recorded, with the actor and
-the network origin they came from.
+The media events joined the catalogue with v0.5.0: the two waivers of a
+media import — a medium addressed to another zone and a medium older than
+the last one imported here — and the confirmed store reset (FR-046). On the
+screen and the API, a refused attempt and a waiver applied to an import are
+recorded with the actor and the network origin. On the command line,
+`tobby media import` records the waiver with the actor and origin `local`:
+there is no role check there, host access is the control.
+
+**Current limit.** A waiver given at the Verify step — the screen's Verify
+step, `POST /api/v1/media/verify`, `tobby media verify` — writes no audit
+record, only a `WARN` line in the instance log (stderr for `tobby media verify`)
+without actor or origin. On
+the screen and the API such a waived verification can open the serving
+gate. This is a known defect; until it is fixed, the audit trail does not
+show every waiver that opened the gate.
 
 ## Durability — and the trail that crosses the air gap
 
@@ -95,15 +105,17 @@ In passthrough mode audit records go to stdout with everything else
 for a long-lived service.
 
 In mirror mode the log file lives **on the transport media**, under
-`_tobby/logs/` and therefore outside the media manifest's coverage — a log
+`_tobby/logs/` by default and in any case outside the media manifest's coverage — a log
 written inside coverage would invalidate, line by line, the inventory the
 destination verifies. It has size-based rotation and an explicit fsync at
 task boundaries: yanked media lose at most the task in progress (FR-053,
 FR-056), which a test proves by killing the process outright. That file is
 not a convenience: it is the audit trail that
-physically crosses the air gap with the content, carrying the run ID that
-the destination instance reuses, so one synchronization is traceable from
-the connected side to the isolated side through the media (FR-090). See
+physically crosses the air gap with the content. The destination logs
+under its own run ID; its "media verification complete" record carries the
+source run ID as `source_run_id`, with the `media_id`, so one
+synchronization is traceable from the connected side to the isolated side
+through the media (FR-090). See
 [tracing a transfer](../../air-gap/traceability/).
 
 ## The unsigned-log position

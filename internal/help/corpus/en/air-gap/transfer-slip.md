@@ -44,7 +44,7 @@ the plain text, and the `"signed": false` of the JSON form.
 | **Inventory** | One row per recipe (digest, resolution time, assurance) and one per ingredient (kind, tag, digest). |
 | **Verification report** | The verdict, the medium-wide refusals (with whether an administrator may waive them, and whether one did), the three stages — manifest, checksums, signatures — and one row per delivery naming the offending file when it is blocked. |
 | **Vulnerability scan** | The policy in force and the database in use with its age; then, **per recipe and per element**, the verdict, the mode the report was evaluated under (**advisory** or **blocking**), the threshold, the age of the database *that report ran against*, the counts by severity, the violations, and the worst findings. |
-| **Reduced assurance** | Every recipe admitted under a relaxed trust scope, with the scope and what it waived ([R-22](../../security/reduced-assurance/)). |
+| **Reduced assurance** | Every recipe admitted under a relaxed trust scope, with the scope and what it waived ([reduced assurance](../../security/reduced-assurance/)). |
 
 The **reduced-assurance markers** are not only collected in their own section.
 They also sit beside the recipe they qualify — in the inventory, in the

@@ -2,14 +2,13 @@
 title: One-off imports
 description: Import a single image, chart, or OCI artifact by reference — inspect first, pick platforms, transfer only what is missing.
 sidebar:
-  order: 6
+  order: 7
 ---
 
 Not everything deserves a recipe. A base image to try, a chart you are
 evaluating, one artifact a developer asked for today — Tobby imports a
 single OCI artifact of any media type by reference, outside any recipe
-run and without a container runtime on the instance (FR-023). It landed
-in milestone 2 and has been part of every release since.
+run and without a container runtime on the instance. It has been part of every release since milestone 2.
 
 ## From the interface
 
@@ -33,11 +32,11 @@ The screen is addressable: `/import?ref=…` pre-fills the form and
 triggers the inspection on load, which is also how "retry" on a failed
 import task and deep links from a manifest detail work. The POST never
 trusts what the browser displayed: the server re-inspects and pins the
-digests the registry serves *at import time* (FR-026).
+digests the registry serves *at import time*.
 
 ## From the API
 
-The UI is a strict mirror of the API (FR-061):
+The UI is a strict mirror of the API:
 
 ```sh
 # Inspect: platforms, digests, sizes, local status
@@ -62,7 +61,7 @@ under the same relocated path a recipe would have used.
 ## Incremental by digest
 
 Imports are differential, at two grains. Blobs and manifests already in
-the store are never re-fetched (FR-028) — re-importing a moved tag
+the store are never re-fetched — re-importing a moved tag
 transfers only what actually changed. And the inspection reports
 per-platform status against the store, so importing `linux/arm64` of an
 image whose `linux/amd64` you already hold moves only the arm64 layers.
@@ -81,8 +80,8 @@ keys off recipes, not imports:
 | Reconciled at every cycle | no — imported once | yes |
 | Version constraints (`~`, `^`, `12.x`) | no — one reference | yes |
 | Pushed to the destination registry | no — store only | yes |
-| Listed in the zone's cookbook | no | yes (FR-034) |
-| Signature required by default | no — see below | yes (FR-033) |
+| Listed in the zone's cookbook | no | yes |
+| Signature required by default | no — see below | yes |
 
 If the same reference keeps coming back through the import screen, that
 is a recipe asking to be written —
@@ -96,16 +95,15 @@ digests of every ingredient: someone accountable stated *this content,
 at these digests, belongs in this zone*. A one-off import carries no
 such statement. What you get is integrity, not endorsement: digests are
 pinned at inspection and verified end to end, the registry allowlist
-still applies (FR-030), and the action is attributed to the operator who
-clicked it in the audit trail (FR-094). Nobody signed the *choice*.
+still applies, and the action is attributed to the operator who
+clicked it in the audit trail. Nobody signed the *choice*.
 
 Tobby keeps the two provenances distinct in its records. Unit-imported
 content does not participate in promotion, and it is the only content an
 administrator can remove repository by repository — from the repository
-page or with `DELETE /api/v1/content/{repo}` — with the removal audited
-(FR-044); recipe-managed content shows the action disabled, naming its
+page or with `DELETE /api/v1/content/{repo}` — with the removal audited; recipe-managed content shows the action disabled, naming its
 managing recipe. In mirror mode, unit imports are excluded from the
-default prune, which touches recipe-managed content only (FR-045). The
+default prune, which touches recipe-managed content only. The
 full model is [content trust](../../security/content-trust/).
 
 The content browser and the API say it too: an imported repository shows
@@ -114,8 +112,7 @@ shows as *Packed on this instance*, class `unit-import` with the origin
 `local-pack`, and content restored from an OCI image layout (`tobby import`,
 `/admin/oci-layout`) as *Imported from an OCI layout*, origin `oci-layout` —
 and it counts in the
-`tobby_store_unmanaged_repositories{class="unit-import"}` metric
-(FR-098). Importing into a repository that already holds content pushed
+`tobby_store_unmanaged_repositories{class="unit-import"}` metric. Importing into a repository that already holds content pushed
 through `/v2/` leaves it classed `seed`: the class never becomes easier to
 remove than what the repository already held.
 
@@ -134,4 +131,5 @@ administrator, not a fault: deliver the content through a signed recipe,
 or ask for the setting to be removed. See the
 [configuration reference](../../reference/configuration/#hardening).
 
-Last stop of the section: [operating in the long run](../../passthrough/operate/).
+Next: once content is in, keep the instance healthy —
+[operating in the long run](../../passthrough/operate/).

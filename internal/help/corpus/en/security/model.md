@@ -45,19 +45,29 @@ or a signature check is not pushed or served: **the recipe is blocked
 whole**, and sibling recipes that verify are unaffected.
 → [Signatures, trust roots and allowlist](../content-trust/), [errors `TBY-SIG-*`](../../reference/errors/#tby-sig-001)
 
-## 3. Secure by default: every relaxation is opt-in, visible and recorded
+## 3. Secure by default: relaxations are visible
 
-No default and no omitted setting weakens an instance. A weaker posture
-exists only when someone writes it down, and each one is announced where
-the people it affects will see it:
+A weaker posture exists only when someone writes it down, and each one is
+announced where the people it affects will see it. Three exceptions are not
+written in the instance's own configuration: vulnerability scanning is
+advisory by default (`scan.mode: warn`), an absent `registries.allowlist`
+restricts nothing (reported as *undeclared*), and the Retriever, a document
+that is not signed, can loosen the vulnerability policy. All three are in
+the table:
 
 | Relaxation | How it is asked for | Where it shows |
 | --- | --- | --- |
 | Authentication off | `auth.disabled` in the configuration file or `TOBBY_AUTH_DISABLED`, never by flag | permanent banner, startup log, `auth.override_active` audit event |
 | Unsigned recipes admitted | a `trust.scopes` entry with `allowUnsigned`, for named repositories only | permanent banner, the [reduced-assurance marker](../reduced-assurance/) on every item it reached |
 | Vulnerabilities reported, not blocking | the default `scan.mode: warn`; `block` is opt-in | advisory banner, `TBY-SCN-006` on each violating item |
-| Medium for another zone, or older than the last one imported | an `admin` waiver at media import (`TBY-MED-006`, `TBY-MED-007`), per import | audit event |
+| Vulnerability threshold raised, or exceptions added, by the Retriever | `spec.scanPolicy` in the Retriever, which is not signed; its threshold replaces the instance's in either direction | each item's report (`threshold_level: retriever`); the Retriever's exceptions on `/admin/policy`; `TBY-SCN-028` for an exception without expiry; no audit event |
+| Registries contacted without restriction | no `registries.allowlist` key | reported as *undeclared* |
+| Medium for another zone, or older than the last one imported | a waiver (`TBY-MED-006`, `TBY-MED-007`), per verification or import: `admin` on the screen and the API, anyone with host access on the command line | audit event when an import is requested; none when given at the Verify step (known defect) |
 | A FileSet served without a login | `anonymous: true` on its `files.filesets` entry | permanent banner |
+
+The Retriever is unsigned by design: it carries the trust of the instance
+configuration, and its location must be protected like the configuration
+file — see [the threat model](../threat-model/#adversaries-and-what-stops-them).
 
 An instance with no account refuses to start rather than start open
 (`TBY-AUTH-001`), and one with a secret file inside the transportable
@@ -148,7 +158,10 @@ trusted.
 The only two waivers (a medium addressed to another zone, a medium older
 than the last imported) are anti-accident guards: they are not security
 controls, because a manifest field can be forged. That is why they alone
-can be waived, by an administrator, audited.
+can be waived: by an administrator on the screen and the API, by anyone
+with access to the host on the command line. A waiver applied to an import
+is audited; a waiver given at the Verify step is not, although on the
+screen and the API it can open the serving gate (a known defect).
 → [Media security model](../../air-gap/media-security/), [Media workflow](../../air-gap/media-workflow/)
 
 ## 6. Trust scopes
@@ -180,7 +193,9 @@ What is scanned is decided by the **content**, not by the declared kind: an
 image published as an "artifact" or a FileSet is detected from its bytes
 and scanned as an image. One policy (a CVSS threshold, advisory or
 blocking, tolerated exceptions) is composed from the instance, the
-Retriever and the recipe, and a recipe can only make it stricter. The
+Retriever and the recipe. A recipe can only make it stricter; the
+Retriever's threshold replaces the instance's and can make it laxer as well
+as stricter. The
 vulnerability database travels with Tobby itself, and its age is part of
 every report; a missing, stale or unverifiable scanner is a visible
 degraded mode (`TBY-SCN-001` to `TBY-SCN-004`), never a silent pass.

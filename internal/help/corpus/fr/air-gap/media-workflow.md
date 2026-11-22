@@ -12,6 +12,11 @@ vérifie puis le pousse dans la registry de zone. Déplacer le répertoire,
 c'est le transfert — il n'y a aucune étape d'empaquetage ou de dépaquetage
 propriétaire.
 
+Pour voir tout le parcours se dérouler avant de le lire, rejouez-le sur
+un seul poste en une dizaine de minutes une fois Docker et cosign installés :
+[l'air-gap sur un seul poste](../../try/air-gap-on-one-machine/). Les
+mots inconnus sont dans le [glossaire](../../discover/glossary/).
+
 Cette page est la carte. Le détail opérationnel vit sur trois pages à côté
 d'elle : [préparer le poste source](../../air-gap/prepare-source/),
 [importer côté zone isolée](../../air-gap/import-destination/) et
@@ -19,8 +24,13 @@ d'elle : [préparer le poste source](../../air-gap/prepare-source/),
 conception derrière tout cela, c'est
 [ADR-0006](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0006-removable-media-transport.md)
 et
-[ADR-0016](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0016-media-manifest.md),
-SRS FR-050 à FR-056.
+[ADR-0016](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0016-media-manifest.md).
+
+:::tip[En bref]
+- Cinq étapes, dans cet ordre : préparer (mode miroir, Retriever de la zone, racines de confiance), pré-vol (`tobby sync --dry-run`, qui refuse les transferts impossibles), exporter (un `tobby sync --wait` déclenché à la main, manifeste écrit en dernier), transporter (hors de Tobby), importer. [Les étapes](#les-cinq-étapes)
+- Côté isolé, `tobby media verify` puis `tobby media import` vérifient le support entier avant tout push ; la sortie `0` signifie le succès. [Importer](#5--importer)
+- Seuls deux refus peuvent être levés : par un `admin` sur l'écran et l'API, par quiconque a accès à l'hôte en ligne de commande. Une dérogation donnée à l'étape Vérifier n'est pas auditée ; les échecs d'intégrité et de signature n'ont aucun contournement. [L'écran Média](#lécran-média)
+:::
 
 ## Deux instances, un répertoire
 
@@ -92,7 +102,7 @@ noms n'aura pas à être renommée plus tard.
 | 2 | **Pré-vol** | Tobby calcule ce qui voyagerait et refuse les transferts impossibles avant qu'ils ne commencent. | operator |
 | 3 | **Exporter** | Une synchronisation déclenchée manuellement remplit le store transportable ; le manifeste de média est écrit en dernier. | operator |
 | 4 | **Transporter** | Le média traverse physiquement le sas, via les contrôles de gestion des supports du site. | procédure média du site (hors Tobby) |
-| 5 | **Importer** | L'instance de destination vérifie le média, puis pousse le contenu vérifié vers la registry de zone. | operator (admin pour les deux dérogations auditées) |
+| 5 | **Importer** | L'instance de destination vérifie le média, puis pousse le contenu vérifié vers la registry de zone. | operator (admin pour les deux dérogations sur l'écran et l'API) |
 
 ### 1 — Préparer
 
@@ -188,9 +198,11 @@ répéter dès aujourd'hui.
 
 L'instance de destination traite le média comme non fiable jusqu'à preuve du
 contraire. La vérification précède tout push, tout service, toute écriture
-locale : complétude et checksums du manifeste d'abord, puis signatures des
-recipes contre les trust roots propres à la destination, puis chaque digest
-d'ingrédient. Les recipes qui vérifient sont poussées de façon
+dans le store : complétude et checksums du manifeste d'abord, puis chaque
+fichier et chaque digest d'ingrédient qu'une recipe atteint, puis la
+signature de la recipe contre les trust roots propres à la destination. Seuls
+le journal d'opération et les enregistrements de tâches sous `_tobby/`, hors
+de la couverture du manifeste, sont écrits avant elle. Les recipes qui vérifient sont poussées de façon
 différentielle vers la registry de zone ; tout le reste est bloqué et nommé.
 Les journaux de la destination sont écrits en retour sur le média.
 
@@ -200,10 +212,11 @@ Checklist :
 - Les verdicts de vérification ont été relus par étape et par recipe.
 - Les recipes bloquées, s'il y en a, sont listées dans le rapport et
   traitées selon votre procédure de site. Deux refus seulement peuvent être
-  levés, par un administrateur et avec consignation à l'audit : un support
-  adressé à une autre zone, et un support plus ancien que le dernier importé
-  ici. Les échecs d'intégrité et de signature n'admettent aucune dérogation,
-  pour personne.
+  levés : un support adressé à une autre zone, et un support plus ancien que
+  le dernier importé ici. Sur l'écran et l'API, cela exige le rôle `admin` ;
+  en ligne de commande, quiconque peut lancer `tobby media` sur l'hôte peut
+  le faire. Les échecs d'intégrité et de signature n'admettent aucune
+  dérogation, pour personne.
 - Le push est terminé ; le média de retour porte les journaux de la
   destination.
 
@@ -229,8 +242,10 @@ l'enchaînement guidé :
    moins une livraison. Pas grisé : absent.
 
 Un désaccord de zone et un support plus ancien que le dernier importé ici sont
-les deux seuls refus qu'un administrateur peut lever, depuis l'étape Vérifier,
-avec consignation au journal d'audit. Les verdicts d'intégrité et de signature
+les deux seuls refus qu'un administrateur peut lever sur l'écran. Elles se
+cochent à l'étape Vérifier et sont reportées sur Pousser : la dérogation est
+auditée au clic sur Pousser, pas quand la vérification avec dérogation ouvre
+le verrou de service (un défaut connu). Les verdicts d'intégrité et de signature
 n'admettent aucune dérogation, pour personne. Pas à pas :
 [importer côté zone isolée](../../air-gap/import-destination/).
 
@@ -264,6 +279,10 @@ destination configure.
 La registry de zone sert désormais le contenu. Y raccorder les clusters et
 les hôtes de la zone fonctionne exactement comme en mode passthrough — voir
 [Brancher vos clients](../../passthrough/connect-clients/).
+
+Une étape qui refuse d'aller plus loin nomme un code `TBY-…` :
+[Dépannage — un média amovible est bloqué](../../reference/troubleshooting/#un-média-amovible-est-bloqué)
+part de ce que vous voyez.
 
 Les supports qui repartent pour un cycle de plus — identité, fraîcheur,
 prune, dimensionnement et remise à zéro — sont sur

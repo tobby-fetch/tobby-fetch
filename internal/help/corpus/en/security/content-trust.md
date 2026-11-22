@@ -19,6 +19,13 @@ Tobby never signs. Signing happens in the organization's qualification
 pipeline; the [recipe-spec publishing guide](https://tobby-fetch.github.io/recipe-spec/guides/publishing-recipes/)
 carries the verified cosign 3.x commands.
 
+:::tip[In short]
+- Signatures are cosign key-based, verified offline against `trust.roots` (a name and one of `key`, `keyFile`, `keyURL`). Rotate by adding the new root beside the old. [Trust roots](#trust-roots)
+- For recipe signatures there is no global bypass: the only relaxation is a declared `trust.scopes` entry, reported on every surface. Unit imports and `/v2/` pushes admit unsigned content unless the [hardening switches](../model/#hardening-switches) are set. [Scopes](#relaxation-scopes--and-their-visibility)
+- Ingredient signatures are recorded and never block, unless you set `trust.requireIngredientSignatures: true`. [Ingredients](#ingredient-signatures--recorded-required-only-on-request)
+- `registries.allowlist` bounds the hosts contacted: absent means unrestricted, `[]` means nothing allowed; a refusal is `TBY-POL-001`. [Allowlist](#registry-allowlist)
+:::
+
 ## Trust roots
 
 A trust root is one trusted public key, named, configured on the instance

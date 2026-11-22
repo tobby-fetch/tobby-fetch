@@ -2,7 +2,7 @@
 title: Input validation
 description: Every input that crosses a trust boundary, with its size bound, its decoder and its grammar check — request bodies, path and query parameters, configuration, documents read from a store or a medium, registry and identity-provider responses (NFR-023).
 sidebar:
-  order: 9
+  order: 10
 ---
 
 Tobby reads input from parties it does not control: browsers and API

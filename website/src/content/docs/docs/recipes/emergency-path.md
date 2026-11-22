@@ -26,7 +26,7 @@ procedure you can rehearse before the day you need it.
   for one cookbook path only: a root a scope lists is reserved to that
   scope (step 2).
 - **It is visible.** The scope name travels with the recipe on the API, the
-  task reports, the plan and the recipes screen, and the scope is part of
+  task reports, the plan and the Media screen, and the scope is part of
   the effective configuration.
 - **It is not a bypass.** The same checks apply: pinned digests are
   verified, registries must be on the allowlist, content is scanned under
@@ -107,8 +107,11 @@ one, and give the Retriever a per-entry cookbook (step 6). Restart the
 instance and check the result:
 
 ```sh
-tobby config dump | grep -A12 '^trust:'
+tobby config dump --config /etc/tobby/config.yaml | grep -A12 '^trust:'
 ```
+
+Without `--config`, `tobby config dump` reads `/etc/tobby/config.yaml`. Pass the
+file your instance actually runs from.
 
 Rehearse the whole procedure on a test zone once. The cost of finding a
 typo in a scope pattern is much lower on a quiet day.
@@ -236,7 +239,7 @@ Nothing is hidden because the signature is valid.
 | Surface | What you see |
 | --- | --- |
 | Effective configuration | `trust.scopes` with `emergency` and its repositories and roots (`tobby config dump`, and the configuration shown by the instance). |
-| Recipes | `GET /api/v1/recipes`: `verified: true` and `trustScope: "emergency"` on the recorded recipe. The Recipes screen shows the scope beside the verdict. |
+| Recipes | `GET /api/v1/recipes`: `verified: true` and `trustScope: "emergency"` on the recorded recipe. The Recipes screen shows only the "verified" badge for a verified recipe; it prints the scope beside the verdict when the recipe is not verified. |
 | Task reports | `trust_scope: "emergency"` on the recipe's row of `resolutions` in the synchronization task (`GET /api/v1/tasks/{id}`). |
 | Plan | The trust scope that decided each recipe's verdict: the `SCOPE` column of `tobby sync --dry-run`, `trust_scope` in its `--output json` report, and the plan screen. |
 | Media | The scope is shown beside the recipe on the Media screen of a medium carrying it; the destination takes its **own** verdict from its own trust roots, so the destination must declare the same emergency scope and root to admit the recipe. |

@@ -2,12 +2,12 @@
 title: Secrets
 description: Tous les secrets que détient une instance Tobby, où ils résident, comment ils sont stockés et pourquoi ils ne peuvent pas fuir par les journaux, les erreurs ou les dumps de configuration.
 sidebar:
-  order: 6
+  order: 7
 ---
 
 Un auditeur doit pouvoir énumérer chaque secret détenu par une instance et
-vérifier où chacun réside. Cette page est cet inventaire — exhaustif en v0.5.x
-— suivi des mécanismes qui tiennent les secrets hors de tous les canaux de
+vérifier où chacun réside. Cette page est cet inventaire — exhaustif pour la
+version qui accompagne cette documentation — suivi des mécanismes qui tiennent les secrets hors de tous les canaux de
 sortie.
 
 ## Inventaire
@@ -21,7 +21,7 @@ sortie.
 | Clé privée TLS | le chemin `server.tls.keyFile` (FR-082) | fichier PEM ; jamais renvoyée par aucune surface, sous aucune forme |
 | Secret client OIDC | le chemin `auth.oidc.clientSecretFile` (FR-070) | tel que fourni ; jamais dans le fichier de configuration lui-même |
 | Clé du fournisseur de service SAML | le chemin `auth.saml.keyFile` (FR-071) | fichier PEM ; seul son certificat est publié, dans le descripteur du SP |
-| Matériel de session de l'interface | mémoire uniquement | un redémarrage déconnecte tout le monde ; les cookies portent `Secure`, `HttpOnly`, `SameSite` (NFR-015) |
+| Matériel de session de l'interface | mémoire uniquement | un redémarrage déconnecte tout le monde ; les cookies portent `HttpOnly` et `SameSite=Lax`, et `Secure` quand l'écouteur sert du TLS ou que `server.secureCookies` déclare un TLS terminé en amont ; en HTTP simple sans ce réglage, ils ne sont pas `Secure` (NFR-015) |
 
 Deux choses sont volontairement *absentes* de cet inventaire. Les racines de
 confiance sont des clés publiques — de la configuration, pas des secrets

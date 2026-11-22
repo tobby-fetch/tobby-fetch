@@ -128,11 +128,14 @@ The chart drives all three layers Tobby reads, lowest precedence first
 
 Use `config` for everything that is not a per-environment override. The
 keys mirror Tobby's own configuration structure exactly, so the output of
-`tobby config dump` can be pasted in as-is.
+`tobby config dump` can be pasted in once `storage.root`, `state.root` and
+`server.addr` are removed.
 
 Four keys are owned by the chart, because the pod spec depends on them
-too. Setting them yourself makes the chart fail with a message naming the
-value to change instead:
+too. Setting one of the first three yourself makes the chart fail with a
+message naming the value to change instead. `registries.credentialsFile`
+is not rejected: a value set in `config` silently wins over the mount, so
+leave it out.
 
 | Chart-owned key | Derived from |
 | --- | --- |
@@ -370,7 +373,7 @@ once the authority is configured.
 | --- | --- |
 | `/healthz` | Liveness. Answers as soon as the listener is up: the process is alive, not necessarily useful. |
 | `/readyz` | Readiness. 503 until the store and the configuration are usable, and 503 again during the shutdown drain. |
-| `/metrics` | OpenMetrics. Behind the same authentication as every other surface. |
+| `/metrics` | OpenMetrics. Unauthenticated, like the probes. |
 
 Opening a large store takes time, so the deployment uses a startup probe
 (30 × 5s) rather than a lax liveness threshold: the instance gets time to
@@ -400,7 +403,7 @@ Every expression names only families of `metrics-reference.json`, the metrics
 reference each release publishes signed beside `openapi.yaml`, and a test holds
 the chart to it; the rules have `promtool` unit tests
 (`charts/tobby/tests/tobby-alerts_test.yaml`). More in the
-[documentation](https://tobby-fetch.github.io/tobby-fetch/docs/passthrough/monitoring/).
+[documentation](https://tobbyfetch.dev/docs/passthrough/monitoring/).
 
 ---
 

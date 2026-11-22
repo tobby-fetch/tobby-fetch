@@ -28,7 +28,7 @@ besoin.
   confiance que pour un seul chemin de cookbook : un root listé par un
   périmètre est réservé à ce périmètre (étape 2).
 - **Elle est visible.** Le nom du périmètre accompagne la recipe dans l'API,
-  les rapports de tâche, le plan et l'écran Recipes, et le périmètre fait
+  les rapports de tâche, le plan et l'écran Média, et le périmètre fait
   partie de la configuration effective.
 - **Ce n'est pas un contournement.** Les mêmes contrôles s'appliquent : les
   digests épinglés sont vérifiés, les registries doivent figurer sur la liste
@@ -113,8 +113,11 @@ et donnez au Retriever un cookbook par entrée (étape 6). Redémarrez l'instanc
 et vérifiez le résultat :
 
 ```sh
-tobby config dump | grep -A12 '^trust:'
+tobby config dump --config /etc/tobby/config.yaml | grep -A12 '^trust:'
 ```
+
+Sans `--config`, `tobby config dump` lit `/etc/tobby/config.yaml`. Passez le
+fichier avec lequel votre instance tourne réellement.
 
 Répétez toute la procédure une fois sur une zone de test. Découvrir une faute
 de frappe dans un motif de périmètre coûte bien moins cher un jour calme.
@@ -243,7 +246,7 @@ Rien n'est caché parce que la signature est valide.
 | Surface | Ce que vous voyez |
 | --- | --- |
 | Configuration effective | `trust.scopes` avec `emergency`, ses dépôts et ses roots (`tobby config dump`, et la configuration affichée par l'instance). |
-| Recipes | `GET /api/v1/recipes` : `verified: true` et `trustScope: "emergency"` sur la recipe enregistrée. L'écran Recipes montre le périmètre à côté du verdict. |
+| Recipes | `GET /api/v1/recipes` : `verified: true` et `trustScope: "emergency"` sur la recipe enregistrée. L'écran Recipes n'affiche que le badge « verified » pour une recipe vérifiée ; il imprime le périmètre à côté du verdict lorsque la recipe n'est pas vérifiée. |
 | Rapports de tâche | `trust_scope: "emergency"` sur la ligne de la recipe dans `resolutions` de la tâche de synchronisation (`GET /api/v1/tasks/{id}`). |
 | Plan | Le périmètre de confiance qui a décidé du verdict de chaque recipe : la colonne `SCOPE` de `tobby sync --dry-run`, `trust_scope` dans son rapport `--output json`, et l'écran de plan. |
 | Média | Le périmètre est affiché à côté de la recipe sur l'écran Média d'un support qui la porte ; la destination rend son **propre** verdict à partir de ses propres trust roots, elle doit donc déclarer le même périmètre d'urgence et le même root pour admettre la recipe. |

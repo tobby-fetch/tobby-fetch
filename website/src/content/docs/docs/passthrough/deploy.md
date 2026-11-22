@@ -64,18 +64,21 @@ of a recipe, carried in by Tobby and pulled from the zone registry
 (`oci://registry.zone.example/…`). From a checkout of the repository,
 `./deploy/charts/tobby` is the same chart, for development.
 
-`config.mode` is the one value with no usable default: an instance must
-state what it is (FR-001). The chart's `config` value becomes
-`/etc/tobby/config.yaml` and mirrors Tobby's own configuration keys
-exactly — the output of `tobby config dump` pastes in as-is. `env` sets
+The chart defaults `config.mode` to `passthrough` and refuses an empty
+value; set `mirror` for an air-gap instance. The chart's `config` value
+becomes `/etc/tobby/config.yaml` and mirrors Tobby's own configuration
+keys — the output of `tobby config dump` pastes in once you remove
+`storage.root`, `state.root` and `server.addr`. `env` sets
 `TOBBY_*` variables and `extraArgs` appends flags; precedence is
-flags > environment > file (FR-003). Four keys (`storage.root`,
-`state.root`, `server.addr`, `registries.credentialsFile`) are owned by
-the chart and rejected if set directly, because the pod spec depends on
-them.
+flags > environment > file. Three keys (`storage.root`,
+`state.root`, `server.addr`) are owned by the chart and rejected if set
+directly, because the pod spec depends on them. The chart also sets
+`registries.credentialsFile` when the credentials Secret is enabled, but
+does not reject it: a value you put in `config` silently wins over the
+mount, so leave that key out.
 
 Registry credentials are a separate `kubernetes.io/dockerconfigjson`
-Secret (FR-004), mounted read-only — never in the configuration file,
+Secret, mounted read-only — never in the configuration file,
 never in the store:
 
 ```sh
@@ -200,11 +203,11 @@ docker run -d --name tobby --read-only \
 | Platform | Tier |
 | --- | --- |
 | Linux amd64 / arm64 | Validated production scope: passthrough service, packages, container image. |
-| Windows amd64 / arm64 | Single static binary published, and the mirror workstation journey is validated on it (NFR-018). Passthrough on Windows is outside the validated scope. See [supported platforms](../../reference/platforms/). |
-| macOS amd64 / arm64 | Convenience tier (NFR-001): same reproducible chain, distributed via `brew install tobby-fetch/tap/tobby`, full test suite in CI — but no production support implied. |
+| Windows amd64 / arm64 | Single static binary published, and the mirror workstation journey is validated on it. Passthrough on Windows is outside the validated scope. See [supported platforms](../../reference/platforms/). |
+| macOS amd64 / arm64 | Convenience tier: same reproducible chain, distributed via `brew install tobby-fetch/tap/tobby`, full test suite in CI — but no production support implied. |
 
-The store refuses filesystems that cannot hold its layout — FAT32 among
-them; see [limits](../../discover/limits/).
+The store refuses a filesystem whose single-file limit a file to be written
+would exceed — FAT32 and its 4 GiB ceiling among them; see [limits](../../discover/limits/).
 
 ## The first account, non-interactively
 
@@ -228,13 +231,14 @@ printf '%s\n' "$ADMIN_PASSWORD" | tobby quickstart \
 The equivalent primitive commands are `tobby user add admin
 --state-root /var/lib/tobby/state --password-stdin` followed by `tobby
 serve --config /etc/tobby/config.yaml`. The first account of an instance
-is always `admin`, and the tool computes the password hash itself. On
+always gets the `admin` role (`quickstart` and the examples name it
+`admin`, but the name is yours to choose), and the tool computes the password hash itself. On
 Kubernetes, where the image has no shell, run the `user add` step in a
 short-lived pod mounting the state claim — the exact recipe is in
 [`deploy/README.md`](https://github.com/tobby-fetch/tobby-fetch/blob/main/deploy/README.md).
 
 If you must run open, `auth.disabled: true` is an explicit opt-in that
-puts a permanent warning banner in the UI (FR-075). Never leave it on.
+puts a permanent warning banner in the UI. Never leave it on.
 
 ## Signing in through the corporate directory
 
@@ -272,6 +276,9 @@ perimeter: a Retriever's `spec.scanPolicy.threshold` or a recipe's
 `recipe.tobby.dev/scan-threshold` annotation, each blocking for what it
 covers. A refusal withholds the whole recipe. See
 [vulnerability scanning](../../security/vulnerability-scanning/).
+
+An instance that refuses to start names its reason in one `TBY-…` line:
+see [Troubleshooting — the instance does not start](../../reference/troubleshooting/#the-instance-does-not-start).
 
 Next: point the instance at the outside world through
 [the enterprise network](../../passthrough/network/).

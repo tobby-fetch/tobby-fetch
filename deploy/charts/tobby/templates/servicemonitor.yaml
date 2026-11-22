@@ -6,9 +6,9 @@ Prometheus Operator scrape target for the OpenMetrics endpoint (FR-091).
 Requires the monitoring.coreos.com CRDs; off by default so the chart
 installs on a cluster that has none.
 
-/metrics sits behind the same authentication as every other surface, so a
-scraper needs credentials unless authentication is disabled — hence
-metrics.serviceMonitor.basicAuth.
+/metrics is unauthenticated, like the probes, so a scraper needs no
+credentials; metrics.serviceMonitor.basicAuth is there for a setup that puts
+an authenticating proxy in front of the instance.
 */}}
 {{- if .Values.metrics.serviceMonitor.enabled }}
 apiVersion: monitoring.coreos.com/v1

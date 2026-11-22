@@ -71,7 +71,7 @@ envFrom: []
 #   server.addr   <- containerPort
 #   registries.credentialsFile <- registryCredentials mount (when enabled)
 config:
-  # Operating mode. Required, no default: an instance must state what it is
+  # Operating mode. Defaults to "passthrough"; an empty value is refused
   # (FR-001). "passthrough" is a long-lived service between two connected
   # zones; "mirror" drives a transportable store across an air gap.
   mode: passthrough
@@ -421,9 +421,8 @@ probes:
 # ---------------------------------------------------------------------------
 # Metrics (FR-091)
 # ---------------------------------------------------------------------------
-# /metrics is always served on the same listener. It sits behind the same
-# authentication as every other surface, so a scraper needs credentials
-# unless authentication is disabled.
+# /metrics is always served on the same listener, unauthenticated like the
+# probes: a scraper needs no credentials.
 metrics:
   # Prometheus scrape annotations on the pod, for annotation-based
   # discovery. Harmless when nothing consumes them.
@@ -435,7 +434,8 @@ metrics:
     interval: 30s
     scrapeTimeout: 10s
     labels: {}
-    # Credentials for the scrape, when authentication is on.
+    # Credentials for the scrape, only when an authenticating proxy sits in
+    # front of the instance: /metrics itself asks for none.
     basicAuth: {}
     # basicAuth:
     #   username:

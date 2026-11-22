@@ -9,7 +9,7 @@ Une fois le contenu arrivé dans la registry de la zone, les machines qui le
 consomment ont besoin de deux choses : le nom exact que porte désormais chaque
 ingrédient, et une configuration de runtime qui fait résoudre
 `docker.io/bitnami/wordpress` à cet endroit. Tobby génère les deux à partir
-des recipes que son store contient (FR-065) — elles correspondent donc à ce
+des recipes que son store contient — elles correspondent donc à ce
 qui a été poussé, au lieu d'être saisies à la main depuis la
 [convention de relocalisation](../connect-clients/).
 
@@ -26,7 +26,7 @@ images :
 |---|---|---|
 | L'instance pousse vers une registry de zone | `destination.registry` | `destination.basePath` |
 | La zone atteint la registry sous un autre nom | `consumption.registry` | `destination.basePath` |
-| L'instance sert elle-même son `/v2/` à la zone (UC3) | `consumption.registry` | `storage.basePrefix` |
+| L'instance sert elle-même son `/v2/` à la zone | `consumption.registry` | `storage.basePrefix` |
 
 ```yaml
 consumption:

@@ -8,8 +8,19 @@ sidebar:
 L'instance de destination, c'est la même application, en zone isolée,
 pointée sur le store transporté. Elle traite le support comme non fiable
 jusqu'à preuve du contraire, et l'ordre est la garantie plutôt qu'une suite
-d'étapes : **rien n'est poussé, servi ni écrit avant que tout le support
-n'ait été re-vérifié** (FR-054).
+d'étapes : **rien n'est poussé, servi ni écrit dans le store avant que tout
+le support n'ait été re-vérifié**. Une exception : un import, et une instance
+de destination en service, écrivent dès le départ sur le support leur
+journal d'opération (par défaut sous `_tobby/logs/`) et, pour l'instance,
+ses enregistrements de tâches (sous `_tobby/tasks/`), hors de la couverture
+du manifeste. `tobby media verify` n'écrit
+rien du tout.
+
+:::tip[En bref]
+- Côté isolé, renseignez `zone:` (et `destination.registry` pour pousser), puis lancez `tobby media verify --storage-root <store> --zone <zone>` : la commande n'écrit rien et sort en `0` quand chaque livraison est poussable. [Détails](#en-ligne-de-commande)
+- `tobby media import --config <fichier>` re-vérifie, puis pousse ce qui a été vérifié : sortie `0` importé, `1` un push a échoué, `3` refus par politique (identité de zone, fraîcheur), `4` un échec de vérification. [Détails](#ce-qui-bloque-quoi)
+- Depuis l'écran, la même séquence est Vérifier, Rapport, Pousser, et l'instance ne sert rien tant qu'une vérification n'a pas validé le support. [Détails](#lécran-média) · [Porte de service](#un-support-non-vérifié-ne-sert-rien)
+:::
 
 ## Ce qui fait d'une instance une destination
 
@@ -30,9 +41,13 @@ destination:
 Une instance côté source lit sa zone dans le Retriever qu'elle résout et ne
 pose rien ici. Une destination n'a pas de Retriever — son contenu arrive sur
 un support — et sans `zone:` elle ne peut pas savoir si un support lui est
-adressé. `tobby media verify`, `tobby media import` et les quatre points
-d'accès `/api/v1/media` refusent de s'exécuter sans elle, en nommant le
-réglage ([`TBY-CFG-001`](../../reference/errors/#tby-cfg-001)).
+adressé. Sans elle, `tobby media verify`, `tobby media import`, les boutons
+Vérifier et Pousser de l'écran et `POST /api/v1/media/verify` refusent, en
+nommant le réglage ([`TBY-CFG-001`](../../reference/errors/#tby-cfg-001)).
+`POST /api/v1/media/import` accepte la demande et répond `201` ; la tâche
+créée échoue ensuite avec ce code. `GET /api/v1/media` répond `200` avec
+une `zone` vide, et `GET /api/v1/media/verification` répond `200` sans
+session de vérification.
 
 Vérifier ne demande rien d'autre. **Importer exige en plus
 `destination.registry`** : la vérification lit, le push écrit, et le push
@@ -77,8 +92,10 @@ le même contenu sous forme de page imprimable, bilingue et **non signée**, ou
 de fichier HTML ou texte, à remettre avec le disque.
 
 Lire l'écran est une action `viewer`. Vérifier et importer sont des actions
-`operator`. Lever l'un des deux refus ci-dessous est une action
-d'administrateur, et les cases de dérogation ne sont rendues que pour lui.
+`operator`. Sur l'écran et l'API, lever l'un des deux refus ci-dessous exige
+le rôle `admin`, et les cases de dérogation ne sont rendues que pour un
+administrateur. La ligne de commande n'a pas de rôles : voir
+[plus bas](#quatre-refus-restent-globaux).
 
 ## Ce qui bloque quoi
 
@@ -125,8 +142,8 @@ Un sauvetage par recipe n'a aucun sens pour eux : ils bloquent tout.
 |---|---|---|
 | Manifeste absent, illisible, ou dans un format que ce build ne lit pas | [`TBY-MED-001`](../../reference/errors/#tby-med-001), [`TBY-MED-002`](../../reference/errors/#tby-med-002), [`TBY-MED-003`](../../reference/errors/#tby-med-003), [`TBY-MED-004`](../../reference/errors/#tby-med-004) | **aucune** |
 | Le graphe de recipes (`meta/recipes.json`) ne correspond pas à son entrée d'inventaire | [`TBY-MED-005`](../../reference/errors/#tby-med-005) | **aucune** |
-| Le support est adressé à une autre zone | [`TBY-MED-006`](../../reference/errors/#tby-med-006) | administrateur, auditée |
-| Le support est plus ancien que le dernier importé pour cette zone | [`TBY-MED-007`](../../reference/errors/#tby-med-007) | administrateur, auditée |
+| Le support est adressé à une autre zone | [`TBY-MED-006`](../../reference/errors/#tby-med-006) | `admin` sur l'écran et l'API, quiconque en ligne de commande sur l'hôte |
+| Le support est plus ancien que le dernier importé pour cette zone | [`TBY-MED-007`](../../reference/errors/#tby-med-007) | `admin` sur l'écran et l'API, quiconque en ligne de commande sur l'hôte |
 
 Les deux premiers ne laissent rien à raisonner — sans l'inventaire il n'y a
 pas de question de complétude à poser, et le graphe *est* l'ensemble
@@ -136,12 +153,36 @@ sans objet.
 Les deux derniers s'adressent à quelqu'un d'autre, ou à un moment antérieur.
 Ce sont des **gardes anti-accident, pas des contrôles de sécurité** : le
 manifeste est non signé, donc une partie hostile peut forger l'un ou l'autre
-champ. C'est exactement pour cela qu'ils sont les deux seuls qu'un
-administrateur peut lever — `--allow-zone-mismatch` et `--allow-stale` en
-ligne de commande, des cases sur l'écran, `allowZoneMismatch` et
-`allowStale` sur l'API — et que la tentative comme la levée appliquée sont
-écrites au [journal d'audit](../../security/audit-log/) avec l'acteur et
-l'origine.
+champ. C'est exactement pour cela qu'ils sont les deux seuls qu'on peut
+lever : `--allow-zone-mismatch` et `--allow-stale` en ligne de commande, des
+cases sur l'écran, `allowZoneMismatch` et `allowStale` sur l'API.
+
+Qui peut lever, et ce qui est consigné, dépend de la surface :
+
+- **Écran et API.** Une dérogation exige le rôle `admin`. Une tentative
+  refusée à un rôle inférieur est écrite au
+  [journal d'audit](../../security/audit-log/) (`media.override`, résultat
+  `denied`). Une dérogation appliquée **à la demande d'un import** l'est
+  aussi, avec l'acteur et l'origine (`media.override`, puis `media.import`).
+- **Ligne de commande.** Aucun contrôle de rôle. Quiconque peut lancer
+  `tobby media` sur l'hôte, contre le store, peut lever. Sur
+  `tobby media import`, la dérogation est consignée avec l'acteur `local`.
+  L'accès à l'hôte est le contrôle.
+- **À l'étape Vérifier, aucun enregistrement d'audit.** Une dérogation cochée
+  à l'étape Vérifier de l'écran, envoyée à `POST /api/v1/media/verify` ou
+  passée à `tobby media verify` est appliquée sans enregistrement d'audit. La
+  seule trace est une ligne `WARN` du journal de l'instance (stderr pour
+  `tobby media verify`), sans acteur ni origine. Sur l'écran et l'API, cela compte : une vérification avec
+  dérogation peut aboutir à un verdict `pushable` et ouvrir le [verrou de
+  service](#un-support-non-vérifié-ne-sert-rien), si bien qu'un
+  administrateur peut faire servir par l'instance un support adressé à une
+  autre zone, ou plus ancien, sans enregistrement `media.override`. C'est un
+  défaut connu. Sur l'écran, aucun chemin n'est audité : la dérogation ne se
+  coche qu'à l'étape Vérifier, qui ouvre le verrou sans audit ; elle n'est
+  consignée que si l'on clique ensuite sur Pousser. En attendant sa
+  correction, levez par `POST /api/v1/media/import` (ou `tobby media import`)
+  directement, sans vérification avec dérogation : la dérogation y est
+  auditée avant que quoi que ce soit soit servi.
 
 **Aucun rôle ne lève un verdict d'intégrité ou de signature.** Il n'existe
 ni drapeau, ni boîte de confirmation, ni clé de configuration pour cela,
@@ -165,7 +206,7 @@ et reste où il est.
 ## Un support non vérifié ne sert rien
 
 « La vérification précède tout push, tout **service** et toute écriture
-locale » compte trois verbes. Une instance de destination qui détient un
+dans le store » compte trois verbes. Une instance de destination qui détient un
 support transporté retient `/v2/` et `/files/` tant qu'une vérification
 qu'elle a menée n'a pas validé le support.
 
@@ -244,7 +285,7 @@ transfert.
 
 | Commande | `0` | `1` | `3` | `4` |
 |---|---|---|---|---|
-| `tobby media verify` | toutes les livraisons sont poussables | — | refusé par la politique (identité de zone, fraîcheur) | un échec de vérification |
+| `tobby media verify` | toutes les livraisons sont poussables | la vérification n'a pas pu tourner (configuration, store illisible) | refusé par la politique (identité de zone, fraîcheur) | un échec de vérification |
 | `tobby media import` | importé | un push a échoué | refusé par la politique | un échec de vérification |
 
 Ces commandes tournent dans leur propre processus, directement contre le
@@ -262,6 +303,9 @@ retour en arrière silencieux — et la registry de zone sert désormais le
 contenu transféré. Y raccorder les clusters et les hôtes de la zone
 fonctionne à l'identique dans les deux modes : voir
 [brancher vos clients](../../passthrough/connect-clients/).
+
+Un support qui reste bloqué : [Dépannage — un média amovible est
+bloqué](../../reference/troubleshooting/#un-média-amovible-est-bloqué) liste les causes par symptôme.
 
 Les supports qui repartent pour un second cycle, et l'entretien qui leur
 garde une taille raisonnable, sont sur

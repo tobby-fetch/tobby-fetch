@@ -70,7 +70,10 @@ surfaces :
 
 Un cookie de session d'UI valide fonctionne aussi pour les points d'accès en
 **lecture** — c'est ce qui permet de « copier l'URL que l'on regarde » depuis un
-navigateur. Les appels qui modifient exigent toujours Basic ou Bearer. Chaque
+navigateur. Les appels qui modifient exigent Basic ou Bearer, ou un cookie de session
+accompagné du jeton anti-forgerie de la session dans l'en-tête `X-CSRF-Token`,
+venant de l'origine de l'instance elle-même (sinon
+[`TBY-AUTH-004`](../../reference/errors/#tby-auth-004)). Chaque
 point d'accès est placé derrière un rôle minimal documenté (viewer, operator ou
 admin) ; la matrice publiée et le test anti-dérive qui la fait respecter sont
 décrits dans [Authentification, comptes et RBAC](../../security/auth-rbac/). Une
@@ -95,7 +98,7 @@ La surface actuelle (d'après le document OpenAPI servi) :
 | Contenu | `GET /api/v1/content` (recherche, filtres, pagination), `GET /api/v1/content/{repo}`, `GET /api/v1/content/{repo}/-/tags/{tag}`, `DELETE /api/v1/content/{repo}` |
 | Import unitaire | `GET /api/v1/import/inspect`, `POST /api/v1/import` |
 | Tâches | `GET /api/v1/tasks`, `GET /api/v1/tasks/{id}`, `GET /api/v1/tasks/{id}/logs` |
-| Recipes et synchronisation | `GET /api/v1/recipes`, `GET /api/v1/recipes/{recipe}/mapping` (`?format=csv|json|markdown` pour la table exportable), `GET /api/v1/mapping`, `GET /api/v1/registries.yaml`, `GET /api/v1/recipes/{recipe}/registries.yaml`, `POST /api/v1/recipes/publish`, `POST /api/v1/sync`, `GET /api/v1/sync/prune-preview`, `GET /api/v1/retriever`, `PUT/DELETE /api/v1/retriever/interval` |
+| Recipes et synchronisation | `GET /api/v1/recipes`, `GET /api/v1/recipes/{recipe}/mapping` (`?format=csv`, `json` ou `markdown` pour la table exportable), `GET /api/v1/mapping`, `GET /api/v1/registries.yaml`, `GET /api/v1/recipes/{recipe}/registries.yaml`, `POST /api/v1/recipes/publish`, `POST /api/v1/sync`, `GET /api/v1/sync/prune-preview`, `GET /api/v1/retriever`, `PUT/DELETE /api/v1/retriever/interval` |
 | Plan (sans effet de bord) | `POST /api/v1/plan` |
 | Parcours du média | `GET /api/v1/media`, `GET /api/v1/media/verification`, `GET /api/v1/media/slip`, `POST /api/v1/media/verify`, `POST /api/v1/media/import` |
 | FileSets | `GET /api/v1/filesets`, `POST /api/v1/filesets/pack` |
@@ -106,7 +109,7 @@ La surface actuelle (d'après le document OpenAPI servi) :
 | Réseau | `GET /api/v1/network`, `PUT /api/v1/network/certificate` |
 | Exploitation | `POST /api/v1/diagnostics/bundle`, `GET /api/v1/clock`, `GET /api/v1/state` |
 
-Quatre d'entre eux méritent une remarque, car leur forme n'est pas celle que
+Six d'entre eux méritent une remarque, car leur forme n'est pas celle que
 le chemin laisserait deviner.
 
 - **`POST /api/v1/plan` répond `200` quelle que soit l'issue.** Un plan est un
@@ -140,9 +143,11 @@ le chemin laisserait deviner.
   du plancher operator du point d'accès lui-même : `allowZoneMismatch` et
   `allowStale`, les deux garde-fous levables. Envoyer l'un des deux depuis un
   rôle inférieur donne [`TBY-AUTH-003`](../../reference/errors/#tby-auth-003), et
-  la tentative comme la levée appliquée sont consignées dans le journal d'audit.
-  Rien ne lève un verdict d'intégrité ou de signature, quel que soit le rôle.
-
+  la tentative refusée est consignée dans le journal d'audit. Une levée
+  appliquée sur `POST /api/v1/media/import` l'est aussi ; une levée appliquée
+  sur `POST /api/v1/media/verify` ne l'est pas aujourd'hui, c'est un défaut
+  connu. Rien ne lève un verdict d'intégrité ou de signature, quel que soit le
+  rôle.
 - **`POST /api/v1/diagnostics/bundle` répond avec l'archive elle-même**
   (`application/gzip`, `Content-Disposition: attachment`), pour l'administrateur
   seulement. Elle est construite et contrôlée avant le premier octet envoyé :
@@ -179,7 +184,7 @@ préfixe réservé. La liste fait partie du contrat produit (affichée sur
 | `/v2/` | La registry OCI embarquée — API Distribution standard pour `docker`, `helm`, `oras`, avec les mêmes comptes et tokens. |
 | `/api/` | L'API REST décrite ci-dessus. |
 | `/metrics` | Point d'accès OpenMetrics — voir [Métriques et journaux](../../reference/metrics-logs/). |
-| `/healthz`, `/readyz` | Sondes de vivacité et de disponibilité, les seules surfaces anonymes. |
+| `/healthz`, `/readyz` | Sondes de vivacité et de disponibilité, anonymes. `/metrics` et `/static/` le sont aussi, comme les pages de connexion et les FileSets qui y consentent sur `/files/`. |
 | `/files/` | Service HTTP des FileSets (dépôts de paquets d'OS) — authentification Basic pour que les identifiants dans l'URL d'`apt`/`dnf` fonctionnent ; accès anonyme possible par FileSet, sur option. |
 | `/auth/` | Les allers-retours OIDC et SAML de l'[identité d'entreprise](../../security/enterprise-identity/) (redirections et rappels). |
 | `/static/` | Ressources d'UI embarquées. |

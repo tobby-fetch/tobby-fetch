@@ -41,10 +41,14 @@ load-bearing. See [media security](../../air-gap/media-security/).
 
 **4 — Secure by default.**
 Authentication is on by default in both modes (FR-075 — delivered
-v0.4.0). Every security-reducing setting is an explicit opt-in, visible
-in the configuration report, logged, audit-logged, and — where it changes
-what a user faces — announced by a permanent UI banner. No default or
-omitted setting weakens the instance.
+v0.4.0). Security-reducing settings are explicit opt-ins, visible where
+they apply and, where they change what a user faces, announced by a
+permanent UI banner. Three exceptions are stated rather than hidden:
+vulnerability scanning is advisory by default (`scan.mode: warn`), an
+absent `registries.allowlist` restricts nothing (reported as undeclared),
+and the Retriever's `spec.scanPolicy`, which is not signed, can raise the
+threshold and add exceptions with no audit record. See the
+[security model](../model/).
 
 **5 — No undeclared outbound connection.**
 Tobby makes no network connection the operator did not configure: no
@@ -72,7 +76,7 @@ Covered today, with the detail pages that substantiate each line:
 - Secrets leaking through logs, errors, or configuration dumps (NFR-015): [secrets](../../security/secrets/).
 - Hidden network behavior (NFR-019): [threat model](../../security/threat-model/).
 - Untraceable security actions (FR-094): [audit log](../../security/audit-log/).
-- Tampered, stale or misaddressed removable media — re-verified before any push, any serving and any local write (FR-054, R-19, R-28): [media security](../../air-gap/media-security/).
+- Tampered, stale or misaddressed removable media — re-verified before any push, any serving and any write to the store (FR-054, R-19, R-28): [media security](../../air-gap/media-security/).
 - Secrets travelling on a medium — the instance refuses to start when a configured secret path resolves under the store root (NFR-020, R-16): [secrets](../../security/secrets/).
 
 Covered since v0.6.0: known CVEs in transported content (FR-031) —

@@ -2,7 +2,7 @@
 title: Journal d'audit
 description: Le schéma d'audit versionné à six champs, le catalogue d'événements daté par version livrée, les garanties de durabilité et la manière d'ingérer la piste dans un SIEM.
 sidebar:
-  order: 5
+  order: 6
 ---
 
 Tobby émet une catégorie dédiée d'événements d'audit de sécurité, avec un
@@ -28,7 +28,7 @@ schéma :
   "action": "token.create",
   "target": "ci-deploy",
   "outcome": "success",
-  "origin": "10.20.30.40:52114"
+  "origin": "10.20.30.40"
 }
 ```
 
@@ -68,7 +68,7 @@ même discipline de compatibilité que l'API REST
 | `import.create`, `sync.create`, `recipe.publish`, `content.delete` | actions qui touchent au contenu, avec leur acteur | v0.4.x |
 | `config.promotion_interval`, `config.server_certificate` | modifications sensibles de la configuration d'une instance en cours d'exécution (FR-013, FR-082) | v0.4.x |
 | `media.import` | un support transporté poussé dans la zone (FR-052) | v0.5.x |
-| `media.override` | l'une des deux gardes de média dont on peut s'affranchir, tentée ou appliquée (FR-054) | v0.5.x |
+| `media.override` | l'une des deux gardes de média dont on peut s'affranchir : une tentative refusée faute du rôle `admin`, ou une dérogation appliquée à la demande d'un import (FR-054). Une dérogation donnée à l'étape Vérifier n'écrit aucun enregistrement (voir plus bas) | v0.5.x |
 | `store.reset` | la réinitialisation confirmée du store, y compris une confirmation refusée (FR-046) | v0.5.x |
 | `layout.export`, `layout.import` | un layout d'image OCI qui quitte ou entre dans le store (FR-051) | v0.5.x |
 | `fileset.pack` | un répertoire de l'hôte empaqueté dans le store comme FileSet (FR-048) | v0.5.x |
@@ -85,10 +85,22 @@ même discipline de compatibilité que l'API REST
 | `scan.scanner.repaired` | un binaire d'analyseur livré par tobby-system, trouvé modifié sur le disque depuis sa vérification et dépaqueté à nouveau depuis la livraison vérifiée, sans avoir été exécuté (FR-031) ; la cible est le chemin du binaire, l'issue `success`, ou `failure` quand la livraison n'a pas pu être dépaquetée à nouveau (l'analyseur est alors indisponible). Un enregistrement WARN à côté nomme les digests attendu et trouvé | v0.6.x |
 
 Les événements de média ont rejoint le catalogue avec la v0.5.0 : les deux
-dérogations auditées d'un import de média — un support adressé à une autre zone
-et un support plus ancien que le dernier importé ici — et la réinitialisation
-confirmée du store (FR-046). La tentative comme la dérogation appliquée sont
-consignées, avec l'acteur et l'origine réseau dont elles viennent.
+dérogations d'un import de média — un support adressé à une autre zone et un
+support plus ancien que le dernier importé ici — et la réinitialisation
+confirmée du store (FR-046). Sur l'écran et l'API, une tentative refusée et
+une dérogation appliquée à un import sont consignées avec l'acteur et
+l'origine réseau. En ligne de commande, `tobby media import` consigne la
+dérogation avec l'acteur et l'origine `local` : il n'y a pas de contrôle de
+rôle à cet endroit, l'accès à l'hôte est le contrôle.
+
+**Limite actuelle.** Une dérogation donnée à l'étape Vérifier — l'étape
+Vérifier de l'écran, `POST /api/v1/media/verify`, `tobby media verify` —
+n'écrit aucun enregistrement d'audit, seulement une ligne `WARN` du journal
+de l'instance (stderr pour `tobby media verify`), sans acteur ni origine.
+Sur l'écran et l'API, une telle
+vérification avec dérogation peut ouvrir le verrou de service. C'est un
+défaut connu ; tant qu'il n'est pas corrigé, la piste d'audit ne montre pas
+toutes les dérogations qui ont ouvert le verrou.
 
 ## Durabilité — et la piste qui traverse l'air gap
 
@@ -97,15 +109,17 @@ avec tout le reste (FR-090) : la durabilité est celle de votre collecteur de
 journaux, ce qui est sa place pour un service de longue durée.
 
 En mode mirror, le fichier de journal vit **sur le support de transport**, sous
-`_tobby/logs/` et donc hors de la couverture du manifeste du média — un journal
+`_tobby/logs/` par défaut et dans tous les cas hors de la couverture du manifeste du média — un journal
 écrit dans la couverture invaliderait, ligne après ligne, l'inventaire que la
 destination vérifie. Il a une rotation par taille et un fsync explicite aux
 frontières de tâche : un support arraché perd au plus la tâche en cours
 (FR-053, FR-056), ce qu'un test prouve en tuant le processus net. Ce fichier
 n'est pas un confort : c'est la piste d'audit qui franchit physiquement l'air
-gap avec le contenu, porteuse de l'identifiant de run que l'instance de
-destination réutilise, de sorte qu'une synchronisation se retrace du côté
-connecté au côté isolé à travers le support (FR-090). Voir
+gap avec le contenu. La destination journalise sous son propre identifiant
+de run ; son enregistrement « media verification complete » porte celui de
+la source dans `source_run_id`, avec le `media_id`, de sorte qu'une
+synchronisation se retrace du côté connecté au côté isolé à travers le
+support (FR-090). Voir
 [tracer un transfert](../../air-gap/traceability/).
 
 ## La position sur l'absence de signature

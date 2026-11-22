@@ -12,8 +12,7 @@ security reviewer who must approve a media transfer procedure.
 The model is decided and specified
 ([ADR-0006](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0006-removable-media-transport.md),
 [ADR-0007](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0007-signing-cosign-key-based.md),
-[ADR-0016](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0016-media-manifest.md),
-SRS FR-054), and implemented as described. Accreditation work can rely on
+[ADR-0016](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0016-media-manifest.md)), and implemented as described. Accreditation work can rely on
 this page.
 
 ## What travels on the medium
@@ -72,8 +71,9 @@ What the unsigned manifest actually buys you:
   never meant to be there;
 - two **anti-accident guards**: the zone identity and the resolution
   timestamp let the destination refuse a medium prepared for another zone,
-  or an older medium than the one it last imported, before anything else
-  happens.
+  or an older medium than the one it last imported, right after the
+  manifest and the recipe graph are checked and before any recipe content
+  is read.
 
 ### Coverage stops where the medium is written after the fact
 
@@ -96,7 +96,7 @@ key files, alternative trust roots — is ignored. A medium can therefore
 never bring its own authority with it: compromising the transport channel
 does not compromise the trust decision.
 
-Consequences, all normative (SRS FR-054):
+Consequences, all normative:
 
 - Content signed for the target environment is accepted; everything else is
   not.
@@ -112,7 +112,11 @@ How trust roots are configured, scoped and rotated is covered in
 ## Verification order
 
 On arrival, verification runs in a fixed order, and **all of it precedes any
-push, any serving, and any local write**:
+push, any serving, and any write to the store**. The operation log (by
+default under `_tobby/logs/`) and the task records (under `_tobby/tasks/`),
+outside the manifest's coverage, are the only
+writes that can come earlier, on an import or a running destination
+instance; `tobby media verify` writes nothing:
 
 1. **The manifest** — it parses, its own format and the store format version
    are ones this build reads, its paths are well formed, and the zone
@@ -129,7 +133,7 @@ store known to be bit-intact.
 
 Blocking is equally fixed:
 
-- Verification and blocking are decided **per recipe** (R-19): a recipe
+- Verification and blocking are decided **per recipe**: a recipe
   whose signature verifies and whose every reachable file matches its pinned
   digest is pushable; a recipe failing either is blocked **whole**, with no
   override, and named in the report with the file that decided it. A
@@ -142,9 +146,15 @@ Blocking is equally fixed:
   meaningless for them: an absent, unreadable or unsupported manifest, and
   an altered recipe graph, block everything with no override; a medium
   addressed to another zone, and a medium older than the last one imported
-  here, block everything and are the **only two** an administrator may
-  waive, each waiver written to the
-  [audit log](../../security/audit-log/) with the actor and the origin.
+  here, block everything and are the **only two** that may be waived. On
+  the screen and the API a waiver needs the `admin` role; on the command
+  line there is no role check, and whoever can run `tobby media` on the
+  host can waive. A waiver applied when an import is requested is written
+  to the [audit log](../../security/audit-log/) (actor and origin on the
+  screen and the API, actor `local` on the command line). A waiver given at
+  the Verify step is **not audited**, although on the screen and the API it
+  can open the serving gate: a known defect, see
+  [import on the isolated side](../../air-gap/import-destination/#four-refusals-stay-medium-wide).
 
 The two waivable refusals are anti-accident guards over an *unsigned* claim,
 not security controls — which is precisely why they are the two that can be
@@ -154,7 +164,7 @@ code-by-code table is on
 
 ### Serving is part of the order
 
-"Precedes any push, any **serving**, and any local write" has three verbs. A
+"Precedes any push, any **serving**, and any write to the store" has three verbs. A
 destination instance holding a transported medium withholds `/v2/` and
 `/files/` — in whole, for every role, administrators included — until a
 verification *it performed* has cleared the medium, and answers `403` with
@@ -175,7 +185,7 @@ directory and are never written under the transportable store. The
 transported directory contains content, signatures, logs and the manifest;
 nothing in it authenticates anyone.
 
-The rule is an enforced check, not an instruction (NFR-020, R-16): an
+The rule is an enforced check, not an instruction: an
 instance **refuses to start** ([`TBY-CFG-002`](../../reference/errors/#tby-cfg-002))
 when `state.root`, `registries.credentialsFile` or `server.tls.keyFile`
 resolves inside the store. The comparison goes through the real filesystem —
@@ -221,9 +231,11 @@ inspection station. Tobby assumes this step rather than fighting it:
 - Authenticity is anchored in your organization's keys, verified on the
   isolated side, offline, against configuration that never travels.
 - Integrity is checked file by file before anything is pushed or served.
-- Exactly two refusals can be waived, both by an administrator, both
-  audited, both over unsigned claims; integrity and signature failures have
-  no override for anyone.
+- Exactly two refusals can be waived, both over unsigned claims: by an
+  `admin` on the screen and the API, by anyone with access to the host on
+  the command line. A waiver is audited when an import is requested, not
+  when it is given at the Verify step. Integrity and signature failures
+  have no override for anyone.
 - Nothing was served off the medium before it was verified — the registry
   and the file surfaces stay closed until then, and no setting reopens
   them.

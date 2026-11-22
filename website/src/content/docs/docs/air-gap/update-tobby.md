@@ -5,11 +5,11 @@ sidebar:
   order: 8
 ---
 
-Tobby updates through its own channel (R-25), exactly like the
+Tobby updates through its own channel, exactly like the
 [vulnerability database](../vulnerability-database/): a new version is a
 **recipe** your site cooks and signs, carried by the standard mirror flow,
 and deployed by a person. Nothing in Tobby looks for a newer version, and
-nothing installs one by itself (NFR-019).
+nothing installs one by itself.
 
 ## What a release publishes
 
@@ -56,9 +56,9 @@ is the recipe that carries them, with placeholder digests.
 ## Keeping only some platforms
 
 `platforms` may keep only the binaries your zone runs. The index then
-crosses *sparse* (FR-022): it is the original index, at its pinned digest,
+crosses *sparse*: it is the original index, at its pinned digest,
 listing children the medium does not carry. Tobby's own registry accepts
-it and serves the platforms that crossed (FR-042). A third-party zone
+it and serves the platforms that crossed. A third-party zone
 registry that validates the members of an index refuses a sparse one,
 and an isolated zone cannot widen it by fetching the rest: if yours does,
 keep the four platforms, as the example does. The extra children cost a

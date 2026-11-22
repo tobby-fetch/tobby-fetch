@@ -67,7 +67,9 @@ schemes, against the same accounts and tokens as every other surface:
 
 A valid UI session cookie also works for **read** endpoints — this is what
 makes "copy the URL you are looking at" work from a browser. Mutating calls
-always require Basic or Bearer. Every endpoint sits behind a documented
+require Basic or Bearer, or a session cookie that comes with the session's
+anti-forgery token in the `X-CSRF-Token` header, from the instance's own
+origin (otherwise [`TBY-AUTH-004`](../../reference/errors/#tby-auth-004)). Every endpoint sits behind a documented
 minimum role (viewer, operator or admin); the published matrix and the
 anti-drift test that enforces it are covered in
 [Authentication, accounts and RBAC](../../security/auth-rbac/). An origin that
@@ -92,7 +94,7 @@ The surface today (from the served OpenAPI document):
 | Content | `GET /api/v1/content` (search, filters, pagination), `GET /api/v1/content/{repo}`, `GET /api/v1/content/{repo}/-/tags/{tag}`, `DELETE /api/v1/content/{repo}` |
 | Unit import | `GET /api/v1/import/inspect`, `POST /api/v1/import` |
 | Tasks | `GET /api/v1/tasks`, `GET /api/v1/tasks/{id}`, `GET /api/v1/tasks/{id}/logs` |
-| Recipes and sync | `GET /api/v1/recipes`, `GET /api/v1/recipes/{recipe}/mapping` (`?format=csv|json|markdown` for the exportable table), `GET /api/v1/mapping`, `GET /api/v1/registries.yaml`, `GET /api/v1/recipes/{recipe}/registries.yaml`, `POST /api/v1/recipes/publish`, `POST /api/v1/sync`, `GET /api/v1/sync/prune-preview`, `GET /api/v1/retriever`, `PUT/DELETE /api/v1/retriever/interval` |
+| Recipes and sync | `GET /api/v1/recipes`, `GET /api/v1/recipes/{recipe}/mapping` (`?format=csv`, `json` or `markdown` for the exportable table), `GET /api/v1/mapping`, `GET /api/v1/registries.yaml`, `GET /api/v1/recipes/{recipe}/registries.yaml`, `POST /api/v1/recipes/publish`, `POST /api/v1/sync`, `GET /api/v1/sync/prune-preview`, `GET /api/v1/retriever`, `PUT/DELETE /api/v1/retriever/interval` |
 | Plan (side-effect-free) | `POST /api/v1/plan` |
 | Media journey | `GET /api/v1/media`, `GET /api/v1/media/verification`, `GET /api/v1/media/slip`, `POST /api/v1/media/verify`, `POST /api/v1/media/import` |
 | FileSets | `GET /api/v1/filesets`, `POST /api/v1/filesets/pack` |
@@ -103,7 +105,7 @@ The surface today (from the served OpenAPI document):
 | Network | `GET /api/v1/network`, `PUT /api/v1/network/certificate` |
 | Operations | `POST /api/v1/diagnostics/bundle`, `GET /api/v1/clock`, `GET /api/v1/state` |
 
-Four of those deserve a note, because their shape is not what a reader
+Six of those deserve a note, because their shape is not what a reader
 would guess from the path.
 
 - **`POST /api/v1/plan` answers `200` whatever the outcome.** A plan is a
@@ -135,10 +137,11 @@ would guess from the path.
 - **Two members of the media request body require the `admin` role**, above
   the endpoint's own operator floor: `allowZoneMismatch` and `allowStale`,
   the two waivable guards. Sending either from a lower role is
-  [`TBY-AUTH-003`](../../reference/errors/#tby-auth-003), and both the
-  attempt and the applied waiver are audit-logged. Nothing waives an
-  integrity or signature verdict, for any role.
-
+  [`TBY-AUTH-003`](../../reference/errors/#tby-auth-003), and the
+  refused attempt is audit-logged. A waiver applied on
+  `POST /api/v1/media/import` is audit-logged too; one applied on
+  `POST /api/v1/media/verify` currently is not, a known defect. Nothing
+  waives an integrity or signature verdict, for any role.
 - **`POST /api/v1/diagnostics/bundle` answers with the archive itself**
   (`application/gzip`, `Content-Disposition: attachment`), for the
   administrator only. It is built and checked before the first byte is sent:
@@ -173,7 +176,7 @@ reserved prefix. The list is part of the product contract (shown on
 | `/v2/` | The embedded OCI registry — standard Distribution API for `docker`, `helm`, `oras`, with the same accounts and tokens. |
 | `/api/` | The REST API described above. |
 | `/metrics` | OpenMetrics endpoint — see [Metrics and logs](../../reference/metrics-logs/). |
-| `/healthz`, `/readyz` | Liveness and readiness probes, the only anonymous surfaces. |
+| `/healthz`, `/readyz` | Liveness and readiness probes, anonymous. `/metrics` and `/static/` are anonymous too, as are the sign-in pages and the FileSets that opt in on `/files/`. |
 | `/files/` | FileSet HTTP serving (OS package repositories) — Basic auth so `apt`/`dnf` URL credentials work; per-FileSet anonymous opt-in. |
 | `/auth/` | The OIDC and SAML round trips of [enterprise identity](../../security/enterprise-identity/) (redirects and callbacks). |
 | `/static/` | Embedded UI assets. |

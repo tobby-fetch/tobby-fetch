@@ -42,11 +42,15 @@ signé soit porteur de confiance. Voir la [sécurité des supports](../../air-ga
 
 **4 — Sécurisé par défaut.**
 L'authentification est active par défaut dans les deux modes (FR-075 — livré
-en v0.4.0). Tout réglage qui réduit la sécurité est un opt-in explicite,
-visible dans le rapport de configuration, journalisé, inscrit au journal
-d'audit et — lorsqu'il change ce que voit l'utilisateur — signalé par un
-bandeau permanent de l'interface. Aucun réglage par défaut ou omis
-n'affaiblit l'instance.
+en v0.4.0). Les réglages qui réduisent la sécurité sont des opt-in
+explicites, visibles là où ils s'appliquent et, lorsqu'ils changent ce que
+voit l'utilisateur, signalés par un bandeau permanent de l'interface. Trois
+exceptions sont dites plutôt que tues : l'analyse de vulnérabilités est
+consultative par défaut (`scan.mode: warn`), un `registries.allowlist`
+absent ne restreint rien (signalé comme non déclaré), et le
+`spec.scanPolicy` du Retriever, qui n'est pas signé, peut relever le seuil
+et ajouter des dérogations sans enregistrement d'audit. Voir le
+[modèle de sécurité](../model/).
 
 **5 — Aucune connexion sortante non déclarée.**
 Tobby n'établit aucune connexion réseau que l'opérateur n'a pas configurée :
@@ -75,7 +79,7 @@ Couvertes aujourd'hui, avec les pages de détail qui étayent chaque ligne :
 - Secrets qui fuient par les journaux, les erreurs ou les exports de configuration (NFR-015) : [secrets](../../security/secrets/).
 - Comportement réseau caché (NFR-019) : [modèle de menaces](../../security/threat-model/).
 - Actions de sécurité non traçables (FR-094) : [journal d'audit](../../security/audit-log/).
-- Supports amovibles altérés, périmés ou mal adressés — revérifiés avant tout push, tout service et toute écriture locale (FR-054, R-19, R-28) : [sécurité des supports](../../air-gap/media-security/).
+- Supports amovibles altérés, périmés ou mal adressés — revérifiés avant tout push, tout service et toute écriture dans le store (FR-054, R-19, R-28) : [sécurité des supports](../../air-gap/media-security/).
 - Secrets qui voyagent sur un support — l'instance refuse de démarrer quand un chemin de secret configuré se résout sous la racine du store (NFR-020, R-16) : [secrets](../../security/secrets/).
 
 Couvert depuis la v0.6.0 : les CVE connues dans le contenu transporté

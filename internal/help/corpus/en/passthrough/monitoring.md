@@ -2,7 +2,7 @@
 title: Supervise an instance
 description: The metrics reference, the alert rules and the dashboard shipped with the chart, and the signed OpenAPI document — what to alert on, and what the release publishes for it.
 sidebar:
-  order: 11
+  order: 12
 ---
 
 An instance that reconciles for months needs to be watched by something other
@@ -93,9 +93,10 @@ Some honest notes. **Mirror instances** synchronize when an operator says so:
 a bound on the age of the last success would page nobody usefully, so set
 `alerting.thresholds.syncMaxAgeSeconds` to `0` there. The rules are
 **starting points, not tuned for your site**: read what your instance does for
-a week, then move the bounds. `/metrics` sits behind the same authentication
-as the rest, so the scrape needs credentials
-(`metrics.serviceMonitor.basicAuth`).
+a week, then move the bounds. `/metrics` is **unauthenticated**, like the
+probes, so the scrape needs no credentials;
+`metrics.serviceMonitor.basicAuth` only serves a setup where you put an
+authenticating proxy in front of the instance.
 
 Every expression names only families of the published reference, and the
 labels it selects on are inside the closed sets the reference documents; a
@@ -116,3 +117,6 @@ against the bound, bytes, store occupancy, certificate time left, the
 vulnerability database, the clock, refusals by code, sign-ins and bundles.
 The JSON is `deploy/charts/tobby/files/tobby-dashboard.json`; import it by
 hand if you do not run the sidecar.
+
+What to do when an alert fires is on
+[Troubleshooting](../../reference/troubleshooting/), organized by symptom.

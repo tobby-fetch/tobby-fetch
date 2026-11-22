@@ -20,6 +20,13 @@ Tobby ne signe jamais. La signature a lieu dans la chaîne de qualification de
 l'organisation ; le [guide de publication de recipe-spec](https://tobby-fetch.github.io/recipe-spec/guides/publishing-recipes/)
 donne les commandes cosign 3.x vérifiées.
 
+:::tip[En bref]
+- Les signatures sont des signatures cosign à clé, vérifiées hors ligne contre `trust.roots` (un nom et l'un de `key`, `keyFile`, `keyURL`). Pour une rotation, ajoutez la nouvelle racine à côté de l'ancienne. [Racines de confiance](#trust-roots)
+- Pour les signatures de recipes, aucun contournement global : le seul assouplissement est une entrée `trust.scopes` déclarée, signalée sur toutes les surfaces. Les imports unitaires et les push `/v2/` admettent du contenu non signé tant que les [interrupteurs de durcissement](../model/#interrupteurs-de-durcissement) ne sont pas posés. [Périmètres](#périmètres-dassouplissement--et-leur-visibilité)
+- Les signatures d'ingrédients sont consignées et ne bloquent jamais, sauf si vous mettez `trust.requireIngredientSignatures: true`. [Ingrédients](#signatures-des-ingrédients--consignées-exigées-seulement-sur-demande)
+- `registries.allowlist` borne les hôtes contactés : absente, elle ne restreint rien ; `[]` n'autorise rien ; un refus est `TBY-POL-001`. [Liste d'autorisation](#liste-dautorisation-des-registries)
+:::
+
 ## Trust roots
 
 Un trust root est une clé publique de confiance, nommée, configurée sur

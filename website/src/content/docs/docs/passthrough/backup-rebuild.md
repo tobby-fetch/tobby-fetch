@@ -2,7 +2,7 @@
 title: Back up and rebuild an instance
 description: What makes an instance this instance, the one directory to back up besides the store, the check Tobby runs on it at startup, and a rebuild procedure that is tested end to end.
 sidebar:
-  order: 9
+  order: 10
 ---
 
 An instance is two things: its **content** and its **identity**. The content
@@ -32,8 +32,8 @@ Nothing else is written there.
 | `scanner/` | discardable | no | The vulnerability scanner's private work directory. | Rebuilt from the delivery. |
 | `serving.json` | discardable | no | Marks the instance serving the store, for the local command line. | Recreated at the next start. |
 
-The state directory lives outside the store and never inside it
-(NFR-020): the store leaves the site on a medium, the state does not.
+The state directory lives outside the store and never inside it:
+the store leaves the site on a medium, the state does not.
 
 ## What to back up
 
@@ -108,7 +108,7 @@ subtracted: remove the broad allow entry instead.
 **Group access is tolerated**: a Kubernetes `fsGroup`, as in the reference
 chart, gives the volume's files to the pod's own group, and refusing that
 would refuse every real deployment. The check applies to the key files inside
-`tls/` — any name ending in `.key`, `.pem`, `.p8`, `.p12`, `.pfx` or containing
+`tls/` — any name ending in `.key`, `.pem`, `.p8`, `.pk8`, `.p12`, `.pfx` or containing
 `key`, judged by the file a symbolic link points to (a projected volume's
 `tls.key -> ..data/tls.key`) — not to the certificate beside them (`.crt`,
 `.cer`), which is public.

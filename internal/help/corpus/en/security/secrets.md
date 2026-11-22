@@ -2,12 +2,12 @@
 title: Secrets
 description: Every secret a Tobby instance holds, where it lives, how it is stored, and why it cannot leak through logs, errors, or configuration dumps.
 sidebar:
-  order: 6
+  order: 7
 ---
 
 An auditor should be able to enumerate every secret an instance holds and
-verify where each one lives. This page is that inventory — exhaustive as
-of v0.5.x — followed by the mechanisms that keep secrets out of every
+verify where each one lives. This page is that inventory — exhaustive for
+the release this documentation comes with — followed by the mechanisms that keep secrets out of every
 output channel.
 
 ## Inventory
@@ -21,7 +21,7 @@ output channel.
 | TLS private key | the `server.tls.keyFile` path (FR-082) | PEM file; never returned by any surface, in any form |
 | OIDC client secret | the `auth.oidc.clientSecretFile` path (FR-070) | as provided; never in the configuration file itself |
 | SAML service-provider key | the `auth.saml.keyFile` path (FR-071) | PEM file; only its certificate is published, in the SP descriptor |
-| UI session material | memory only | a restart signs everyone out; cookies carry `Secure`, `HttpOnly`, `SameSite` (NFR-015) |
+| UI session material | memory only | a restart signs everyone out; cookies carry `HttpOnly` and `SameSite=Lax`, and `Secure` when the listener serves TLS or `server.secureCookies` declares TLS terminated in front; over plain HTTP without that setting they are not `Secure` (NFR-015) |
 
 Two things are deliberately *absent* from this inventory. Trust roots are
 public keys — configuration, not secrets

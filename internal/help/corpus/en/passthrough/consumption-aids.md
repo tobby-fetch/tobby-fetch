@@ -8,7 +8,7 @@ sidebar:
 Once content has landed in the zone registry, the machines that consume it
 need two things: the exact name every ingredient now has, and a runtime
 configuration that makes `docker.io/bitnami/wordpress` resolve there. Tobby
-generates both from the recipes its store holds (FR-065) — so they match
+generates both from the recipes its store holds — so they match
 what was pushed, instead of being typed from the
 [mapping convention](../connect-clients/) by hand.
 
@@ -23,7 +23,7 @@ The aids point at the registry the zone's clients pull from:
 |---|---|---|
 | The instance pushes to a zone registry | `destination.registry` | `destination.basePath` |
 | The zone reaches the registry under another name | `consumption.registry` | `destination.basePath` |
-| The instance serves its own `/v2/` to the zone (UC3) | `consumption.registry` | `storage.basePrefix` |
+| The instance serves its own `/v2/` to the zone | `consumption.registry` | `storage.basePrefix` |
 
 ```yaml
 consumption:

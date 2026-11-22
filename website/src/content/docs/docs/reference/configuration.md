@@ -5,8 +5,8 @@ sidebar:
   order: 2
 ---
 
-This page documents the layered configuration as implemented in the current
-v0.5.x series (`internal/config/`). Every key below exists in the code
+This page documents the layered configuration as implemented in the release
+this documentation comes with (`internal/config/`). Every key below exists in the code
 today.
 
 ## Layering

@@ -30,8 +30,8 @@ transport media can alter or replace anything on it — including the
 manifest and any trust-root file placed there. Controls: destination-side
 verification of manifest completeness and checksums, then each recipe's
 files against their pinned digests and its cosign signature against
-*this* instance's trust roots, before any push, any serving and any local
-write; every covered file is checked against its own content address as
+*this* instance's trust roots, before any push, any serving and any write
+to the store (the operation log and the task records under `_tobby/`, outside coverage, excepted); every covered file is checked against its own content address as
 well as against the inventory, so rewriting the unsigned inventory to
 agree with a corrupted blob changes nothing; content not reachable from a
 verified recipe is never pushed and is reported; an integrity or
@@ -42,11 +42,16 @@ v0.5.0). The verification order and its rationale:
 
 **A medium from the wrong place or the wrong month.** A medium addressed
 to another zone, or older than the last one this zone imported, is refused
-before anything is read out of it (R-28). Both refusals are
+right after the manifest and the recipe graph are checked, before any
+recipe content is read (R-28). Both refusals are
 **anti-accident guards, not security controls** — the manifest is unsigned,
 so a hostile party can forge either field — which is exactly why they are
-the only two an administrator may waive, audited (FR-094), and why the
-recorded high-water mark never moves backwards when one is waived.
+the only two that may be waived, and why the recorded high-water mark never
+moves backwards when one is waived. On the screen and the API a waiver
+needs the `admin` role; on the command line there is no role check, and
+host access is the control. A waiver applied to an import is audited
+(FR-094); a waiver given at the Verify step is not, although on the screen
+and the API it can open the serving gate. That gap is a known defect.
 
 **A client asking an unverified instance for content.** A destination
 instance holding a transported medium withholds `/v2/` and `/files/`
@@ -89,6 +94,17 @@ under an advisory or blocking policy, and content admitted under a
 relaxed trust scope stays marked item by item (R-22 — delivered v0.6.0).
 See [vulnerability scanning](../vulnerability-scanning/) and the
 [reduced-assurance marker](../reduced-assurance/).
+
+**Whoever can write the Retriever.** The Retriever is deliberately not
+signed. It carries the same trust as the instance configuration, because
+its location, `retriever.source`, is set at start-up and cannot be changed
+through the interface or the API (the plan screen and `POST /api/v1/plan`
+accept a candidate document, for a dry-run plan only). The document is
+re-read at every synchronization. When `retriever.source` is a URL or an
+OCI reference, whoever can write at that location can therefore change the
+zone's desired state and loosen its scan policy (raise the threshold, add
+exceptions; see [vulnerability scanning](../vulnerability-scanning/)).
+Protect that location like the configuration file itself.
 
 ## Trust boundaries per mode
 
@@ -153,10 +169,10 @@ hostile — because it may have been.
 | UI, `/api/v1`, `/v2/` registry, `/files/` | inbound | one listener, authenticated (FR-075), TLS-capable (FR-082) | same |
 | `/healthz`, `/readyz`, `/metrics` | inbound | unauthenticated, no instance content | same |
 | Source registries and Helm repositories | outbound | allowlist-gated (FR-030), proxy-aware (FR-080), private CAs without disabling TLS (FR-081) | source side only; destination side has none |
-| Retriever source (file, HTTPS, OCI) | outbound | configured endpoint (FR-010) | source side only |
+| Retriever source (file, HTTP(S), OCI) | outbound | configured endpoint (FR-010); the document is not signed | source side only |
 | Destination zone registry | outbound | differential push of verified content (FR-028) | destination side, from the transported store |
 | Trust-root URLs | outbound | fetched at configuration time only, never at verification time (FR-033) | inline or file forms instead |
-| Identity provider | outbound | OIDC/SAML (FR-070, FR-071 — delivered v0.6.0) | local accounts |
+| Identity provider | outbound | OIDC/SAML (FR-070, FR-071 — delivered v0.6.0) | OIDC/SAML if configured, as in passthrough; an isolated zone often has local accounts only |
 | Telemetry, update checks, crash reporting | outbound | **none, ever** (NFR-019) | none |
 
 **No other destination, ever.** NFR-019 requires that no connection
@@ -178,7 +194,7 @@ proxy that records every connection attempt (ADR-0014). See
 | No unconfigured egress | NFR-019, ADR-0012 | delivered v0.1.x, canary-proven |
 | Secret hygiene, CSRF, path traversal, escaping | NFR-011–NFR-015 | delivered |
 | Least privilege reference deployment | NFR-014 | delivered v0.4.0 |
-| Media verification before any push, serving or local write | FR-054, ADR-0006, ADR-0016 | delivered v0.5.0 |
+| Media verification before any push, serving or write to the store | FR-054, ADR-0006, ADR-0016 | delivered v0.5.0 |
 | Per-recipe blocking, no override on integrity or signature | R-19 | delivered v0.5.0 |
 | Secrets never on media, enforced at startup | R-16, NFR-020 | delivered v0.5.0 |
 | Trivy scanning with policy, offline DB carried by Tobby | FR-031, FR-032, ADR-0008 — [Vulnerability scanning](../vulnerability-scanning/) | v0.6.0 |

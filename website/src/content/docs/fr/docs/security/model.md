@@ -47,19 +47,30 @@ servi : **la recipe est bloquée en entier**, et les recipes sœurs qui se
 vérifient ne sont pas touchées.
 → [Signatures, trust roots et liste d'autorisation](../content-trust/), [erreurs `TBY-SIG-*`](../../reference/errors/#tby-sig-001)
 
-## 3. Sécurisé par défaut : tout assouplissement est opt-in, visible et consigné
+## 3. Sécurisé par défaut : les assouplissements sont visibles
 
-Aucun défaut, aucun réglage omis n'affaiblit une instance. Une posture plus
-faible n'existe que si quelqu'un l'écrit, et chacune est annoncée là où les
-personnes concernées la verront :
+Une posture plus faible n'existe que si quelqu'un l'écrit, et chacune est
+annoncée là où les personnes concernées la verront. Trois exceptions ne
+s'écrivent pas dans la configuration de l'instance elle-même : l'analyse
+est consultative par défaut (`scan.mode: warn`), un `registries.allowlist`
+absent ne restreint rien (signalé comme *non déclaré*), et le Retriever, un
+document non signé, peut assouplir la politique de vulnérabilités. Les trois
+figurent dans le tableau :
 
 | Assouplissement | Comment il se demande | Où il se voit |
 | --- | --- | --- |
 | Authentification désactivée | `auth.disabled` dans le fichier de configuration ou `TOBBY_AUTH_DISABLED`, jamais par option | bandeau permanent, journal de démarrage, événement d'audit `auth.override_active` |
 | Recipes non signées admises | une entrée `trust.scopes` avec `allowUnsigned`, pour des dépôts nommés uniquement | bandeau permanent, [marqueur d'assurance réduite](../reduced-assurance/) sur chaque élément atteint |
 | Vulnérabilités signalées sans bloquer | le défaut `scan.mode: warn` ; `block` est opt-in | bandeau consultatif, `TBY-SCN-006` sur chaque élément en infraction |
-| Support destiné à une autre zone, ou plus ancien que le dernier importé | une dérogation `admin` à l'import du média (`TBY-MED-006`, `TBY-MED-007`), à chaque import | événement d'audit |
+| Seuil de vulnérabilité relevé, ou dérogations ajoutées, par le Retriever | `spec.scanPolicy` dans le Retriever, qui n'est pas signé ; son seuil remplace celui de l'instance dans les deux sens | le rapport de chaque élément (`threshold_level: retriever`) ; les dérogations du Retriever sur `/admin/policy` ; `TBY-SCN-028` pour une dérogation sans échéance ; aucun événement d'audit |
+| Registries contactées sans restriction | aucune clé `registries.allowlist` | signalé comme *non déclaré* |
+| Support destiné à une autre zone, ou plus ancien que le dernier importé | une dérogation (`TBY-MED-006`, `TBY-MED-007`), à chaque vérification ou import : `admin` sur l'écran et l'API, quiconque a accès à l'hôte en ligne de commande | événement d'audit à la demande d'un import ; aucun quand elle est donnée à l'étape Vérifier (défaut connu) |
 | Un FileSet servi sans connexion | `anonymous: true` sur son entrée `files.filesets` | bandeau permanent |
+
+Le Retriever n'est pas signé, par choix de conception : il porte la
+confiance de la configuration de l'instance, et son emplacement doit être
+protégé comme le fichier de configuration — voir
+[le modèle de menaces](../threat-model/#adversaires-et-ce-qui-les-arrête).
 
 Une instance sans compte refuse de démarrer plutôt que de démarrer ouverte
 (`TBY-AUTH-001`), et une instance dont un fichier de secret se trouve dans le
@@ -156,8 +167,11 @@ cru.
 Les deux seules dérogations (un support adressé à une autre zone, un support
 plus ancien que le dernier importé) sont des garde-fous anti-accident : ce ne
 sont pas des contrôles de sécurité, car un champ du manifeste peut être
-falsifié. C'est pourquoi elles seules peuvent être levées, par un
-administrateur, avec audit.
+falsifié. C'est pourquoi elles seules peuvent être levées : par un
+administrateur sur l'écran et l'API, par quiconque a accès à l'hôte en ligne
+de commande. Une dérogation appliquée à un import est auditée ; une
+dérogation donnée à l'étape Vérifier ne l'est pas, alors que sur l'écran et
+l'API elle peut ouvrir le verrou de service (un défaut connu).
 → [Modèle de sécurité des médias](../../air-gap/media-security/), [Parcours d'un média](../../air-gap/media-workflow/)
 
 ## 6. Les périmètres de confiance
@@ -191,8 +205,9 @@ Ce qui est analysé est décidé par le **contenu**, pas par le type déclaré :
 image publiée comme « artefact » ou comme FileSet est détectée d'après ses
 octets et analysée comme une image. Une politique unique (un seuil CVSS,
 consultative ou bloquante, des dérogations tolérées) est composée à partir de
-l'instance, du Retriever et de la recipe, et une recipe ne peut que la
-durcir. La base de vulnérabilités voyage avec Tobby lui-même, et son âge figure
+l'instance, du Retriever et de la recipe. Une recipe ne peut que la
+durcir ; le seuil du Retriever remplace celui de l'instance et peut
+l'assouplir autant que la durcir. La base de vulnérabilités voyage avec Tobby lui-même, et son âge figure
 dans chaque rapport ; un scanner absent, périmé ou non vérifiable est un mode
 dégradé visible (`TBY-SCN-001` à `TBY-SCN-004`), jamais un passage silencieux.
 L'analyse répond à un adversaire différent de celui des signatures : *un

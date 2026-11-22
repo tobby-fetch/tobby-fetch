@@ -134,10 +134,13 @@ project advertises is not always the only one it publishes to.
 
 ## Three more things that are learned the expensive way
 
-**Platform labels are matched exactly.** `linux/arm64` and `linux/arm64/v8`
-are different strings, and PostgreSQL publishes the second one. Tobby fails
-the ingredient rather than guessing — a loud failure beats a silent
-architecture swap. Read the labels off the index instead of typing them:
+**Platform labels bind by variant.** A label without a variant
+(`linux/arm64`) matches any variant of that platform, including
+`linux/arm64/v8`, which is what PostgreSQL publishes. A label that names a
+variant (`linux/arm/v7`) matches that variant only, and a label Tobby cannot
+match fails the ingredient rather than guessing — a loud failure beats a
+silent architecture swap. Read the labels off the index instead of typing
+them:
 
 ```bash
 oras manifest fetch docker.io/library/postgres:17.11-alpine \

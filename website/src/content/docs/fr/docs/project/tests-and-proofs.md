@@ -31,17 +31,21 @@ qui l'implémente.
 ## Les gates de CI, telles que câblées
 
 [`ci.yml`](https://github.com/tobby-fetch/tobby-fetch/blob/main/.github/workflows/ci.yml)
-exécute neuf jobs bloquants sur chaque pull request ; son en-tête énonce le
+exécute treize jobs bloquants sur chaque pull request ; son en-tête énonce le
 contrat : *chaque job conditionne la fusion*. Par nom :
 
 | Job | Ce qui bloque la fusion |
 |---|---|
 | `lint` | golangci-lint v2.15.0, profil strict, zéro suppression |
-| `test` | suite race + `-count=2` sur linux/amd64, linux/arm64 **et** macOS, puis le plancher de couverture par paquet |
+| `test` | suite race + `-count=2` sur linux/amd64, linux/arm64, macOS **et** Windows, puis le plancher de couverture par paquet |
 | `cross-compile` | les six cibles de release (linux, windows, darwin × amd64/arm64) doivent compiler |
 | `licenses` | chaque dépendance — arbre de test compris — contre la liste d'autorisation de compatibilité GPL-3.0 |
-| `e2e-topology` | les scénarios hermétiques des jalons 1 à 4, rapports bruts des vérifications publiés dans le résumé du job |
+| `e2e-topology` | les scénarios hermétiques des jalons 1 à 4 et le parcours UC2 du jalon 7, rapports bruts des vérifications publiés dans le résumé du job |
 | `e2e-browser` | scénarios chromedp, avec `TOBBY_E2E_REQUIRE_CHROME=1` pour que « pas de navigateur » soit un échec et non un saut |
+| `coverage-core` | couverture de lignes des paquets du cœur (fetch, resolve, store, push, policy, signatures) à 70 % ou plus |
+| `i18n` | catalogues anglais et français complets : aucune clé manquante ou orpheline, placeholders cohérents |
+| `fuzz` | chaque cible de fuzzing tourne 30 secondes ; les entrées en échec sont conservées en artefact |
+| `conformance` | la suite de conformité OCI distribution-spec épinglée, sur linux/amd64 et linux/arm64 |
 | `govulncheck` | vulnérabilités connues atteignables, bibliothèque standard comprise — un constat est un chemin d'appel, pas une correspondance de manifeste |
 | `secrets` | gitleaks sur tout l'historique git, pas seulement la pointe du checkout |
 | `vulnerabilities` | Trivy sur les dépendances ; critique et haute font échouer le job |
@@ -111,7 +115,7 @@ crucible/
 ├── run.sh            # scenario runner: ./run.sh m1 [m2 …] | all
 ├── lib.sh            # shared helpers (checks, raw report)
 └── scenarios/
-    ├── m1/run.sh … m4/run.sh   # one scenario per delivered milestone
+    ├── m1/run.sh … m7/run.sh   # one scenario per milestone
 ```
 
 Les scénarios sont étiquetés par jalon et invocables indépendamment : la suite

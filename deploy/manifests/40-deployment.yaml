@@ -33,8 +33,8 @@ spec:
         app.kubernetes.io/instance: tobby
       # annotations:
       #   Annotation-based Prometheus discovery, if that is how your
-      #   cluster scrapes. /metrics sits behind the same authentication as
-      #   every other surface, so the scraper needs credentials.
+      #   cluster scrapes. /metrics is unauthenticated, like the probes, so
+      #   the scraper needs no credentials.
       #   prometheus.io/scrape: "true"
       #   prometheus.io/port: "8080"
       #   prometheus.io/path: /metrics
