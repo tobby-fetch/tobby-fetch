@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -168,6 +169,15 @@ func TestOverrideRefusesCrossOriginUI(t *testing.T) {
 func (e *rbacEnv) stateDigest(t *testing.T) string {
 	t.Helper()
 	h := sha256.New()
+	_, _ = io.WriteString(h, strings.Join(e.stateLines(t), "\n"))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// stateLines is the state stateDigest fingerprints, one line per entry, so
+// that a failure can name what changed.
+func (e *rbacEnv) stateLines(t *testing.T) []string {
+	t.Helper()
+	var out []string
 	root := e.u.store.Root()
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -178,14 +188,14 @@ func (e *rbacEnv) stateDigest(t *testing.T) string {
 			return err
 		}
 		rel, _ := filepath.Rel(root, path)
-		_, _ = fmt.Fprintf(h, "%s %d %d\n", rel, info.Size(), info.ModTime().UnixNano())
+		out = append(out, fmt.Sprintf("%s %d %d", rel, info.Size(), info.ModTime().UnixNano()))
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, task := range e.u.queue.List(tasks.Status(""), "", "") {
-		_, _ = fmt.Fprintf(h, "task %s %s\n", task.ID, task.Status)
+		out = append(out, fmt.Sprintf("task %s %s", task.ID, task.Status))
 	}
 	var lines []string
 	for _, a := range e.u.authn.Store.Accounts() {
@@ -195,8 +205,29 @@ func (e *rbacEnv) stateDigest(t *testing.T) string {
 		lines = append(lines, fmt.Sprintf("token %s %s %v", tok.Name, tok.Role, tok.Revoked))
 	}
 	sort.Strings(lines)
-	_, _ = fmt.Fprintln(h, strings.Join(lines, "\n"))
-	return hex.EncodeToString(h.Sum(nil))
+	return append(out, lines...)
+}
+
+// stateDiff names the entries present in one state listing and not the other.
+func stateDiff(before, after []string) string {
+	seen := map[string]int{}
+	for _, l := range before {
+		seen[l]--
+	}
+	for _, l := range after {
+		seen[l]++
+	}
+	var d []string
+	for l, n := range seen {
+		switch {
+		case n < 0:
+			d = append(d, "- "+l)
+		case n > 0:
+			d = append(d, "+ "+l)
+		}
+	}
+	sort.Strings(d)
+	return strings.Join(d, "; ")
 }
 
 // TestNoSafeRouteWrites is the last clause of the NFR-012 acceptance: the
@@ -206,6 +237,7 @@ func (e *rbacEnv) stateDigest(t *testing.T) string {
 func TestNoSafeRouteWrites(t *testing.T) {
 	env := newRBACEnv(t)
 	before := env.stateDigest(t)
+	beforeLines := env.stateLines(t)
 	for _, surface := range []struct {
 		api  bool
 		rows []rbacRoute
@@ -221,8 +253,9 @@ func TestNoSafeRouteWrites(t *testing.T) {
 				env.probeUI(t, auth.RoleAdmin, row)
 			}
 			if after := env.stateDigest(t); after != before {
-				t.Errorf("%s changed the instance's state", row.Pattern)
-				before = after
+				afterLines := env.stateLines(t)
+				t.Errorf("%s changed the instance's state: %s", row.Pattern, stateDiff(beforeLines, afterLines))
+				before, beforeLines = after, afterLines
 			}
 		}
 	}
