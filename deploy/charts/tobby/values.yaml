@@ -69,7 +69,8 @@ envFrom: []
 #   storage.root  <- persistence.storage.mountPath
 #   state.root    <- persistence.state.mountPath
 #   server.addr   <- containerPort
-#   registries.credentialsFile <- registryCredentials mount (when enabled)
+#   registries.credentialsFile <- registryCredentials mount (when enabled;
+#                                 left to you while it is off)
 config:
   # Operating mode. Defaults to "passthrough"; an empty value is refused
   # (FR-001). "passthrough" is a long-lived service between two connected

@@ -95,7 +95,11 @@ The rendered /etc/tobby/config.yaml.
 
 Four settings are owned by the chart because the pod spec depends on them
 too, and a configuration that disagrees with its own volume mounts is a
-failure mode worth refusing outright rather than debugging at 3am.
+failure mode worth refusing outright rather than debugging at 3am. Three
+are owned always (storage.root, state.root, server.addr); the fourth,
+registries.credentialsFile, only while the chart mounts the credentials
+Secret. With registryCredentials off the chart manages no such file, so a
+value there is the operator's own (a file brought through extraVolumes).
 */}}
 {{- define "tobby.config" -}}
 {{- $c := deepCopy (default (dict) .Values.config) -}}
@@ -107,6 +111,9 @@ failure mode worth refusing outright rather than debugging at 3am.
 {{- end -}}
 {{- if dig "server" "addr" "" $c -}}
 {{- fail "config.server.addr is set by the chart: change containerPort instead" -}}
+{{- end -}}
+{{- if and (include "tobby.registryCredentialsEnabled" .) (dig "registries" "credentialsFile" "" $c) -}}
+{{- fail "config.registries.credentialsFile is set by the chart while registryCredentials is enabled: configure registryCredentials.existingSecret or registryCredentials.dockerconfigjson instead" -}}
 {{- end -}}
 {{- if eq (dig "mode" "" $c) "" -}}
 {{- fail "config.mode is required: set \"passthrough\" or \"mirror\"" -}}

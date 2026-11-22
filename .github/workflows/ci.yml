@@ -141,11 +141,12 @@ jobs:
       # of internal/metrics holds the file's expressions to the metrics
       # reference; this holds the file to the chart, and the chart to
       # `helm lint` with every optional resource on.
-      - name: Alert rules file in step with the chart; chart lints with the kit on
+      - name: Alert rules file in step with the chart; owned settings refused; chart lints with the kit on
         if: runner.os == 'Linux'
         run: |
           set -eu
           sh tools/chart-alert-rules.sh --check
+          sh tools/chart-owned-settings.sh
           helm lint deploy/charts/tobby \
             --set alerting.prometheusRule.enabled=true \
             --set alerting.rulesFile.enabled=true \

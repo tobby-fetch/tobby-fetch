@@ -68,14 +68,16 @@ The chart defaults `config.mode` to `passthrough` and refuses an empty
 value; set `mirror` for an air-gap instance. The chart's `config` value
 becomes `/etc/tobby/config.yaml` and mirrors Tobby's own configuration
 keys — the output of `tobby config dump` pastes in once you remove
-`storage.root`, `state.root` and `server.addr`. `env` sets
+`storage.root`, `state.root`, `server.addr` and `registries.credentialsFile`. `env` sets
 `TOBBY_*` variables and `extraArgs` appends flags; precedence is
 flags > environment > file. Three keys (`storage.root`,
 `state.root`, `server.addr`) are owned by the chart and rejected if set
-directly, because the pod spec depends on them. The chart also sets
-`registries.credentialsFile` when the credentials Secret is enabled, but
-does not reject it: a value you put in `config` silently wins over the
-mount, so leave that key out.
+directly, because the pod spec depends on them. A fourth,
+`registries.credentialsFile`, is owned while the credentials Secret is
+enabled: the chart rejects it then, and you configure the credentials through
+`registryCredentials.*` instead. While that feature is off, the chart manages
+no such file and a value you put in `config` (a file you mount through
+`extraVolumes`) is kept.
 
 Registry credentials are a separate `kubernetes.io/dockerconfigjson`
 Secret, mounted read-only — never in the configuration file,

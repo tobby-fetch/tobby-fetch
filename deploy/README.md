@@ -128,21 +128,24 @@ The chart drives all three layers Tobby reads, lowest precedence first
 
 Use `config` for everything that is not a per-environment override. The
 keys mirror Tobby's own configuration structure exactly, so the output of
-`tobby config dump` can be pasted in once `storage.root`, `state.root` and
-`server.addr` are removed.
+`tobby config dump` can be pasted in once `storage.root`, `state.root`,
+`server.addr` and `registries.credentialsFile` are removed.
 
 Four keys are owned by the chart, because the pod spec depends on them
-too. Setting one of the first three yourself makes the chart fail with a
-message naming the value to change instead. `registries.credentialsFile`
-is not rejected: a value set in `config` silently wins over the mount, so
-leave it out.
+too. Setting one yourself makes the chart fail with a message naming the
+value to use instead. `registries.credentialsFile` is owned only while the
+registry-credentials Secret is wired (`registryCredentials.existingSecret`,
+or `registryCredentials.enabled` with `dockerconfigjson`): set it then and
+the chart refuses, so use `registryCredentials.*`. While that feature is off
+the chart manages no such file, and a value of yours (a file you mount
+through `extraVolumes`) is kept.
 
 | Chart-owned key | Derived from |
 | --- | --- |
 | `storage.root` | `persistence.storage.mountPath` |
 | `state.root` | `persistence.state.mountPath` |
 | `server.addr` | `containerPort` |
-| `registries.credentialsFile` | the registry-credentials mount |
+| `registries.credentialsFile` | the registry-credentials mount (while enabled) |
 
 ### Optional pieces
 
