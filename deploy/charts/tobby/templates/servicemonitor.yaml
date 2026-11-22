@@ -34,7 +34,22 @@ spec:
   endpoints:
     - port: http
       path: /metrics
+      {{- if include "tobby.serverTLS" . }}
+      scheme: https
+      {{- with .Values.metrics.serviceMonitor.tlsConfig }}
+      tlsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- else }}
+      {{- if include "tobby.serverTLSSelfSigned" . }}
+      # Self-signed listener: there is no chain to verify. See
+      # metrics.serviceMonitor.tlsConfig in values.yaml.
+      tlsConfig:
+        insecureSkipVerify: true
+      {{- end }}
+      {{- end }}
+      {{- else }}
       scheme: http
+      {{- end }}
       interval: {{ .Values.metrics.serviceMonitor.interval }}
       scrapeTimeout: {{ .Values.metrics.serviceMonitor.scrapeTimeout }}
       {{- with .Values.metrics.serviceMonitor.basicAuth }}

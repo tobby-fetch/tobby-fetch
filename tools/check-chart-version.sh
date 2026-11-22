@@ -65,5 +65,21 @@ if [ -n "$stale" ]; then
     done
     fail=1
 fi
-[ "$fail" -eq 0 ] && echo "chart $version deploys tobby v$app — consistent, docs included"
+# The raw manifests and the README's copyable commands pin the image tag
+# too (B-087: 40-deployment.yaml sat at v0.3.0 while the chart moved on).
+stale="$(grep -rnoE 'tobby-fetch/tobby-fetch:v?[0-9][0-9A-Za-z.+-]*' \
+    deploy/manifests deploy/README.md 2>/dev/null |
+    grep -vE ":v${app}\$" || true)"
+if [ -n "$stale" ]; then
+    printf '%s\n' "$stale" | while IFS= read -r hit; do
+        echo "::error file=${hit%%:*}::image tag differs from appVersion $app (want v$app): ${hit#*:}"
+    done
+    fail=1
+fi
+manifest_images="$(grep -c 'tobby-fetch/tobby-fetch:' deploy/manifests/40-deployment.yaml || true)"
+if [ "$manifest_images" -lt 1 ]; then
+    echo "::error file=deploy/manifests/40-deployment.yaml::no tobby image found: the tag check above would pass vacuously"
+    fail=1
+fi
+[ "$fail" -eq 0 ] && echo "chart $version deploys tobby v$app — consistent, docs and manifests included"
 exit "$fail"

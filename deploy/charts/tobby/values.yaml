@@ -295,8 +295,9 @@ persistence:
     accessModes:
       - ReadWriteOnce
     size: 100Gi
-    # Empty uses the cluster's default StorageClass; "-" disables dynamic
-    # provisioning.
+    # Empty uses the cluster's default StorageClass (the field is left
+    # out); "-" renders `storageClassName: ""`, which disables dynamic
+    # provisioning (the claim binds only a pre-created PV without a class).
     storageClassName: ""
     annotations: {}
   state:
@@ -311,6 +312,7 @@ persistence:
     # Lower config.transfer.resumeThreshold (or set it to 0) if this
     # volume has to stay small.
     size: 20Gi
+    # Same convention as persistence.storage.storageClassName.
     storageClassName: ""
     annotations: {}
     # Setting enabled: false falls back to an emptyDir, which loses every
@@ -342,6 +344,11 @@ ingress:
   annotations: {}
   # nginx.ingress.kubernetes.io/proxy-body-size: "0"
   # nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+  # The backend is plain HTTP unless config.server.tls is set. When the pod
+  # serves TLS itself, the controller must speak HTTPS to it, which is
+  # controller-specific and not rendered by the chart, e.g.
+  # nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+  # (Traefik: a ServersTransport / the service's `scheme: https`).
   hosts:
     - host: tobby.example.com
       paths:
@@ -394,6 +401,11 @@ securityContext:
 # ---------------------------------------------------------------------------
 # Probes (FR-092)
 # ---------------------------------------------------------------------------
+# When the pod serves its own TLS (config.server.tls.enabled, or a certFile /
+# keyFile pair), the chart sets `scheme: HTTPS` on all three probes by
+# itself: there is one listener, so plain-HTTP probes would never succeed.
+# The kubelet does not verify the certificate, so a self-signed one is fine.
+#
 # /healthz answers as soon as the HTTP listener is up; /readyz stays 503
 # until the store and the configuration are usable, and flips back to 503
 # during the shutdown drain so the Service stops sending traffic first.
@@ -445,6 +457,25 @@ metrics:
     #   password:
     #     name: tobby-metrics-scraper
     #     key: password
+    # tlsConfig for the scrape (Prometheus Operator TLSConfig), used only
+    # when the pod serves its own TLS; the endpoint then uses `scheme: https`.
+    # Left empty, the chart picks a default by the kind of certificate:
+    #   - self-signed (config.server.tls.enabled without certFile): there is
+    #     no chain to verify, so `insecureSkipVerify: true`. Traffic is
+    #     encrypted but the peer is not authenticated; acceptable for an
+    #     in-cluster scrape, and replaced by pinning a real CA below if you
+    #     bring your own certificate.
+    #   - certFile/keyFile supplied: nothing is added and Prometheus uses its
+    #     default trust store, so set `ca` (and `serverName` if the
+    #     certificate does not name the Service) for a private CA.
+    # Any value set here replaces the default entirely.
+    tlsConfig: {}
+    # tlsConfig:
+    #   ca:
+    #     configMap:
+    #       name: tobby-ca
+    #       key: ca.crt
+    #   serverName: tobby.example.com
     relabelings: []
     metricRelabelings: []
 
@@ -508,7 +539,8 @@ initContainers: []
 # instance reconciles on a timer and should have a bound on the age of its
 # last success; a mirror instance synchronizes when an operator says so, and
 # a bound there would page nobody usefully — set thresholds.syncMaxAgeSeconds
-# to 0 to leave that rule out.
+# to 0 to leave out TobbySyncStale only. TobbySyncNeverSucceeded does not
+# depend on that bound and stays.
 alerting:
   # A PrometheusRule resource. Requires the Prometheus Operator CRDs.
   prometheusRule:
@@ -532,7 +564,8 @@ alerting:
     syncFailures: 3
     syncFailuresWindow: 1h
     # No successful synchronization for longer than this, in seconds.
-    # 0 leaves the rule out (mirror instances).
+    # 0 leaves the TobbySyncStale rule out (mirror instances);
+    # TobbySyncNeverSucceeded is kept.
     syncMaxAgeSeconds: 21600
     # Transfers pinned at sync.parallelism for this long.
     saturationFor: 15m

@@ -13,10 +13,17 @@ Reach the instance:
 
   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "tobby.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
 
-  UI and API   http://127.0.0.1:{{ .Values.service.port }}/
-  registry     http://127.0.0.1:{{ .Values.service.port }}/v2/
+  UI and API   {{ include "tobby.scheme" . }}://127.0.0.1:{{ .Values.service.port }}/
+  registry     {{ include "tobby.scheme" . }}://127.0.0.1:{{ .Values.service.port }}/v2/
   probes       /healthz (liveness) and /readyz (readiness)
   metrics      /metrics (OpenMetrics)
+{{- if include "tobby.serverTLS" . }}
+
+The pod serves TLS itself{{ if include "tobby.serverTLSSelfSigned" . }} with a SELF-SIGNED certificate: compare its SHA-256 fingerprint,
+logged at startup, with what your client sees. Use curl -k or pin the
+fingerprint until you supply certFile/keyFile{{ end }}. The probes use HTTPS;
+the Service port is still named "http".
+{{- end }}
 
 {{- if .Values.ingress.enabled }}
 

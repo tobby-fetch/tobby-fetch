@@ -92,6 +92,9 @@ spec:
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          # The name stays "http" even when the listener serves TLS
+          # (config.server.tls): it is the one port of the single listener,
+          # and renaming it would break every selector that targets it.
           ports:
             - name: http
               containerPort: {{ .Values.containerPort }}
@@ -105,6 +108,9 @@ spec:
             httpGet:
               path: /healthz
               port: http
+              {{- if include "tobby.serverTLS" . }}
+              scheme: HTTPS
+              {{- end }}
             initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.startup.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
@@ -117,6 +123,9 @@ spec:
             httpGet:
               path: /healthz
               port: http
+              {{- if include "tobby.serverTLS" . }}
+              scheme: HTTPS
+              {{- end }}
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
@@ -129,6 +138,9 @@ spec:
             httpGet:
               path: /readyz
               port: http
+              {{- if include "tobby.serverTLS" . }}
+              scheme: HTTPS
+              {{- end }}
             initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}

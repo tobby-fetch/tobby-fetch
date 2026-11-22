@@ -35,6 +35,7 @@ annotations use Prometheus' own templating, hence the raw-string actions.
       annotations:
         summary: No successful Tobby synchronization for too long
         description: {{ printf "The last successful synchronization on {{ $labels.instance }} ended more than %d seconds ago." (int $t.syncMaxAgeSeconds) | quote }}
+    {{- end }}
     - alert: TobbySyncNeverSucceeded
       expr: tobby_sync_runs_total{outcome="failure"} > 0 unless on(instance) tobby_sync_last_success_timestamp_seconds
       for: {{ $t.syncFailuresWindow }}
@@ -46,7 +47,6 @@ annotations use Prometheus' own templating, hence the raw-string actions.
       annotations:
         summary: Tobby has failed synchronizing and never succeeded since it started
         description: "{{`{{ $labels.instance }}`}} has not completed a single successful synchronization since it started."
-    {{- end }}
     - alert: TobbySyncSaturated
       expr: tobby_sync_transfers_inflight >= tobby_sync_parallelism
       for: {{ $t.saturationFor }}

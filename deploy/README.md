@@ -212,7 +212,7 @@ claim:
 kubectl -n tobby scale deploy/tobby --replicas=0
 
 kubectl -n tobby run tobby-bootstrap --rm -it --restart=Never \
-  --image=ghcr.io/tobby-fetch/tobby-fetch:v0.6.0 \
+  --image=ghcr.io/tobby-fetch/tobby-fetch:v1.0.0-rc.1 \
   --overrides='{
     "spec": {
       "securityContext": {
@@ -221,7 +221,7 @@ kubectl -n tobby run tobby-bootstrap --rm -it --restart=Never \
       },
       "containers": [{
         "name": "tobby-bootstrap",
-        "image": "ghcr.io/tobby-fetch/tobby-fetch:v0.6.0",
+        "image": "ghcr.io/tobby-fetch/tobby-fetch:v1.0.0-rc.1",
         "stdin": true, "tty": true,
         "args": ["user", "add", "admin", "--state-root", "/var/lib/tobby/state"],
         "securityContext": {
@@ -306,8 +306,10 @@ config:
 
 Mount the pair through `extraVolumes`. The files are re-read when they
 change, so cert-manager rotating a Secret in place is picked up on the
-next handshake without a restart. Remember to switch the probes to
-`scheme: HTTPS` in the same change — one listener carries the probes too.
+next handshake without a restart. With the Helm chart the
+probes switch to `scheme: HTTPS` by themselves (and the ServiceMonitor to
+`https`); with the raw manifests, add `scheme: HTTPS` to the three probes in
+`40-deployment.yaml` in the same change — one listener carries the probes too.
 
 With `enabled: true` and no pair, Tobby generates a self-signed
 certificate and logs its SHA-256 fingerprint at startup:
