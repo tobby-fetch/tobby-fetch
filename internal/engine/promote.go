@@ -211,6 +211,11 @@ func (e *Engine) promoteIngredient(ctx context.Context, sink *taskSink, logger *
 		Signature: sig,
 	}
 	if status == importer.StatusUpToDate {
+		// B-081: the content is there; a signature added upstream since
+		// the last cycle may not be.
+		if n := e.pushAttachedSignatures(ctx, logger, local, dst, ing.Digest); e.meters.PushedBytes != nil && n > 0 {
+			e.meters.PushedBytes(n)
+		}
 		sink.update(func(t *tasks.Task) bool {
 			item := itemFor(t, itemName)
 			item.Status = tasks.StatusSkipped
@@ -398,11 +403,19 @@ func (e *Engine) propagateRecipe(ctx context.Context, sink *taskSink, logger *sl
 			if !identical {
 				_ = e.pushFailed(sink, logger, rid, "recipe", taxonomy.New(taxonomy.CodeTagImmutable, taxonomy.Params{
 					"reference": tag.String(),
-					"published": remoteLayout.Document.Digest,
-					"candidate": layout.Document.Digest,
+					"published": existing.Digest.String(),
+					"candidate": dgst,
 				}), rid)
 				return false
 			}
+		} else if n := e.pushAttachedSignatures(ctx, logger, local, dst, dgst); e.meters.PushedBytes != nil && n > 0 {
+			// B-081: the destination holds this exact manifest, so the
+			// signatures attached to its digest are the ones that verify
+			// it there — including one added upstream since it landed.
+			// (A destination holding the same document under another
+			// manifest digest keeps its own signatures: ours name a
+			// manifest it does not hold.)
+			e.meters.PushedBytes(n)
 		}
 		res.DestinationStatus = string(importer.StatusUpToDate)
 		sink.update(func(t *tasks.Task) bool {
@@ -474,9 +487,25 @@ func (e *Engine) propagateRecipe(ctx context.Context, sink *taskSink, logger *sl
 // refusing the whole promotion over a signature artifact would trade a
 // verifiable destination for an empty one. The failure is logged, which
 // is what lets an operator notice a destination that keeps losing them.
+//
+// It runs on every promotion, the up-to-date ones included (B-081): a
+// subject already at the destination may have been re-signed upstream —
+// a key rotation signs the same digest again — and the zone below must
+// receive the new signature or refuse content this zone accepted. A
+// layout the store does not hold costs nothing, and one the destination
+// already holds at the same digest costs one HEAD and no write, so the
+// steady state stays write-free (FR-028).
 func (e *Engine) pushAttachedSignatures(ctx context.Context, logger *slog.Logger, local string, dst name.Repository, subjectDigest string) int64 {
 	var moved int64
 	for _, tag := range signatureTags(subjectDigest) {
+		held, ok := e.store.ResolveTag(ctx, local, tag)
+		if !ok {
+			// This layout is simply not the one the publisher used.
+			continue
+		}
+		if status, err := e.dest.Status(ctx, dst, tag, held); err == nil && status == importer.StatusUpToDate {
+			continue
+		}
 		n, err := e.dest.PushManifest(ctx, e.store, local, dst, tag, tag)
 		moved += n
 		switch {

@@ -5,10 +5,15 @@ package engine
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
@@ -283,11 +288,11 @@ func TestLoadTrustSources(t *testing.T) {
 			_, _ = w.Write(pem)
 		}))
 		t.Cleanup(srv.Close)
-		got, err := fetchCachedKey(srv.Client(), srv.URL+"/cosign.pub", "")
+		got, err := fetchCachedKey(slog.Default(), srv.Client(), srv.URL+"/cosign.pub", "")
 		if err != nil || !bytes.Equal(got, pem) {
 			t.Errorf("fetchCachedKey without cache = %q, %v", got, err)
 		}
-		_, err = fetchCachedKey(srv.Client(), srv.URL+"/missing", "")
+		_, err = fetchCachedKey(slog.Default(), srv.Client(), srv.URL+"/missing", "")
 		if err == nil {
 			t.Error("fetchCachedKey without cache accepted a failing fetch")
 		}
@@ -299,13 +304,57 @@ func TestLoadTrustSources(t *testing.T) {
 		}))
 		t.Cleanup(srv.Close)
 		cache := writeTempFile(t, "root.pub", pem)
-		got, err := fetchCachedKey(srv.Client(), srv.URL+"/cosign.pub", cache)
+		got, err := fetchCachedKey(slog.Default(), srv.Client(), srv.URL+"/cosign.pub", cache)
 		if err != nil || !bytes.Equal(got, pem) {
 			t.Errorf("HTTP-error fallback = %q, %v, want the cached key", got, err)
 		}
 		// Same failure with a COLD cache: a hard error naming the fetch.
-		if _, err := fetchCachedKey(srv.Client(), srv.URL+"/cosign.pub", cache+".cold"); err == nil {
+		if _, err := fetchCachedKey(slog.Default(), srv.Client(), srv.URL+"/cosign.pub", cache+".cold"); err == nil {
 			t.Error("cold-cache HTTP error did not surface")
+		}
+	})
+
+	// B-090: the fallback keeps the instance operative but is never
+	// silent — the operator reads which URL failed, why, and how old the
+	// copy now in use is.
+	t.Run("the cached-copy fallback is logged with the URL, the failure and the age", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "boom", http.StatusServiceUnavailable)
+		}))
+		t.Cleanup(srv.Close)
+		cache := writeTempFile(t, "root.pub", pem)
+		old := time.Now().Add(-72 * time.Hour)
+		if err := os.Chtimes(cache, old, old); err != nil {
+			t.Fatal(err)
+		}
+		var buf bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&buf, nil))
+		url := srv.URL + "/cosign.pub"
+		got, err := fetchCachedKeyAt(logger, srv.Client(), url, cache)
+		if err != nil || !bytes.Equal(got, pem) {
+			t.Fatalf("fallback = %q, %v, want the cached key", got, err)
+		}
+		var rec map[string]any
+		if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+			t.Fatalf("expected exactly one JSON log record, got %q: %v", buf.String(), err)
+		}
+		if rec["level"] != "WARN" || rec["url"] != url || !strings.Contains(fmt.Sprint(rec["error"]), "HTTP 503") {
+			t.Errorf("warning = %v, want level WARN naming %s and the HTTP 503", rec, url)
+		}
+		age, ok := rec["cache_age"].(float64) // slog's JSON handler writes durations in nanoseconds
+		if !ok || time.Duration(age) < 71*time.Hour {
+			t.Errorf("cache_age = %v, want about 72h", rec["cache_age"])
+		}
+
+		// A successful fetch logs nothing.
+		buf.Reset()
+		ok200 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(pem) }))
+		t.Cleanup(ok200.Close)
+		if _, err := fetchCachedKeyAt(logger, ok200.Client(), ok200.URL+"/cosign.pub", cache); err != nil {
+			t.Fatal(err)
+		}
+		if buf.Len() != 0 {
+			t.Errorf("a successful fetch logged %q", buf.String())
 		}
 	})
 

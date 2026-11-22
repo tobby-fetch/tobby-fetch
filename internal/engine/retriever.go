@@ -16,6 +16,8 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
 // retrieverTimeout bounds one desired-state fetch. The document is a few
@@ -121,7 +123,14 @@ func fetchRetrieverOCI(ctx context.Context, remotes *Remotes, reference string) 
 		return nil, fmt.Errorf("retriever artifact %s: unparseable manifest: %w", reference, err)
 	}
 	if len(man.Layers) != 1 {
-		return nil, fmt.Errorf("retriever artifact %s: %d layers, want exactly one document layer", reference, len(man.Layers))
+		// B-088: the artifact, not the instance, is wrong — a validation
+		// refusal naming the reference and the layout it breaks, never the
+		// TBY-SRV-001 a bare error used to surface as.
+		return nil, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
+			"file":       reference,
+			"path":       layoutPath,
+			"constraint": fmt.Sprintf("a Retriever artifact carries exactly one document layer, this one has %d", len(man.Layers)),
+		})
 	}
 	repo, _, err := remotes.Repository(repoPath)
 	if err != nil {

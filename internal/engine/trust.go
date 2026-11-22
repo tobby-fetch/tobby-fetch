@@ -9,8 +9,10 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -76,6 +78,14 @@ type Decision = media.TrustDecision
 // directly into a blocked egress, where it would not fail but hang the
 // whole startup. A nil egress is the unconfigured direct one.
 func LoadTrust(cfg config.Trust, cacheDir string, eg *netx.Egress) (*TrustPolicy, error) {
+	return LoadTrustLogging(slog.Default(), cfg, cacheDir, eg)
+}
+
+// LoadTrustLogging is LoadTrust writing to the caller's logger: the one
+// thing worth a line here is a key URL that did not answer and the cached
+// copy that stood in for it (B-090), and an operator looks for that in
+// the instance's log stream, not on a bare stderr.
+func LoadTrustLogging(logger *slog.Logger, cfg config.Trust, cacheDir string, eg *netx.Egress) (*TrustPolicy, error) {
 	client := netx.Or(eg).Client(trustFetchTimeout)
 	p := &TrustPolicy{
 		roots: map[string]*sigverify.Keys{}, reservedBy: map[string][]string{}, scopes: cfg.Scopes,
@@ -93,7 +103,7 @@ func LoadTrust(cfg config.Trust, cacheDir string, eg *netx.Egress) (*TrustPolicy
 				return nil, fmt.Errorf("trust root %s: %w", r.Name, err)
 			}
 		case r.KeyURL != "":
-			pem, err = fetchCachedKey(client, r.KeyURL, filepath.Join(cacheDir, r.Name+".pub"))
+			pem, err = fetchCachedKey(logger, client, r.KeyURL, filepath.Join(cacheDir, r.Name+".pub"))
 			if err != nil {
 				return nil, fmt.Errorf("trust root %s: %w", r.Name, err)
 			}
@@ -232,44 +242,59 @@ func (p *TrustPolicy) merge(names []string) *sigverify.Keys {
 // caching (instances without a state directory; the cache never lives in
 // the transportable store — FR-054: trust material on the media is
 // ignored).
-func fetchCachedKey(client *http.Client, url, cachePath string) ([]byte, error) {
+func fetchCachedKey(logger *slog.Logger, client *http.Client, url, cachePath string) ([]byte, error) {
 	if cachePath == "" {
-		resp, err := client.Get(url) //nolint:noctx // configuration-time fetch, bounded by the client timeout
-		if err != nil {
-			return nil, fmt.Errorf("fetching %s: %w", url, err)
-		}
-		defer resp.Body.Close() //nolint:errcheck // read side
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("fetching %s: HTTP %d", url, resp.StatusCode)
-		}
-		return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return fetchKey(client, url)
 	}
-	return fetchCachedKeyAt(client, url, cachePath)
+	return fetchCachedKeyAt(logger, client, url, cachePath)
 }
 
-func fetchCachedKeyAt(client *http.Client, url, cachePath string) ([]byte, error) {
-	resp, err := client.Get(url) //nolint:noctx // configuration-time fetch, bounded by the client timeout
+// fetchCachedKeyAt is fetchCachedKey with a cache. Falling back to the
+// cached copy keeps the instance operative, but it is never silent
+// (B-090): a trust root that cannot be refreshed may be one that was
+// rotated or revoked upstream, and the operator must be able to see that
+// the instance is verifying against a copy — and how old it is.
+func fetchCachedKeyAt(logger *slog.Logger, client *http.Client, url, cachePath string) ([]byte, error) {
+	pem, err := fetchKey(client, url)
 	if err == nil {
-		defer resp.Body.Close() //nolint:errcheck // read side
-		if resp.StatusCode == http.StatusOK {
-			pem, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-			if err == nil {
-				if err := os.MkdirAll(filepath.Dir(cachePath), 0o700); err == nil {
-					_ = os.WriteFile(cachePath, pem, 0o600)
-				}
-				return pem, nil
-			}
+		if err := os.MkdirAll(filepath.Dir(cachePath), 0o700); err == nil {
+			_ = os.WriteFile(cachePath, pem, 0o600)
 		}
-		err = fmt.Errorf("fetching %s: HTTP %d", url, resp.StatusCode)
-		if cached, cerr := os.ReadFile(cachePath); cerr == nil { //nolint:gosec // G304: our own cache path
-			return cached, nil
-		}
-		return nil, err
+		return pem, nil
 	}
-	if cached, cerr := os.ReadFile(cachePath); cerr == nil { //nolint:gosec // G304: our own cache path
-		return cached, nil
+	cached, cerr := os.ReadFile(cachePath) //nolint:gosec // G304: our own cache path
+	if cerr != nil {
+		return nil, fmt.Errorf("%w (and no cached copy)", err)
 	}
-	return nil, fmt.Errorf("fetching %s: %w (and no cached copy)", url, err)
+	attrs := []slog.Attr{
+		slog.String("url", url), slog.String("error", err.Error()),
+		slog.String("cache", cachePath),
+	}
+	if info, serr := os.Stat(cachePath); serr == nil {
+		attrs = append(attrs,
+			slog.Time("cached_at", info.ModTime()),
+			slog.Duration("cache_age", time.Since(info.ModTime()).Round(time.Second)))
+	}
+	logger.LogAttrs(context.Background(), slog.LevelWarn,
+		"trust root key URL unreachable: verifying with the cached copy", attrs...)
+	return cached, nil
+}
+
+// fetchKey downloads one key file, bounded.
+func fetchKey(client *http.Client, url string) ([]byte, error) {
+	resp, err := client.Get(url) //nolint:noctx // configuration-time fetch, bounded by the client timeout
+	if err != nil {
+		return nil, fmt.Errorf("fetching %s: %w", url, err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // read side
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching %s: HTTP %d", url, resp.StatusCode)
+	}
+	pem, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("fetching %s: %w", url, err)
+	}
+	return pem, nil
 }
 
 // matchPattern matches a repository path against a scope pattern: "*"

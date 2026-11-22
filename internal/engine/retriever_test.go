@@ -4,13 +4,21 @@
 package engine
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/opencontainers/go-digest"
+
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
 // TestLoadRetrieverSources locks FR-010: the desired-state document loads
@@ -73,6 +81,45 @@ func TestLoadRetrieverSources(t *testing.T) {
 			if r.Metadata.Name != "zone-src" {
 				t.Errorf("LoadRetriever(%q) = %+v", source, r)
 			}
+		}
+	})
+
+	// B-088: a layer count other than one is the artifact's fault, so it
+	// is a validation refusal naming the reference and the constraint —
+	// not the TBY-SRV-001 a bare error surfaced as.
+	t.Run("oci artifact with a wrong layer count is a validation error", func(t *testing.T) {
+		reg := newRegistry(t)
+		yamlDigest := digest.FromBytes(raw)
+		if err := reg.st.WriteBlob(ctx, "retrievers/lab", yamlDigest, bytes.NewReader(raw)); err != nil {
+			t.Fatal(err)
+		}
+		cfg := []byte("{}")
+		cfgDigest := digest.FromBytes(cfg)
+		if err := reg.st.WriteBlob(ctx, "retrievers/lab", cfgDigest, bytes.NewReader(cfg)); err != nil {
+			t.Fatal(err)
+		}
+		layer := ociTestDesc{MediaType: MediaTypeRecipe, Digest: yamlDigest.String(), Size: int64(len(raw))}
+		man, err := json.Marshal(ociImageManifest{
+			SchemaVersion: 2, MediaType: mediaTypeOCIManifest,
+			Config: ociTestDesc{MediaType: mediaTypeEmptyConfig, Digest: cfgDigest.String(), Size: int64(len(cfg))},
+			Layers: []ociTestDesc{layer, layer},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reg.st.PutManifest(ctx, "retrievers/lab", mediaTypeOCIManifest, man, "two-layers"); err != nil {
+			t.Fatal(err)
+		}
+		reference := reg.addr + "/retrievers/lab:two-layers"
+		_, err = LoadRetriever(ctx, remotes, reference)
+		var te *taxonomy.Error
+		if !errors.As(err, &te) || te.Code() != taxonomy.CodeValidation {
+			t.Fatalf("error = %v, want %s", err, taxonomy.CodeValidation)
+		}
+		params := te.ParamsMap()
+		if params["file"] != reference || !strings.Contains(fmt.Sprint(params["constraint"]), "exactly one document layer") ||
+			!strings.Contains(fmt.Sprint(params["constraint"]), "has 2") {
+			t.Errorf("params = %+v, want the reference and the one-layer constraint with the actual count", params)
 		}
 	})
 
