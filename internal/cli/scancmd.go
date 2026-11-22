@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -116,7 +115,7 @@ Examples:
 // scanExceptions reads the policy from the configuration, or from a
 // running instance when one is named.
 func scanExceptions(cmd *cobra.Command, flags *commonFlags, instance *instanceFlags) (*scanExceptionsReport, error) {
-	online := cmd.Flags().Changed("instance") || os.Getenv(EnvInstanceURL) != ""
+	online := instanceRequested(cmd)
 	if online {
 		cfg, err := flags.loadFor(cmd, config.ScopeNetwork)
 		if err != nil {

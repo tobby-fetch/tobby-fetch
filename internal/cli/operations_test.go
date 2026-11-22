@@ -19,6 +19,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -349,5 +350,34 @@ func TestARemoteBundleDownloadIsBounded(t *testing.T) {
 	}
 	if sink.Len() > 1001 {
 		t.Errorf("%d bytes copied past a bound of 1000", sink.Len())
+	}
+}
+
+// TestBundleAndVerifyHonourTheInstanceVariableAlone (B-074): like
+// `scan exceptions`, `diagnostics bundle` and `store verify` drive the
+// running instance when TOBBY_INSTANCE_URL is set, with no --instance.
+func TestBundleAndVerifyHonourTheInstanceVariableAlone(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		http.Error(w, "stub", http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv(EnvInstanceURL, srv.URL)
+	t.Setenv(EnvAPIToken, "tok-admin")
+	for name, args := range map[string][]string{
+		"diagnostics bundle": {"diagnostics", "bundle", "-o", filepath.Join(t.TempDir(), "b.tar.gz")},
+		"store verify":       {"store", "verify"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			hits.Store(0)
+			full := append(append([]string{}, args...), "--mode", "passthrough", "--storage-root", t.TempDir())
+			if err := execute(t, full...); err == nil {
+				t.Error("the stub instance answered 500 and the command succeeded: it ran locally")
+			}
+			if hits.Load() == 0 {
+				t.Errorf("%s with %s alone never contacted the instance", name, EnvInstanceURL)
+			}
+		})
 	}
 }

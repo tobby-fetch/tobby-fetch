@@ -74,7 +74,7 @@ the report is timestamped: start and end, run identifier, verdict, and
 every defect as a taxonomy code naming the file or object concerned.
 Orphaned content is listed as a note and never makes the verdict "defects".
 
-Without --instance it runs in this process, against the directory, and
+Without --instance (and with ` + EnvInstanceURL + ` unset) it runs in this process, against the directory, and
 works on a host where no instance is running. When an instance IS serving
 the store, this form refuses (it cannot see the instance's content lock, so
 a removal in progress would read as a defect) and tells you to use
@@ -94,7 +94,7 @@ that no longer verifies).`,
 			if err := report.validate(cmd); err != nil {
 				return err
 			}
-			if cmd.Flags().Changed("instance") {
+			if instanceRequested(cmd) {
 				return runStoreVerifyRemote(cmd, &common, &instance, &wait, report)
 			}
 			if cmd.Flags().Changed("wait") || cmd.Flags().Changed("wait-timeout") {

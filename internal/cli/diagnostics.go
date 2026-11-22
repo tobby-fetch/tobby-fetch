@@ -93,11 +93,13 @@ read). A match aborts the command with TBY-DIA-002 naming the file and
 writes nothing. Tobby sends the archive nowhere (NFR-019): you choose whom
 to give it to.
 
-Without --instance the archive is assembled on this host from the
-configuration, the store and the state directory; the log window and the
-metrics belong to a running process and are listed as omitted. With
---instance the archive is requested from the running instance (role admin)
-and includes them. Exit codes: 0 written, 3 refused by the redaction check
+Without --instance (and with ` + EnvInstanceURL + ` unset) the archive is
+assembled on this host from the configuration, the store and the state
+directory; the log window and the metrics belong to a running process and
+are listed as omitted. With --instance, or with ` + EnvInstanceURL + ` set, the
+archive is requested from the running instance (role admin) and includes them.
+
+Exit codes: 0 written, 3 refused by the redaction check
 or a role, 1 failed.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -108,7 +110,7 @@ or a role, 1 failed.`,
 			if err != nil {
 				return err
 			}
-			if cmd.Flags().Changed("instance") {
+			if instanceRequested(cmd) {
 				return runBundleRemote(cmd, &cfg, inst, report, out)
 			}
 			return runBundleLocal(cmd, &cfg, report, out)
