@@ -148,6 +148,18 @@ Les pages sont ordonnées comme se déroule un déploiement réel :
 11. **[Superviser une instance](../../passthrough/monitoring/)** — le
     référentiel des métriques, les règles d'alerte et le tableau de bord
     livrés avec le chart.
+12. **[Mettre à niveau et revenir en arrière](../../passthrough/upgrade-rollback/)** —
+    les étapes par mode d'installation, ce que le code contrôle d'une
+    version à l'autre, et ce qu'un retour arrière peut promettre.
+13. **[Ajouter une zone à une cascade](../../passthrough/add-a-zone/)** — une
+    instance de plus sous une instance existante, de son Retriever à sa
+    première synchronisation.
+14. **[Automatiser avec l'API et la CI](../../passthrough/automate/)** — un
+    jeton, une synchronisation suivie jusqu'au bout, la porte de plan dans
+    un pipeline.
+15. **[Valeurs du chart Helm](../../passthrough/chart-values/)** — chaque
+    valeur du chart, les clés qu'il possède, et ce que l'on sait du
+    dimensionnement.
 
 Si vous n'avez encore jamais fait tourner Tobby, le parcours en dix
 minutes [installer et démarrer](../../try/install-and-start/) et le pas à

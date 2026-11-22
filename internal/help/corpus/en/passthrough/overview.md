@@ -134,6 +134,15 @@ The pages are ordered the way a deployment actually proceeds:
     redacted local archive to hand to support.
 11. **[Supervise an instance](../../passthrough/monitoring/)** — the
     metrics reference, alert rules and dashboard shipped with the chart.
+12. **[Upgrade and roll back](../../passthrough/upgrade-rollback/)** — the
+    steps per install method, what the code checks across versions, and
+    what a rollback can promise.
+13. **[Add a zone to a cascade](../../passthrough/add-a-zone/)** — one more
+    instance below an existing one, from its Retriever to its first sync.
+14. **[Automate with the API and CI](../../passthrough/automate/)** — a
+    token, a sync followed to its end, the plan gate in a pipeline.
+15. **[Helm chart values](../../passthrough/chart-values/)** — every value
+    of the chart, the keys it owns, and what is known about sizing.
 
 If you have not run Tobby at all yet, the ten-minute
 [install and start](../../try/install-and-start/) path and the
