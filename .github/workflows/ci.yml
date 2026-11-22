@@ -459,7 +459,21 @@ jobs:
       # workflow, never by the suite (NFR-019).
       - name: Install Chromium (linux/arm64 has no Google Chrome)
         if: runner.arch == 'ARM64'
-        run: sudo snap install chromium
+        # The snap store has failed mid-download more than once (the snapd
+        # refresh that precedes the install). Four bounded attempts, then a
+        # real failure that says so: a skipped browser suite proves nothing.
+        run: |
+          for attempt in 1 2 3 4; do
+            if sudo timeout 180 snap install chromium; then
+              exit 0
+            fi
+            echo "::warning::snap install chromium failed (attempt ${attempt} of 4)"
+            sudo snap abort --last=install >/dev/null 2>&1 || true
+            sleep $((attempt * 20))
+          done
+          echo "::error::the snap store did not deliver Chromium after 4 attempts"
+          sudo snap changes || true
+          exit 1
       - name: Report the browser taken from the environment
         run: |
           if command -v google-chrome >/dev/null 2>&1; then
