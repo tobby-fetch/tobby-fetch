@@ -76,10 +76,13 @@ d'un hôte nu.
 modèle de recipe et toute sa chaîne de vérification.
 La seule voie par laquelle des fichiers locaux entrent dans un store est
 [`tobby fileset pack`](../../reference/cli/#tobby-fileset-pack), qui lit un
-répertoire **de l'hôte de l'instance** — jamais un corps de requête —, est
-réservé aux administrateurs, est confiné aux répertoires nommés par
-`files.packRoots`, et consigne ce qu'il a produit comme un import manuel non
-signé d'origine locale.
+répertoire **de l'hôte de l'instance** — jamais un corps de requête — et
+consigne ce qu'il a produit comme un import manuel non signé d'origine
+locale. En ligne de commande, il empaquette tout répertoire que
+l'utilisateur de l'hôte peut lire : qui le lance détient déjà les droits de
+l'hôte sur le système de fichiers. L'interface web et l'API n'offrent la même
+opération qu'aux administrateurs, et seulement dans les répertoires nommés
+par `files.packRoots`.
 
 ### Un seul mode par instance, fixé au démarrage
 
@@ -104,7 +107,7 @@ regarde est un risque, pas un confort.
 
 ### Matrice des systèmes pris en charge
 
-Le périmètre de production est volontairement étroit (NFR-018) :
+Le périmètre de production est volontairement étroit :
 
 | OS | Prise en charge |
 |---|---|
@@ -125,12 +128,13 @@ le jour de sa sortie, installez avec `scoop install tobby` (le
 seul) ou depuis l'archive de release, vérifiée comme décrit dans
 [vérifier une release](../../project/verify-a-release/).
 
-### Les médias FAT32 sont refusés
+### Les supports qui ne peuvent pas contenir le plus gros fichier sont refusés
 
-Le contrôle préalable refuse un média de transport au système de fichiers
-incompatible, FAT32 explicitement parmi eux, en nommant la limite dans
-l'erreur.
-**Conséquence :** formatez les médias de transport avec un système de fichiers
+Le contrôle préalable refuse un support de transport dont le système de
+fichiers ne peut pas contenir le plus gros fichier à écrire, en nommant la
+limite dans l'erreur. Sur FAT32, cela veut dire tout fichier de 4 Gio ou
+plus ; un support FAT32 dont tous les fichiers sont plus petits passe.
+**Conséquence :** formatez les supports de transport avec un système de fichiers
 capable de contenir de gros fichiers (exFAT, ext4, NTFS).
 **Justification :** le plafond de 4 Gio par fichier de FAT32 tronquerait les
 gros blobs en plein transfert ; refuser d'emblée vaut mieux qu'un store
@@ -153,7 +157,7 @@ cas d'usage de remplacement), planifiez les mises à niveau en conséquence.
 ## Des réglages par défaut à connaître
 
 - **Le nettoyage du store de transit est désactivé par défaut en
-  passthrough.** L'élagage aligné sur les retrievers existe (R-33) mais
+  passthrough.** L'élagage aligné sur les retrievers existe mais
   `sync.prune` vaut `false` sauf configuration : un store de transit n'est pas
   une unité de livraison, et le rafraîchir n'implique pas de le réduire.
   Définissez `storage.occupancyThreshold` pour que l'instance vous prévienne
@@ -161,12 +165,12 @@ cas d'usage de remplacement), planifiez les mises à niveau en conséquence.
   « dans les limites ».
 
 Trois lacunes que cette page listait sont comblées : la vérification
-d'intégrité du store à la demande avec un rapport horodaté (R-31, v0.6.0 —
+d'intégrité du store à la demande avec un rapport horodaté (v0.6.0 —
 [vérifier l'intégrité du store](../../passthrough/verify-store/)), l'analyse
-de vulnérabilités avec politique bloquante ou consultative (6.1, v0.6.0 —
+de vulnérabilités avec politique bloquante ou consultative (v0.6.0 —
 [analyse de vulnérabilités](../../security/vulnerability-scanning/)), et la
 sauvegarde du répertoire d'état avec une procédure de reconstruction testée
-de bout en bout (R-27, v1.0.0-rc.1 —
+de bout en bout (v1.0.0-rc.1 —
 [sauvegarder et reconstruire une instance](../../passthrough/backup-rebuild/)).
 
 Chaque fonctionnalité est suivie, avec son statut et son jalon, sur la page

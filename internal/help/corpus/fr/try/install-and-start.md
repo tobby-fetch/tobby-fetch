@@ -7,7 +7,25 @@ sidebar:
 
 **Étape 1 sur 2** — installer Tobby, démarrer une première instance, faire
 le tour. L'[étape 2](../first-promotion/) promeut du contenu signé de bout
-en bout. Les deux tiennent en dix minutes.
+en bout. Les deux prennent une dizaine de minutes une fois Docker et
+cosign installés ; comptez une demi-heure si vous les installez en route.
+
+:::note[Avant de commencer]
+- **Cette page** demande un terminal, un navigateur, et le port TCP
+  `8080` libre sur votre machine.
+- Les commandes supposent un shell POSIX (bash, zsh) ; sous Windows,
+  utilisez WSL ou Git Bash.
+- **L'étape 2** demande en plus Docker avec le plugin `buildx`, `cosign`
+  3.x et `curl`. Vérifiez-les maintenant avec `docker buildx version` et
+  `cosign version` ; la
+  [page d'installation de cosign](https://docs.sigstore.dev/cosign/system_config/installation/)
+  couvre toutes les plateformes.
+- L'instance que vous démarrez ici occupe son terminal. L'étape 2 se
+  déroule dans un **second terminal**, ouvert dans le même répertoire
+  `tobby-demo`.
+- Les mots que vous ne connaissez pas encore — recipe, cookbook,
+  Retriever, promotion — sont dans le [glossaire](../../discover/glossary/).
+:::
 
 ## Installer
 
@@ -20,6 +38,8 @@ curl -LO https://github.com/tobby-fetch/tobby-fetch/releases/latest/download/tob
 chmod +x tobby-linux-amd64
 sudo mv tobby-linux-amd64 /usr/local/bin/tobby
 ```
+
+Sur une machine ARM, l'artefact est `tobby-linux-arm64`.
 
 Sur macOS, Homebrew tient en une ligne :
 
@@ -38,8 +58,11 @@ scoop install tobby
 ```
 
 ou téléchargez `tobby-windows-amd64.exe` (ou `-arm64`) depuis la release
-et placez-le dans votre `PATH`. Ce que Tobby supporte sous Windows, et la
-poignée de choses qui s'y comportent différemment, sont dans
+et placez-le dans votre `PATH`. winget peut avoir quelques jours de
+retard sur une release — la raison est sur la
+[page des limites](../../discover/limits/) ; Scoop et le téléchargement
+direct sont à jour le jour de la sortie. Ce que Tobby supporte sous
+Windows, et la poignée de choses qui s'y comportent différemment, sont dans
 [Plateformes supportées](../../reference/platforms/).
 
 Vérifiez que le binaire répond :
@@ -48,10 +71,17 @@ Vérifiez que le binaire répond :
 tobby version
 ```
 
+Il affiche une ligne — la version, le commit, la date de build, la
+version de Go et votre plateforme :
+
+```
+tobby v1.0.0-rc.1 (commit …, built …, go1.27.4, linux/amd64)
+```
+
 Chaque artefact de release porte une provenance SLSA Build L3, un SBOM
-signé et une construction reproductible. La vérification prend une minute
-et mérite d'être faite au moins une fois, même pour un essai :
-[vérifier une release](../../project/verify-a-release/).
+signé et une construction reproductible. Un essai peut s'en passer ;
+avant tout usage qui compte,
+[vérifiez une release](../../project/verify-a-release/).
 
 :::note[Installer pour la production ?]
 Les paquets `.deb`/`.rpm`/`.apk` hors-ligne, l'image de conteneur signée,
@@ -72,21 +102,54 @@ tobby quickstart
 ```
 
 Répondez aux questions — les défauts entre crochets conviennent, une seule
-réponse compte vraiment :
+réponse compte vraiment. Le terminal pose les questions en anglais ; elles
+sont citées ici telles qu'il les affiche :
 
-1. **Répertoire du store** `[./storage]` — tout ce que Tobby détient.
-2. **Répertoire d'état** `[./state]` — comptes et jetons, volontairement
-   hors du store : les secrets ne voyagent jamais avec le contenu.
-3. **Mode d'exécution** — répondez `passthrough` pour ce parcours. C'est
-   le service permanent de promotion entre zones connectées, celui que
-   l'étape 2 utilise. L'autre réponse, `mirror`, est le mode poste de
-   travail qui fait traverser l'air gap au contenu — voir
+1. `Store directory (storage root) [./storage]` — le répertoire du store :
+   tout ce que Tobby détient.
+2. `State directory (state root) [./state]` — le répertoire d'état :
+   comptes et jetons, volontairement hors du store : les secrets ne
+   voyagent jamais avec le contenu.
+3. `Operating mode ("passthrough" or "mirror")` — le mode d'exécution :
+   répondez `passthrough` pour ce parcours. C'est le service permanent de
+   promotion entre zones connectées, celui que l'étape 2 utilise. L'autre réponse, `mirror`, est
+   le mode poste de travail qui fait traverser l'air gap au contenu — voir
    [le parcours média](../../air-gap/media-workflow/).
-4. **Nom du compte admin** `[admin]`, puis son mot de passe (demandé deux
-   fois, sans écho). L'outil calcule le hash ; le mot de passe n'est
-   stocké nulle part.
-5. **Fichier de configuration** `[./tobby.yaml]`.
-6. **Démarrer l'instance maintenant** — répondez `y`.
+4. `Admin account name [admin]` — le nom du compte admin, puis son mot de
+   passe (`Password`, puis `Confirm password`, sans écho). Seul son hash
+   est stocké, jamais le mot de passe lui-même.
+5. `Configuration file to write [./tobby.yaml]` — le fichier de
+   configuration à écrire.
+6. `Start the instance now` — démarrer l'instance maintenant : répondez
+   `y`.
+
+Le quickstart se termine par un récapitulatif, puis passe la main à
+l'instance :
+
+```
+Setup complete:
+  mode:          passthrough
+  storage root:  ./storage
+  state root:    ./state
+  configuration: ./tobby.yaml
+starting: tobby serve --config ./tobby.yaml
+```
+
+À partir de là, le terminal affiche le journal JSON de l'instance et
+reste occupé : laissez-le ouvert. `Ctrl-C` arrête l'instance, proprement ;
+`tobby serve --config ./tobby.yaml` la relance.
+
+:::note[Si elle ne démarre pas]
+`listen tcp :8080: bind: address already in use` signifie qu'un autre
+programme tient le port 8080. Déplacez l'instance sur un autre port :
+ajoutez `server:` puis, en retrait dessous, `addr: 127.0.0.1:8090` à
+`tobby.yaml`, relancez `tobby serve --config ./tobby.yaml`, et remplacez
+`8080` par `8090` dans toute la suite. Le réglage vit dans le fichier
+parce qu'une variable d'environnement ne survivrait pas au redémarrage de
+l'[étape 2](../first-promotion/). Tout autre refus
+nomme un code `TBY-…` :
+[Dépannage — l'instance ne démarre pas](../../reference/troubleshooting/#linstance-ne-démarre-pas).
+:::
 
 Le quickstart est une aide interactive, jamais une obligation. Dans un
 script ou un conteneur il refuse de deviner et affiche l'équivalent par
@@ -105,6 +168,12 @@ quickstart vient de créer.
 
 ## Un premier tour
 
+:::tip[Pressé ?]
+Le store est vide : la plupart de ces écrans n'ont encore rien à montrer.
+Passez directement à l'[étape 2](../first-promotion/) et revenez ici une
+fois le contenu arrivé.
+:::
+
 L'interface est rendue côté serveur, bilingue (français/anglais), et ne
 demande aucune connectivité au-delà de l'instance elle-même.
 
@@ -121,8 +190,9 @@ pour l'instant — l'écran le dit sans détour, et l'étape 2 le remplit.
 
 Le champ de recherche filtre les dépôts par sous-chaîne sur leur chemin
 complet, et le filtre par type restreint au genre de contenu. Les deux se
-combinent, et un résultat vide sous filtre est annoncé comme « aucun
-résultat pour ces filtres » — distinctement d'un store vide.
+combinent, et un résultat vide sous filtre est annoncé par « Aucun dépôt ne
+correspond à ces filtres. » (en anglais : « No repository matches these
+filters. ») — distinctement d'un store vide.
 
 ### Les types de contenu au premier coup d'œil
 

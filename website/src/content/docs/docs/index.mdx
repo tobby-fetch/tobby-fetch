@@ -32,7 +32,12 @@ import { CardGrid, LinkCard } from "@astrojs/starlight/components";
   <LinkCard
     title="Try"
     href="try/install-and-start/"
-    description="One binary, one guided quickstart, one end-to-end promotion. Ten minutes."
+    description="One binary, one guided quickstart, one end-to-end promotion. Ten minutes once Docker and cosign are installed — then the air-gap, on the same machine."
+  />
+  <LinkCard
+    title="Connected zones (passthrough)"
+    href="passthrough/overview/"
+    description="The long-lived service between two connected zones: deploy it, wire it to your network, point clients at it."
   />
   <LinkCard
     title="Isolated zones (air-gap)"
@@ -53,6 +58,16 @@ import { CardGrid, LinkCard } from "@astrojs/starlight/components";
     title="Write recipes"
     href="recipes/understand/"
     description="Recipes, cookbooks and retrievers — concepts here, the normative format at recipe-spec."
+  />
+  <LinkCard
+    title="Operate an instance"
+    href="passthrough/operate/"
+    description="What to watch, back up and upgrade on a running instance — monitoring, diagnostics, and where to look when something breaks."
+  />
+  <LinkCard
+    title="Troubleshoot"
+    href="reference/troubleshooting/"
+    description="Start from the symptom: the instance does not start, a recipe is refused, a medium is blocked — and every error code explained."
   />
 </CardGrid>
 

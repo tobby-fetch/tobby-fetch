@@ -16,6 +16,10 @@ dans une archive opaque. Chacune de ces étapes casse le digest ou la signature
 qui rendaient le contenu fiable au départ. Tobby fait franchir ces frontières
 au contenu **sans en modifier un seul octet**, et revérifie tout à l'arrivée.
 
+Les mots sur lesquels cette documentation s'appuie — zone, recipe,
+cookbook, Retriever, promotion — ont chacun une courte entrée dans le
+[glossaire](../glossary/).
+
 <svg viewBox="0 0 640 336" role="img" aria-label="Trois formes de déploiement indépendantes : passthrough entre deux zones connectées, cascade d'instances passthrough, et instances mirror échangeant un store sur média amovible — chacune acheminant du contenu des registries sources vers la registry d'une zone restreinte" style="width:100%;max-width:640px;height:auto;display:block;margin:1rem auto;font-family:var(--sl-font);">
   <defs>
     <marker id="wt-arrow-fr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -139,7 +143,8 @@ qui manque à la registry de zone. Un second passage sans nouveauté ne transfè
 aucun octet. Les recipes signées voyagent avec leur contenu, si bien que la
 zone peut prouver ce qu'elle détient. Commencez par
 [la vue d'ensemble du passthrough](../../passthrough/overview/), ou
-[essayez une première promotion](../../try/first-promotion/) en dix minutes.
+[essayez une première promotion](../../try/first-promotion/) en une dizaine
+de minutes une fois Docker et cosign installés.
 
 ![L'écran de correspondance d'une recipe : chaque ingrédient avec son chemin relocalisé, son tag, son digest et sa présence locale](../../../../../assets/docs/recipe-mapping.png)
 

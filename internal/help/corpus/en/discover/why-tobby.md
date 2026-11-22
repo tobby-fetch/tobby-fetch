@@ -16,6 +16,10 @@ trustworthy in the first place. Tobby moves the content across those
 boundaries **without changing a byte of it**, and re-verifies everything on
 arrival.
 
+The words this documentation relies on — zone, recipe, cookbook,
+Retriever, promotion — each have a short entry in the
+[glossary](../glossary/).
+
 <svg viewBox="0 0 640 336" role="img" aria-label="Three independent deployment shapes: passthrough between two connected zones, a cascade of passthrough instances, and mirror instances exchanging a store on removable media — each carrying content from source registries to a restricted zone registry" style="width:100%;max-width:640px;height:auto;display:block;margin:1rem auto;font-family:var(--sl-font);">
   <defs>
     <marker id="wt-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -135,7 +139,8 @@ verifies signatures and policy, and pushes only what the zone registry is
 missing. A second run with nothing new transfers zero bytes. The signed
 recipes travel with their content, so the zone can prove what it holds.
 Start with [the passthrough overview](../../passthrough/overview/), or
-[try a first promotion](../../try/first-promotion/) in ten minutes.
+[try a first promotion](../../try/first-promotion/) in about ten minutes
+once Docker and cosign are installed.
 
 ![The per-recipe mapping screen: each ingredient with its relocated path, tag, digest and local presence](../../../../assets/docs/recipe-mapping.png)
 
