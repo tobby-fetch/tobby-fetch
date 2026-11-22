@@ -2443,7 +2443,7 @@ components:
             FR-025 opt-in: embed a chart's missing declared dependencies
             before the artifact lands. Breaks the upstream digest and any
             upstream signature; the substitution is traced on the manifest
-            (dev.tobby.vendored/* annotations), in the task report, and in
+            (dev.tobbyfetch.vendored/* annotations), in the task report, and in
             the logs. Without it a chart unusable offline is refused
             (TBY-CHT-001).
         platforms:

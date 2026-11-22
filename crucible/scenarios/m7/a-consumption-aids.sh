@@ -99,7 +99,7 @@ c_publish "$SRC" hub-app hubapp docker.io/library/hubapp "$D_HUB" a >/dev/null
 c_publish "$SRC" alias-app aliasapp index.docker.io/library/aliasapp "$D_ALIAS" a >/dev/null
 
 cat >"$WORK/retriever.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: zone-a

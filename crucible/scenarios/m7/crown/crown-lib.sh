@@ -125,7 +125,7 @@ crown_resolve_digest() {
 crown_cook() {
     crown_yj json "$1" >"$WORK/cook.json" || fail "cooking $1: not a document"
     jq --slurpfile d "$2" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
-        .metadata.annotations = ((.metadata.annotations // {}) + {"recipe.tobby.dev/cooked-at": $at})
+        .metadata.annotations = ((.metadata.annotations // {}) + {"recipe.tobbyfetch.dev/cooked-at": $at})
         | .spec.ingredients |= map(.digest = ($d[0][.name] // error("no digest for ingredient " + .name)))
     ' "$WORK/cook.json" >"$WORK/cooked.json" || fail "cooking $1: an ingredient has no resolved digest"
     crown_yj yaml "$WORK/cooked.json" >"$3"

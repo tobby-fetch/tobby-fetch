@@ -117,7 +117,7 @@ func TestLoadRetrieverSources(t *testing.T) {
 	})
 
 	t.Run("invalid document is rejected", func(t *testing.T) {
-		path := writeTempFile(t, "invalid.yaml", []byte("apiVersion: recipe.tobby.dev/v1alpha1\nkind: Recipe\n"))
+		path := writeTempFile(t, "invalid.yaml", []byte("apiVersion: recipe.tobbyfetch.dev/v1alpha1\nkind: Recipe\n"))
 		if _, err := LoadRetriever(ctx, remotes, path); err == nil {
 			t.Error("LoadRetriever accepted a non-Retriever document")
 		}

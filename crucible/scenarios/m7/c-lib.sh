@@ -109,7 +109,7 @@ m7_publish() {
 
 # m7_image_recipe <name> <ref> <digest>: a one-image recipe document.
 m7_image_recipe() {
-    printf 'apiVersion: recipe.tobby.dev/v1alpha1
+    printf 'apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: %s
@@ -129,7 +129,7 @@ spec:
 m7_retriever() {
     _f="$1"; _cb="$2"; shift 2
     {
-        printf 'apiVersion: recipe.tobby.dev/v1alpha1\nkind: Retriever\nmetadata:\n  name: zone-m7\nspec:\n'
+        printf 'apiVersion: recipe.tobbyfetch.dev/v1alpha1\nkind: Retriever\nmetadata:\n  name: zone-m7\nspec:\n'
         printf '  cookbook: %s\n  recipes:\n' "$_cb"
         for _r in "$@"; do printf '    - name: %s\n      version: "1.0.0"\n' "$_r"; done
     } >"$_f"
@@ -242,7 +242,7 @@ m7_scanner_fixtures() {
 
 # m7_system_recipe: the tobby-system recipe document carrying them.
 m7_system_recipe() {
-    printf 'apiVersion: recipe.tobby.dev/v1alpha1
+    printf 'apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: tobby-system

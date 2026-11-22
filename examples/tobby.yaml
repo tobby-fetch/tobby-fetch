@@ -26,7 +26,7 @@
 # - It does not update anything. Nothing in Tobby looks for a newer
 #   version (NFR-019). An upgrade is this recipe, cooked at the new
 #   version, carried by the ordinary mirror flow, then deployed by a person.
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 
 metadata:

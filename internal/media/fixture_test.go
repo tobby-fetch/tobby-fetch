@@ -253,7 +253,7 @@ func (f *fixture) addRecipeWith(name, version string, signIt bool, extra ...stor
 func (f *fixture) putRecipeArtifact(repo, name, version string, ingredients []store.IngredientRecord) string {
 	f.t.Helper()
 	var doc strings.Builder
-	fmt.Fprintf(&doc, "apiVersion: recipe.tobby.dev/v1alpha1\nkind: Recipe\nmetadata:\n  name: %s\n  version: %s\nspec:\n  ingredients:\n", name, version)
+	fmt.Fprintf(&doc, "apiVersion: recipe.tobbyfetch.dev/v1alpha1\nkind: Recipe\nmetadata:\n  name: %s\n  version: %s\nspec:\n  ingredients:\n", name, version)
 	for _, ing := range ingredients {
 		fmt.Fprintf(&doc, "    - name: %s\n      kind: ContainerImage\n      ref: %s\n      version: %q\n      digest: %s\n",
 			ing.Name, ing.Repo, ing.Tag, ing.Digest)

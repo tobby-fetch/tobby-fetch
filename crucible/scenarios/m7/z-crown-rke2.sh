@@ -370,7 +370,7 @@ check "three recipes cooked ($N_ING ingredients), published by tobby recipe push
 
 # -- 7. The mirror flow onto the medium -----------------------------------------
 cat >"$WORK/retriever.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: $ZONE

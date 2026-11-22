@@ -75,7 +75,7 @@ IMG_DIGEST=$(go run ./test/topology/seed push "127.0.0.1:$SOURCE_PORT/library/sa
 (cd "$GEN" && COSIGN_PASSWORD= "$COSIGN" generate-key-pair >/dev/null 2>&1) ||
     fail "generating the key pair"
 cat >"$GEN/sample-app.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: sample-app
@@ -123,7 +123,7 @@ $PUB_KEY_INDENTED
 EOF
 # The Retriever's name is the zone the medium is addressed to (FR-054).
 cat >"$GEN/retriever.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: $ZONE

@@ -202,7 +202,7 @@ type Levels struct {
 	RetrieverThreshold  *float64
 	RetrieverExceptions []Exception
 	// RecipeThreshold comes from the recipe annotation
-	// recipe.tobby.dev/scan-threshold; it can only lower the result.
+	// recipe.tobbyfetch.dev/scan-threshold; it can only lower the result.
 	RecipeThreshold *float64
 }
 

@@ -13,7 +13,7 @@ document — or publishing a new recipe version that an existing
 constraint already covers. The document format is normative on the
 recipe-spec site: see the
 [Retriever specification](https://tobby-fetch.github.io/recipe-spec/)
-(the `Retriever` kind, `recipe.tobby.dev/v1alpha1`). A complete
+(the `Retriever` kind, `recipe.tobbyfetch.dev/v1alpha1`). A complete
 commented example ships in the repository as
 [`examples/retriever.yaml`](https://github.com/tobby-fetch/tobby-fetch/blob/main/examples/retriever.yaml).
 

@@ -234,7 +234,7 @@ func TestEveryReportedDocumentMatchesItsSchema(t *testing.T) {
 func unreachableRetriever(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "retriever.yaml")
-	body := `apiVersion: recipe.tobby.dev/v1alpha1
+	body := `apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: schema-check
@@ -284,7 +284,7 @@ func fakeInstance(t *testing.T, status string) string {
 
 // validPushRecipe is a minimal cooked recipe: fully pinned, which is what
 // a cookbook accepts.
-const validPushRecipe = `apiVersion: recipe.tobby.dev/v1alpha1
+const validPushRecipe = `apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: schema-check

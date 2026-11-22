@@ -190,7 +190,7 @@ publish() { # <name> <yaml>
         --use-signing-config=false --new-bundle-format=false --tlog-upload=false \
         "$S/cookbook/$1@$dgst" >/dev/null 2>&1 || fail "signing recipe $1"
 }
-publish tobby-system "apiVersion: recipe.tobby.dev/v1alpha1
+publish tobby-system "apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: tobby-system
@@ -211,7 +211,7 @@ spec:
 for pair in "vulnerable $VULN_DIG" "clean $CLEAN_DIG"; do
     # shellcheck disable=SC2086 # split on purpose: one "<name> <digest>" pair
     set -- $pair
-    publish "$1" "apiVersion: recipe.tobby.dev/v1alpha1
+    publish "$1" "apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: $1
@@ -232,7 +232,7 @@ retriever() {
     [ -n "${3:-}" ] && policy="  scanPolicy:
     threshold: $3"
     cat >"$1" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: $ZONE
@@ -377,7 +377,7 @@ never_ran() { # <when>
 evidence "before the tamper" "$T"
 
 cat >"$WORK/retriever-images.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: $ZONE

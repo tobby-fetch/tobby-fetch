@@ -291,7 +291,7 @@ bannière du mode dégradé. Pour refuser ce qui dépasse un seuil, posez
 `scan.mode: block` (ou `TOBBY_SCAN_MODE=block` ; le seuil est
 `scan.threshold`, `7.0` par défaut), ou posez un seuil pour un périmètre
 précis : le `spec.scanPolicy.threshold` d'un Retriever ou l'annotation
-`recipe.tobby.dev/scan-threshold` d'une recipe, chacun bloquant pour ce qu'il
+`recipe.tobbyfetch.dev/scan-threshold` d'une recipe, chacun bloquant pour ce qu'il
 couvre. Un refus retient la recipe entière. Voir
 [l'analyse de vulnérabilités](../../security/vulnerability-scanning/).
 

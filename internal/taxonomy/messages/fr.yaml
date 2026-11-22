@@ -354,7 +354,7 @@
 
 "TBY-SCN-020.what": "Le seuil d'analyse porté par {{.recipe}} a été ignoré."
 "TBY-SCN-020.cause": "La recipe demande {{.annotation}}, au-dessus des {{.threshold}} en vigueur pour cette zone ; une recipe peut abaisser le seuil, jamais le relever."
-"TBY-SCN-020.action": "Rien à faire sur cette instance : le seuil de la zone s'applique. L'auteur de la recipe peut retirer ou abaisser l'annotation `recipe.tobby.dev/scan-threshold`."
+"TBY-SCN-020.action": "Rien à faire sur cette instance : le seuil de la zone s'applique. L'auteur de la recipe peut retirer ou abaisser l'annotation `recipe.tobbyfetch.dev/scan-threshold`."
 
 "TBY-SCN-021.what": "L'exception pour {{.id}} a expiré le {{.expires}} et ne s'applique plus."
 "TBY-SCN-021.cause": "L'exception déclarée au niveau {{.level}} porte une date d'expiration dépassée."

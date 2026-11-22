@@ -19,9 +19,9 @@ import (
 //	go test -run '^$' -fuzz FuzzParseRetriever ./internal/engine/
 func FuzzParseRecipe(f *testing.F) {
 	for _, seed := range []string{
-		"apiVersion: recipe.tobby.dev/v1alpha1\nkind: Recipe\nmetadata:\n  name: a\n  version: 1.0.0\nspec:\n  ingredients:\n    - name: x\n      kind: ContainerImage\n      ref: r.example/a/b\n      version: 1.0.0\n      digest: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n      platforms: [linux/amd64]\n",
-		"apiVersion: recipe.tobby.dev/v1alpha1\nkind: Recipe\nmetadata: {}\nspec: {ingredients: []}\n",
-		"apiVersion: recipe.tobby.dev/v9\nkind: Recipe\n",
+		"apiVersion: recipe.tobbyfetch.dev/v1alpha1\nkind: Recipe\nmetadata:\n  name: a\n  version: 1.0.0\nspec:\n  ingredients:\n    - name: x\n      kind: ContainerImage\n      ref: r.example/a/b\n      version: 1.0.0\n      digest: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n      platforms: [linux/amd64]\n",
+		"apiVersion: recipe.tobbyfetch.dev/v1alpha1\nkind: Recipe\nmetadata: {}\nspec: {ingredients: []}\n",
+		"apiVersion: recipe.tobbyfetch.dev/v9\nkind: Recipe\n",
 		"kind: Recipe\nspec:\n  ingredients:\n    - &a {name: x}\n    - *a\n",
 		"{", "", "[]", "\x00",
 	} {
@@ -44,8 +44,8 @@ func FuzzParseRecipe(f *testing.F) {
 
 func FuzzParseRetriever(f *testing.F) {
 	for _, seed := range []string{
-		"apiVersion: recipe.tobby.dev/v1alpha1\nkind: Retriever\nmetadata:\n  name: zone-b\nspec:\n  cookbook: r.example/cookbook\n  recipes:\n    - name: a\n      version: \"1.0.0\"\n",
-		"apiVersion: recipe.tobby.dev/v1alpha1\nkind: Retriever\nspec:\n  recipes:\n    - name: a\n      version: \">=1.0.0 <2\"\n",
+		"apiVersion: recipe.tobbyfetch.dev/v1alpha1\nkind: Retriever\nmetadata:\n  name: zone-b\nspec:\n  cookbook: r.example/cookbook\n  recipes:\n    - name: a\n      version: \"1.0.0\"\n",
+		"apiVersion: recipe.tobbyfetch.dev/v1alpha1\nkind: Retriever\nspec:\n  recipes:\n    - name: a\n      version: \">=1.0.0 <2\"\n",
 		"kind: Retriever\n", "{", "", "- 1\n- 2\n",
 	} {
 		f.Add([]byte(seed))

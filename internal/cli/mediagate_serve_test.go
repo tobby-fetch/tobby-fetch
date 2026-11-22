@@ -144,7 +144,7 @@ func publishFixtureRecipe(t *testing.T, st *store.Store, res *fileserve.PackResu
 	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
 		ref = ref[:i]
 	}
-	doc := []byte("apiVersion: recipe.tobby.dev/v1alpha1\nkind: Recipe\nmetadata:\n  name: site\n  version: 1.0.0\n" +
+	doc := []byte("apiVersion: recipe.tobbyfetch.dev/v1alpha1\nkind: Recipe\nmetadata:\n  name: site\n  version: 1.0.0\n" +
 		"spec:\n  ingredients:\n    - name: " + mediumFileSet + "\n      kind: FileSet\n      ref: " + ref +
 		"\n      version: 1.0.0\n      digest: " + res.Digest + "\n")
 	cfg := []byte("{}")

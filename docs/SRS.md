@@ -52,7 +52,7 @@ qualification pipelines.
 
 | Term | Definition |
 |---|---|
-| **Recipe** | A declarative YAML manifest (`apiVersion: recipe.tobby.dev/v1alpha1`, `kind: Recipe`) describing a coherent application ecosystem as a list of Ingredients. Normatively defined in `recipe-spec`. |
+| **Recipe** | A declarative YAML manifest (`apiVersion: recipe.tobbyfetch.dev/v1alpha1`, `kind: Recipe`) describing a coherent application ecosystem as a list of Ingredients. Normatively defined in `recipe-spec`. |
 | **Ingredient** | One asset within a Recipe. Kinds: `ContainerImage`, `HelmChart`, `OCIArtifact`, `FileSet`. Common fields: `name`, `kind`, `ref`, `version`, `digest`, `platforms`. |
 | **Cookbook** | An OCI repository holding published (“cooked”) Recipes as OCI artifacts. A cooked Recipe has all Ingredient digests pinned and is signed. |
 | **Retriever** | A manifest (`kind: Retriever`) declaring the set of Recipes a given zone wants. One Retriever per zone. |
@@ -74,7 +74,7 @@ qualification pipelines.
 
 | Reference | Description |
 |---|---|
-| Recipe specification | `github.com/tobby-fetch/recipe-spec` — normative format for `Recipe` and `Retriever` (`recipe.tobby.dev/v1alpha1`), JSON Schemas, Go SDK |
+| Recipe specification | `github.com/tobby-fetch/recipe-spec` — normative format for `Recipe` and `Retriever` (`recipe.tobbyfetch.dev/v1alpha1`), JSON Schemas, Go SDK |
 | OCI Distribution Specification | `github.com/opencontainers/distribution-spec` — registry HTTP API (`/v2/`) |
 | OCI Image Format Specification | `github.com/opencontainers/image-spec` — manifests, image indexes, image layout |
 | SLSA v1.0 | `slsa.dev` — supply-chain levels for software artifacts (Build track) |
@@ -138,7 +138,7 @@ A Recipe, as consumed by Tobby (illustrative):
 
 ```yaml
 # Illustrative Recipe — normative schema in tobby-fetch/recipe-spec
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: wordpress
@@ -200,7 +200,7 @@ and repopulated.
 
 ### 2.5 Assumptions and constraints
 
-- Recipes and Retrievers conform to `recipe.tobby.dev/v1alpha1` as defined in
+- Recipes and Retrievers conform to `recipe.tobbyfetch.dev/v1alpha1` as defined in
   `recipe-spec`; Tobby uses the `recipe-spec` Go SDK for parsing and validation.
 - Cooked Recipes published to the Cookbook are digest-pinned and cosign-signed by the
   upstream qualification pipeline; Tobby verifies, it does not qualify.
@@ -274,7 +274,7 @@ configured source is reported in the UI/API.
 
 **FR-011 — Parsing and validation via the recipe-spec SDK.**
 Tobby SHALL parse and validate all `Retriever` and `Recipe` documents
-(`recipe.tobby.dev/v1alpha1`) using the `recipe-spec` Go SDK, rejecting invalid
+(`recipe.tobbyfetch.dev/v1alpha1`) using the `recipe-spec` Go SDK, rejecting invalid
 documents with actionable errors.
 *Acceptance:* documents violating the published JSON Schemas are rejected; the error
 identifies the file, path, and violated constraint. *(ADR-0001)*
@@ -417,7 +417,7 @@ governs:
 - **Three levels, combined one way.** The policy is set at the instance
   (configuration `scan.*`), at the Retriever (`spec.scanPolicy`,
   RECIPE-SPEC §10.4), and by the recipe annotation
-  `recipe.tobby.dev/scan-threshold` (RECIPE-SPEC §6.1) — a setting, not a
+  `recipe.tobbyfetch.dev/scan-threshold` (RECIPE-SPEC §6.1) — a setting, not a
   selection criterion. For the threshold the most specific level wins:
   recipe, then Retriever, then instance; but a recipe can only **lower** the
   value the two others produce, and a higher recipe value is ignored and

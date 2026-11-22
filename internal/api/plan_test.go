@@ -89,7 +89,7 @@ func TestPlanEndpointAnswersTheReport(t *testing.T) {
 	// serves: the plan resolves nothing and reports why.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "retriever.yaml")
-	doc := "apiVersion: recipe.tobby.dev/v1alpha1\nkind: Retriever\nmetadata:\n  name: zone-a\nspec:\n  cookbook: 127.0.0.1:1/cookbook\n  recipes:\n    - name: demo\n      version: 1.0.0\n"
+	doc := "apiVersion: recipe.tobbyfetch.dev/v1alpha1\nkind: Retriever\nmetadata:\n  name: zone-a\nspec:\n  cookbook: 127.0.0.1:1/cookbook\n  recipes:\n    - name: demo\n      version: 1.0.0\n"
 	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestPlanEndpointAnswersTheReport(t *testing.T) {
 // point: a Retriever that exists nowhere yet, submitted inline.
 func TestPlanEndpointAcceptsACandidateDocument(t *testing.T) {
 	mux := newPlanAPI(t, "")
-	body := `{"document":"apiVersion: recipe.tobby.dev/v1alpha1\nkind: Retriever\nmetadata:\n  name: candidate-zone\nspec:\n  cookbook: 127.0.0.1:1/cookbook\n  recipes:\n    - name: demo\n      version: 1.0.0\n"}`
+	body := `{"document":"apiVersion: recipe.tobbyfetch.dev/v1alpha1\nkind: Retriever\nmetadata:\n  name: candidate-zone\nspec:\n  cookbook: 127.0.0.1:1/cookbook\n  recipes:\n    - name: demo\n      version: 1.0.0\n"}`
 
 	w := call(t, mux, http.MethodPost, "/api/v1/plan", "op", "pw-op", body)
 	if w.Code != http.StatusOK {

@@ -177,7 +177,7 @@ in passthrough as in mirror mode (FR-031, ADR-0008). There is deliberately no `e
 the scan always runs and its results are always visible — the default
 **advisory** mode reports violations on every surface and lets the content
 through, with a permanent banner saying so. The Retriever's
-`spec.scanPolicy` and the recipe annotation `recipe.tobby.dev/scan-threshold`
+`spec.scanPolicy` and the recipe annotation `recipe.tobbyfetch.dev/scan-threshold`
 refine the instance level; the model is on
 [Vulnerability scanning](../../security/vulnerability-scanning/).
 

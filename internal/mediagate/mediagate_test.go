@@ -136,7 +136,7 @@ func deliveryOf(t *testing.T, st *store.Store, res *fileserve.PackResult) *store
 	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
 		ref = ref[:i]
 	}
-	doc := "apiVersion: recipe.tobby.dev/v1alpha1\nkind: Recipe\nmetadata:\n  name: site\n  version: " + fileSetTag +
+	doc := "apiVersion: recipe.tobbyfetch.dev/v1alpha1\nkind: Recipe\nmetadata:\n  name: site\n  version: " + fileSetTag +
 		"\nspec:\n  ingredients:\n    - name: " + fileSetName + "\n      kind: FileSet\n      ref: " + ref +
 		"\n      version: " + fileSetTag + "\n      digest: " + res.Digest + "\n"
 	art, err := cookbook.Build([]byte(doc), "site", fileSetTag)

@@ -3,7 +3,7 @@
 # PROFILE: cooked.
 #
 # Verified against chart keycloakx 7.4.0 / appVersion 26.8.1 on 2026-11-09.
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 
 metadata:
@@ -14,7 +14,7 @@ metadata:
     that has to authenticate its own users without reaching an external
     identity provider.
   annotations:
-    recipe.tobby.dev/cooked-at: "2026-11-09T09:00:00Z"
+    recipe.tobbyfetch.dev/cooked-at: "2026-11-09T09:00:00Z"
     org.opencontainers.image.source: https://github.com/codecentric/helm-charts
 
 spec:

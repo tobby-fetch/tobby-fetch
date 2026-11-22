@@ -130,7 +130,7 @@ signature attests the exact bytes of the whole delivery. Write
 `alpine.yaml`, with the digest from the previous step:
 
 ```yaml
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 
 metadata:
@@ -201,7 +201,7 @@ not make, and a lookup the destination could not perform anyway.
 A Retriever names what the zone should contain. Write `retriever.yaml`:
 
 ```yaml
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 
 metadata:

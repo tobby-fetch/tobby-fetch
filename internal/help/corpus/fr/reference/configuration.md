@@ -183,7 +183,7 @@ n'y a volontairement pas d'interrupteur `enabled` : l'analyse s'exécute
 toujours et ses résultats sont toujours visibles — le mode **consultatif** par
 défaut signale les violations sur toutes les surfaces et laisse passer le
 contenu, avec un bandeau permanent qui le dit. Le `spec.scanPolicy` du
-Retriever et l'annotation de recipe `recipe.tobby.dev/scan-threshold` affinent
+Retriever et l'annotation de recipe `recipe.tobbyfetch.dev/scan-threshold` affinent
 le niveau de l'instance ; le modèle est décrit dans
 [Analyse de vulnérabilités](../../security/vulnerability-scanning/).
 

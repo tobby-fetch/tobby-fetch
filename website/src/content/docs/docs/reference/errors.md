@@ -583,7 +583,7 @@ Reserved at the opening of milestone 6 (FR-031, FR-032): the policy is advisory 
 
 - **What happened:** The scan threshold carried by `<recipe>` was ignored.
 - **Probable cause:** The recipe asks for `<annotation>`, above the `<threshold>` in effect for this zone; a recipe can lower the threshold, never raise it.
-- **Corrective action:** Nothing to do on this instance: the zone's threshold applies. The recipe author may remove or lower the `recipe.tobby.dev/scan-threshold` annotation.
+- **Corrective action:** Nothing to do on this instance: the zone's threshold applies. The recipe author may remove or lower the `recipe.tobbyfetch.dev/scan-threshold` annotation.
 - **Fixable offline:** yes · **Blocks:** nothing
 
 ### TBY-SCN-021

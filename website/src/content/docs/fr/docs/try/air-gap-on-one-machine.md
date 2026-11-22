@@ -44,7 +44,7 @@ Un support est adressé à une zone : le nom du Retriever qui l'a rempli.
 Écrivez `retriever-isolated.yaml` :
 
 ```yaml
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 
 metadata:

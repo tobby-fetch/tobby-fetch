@@ -101,7 +101,7 @@ type scanEnv struct {
 
 type scanEnvOpts struct {
 	policy     *spec.ScanPolicy
-	annotation string // recipe.tobby.dev/scan-threshold on "vuln"
+	annotation string // recipe.tobbyfetch.dev/scan-threshold on "vuln"
 	settings   ScanSettings
 }
 

@@ -235,7 +235,7 @@ publish_signed() {
     printf '%s' "$_d"
 }
 cat >"$WORK/gateway.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: gateway
@@ -291,7 +291,7 @@ retriever() {
 retriever_doc() { # <file> <recipe…>: a Retriever on the normal cookbook, each entry from it
     _f="$1"; shift
     {
-        printf 'apiVersion: recipe.tobby.dev/v1alpha1\nkind: Retriever\nmetadata:\n  name: zone-ep\nspec:\n'
+        printf 'apiVersion: recipe.tobbyfetch.dev/v1alpha1\nkind: Retriever\nmetadata:\n  name: zone-ep\nspec:\n'
         printf '  cookbook: %s/cookbook\n  recipes:\n' "$ZR"
         for _e in "$@"; do printf '    - name: %s\n      version: "%s"\n' "${_e%@*}" "${_e#*@}"; done
     } >"$_f"
@@ -381,7 +381,7 @@ check "negatives published: the same recipe ($SAME) in the normal cookbook signe
 
 # -- 7. Admit it (step 6) ------------------------------------------------------------------------------
 {
-    printf 'apiVersion: recipe.tobby.dev/v1alpha1\nkind: Retriever\nmetadata:\n  name: zone-ep\n'
+    printf 'apiVersion: recipe.tobbyfetch.dev/v1alpha1\nkind: Retriever\nmetadata:\n  name: zone-ep\n'
     printf '%s\n' "$B_RETRIEVER" | sub_cmd | awk '/usual entries/ {
         match($0, /^ */); p = substr($0, 1, RLENGTH)
         print p "- name: gateway"; print p "  version: \"1.4.2\""; next } { print }'

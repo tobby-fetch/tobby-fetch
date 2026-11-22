@@ -72,7 +72,7 @@ retriever:
   source: /etc/tobby/retriever.yaml
 YAML
 cat >"$WORK/retriever.yaml" <<'YAML'
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: zone-b

@@ -17,7 +17,7 @@ import (
 
 // cookedRecipe is the smallest publishable document: one fully pinned
 // ingredient, name and version matching where it will be published.
-const cookedRecipe = `apiVersion: recipe.tobby.dev/v1alpha1
+const cookedRecipe = `apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: wordpress

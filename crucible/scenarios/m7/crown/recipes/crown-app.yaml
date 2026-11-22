@@ -4,7 +4,7 @@
 # its NOMINAL path (docker.io/library/busybox:1.37.0, and the short form
 # busybox:1.37.0 that the kubelet normalizes to the same) must run from the
 # zone registry, through the generated registries.yaml and nothing else.
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: crown-app

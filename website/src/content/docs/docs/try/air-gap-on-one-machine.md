@@ -43,7 +43,7 @@ A medium is addressed to one zone: the name of the Retriever that filled
 it. Write `retriever-isolated.yaml`:
 
 ```yaml
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 
 metadata:

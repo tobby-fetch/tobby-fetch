@@ -100,7 +100,7 @@ c_verifies b "$SOURCE_IP:8080/cookbook/stray-app@$D_STRAY" ||
 check "stray-app, under no scope, is validly signed by B (cosign confirms)"
 
 cat >"$WORK/retriever.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: zone-c

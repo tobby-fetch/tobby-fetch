@@ -22,6 +22,21 @@ the complete bilingual documentation.
 
 **Breaking changes in this release:**
 
+- **The recipe API group is `recipe.tobbyfetch.dev`, no longer
+  `recipe.tobby.dev`.** The project owns `tobbyfetch.dev` and does not own
+  `tobby.dev`. Every identifier derived from the old domain moves with
+  it: the `apiVersion` of Recipe and Retriever documents
+  (`recipe.tobbyfetch.dev/v1alpha1`), the reserved annotations
+  (`recipe.tobbyfetch.dev/…`), the OCI annotation keys Tobby writes and
+  reads (`dev.tobbyfetch.…`) and the `$id` of the published schemas. The
+  version stays `v1alpha1` and nothing else in the format changes. There
+  is no compatibility window: a document that still says
+  `recipe.tobby.dev` is refused as an unknown `apiVersion`, and a file set
+  or a vendored chart stored by an earlier build no longer carries the
+  annotations this one looks for. To upgrade, replace `recipe.tobby.dev`
+  with `recipe.tobbyfetch.dev` in every recipe, cookbook and Retriever,
+  re-sign the recipes, and promote file sets and vendored charts again on
+  an instance populated by v0.6.0 or earlier.
 - **Scan exceptions are bounded** (R-15): every `scan.exceptions[]` entry
   of the instance configuration needs an `expires` timestamp and a
   `justification`; an instance whose configuration lists an exception

@@ -197,7 +197,7 @@ IMG_TOOL=$( cd "$ROOT" && go run ./test/topology/seed push "$SOURCE_IP:8080/libr
 
 write_recipe() { # <name> <ingredient> <digest>
     cat >"$WORK/recipe-$1.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: $1
@@ -225,7 +225,7 @@ done
 check "two signed deliveries published (zone-app → $IMG_APP, zone-tool → $IMG_TOOL)"
 
 cat >"$WORK/retriever.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: $ZONE

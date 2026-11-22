@@ -26,7 +26,7 @@ import (
 // Scan configures vulnerability scanning and its policy at the instance
 // level (FR-031 amendment 2026-11-11, ADR-0008). The Retriever
 // (spec.scanPolicy, RECIPE-SPEC §10.4) and the recipe annotation
-// recipe.tobby.dev/scan-threshold refine it; the mode is set here only.
+// recipe.tobbyfetch.dev/scan-threshold refine it; the mode is set here only.
 //
 // There is deliberately no "enabled" switch: the scan always runs and its
 // results are always visible. Advisory is the default mode, not an

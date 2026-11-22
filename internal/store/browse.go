@@ -79,10 +79,10 @@ const (
 // recipe's signature and pinned digests.
 const (
 	// AnnotationKind is the RECIPE-SPEC §7.4 marker, value "FileSet".
-	AnnotationKind = "dev.tobby.recipe/kind"
+	AnnotationKind = "dev.tobbyfetch.recipe/kind"
 	// AnnotationFileSetPacked marks a FileSet packed by `tobby fileset
 	// pack` (FR-048), value "true".
-	AnnotationFileSetPacked = "dev.tobby.fileset/packed"
+	AnnotationFileSetPacked = "dev.tobbyfetch.fileset/packed"
 )
 
 // TagInfo is one tag of a repository as the tag table shows it (UI-SPEC

@@ -74,7 +74,7 @@ c_verifies() {
 # c_recipe <file> <name> <ingredient> <ref> <digest>
 c_recipe() {
     cat >"$1" <<EOR
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: $2

@@ -11,7 +11,7 @@
 # Image list obtained with:
 #   helm repo add harbor https://helm.goharbor.io
 #   helm template t harbor/harbor | grep -E '^\s*image:'
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 
 metadata:

@@ -164,7 +164,7 @@ step "ok   reference chart: linted, rendered, hardening asserted, config.yaml ex
 
 # -- 3. The desired state and the two hand-written instance configurations ---
 cat >"$GEN/retriever.yaml" <<'EOF'
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: zone-b
@@ -288,7 +288,7 @@ step "ok   registries up; the private-PKI one verifies against its own authority
 IMG_DIGEST=$(go run ./test/topology/seed push \
     "127.0.0.1:$SOURCE_PORT/library/sample:1.0.0") || fail "seeding the sample image"
 cat >"$GEN/sample-app.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: sample-app

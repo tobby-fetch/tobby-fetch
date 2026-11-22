@@ -84,7 +84,7 @@ fi
 check "three deliveries published: int-app and int-tool signed by A, int-old signed by B alone (cosign agrees)"
 
 cat >"$WORK/retriever.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: zone-c

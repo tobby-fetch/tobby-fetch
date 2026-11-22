@@ -23,7 +23,7 @@
 # Cooking adds the digest of every ingredient: the images' index digests
 # are resolved against the upstream registry, the FileSet's is the one its
 # packing produced.
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: rke2
@@ -32,7 +32,7 @@ metadata:
     RKE2 v1.36.5+rke2r1 (Kubernetes 1.36.5, canal CNI) for an air-gapped
     bootstrap through the zone registry.
   annotations:
-    crucible.tobby.dev/upstream-release: https://github.com/rancher/rke2/releases/tag/v1.36.5%2Brke2r1
+    crucible.tobbyfetch.dev/upstream-release: https://github.com/rancher/rke2/releases/tag/v1.36.5%2Brke2r1
 spec:
   ingredients:
     - name: rke2-artifacts

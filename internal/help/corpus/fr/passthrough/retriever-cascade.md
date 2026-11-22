@@ -13,7 +13,7 @@ ce document — ou publier une nouvelle version de recipe qu'une contrainte
 existante couvre déjà. Le format du document est normatif sur le site
 recipe-spec : voir la
 [spécification du Retriever](https://tobby-fetch.github.io/recipe-spec/)
-(le kind `Retriever`, `recipe.tobby.dev/v1alpha1`). Un exemple complet et
+(le kind `Retriever`, `recipe.tobbyfetch.dev/v1alpha1`). Un exemple complet et
 commenté est livré dans le dépôt, sous
 [`examples/retriever.yaml`](https://github.com/tobby-fetch/tobby-fetch/blob/main/examples/retriever.yaml).
 

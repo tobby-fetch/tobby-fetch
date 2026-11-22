@@ -24,7 +24,7 @@ func seedRecipeDocument(t *testing.T, st *store.Store) (repo, tag string, doc []
 	defer srv.Close()
 	addr := srv.Listener.Addr().String()
 
-	doc = []byte(`apiVersion: recipe.tobby.dev/v1alpha1
+	doc = []byte(`apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: wordpress
@@ -64,7 +64,7 @@ func TestRecipeDocumentShownOnManifestPage(t *testing.T) {
 	body := w.Body.String()
 	// A distinctive line of the document, HTML-escaped as the template
 	// renders it.
-	if !strings.Contains(body, "recipe.tobby.dev/v1alpha1") {
+	if !strings.Contains(body, "recipe.tobbyfetch.dev/v1alpha1") {
 		t.Error("the manifest page of a recipe does not show its document")
 	}
 	if !strings.Contains(body, "sha256:8acca98ed81b53b482870d6b2081e60d2aa77293895c90c97d2b0e76f469ffb1") {

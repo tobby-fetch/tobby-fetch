@@ -120,7 +120,7 @@ IMG_DIGEST=$(go run ./test/topology/seed push \
 # Two of the seeded index's three platforms are selected, so the sparse
 # check below (FR-022) observes a choice, not a copy.
 cat >"$GEN/sample-app.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: sample-app
@@ -188,7 +188,7 @@ trust:
 $PUB_KEY_INDENTED
 EOF
 cat >"$GEN/node-retriever.yaml" <<'EOF'
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: topology-zone-a
@@ -231,7 +231,7 @@ trust:
 $PUB_KEY_INDENTED
 EOF
 cat >"$GEN/down-retriever.yaml" <<'EOF'
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: topology-zone-b

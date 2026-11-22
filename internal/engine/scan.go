@@ -126,7 +126,7 @@ func zonePolicyOf(p *spec.ScanPolicy) zonePolicy {
 	return z
 }
 
-// recipeThreshold reads the recipe annotation recipe.tobby.dev/scan-threshold.
+// recipeThreshold reads the recipe annotation recipe.tobbyfetch.dev/scan-threshold.
 // The schema validates it; a value that still does not parse is reported
 // and applied as 0 — every scored finding violates — because an
 // annotation that asks for a stricter policy is never silently dropped.

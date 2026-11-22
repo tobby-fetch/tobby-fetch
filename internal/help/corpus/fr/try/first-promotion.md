@@ -132,7 +132,7 @@ seule signature atteste les octets exacts de toute la livraison. Écrivez
 `alpine.yaml`, avec le digest de l'étape précédente :
 
 ```yaml
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 
 metadata:
@@ -208,7 +208,7 @@ Un Retriever nomme ce que la zone doit contenir. Écrivez
 `retriever.yaml` :
 
 ```yaml
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 
 metadata:

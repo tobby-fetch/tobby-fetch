@@ -221,7 +221,7 @@ c_keypair a
 IMG=$(c_seed_image "$SOURCE_IP:8080/library/clock:1.0.0")
 c_publish "$SOURCE_IP:8080" clock-app clock "$SOURCE_IP:8080/library/clock" "$IMG" a >/dev/null
 cat >"$WORK/retriever.yaml" <<YAML
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: zone-c

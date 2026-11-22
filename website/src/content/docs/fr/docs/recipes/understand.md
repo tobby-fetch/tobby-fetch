@@ -37,7 +37,7 @@ et [cookbook](https://github.com/tobby-fetch/recipe-spec/blob/main/RECIPE-SPEC.m
 de la spécification.
 
 Les recipes sont des manifestes de style Kubernetes
-(`apiVersion: recipe.tobby.dev/v1alpha1`, `kind: Recipe`), volontairement
+(`apiVersion: recipe.tobbyfetch.dev/v1alpha1`, `kind: Recipe`), volontairement
 familiers à quiconque exploite un cluster — et volontairement stricts : un
 champ mal orthographié est rejeté, jamais ignoré en silence, car une faute de
 frappe dans `digest:` ne doit pas affaiblir l'épinglage

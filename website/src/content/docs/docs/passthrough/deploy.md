@@ -275,7 +275,7 @@ no database shows the degraded-mode banner instead. To refuse what violates
 a threshold, set `scan.mode: block` (or `TOBBY_SCAN_MODE=block`; the
 threshold is `scan.threshold`, `7.0` by default), or pose a threshold for one
 perimeter: a Retriever's `spec.scanPolicy.threshold` or a recipe's
-`recipe.tobby.dev/scan-threshold` annotation, each blocking for what it
+`recipe.tobbyfetch.dev/scan-threshold` annotation, each blocking for what it
 covers. A refusal withholds the whole recipe. See
 [vulnerability scanning](../../security/vulnerability-scanning/).
 

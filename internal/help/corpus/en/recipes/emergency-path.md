@@ -128,7 +128,7 @@ or the Go SDK (`github.com/tobby-fetch/recipe-spec/recipe/v1alpha1`,
 ingredient has an exact `version` and a `digest`.
 
 ```yaml
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: hotfix-gateway

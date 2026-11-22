@@ -16,7 +16,7 @@ vocabulary (draft, cooked, cookbook) is new, start with
 ## A minimal recipe
 
 ```yaml
-apiVersion: recipe.tobby.dev/v1alpha1   # the schema version (spec §4)
+apiVersion: recipe.tobbyfetch.dev/v1alpha1   # the schema version (spec §4)
 kind: Recipe
 metadata:
   name: hello          # becomes the cookbook repository name (spec §11.3)

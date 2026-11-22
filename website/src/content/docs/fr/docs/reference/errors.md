@@ -627,7 +627,7 @@ Réservés à l'ouverture du jalon 6 (FR-031, FR-032) : la politique est consult
 
 - **Quoi :** Le seuil d'analyse porté par `<recipe>` a été ignoré.
 - **Cause probable :** La recipe demande `<annotation>`, au-dessus des `<threshold>` en vigueur pour cette zone ; une recipe peut abaisser le seuil, jamais le relever.
-- **Action corrective :** Rien à faire sur cette instance : le seuil de la zone s'applique. L'auteur de la recipe peut retirer ou abaisser l'annotation `recipe.tobby.dev/scan-threshold`.
+- **Action corrective :** Rien à faire sur cette instance : le seuil de la zone s'applique. L'auteur de la recipe peut retirer ou abaisser l'annotation `recipe.tobbyfetch.dev/scan-threshold`.
 - **Remédiable hors-ligne :** oui · **Bloque :** rien
 
 ### TBY-SCN-021

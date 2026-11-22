@@ -134,7 +134,7 @@ publiés ou le SDK Go (`github.com/tobby-fetch/recipe-spec/recipe/v1alpha1`,
 chaque ingrédient a une `version` exacte et un `digest`.
 
 ```yaml
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: hotfix-gateway
