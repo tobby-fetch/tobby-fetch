@@ -24,6 +24,8 @@ on:
       - "website/src/assets/docs/**"
       - "internal/help/**"
       - "tools/helpsync/**"
+      - "tools/errorsref/**"
+      - "internal/taxonomy/**"
       - ".github/workflows/help-corpus.yml"
   pull_request:
     paths: *corpus_paths
@@ -58,3 +60,12 @@ jobs:
       # until the next code change.
       - name: The reference pages still match the error taxonomy
         run: go test -count=1 ./internal/taxonomy/...
+      # The error reference is generated (tools/errorsref): a catalog
+      # message reworded, a code added or a reference entry edited without
+      # regenerating the page fails here — `go run ./tools/errorsref` fixes
+      # it. The tool's own tests hold the one-heading-per-code contract the
+      # deep links rely on.
+      - name: The published error reference is the generated one
+        run: |
+          go run ./tools/errorsref -check
+          go test -count=1 ./tools/errorsref/...

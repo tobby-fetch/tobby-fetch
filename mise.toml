@@ -47,6 +47,18 @@ run = "go run ./tools/helpsync"
 description = "Fail if the embedded help corpus has drifted from the website"
 run = "go run ./tools/helpsync -check"
 
+# The published error reference (website …/reference/errors.md, both
+# languages) is generated from the error catalog and from
+# tools/errorsref/reference/<lang>.yaml. Never edit the page by hand.
+#   mise run errors-ref
+[tasks.errors-ref]
+description = "Regenerate the published error reference from the catalog"
+run = "go run ./tools/errorsref"
+
+[tasks.errors-ref-check]
+description = "Fail if the published error reference has drifted from the catalog"
+run = "go run ./tools/errorsref -check"
+
 [tasks.test]
 description = "Unit and integration tests (race detector, anti-flaky double run)"
 run = "go test -race -count=2 -timeout 45m ./..."
