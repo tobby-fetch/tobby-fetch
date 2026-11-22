@@ -140,7 +140,10 @@ destination inside the state directory — the only place a private key
 may live — beside the generated pair rather than over it, and adoption
 is an explicit step separate from writing the files. Every replacement,
 and every refused attempt, is audited with the certificate fingerprint
-as its target.
+as its target. The adopted pair is served until the instance restarts: to
+keep it across a restart, point `server.tls.certFile` and
+`server.tls.keyFile` at those files (see
+[Server TLS certificate](../../security/key-rotation/#server-tls-certificate)).
 
 ![The network administration screen: TLS posture with certificate fingerprint and the replacement form](../../../../assets/docs/admin-network.png)
 

@@ -56,7 +56,11 @@ vérification elle-même ne touche jamais le réseau (FR-033).
 Pour renouveler une clé, ajoutez le nouveau root à côté de l'ancien, re-signez
 les recipes en amont, puis retirez l'ancien root quand plus rien de vérifié
 par lui n'est en cours. Il n'y a pas de bascule instantanée pendant laquelle
-la vérification devrait être assouplie.
+la vérification devrait être assouplie. Une limite fixe l'ordre : une
+signature ajoutée après coup à une version de recipe qu'un store détient
+déjà n'est pas copiée dans ce store ; la nouvelle clé signe donc de
+**nouvelles versions**. La procédure complète est dans
+[Renouveler les clés et les secrets](../key-rotation/#renouveler-une-clé-de-signature-de-recipe).
 
 ## Périmètres d'assouplissement — et leur visibilité
 

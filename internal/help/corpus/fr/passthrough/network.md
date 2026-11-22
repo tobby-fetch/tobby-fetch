@@ -147,7 +147,10 @@ dans le répertoire d'état — le seul endroit où une clé privée peut vivre
 — à côté de la paire générée plutôt que par-dessus, et l'adoption est une
 étape explicite, distincte de l'écriture des fichiers. Chaque
 remplacement, et chaque tentative refusée, est audité avec l'empreinte du
-certificat comme cible.
+certificat comme cible. La paire adoptée est servie jusqu'au redémarrage de
+l'instance : pour la conserver au-delà, pointez `server.tls.certFile` et
+`server.tls.keyFile` vers ces fichiers (voir
+[Certificat TLS du serveur](../../security/key-rotation/#certificat-tls-du-serveur)).
 
 ![L'écran d'administration Réseau : la posture TLS avec l'empreinte du certificat et le formulaire de remplacement](../../../../../assets/docs/admin-network.png)
 

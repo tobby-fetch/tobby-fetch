@@ -123,7 +123,11 @@ voir [tests et preuves](../../project/tests-and-proofs/).
 
 Les comptes se gèrent avec `tobby user add | passwd | list` sur l'hôte (le
 premier compte est forcé `admin` ; `--password-stdin` pour l'automatisation),
-et depuis `/admin/accounts` ou l'API. Le hash argon2id est toujours calculé par
+et depuis `/admin/accounts` ou l'API. Utilisez la ligne de commande instance
+arrêtée : une instance en marche garde les comptes en mémoire et réécrit le
+fichier à son prochain changement, si bien qu'un compte ajouté ou un mot de
+passe posé à côté d'elle est perdu (voir
+[Mots de passe des comptes](../key-rotation/#mots-de-passe-des-comptes)). Le hash argon2id est toujours calculé par
 l'outil — aucune surface n'accepte un hash précalculé. Tout compte authentifié
 peut changer son propre mot de passe en fournissant l'actuel ; le succès comme
 l'échec sont consignés à l'audit (FR-077 — livré en v0.3.0).
