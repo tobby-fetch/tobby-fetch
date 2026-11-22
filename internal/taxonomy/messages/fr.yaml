@@ -117,7 +117,7 @@
 
 "TBY-REG-003.what": "Le registre source a refusé l'authentification."
 "TBY-REG-003.cause": "Identifiants absents ou expirés pour {{.host}}."
-"TBY-REG-003.action": "Renseignez registries.credentials pour {{.host}} dans la configuration, puis relancez l'import."
+"TBY-REG-003.action": "Ajoutez ou renouvelez les identifiants de {{.host}} dans le fichier désigné par `registries.credentialsFile`, puis relancez l'import."
 
 "TBY-REG-004.what": "L'inspection a dépassé le délai."
 "TBY-REG-004.cause": "{{.host}} n'a pas répondu en {{.timeout}}."

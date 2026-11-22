@@ -340,8 +340,7 @@ avec chaque commande, le contrat `--output json` et le mode non interactif.
 
 - **Ce qui s'est passé :** Le registre source a refusé l'authentification.
 - **Cause probable :** Identifiants absents ou expirés pour *\<host\>*.
-- **Action corrective :** Renseignez registries.credentials pour *\<host\>* dans la configuration, puis relancez l'import.
-- **Note :** Les identifiants se trouvent dans le fichier désigné par `registries.credentialsFile`, une entrée par hôte de registre : y ajouter ou renouveler l'entrée de cet hôte. Voir [Secrets](../../security/secrets/).
+- **Action corrective :** Ajoutez ou renouvelez les identifiants de *\<host\>* dans le fichier désigné par `registries.credentialsFile`, puis relancez l'import.
 - **Classe :** échec opérationnel (sortie 1) · **Statut HTTP :** 502
 - **Remédiable hors-ligne :** non (la correction de configuration est locale, mais le nouvel essai exige le registre source) · **Bloque :** la tâche concernée
 

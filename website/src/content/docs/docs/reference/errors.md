@@ -337,8 +337,7 @@ mode.
 
 - **What happened:** The source registry refused authentication.
 - **Probable cause:** Credentials for *\<host\>* are missing or expired.
-- **Corrective action:** Set registries.credentials for *\<host\>* in the configuration, then retry the import.
-- **Note:** The credentials live in the file named by `registries.credentialsFile`, one entry per registry host: add or renew the entry for that host there. See [Secrets](../../security/secrets/).
+- **Corrective action:** Add or renew the credentials for *\<host\>* in the file named by `registries.credentialsFile`, then retry the import.
 - **Class:** operational failure (exit 1) · **HTTP status:** 502
 - **Fixable offline:** no (the configuration fix is local, but the retry needs the source registry) · **Blocks:** the task concerned
 

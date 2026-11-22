@@ -14,7 +14,7 @@ import (
 //
 //	TBY-REG-003 — The source registry refused authentication.
 //	  cause:  Credentials for docker.io are missing or expired.
-//	  action: Set registries.credentials for docker.io …
+//	  action: Add or renew the credentials for docker.io …
 //	  see:    /help#TBY-REG-003    correlation: run_01j8m2vx4q
 func Text(lang string, e *Error) string {
 	m := Localize(lang, e)

@@ -254,8 +254,6 @@ codes:
   TBY-REG-003:
     offline: "no (the configuration fix is local, but the retry needs the source registry)"
     blocks: "the task concerned"
-    details:
-      - text: "The credentials live in the file named by `registries.credentialsFile`, one entry per registry host: add or renew the entry for that host there. See [Secrets](../../security/secrets/)."
 
   TBY-REG-004:
     offline: "no (needs the source to answer)"

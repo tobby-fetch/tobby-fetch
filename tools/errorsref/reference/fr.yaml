@@ -257,8 +257,6 @@ codes:
   TBY-REG-003:
     offline: "non (la correction de configuration est locale, mais le nouvel essai exige le registre source)"
     blocks: "la tâche concernée"
-    details:
-      - text: "Les identifiants se trouvent dans le fichier désigné par `registries.credentialsFile`, une entrée par hôte de registre : y ajouter ou renouveler l'entrée de cet hôte. Voir [Secrets](../../security/secrets/)."
 
   TBY-REG-004:
     offline: "non (il faut la réponse de la source)"
