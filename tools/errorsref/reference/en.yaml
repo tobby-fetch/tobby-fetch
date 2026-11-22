@@ -161,7 +161,7 @@ codes:
 
   TBY-AUTH-009:
     offline: "yes"
-    blocks: "the account creation only"
+    blocks: "the account or token creation only"
 
   TBY-AUTH-010:
     offline: "yes"

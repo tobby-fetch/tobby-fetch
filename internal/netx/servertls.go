@@ -73,9 +73,18 @@ type ServerCert struct {
 	// state, which is the one case adoption cannot serve.
 	stateRoot string
 
-	// selfSigned records which of the two sources produced the current
+	// selfSigned records which of the sources produced the current
 	// certificate, for the startup log and the reported configuration.
 	selfSigned bool
+
+	// adopted marks a pair found at startup where the Network screen
+	// adopts one (state/tls/server.crt|key) on an instance without a
+	// configured certFile (B-083).
+	adopted bool
+
+	// skipped says why an adopted pair present in the state directory was
+	// not served, for the startup log; empty otherwise.
+	skipped string
 }
 
 // fileStamp is the cheap change detector for the certificate pair:
@@ -89,6 +98,15 @@ type fileStamp struct {
 
 // NewServerCert resolves the listener's certificate from configuration.
 //
+// In order: the configured pair (server.tls.certFile); else the pair an
+// administrator adopted from the Network screen on an earlier run, kept
+// in the state directory, when it still loads and has not expired
+// (B-083: without this, the replacement the screen reported in effect
+// was lost at the next restart); else the self-signed fallback. An
+// adopted pair is re-read whenever its files change, like a configured
+// one. Source says which was chosen, and why an adopted pair was passed
+// over.
+//
 // stateRoot is where a generated certificate is persisted; an empty
 // stateRoot keeps it in memory only, which means a fresh fingerprint on
 // every restart — acceptable for a throwaway instance, never for one an
@@ -101,7 +119,27 @@ func NewServerCert(cfg config.ServerTLS, stateRoot string) (*ServerCert, error) 
 		}
 		return s, nil
 	}
-	return newSelfSigned(cfg.Hosts, stateRoot)
+	skipped := ""
+	if stateRoot != "" {
+		dir := statedir.Path(stateRoot, selfSignedDir)
+		certPath, keyPath := filepath.Join(dir, adoptedCert), filepath.Join(dir, adoptedKey)
+		_, err := loadUnexpiredPair(certPath, keyPath)
+		if err == nil {
+			s := &ServerCert{certFile: certPath, keyFile: keyPath, stateRoot: stateRoot, adopted: true}
+			if err = s.reload(); err == nil {
+				return s, nil
+			}
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			skipped = fmt.Sprintf("the adopted pair %s was not used: %v", certPath, err)
+		}
+	}
+	s, err := newSelfSigned(cfg.Hosts, stateRoot)
+	if err != nil {
+		return nil, err
+	}
+	s.skipped = skipped
+	return s, nil
 }
 
 // TLSConfig returns the listener configuration. GetCertificate is used
@@ -128,13 +166,25 @@ func (s *ServerCert) Fingerprint() string {
 // SelfSigned reports whether the served certificate was generated rather
 // than supplied — the fact the startup log and the UI must state, because
 // a self-signed certificate is a posture, not a detail.
-func (s *ServerCert) SelfSigned() bool { return s.selfSigned }
+func (s *ServerCert) SelfSigned() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.selfSigned
+}
 
-// Source names where the certificate came from: the configured path, or
-// the generated marker.
+// Source names where the certificate came from: the configured path, the
+// adopted pair in the state directory, or the generated marker — with the
+// reason an adopted pair present on disk was passed over, if it was.
 func (s *ServerCert) Source() string {
-	if s.selfSigned {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	switch {
+	case s.selfSigned && s.skipped != "":
+		return "self-signed (generated); " + s.skipped
+	case s.selfSigned:
 		return "self-signed (generated)"
+	case s.adopted:
+		return "adopted (" + s.certFile + ")"
 	}
 	return s.certFile
 }
@@ -147,7 +197,7 @@ func (s *ServerCert) Source() string {
 // down: the old certificate is still valid, and the next handshake will
 // try again.
 func (s *ServerCert) getCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-	if s.certFile != "" && s.changed() {
+	if s.changed() {
 		_ = s.reload()
 	}
 	s.mu.RLock()
@@ -160,27 +210,34 @@ func (s *ServerCert) getCertificate(*tls.ClientHelloInfo) (*tls.Certificate, err
 
 // changed reports whether the configured pair differs from what is loaded.
 func (s *ServerCert) changed() bool {
-	now, err := stampOf(s.certFile, s.keyFile)
+	s.mu.RLock()
+	certFile, keyFile, stamp := s.certFile, s.keyFile, s.stamp
+	s.mu.RUnlock()
+	if certFile == "" {
+		return false
+	}
+	now, err := stampOf(certFile, keyFile)
 	if err != nil {
 		return false
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return now != s.stamp
+	return now != stamp
 }
 
 // reload reads the configured pair and installs it.
 func (s *ServerCert) reload() error {
-	stamp, err := stampOf(s.certFile, s.keyFile)
+	s.mu.RLock()
+	certFile, keyFile := s.certFile, s.keyFile
+	s.mu.RUnlock()
+	stamp, err := stampOf(certFile, keyFile)
 	if err != nil {
-		return taxonomy.New(taxonomy.CodeServerTLS, taxonomy.Params{"source": s.certFile}).WithCause(err)
+		return taxonomy.New(taxonomy.CodeServerTLS, taxonomy.Params{"source": certFile}).WithCause(err)
 	}
-	pair, err := tls.LoadX509KeyPair(s.certFile, s.keyFile)
+	pair, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		return taxonomy.New(taxonomy.CodeServerTLS, taxonomy.Params{"source": s.certFile}).WithCause(err)
+		return taxonomy.New(taxonomy.CodeServerTLS, taxonomy.Params{"source": certFile}).WithCause(err)
 	}
 	if len(pair.Certificate) == 0 {
-		return taxonomy.New(taxonomy.CodeServerTLS, taxonomy.Params{"source": s.certFile}).
+		return taxonomy.New(taxonomy.CodeServerTLS, taxonomy.Params{"source": certFile}).
 			WithCause(errors.New("the PEM file holds no certificate"))
 	}
 	s.mu.Lock()
@@ -272,6 +329,8 @@ func newSelfSignedFrom(pair *tls.Certificate, stateRoot string) *ServerCert {
 // directory cannot adopt anything, and says so rather than writing a key
 // somewhere it would not survive.
 func (s *ServerCert) Destination() (certPath, keyPath string, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if s.certFile != "" {
 		return s.certFile, s.keyFile, true
 	}
@@ -305,6 +364,8 @@ func (s *ServerCert) Adopt() error {
 	}
 	s.mu.Lock()
 	s.selfSigned = false
+	s.adopted = s.certFile == filepath.Join(statedir.Path(s.stateRoot, selfSignedDir), adoptedCert)
+	s.skipped = ""
 	s.mu.Unlock()
 	return nil
 }
@@ -313,19 +374,25 @@ func (s *ServerCert) Adopt() error {
 // restart does not change the fingerprint an operator distributed. An
 // expired one is regenerated.
 func loadPersistedSelfSigned(dir string) (*tls.Certificate, error) {
-	pair, err := tls.LoadX509KeyPair(filepath.Join(dir, selfSignedCert), filepath.Join(dir, selfSignedKey))
+	return loadUnexpiredPair(filepath.Join(dir, selfSignedCert), filepath.Join(dir, selfSignedKey))
+}
+
+// loadUnexpiredPair loads a PEM pair and refuses one whose certificate
+// has expired.
+func loadUnexpiredPair(certPath, keyPath string) (*tls.Certificate, error) {
+	pair, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
 		return nil, err
 	}
 	if len(pair.Certificate) == 0 {
-		return nil, errors.New("no certificate in the persisted pair")
+		return nil, errors.New("no certificate in the pair")
 	}
 	leaf, err := x509.ParseCertificate(pair.Certificate[0])
 	if err != nil {
 		return nil, err
 	}
 	if time.Now().After(leaf.NotAfter) {
-		return nil, fmt.Errorf("the persisted self-signed certificate expired on %s", leaf.NotAfter.Format(time.RFC3339))
+		return nil, fmt.Errorf("the certificate expired on %s", leaf.NotAfter.Format(time.RFC3339))
 	}
 	return &pair, nil
 }

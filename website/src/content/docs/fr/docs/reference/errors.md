@@ -165,11 +165,11 @@ avec chaque commande, le contrat `--output json` et le mode non interactif.
 
 ### TBY-AUTH-009
 
-- **Ce qui s'est passé :** Le compte *\<name\>* existe déjà.
-- **Cause probable :** Cette instance possède déjà un compte local portant ce login ; les logins sont uniques.
-- **Action corrective :** Choisissez un autre login, ou gérez le compte existant depuis l'écran des comptes — son rôle se change et son mot de passe se réinitialise sans en créer un second.
+- **Ce qui s'est passé :** Le nom *\<name\>* est déjà pris.
+- **Cause probable :** Cette instance possède déjà un compte, ou un jeton en service, portant ce nom ; les noms sont uniques.
+- **Action corrective :** Choisissez un autre nom. Un compte existant se gère depuis l'écran des comptes — son rôle se change et son mot de passe se réinitialise sans en créer un second ; un jeton existant se révoque d'abord s'il doit être remplacé.
 - **Classe :** échec opérationnel (sortie 1) · **Statut HTTP :** 409
-- **Remédiable hors-ligne :** oui · **Bloque :** la création du compte seulement
+- **Remédiable hors-ligne :** oui · **Bloque :** la création du compte ou du jeton seulement
 
 ### TBY-AUTH-010
 

@@ -759,7 +759,9 @@ paths:
         Create a local account (FR-073). The instance derives the argon2id
         password hash: there is no hash field, and a password hash is
         never submitted (FR-066). Mirror of the account creation form of
-        the /admin/accounts screen. Role admin.
+        the /admin/accounts screen. An incomplete request answers 422
+        TBY-AUTH-008, a login already taken 409 TBY-AUTH-009, a login
+        holding ":" 422 TBY-AUTH-019. Role admin.
       requestBody:
         required: true
         content:
@@ -867,7 +869,11 @@ paths:
       summary: >-
         Create a static API token (FR-072). The clear secret is returned
         exactly once, in this response; only its SHA-256 is stored.
-        Role admin.
+        A missing name or an unknown role answers 422 TBY-VAL-001, as does
+        an expiry that is not in the future (path "expires"); a name an
+        active token already carries answers 409 TBY-AUTH-009, the
+        conflict the account creation answers; a name holding ":" 422
+        TBY-AUTH-019. Role admin.
       requestBody:
         required: true
         content:
@@ -878,14 +884,17 @@ paths:
               properties:
                 name:
                   type: string
-                  description: Unique name among the active tokens.
+                  description: >-
+                    Unique name among the active tokens (409 TBY-AUTH-009
+                    otherwise); a revoked token's name may be reused.
                 role:
                   $ref: "#/components/schemas/Role"
                 expires:
                   type: string
                   format: date-time
                   description: >-
-                    Optional expiry, in the future (R-14). Absent applies
+                    Optional expiry, in the future (R-14; 422 TBY-VAL-001
+                    otherwise). Absent applies
                     auth.tokens.defaultLifetime, or no expiry when none is
                     configured. From this instant on the token is refused
                     with TBY-AUTH-013 and the refusal is audit-logged.

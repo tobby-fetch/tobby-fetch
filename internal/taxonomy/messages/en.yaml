@@ -35,9 +35,9 @@
 "TBY-AUTH-008.cause": "The login is empty, the role is not one of viewer, operator, or admin, or the password is empty or was mistyped in the confirmation field."
 "TBY-AUTH-008.action": "Give a non-empty login, pick one of the three roles, and type the same non-empty password in both password fields, then submit again."
 
-"TBY-AUTH-009.what": "The account {{.name}} already exists."
-"TBY-AUTH-009.cause": "This instance already holds a local account with that login; logins are unique."
-"TBY-AUTH-009.action": "Choose another login, or manage the existing account from the accounts screen — its role can be changed and its password reset without creating a second one."
+"TBY-AUTH-009.what": "The name {{.name}} is already taken."
+"TBY-AUTH-009.cause": "This instance already holds an account, or a token in use, with that name; names are unique."
+"TBY-AUTH-009.action": "Choose another name. An existing account is managed from the accounts screen — its role can be changed and its password reset without creating a second one; an existing token is revoked first if it is to be replaced."
 
 "TBY-AUTH-010.what": "No account named {{.name}} on this instance."
 "TBY-AUTH-010.cause": "The account was removed, or the login is misspelled — the screen you acted from may predate the removal."

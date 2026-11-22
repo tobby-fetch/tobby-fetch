@@ -35,9 +35,9 @@
 "TBY-AUTH-008.cause": "Le login est vide, le rôle n'est pas l'un des trois (viewer, operator, admin), ou le mot de passe est vide ou mal ressaisi dans le champ de confirmation."
 "TBY-AUTH-008.action": "Indiquez un login non vide, choisissez l'un des trois rôles, et saisissez le même mot de passe non vide dans les deux champs, puis soumettez à nouveau."
 
-"TBY-AUTH-009.what": "Le compte {{.name}} existe déjà."
-"TBY-AUTH-009.cause": "Cette instance possède déjà un compte local portant ce login ; les logins sont uniques."
-"TBY-AUTH-009.action": "Choisissez un autre login, ou gérez le compte existant depuis l'écran des comptes — son rôle se change et son mot de passe se réinitialise sans en créer un second."
+"TBY-AUTH-009.what": "Le nom {{.name}} est déjà pris."
+"TBY-AUTH-009.cause": "Cette instance possède déjà un compte, ou un jeton en service, portant ce nom ; les noms sont uniques."
+"TBY-AUTH-009.action": "Choisissez un autre nom. Un compte existant se gère depuis l'écran des comptes — son rôle se change et son mot de passe se réinitialise sans en créer un second ; un jeton existant se révoque d'abord s'il doit être remplacé."
 
 "TBY-AUTH-010.what": "Aucun compte nommé {{.name}} sur cette instance."
 "TBY-AUTH-010.cause": "Le compte a été supprimé, ou le login est mal orthographié — l'écran depuis lequel vous avez agi est peut-être antérieur à la suppression."

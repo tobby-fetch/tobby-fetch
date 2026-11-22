@@ -159,6 +159,16 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 				slog.String("requirement", "FR-097"))
 		}
 	}
+	// The state directory is held for the instance's lifetime from here on,
+	// before the accounts are loaded into memory: the host commands that
+	// write it refuse while it is held, and the lock is an OS lock, so it
+	// holds whatever the listener's TLS and dies with a crashed process
+	// (B-082, B-093).
+	serving, herr := holdServing(cfg)
+	if herr != nil {
+		return herr
+	}
+	defer serving.release()
 	var accounts *auth.Store
 	if !cfg.Auth.Disabled {
 		if cfg.State.Root == "" {
@@ -476,7 +486,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if cfg.State.Root != "" {
 		trustCache = statedir.Path(cfg.State.Root, statedir.TrustCache)
 	}
-	trust, err := engine.LoadTrust(cfg.Trust, trustCache, egress)
+	trust, err := engine.LoadTrustLogging(logger, cfg.Trust, trustCache, egress)
 	if err != nil {
 		return err
 	}
@@ -884,8 +894,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// (FR-092 readiness conditions at this milestone).
 	srv.SetReady(true)
 	// `tobby store verify` refuses a store an instance is serving (it
-	// cannot see this instance's content lock); the marker is how it knows.
-	defer markServing(cfg, srv.Addr)()
+	// cannot see this instance's content lock); the held marker is how it
+	// knows, and the published URL is what its refusal names.
+	serving.publish(cfg, srv.Addr)
 
 	runErr := srv.Run(ctx)
 

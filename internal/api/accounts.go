@@ -283,9 +283,11 @@ type createTokenRequest struct {
 
 // createToken serves POST /api/v1/tokens: 201 with the clear secret —
 // returned exactly once, only its SHA-256 is stored (FR-072). Invalid
-// input and duplicate names answer the taxonomized internal error: the
-// catalog is frozen this milestone and carries no dedicated
-// account-validation code yet; the wrapped cause lands in the logs.
+// input and an expiry that is not in the future answer the validation
+// code (422), a name an active token already carries the conflict the
+// accounts answer (TBY-AUTH-009, 409) — the screen's 409 too — and a
+// reserved name TBY-AUTH-019 (B-085: the first two used to be presented
+// as a fault of the instance, 500 TBY-SRV-001).
 func (c *accountsAPI) createToken(w http.ResponseWriter, r *http.Request) {
 	if !c.ready(w, r) {
 		return
@@ -314,11 +316,7 @@ func (c *accountsAPI) createToken(w http.ResponseWriter, r *http.Request) {
 			Actor: id.Name, Action: audit.ActionTokenCreate, Target: req.Name,
 			Outcome: audit.OutcomeFailure, Origin: auth.ClientOrigin(r),
 		})
-		if errors.Is(err, auth.ErrReservedName) {
-			c.api.Problem(w, r, taxonomy.New(taxonomy.CodeLocalNameReserved, taxonomy.Params{"name": req.Name}))
-			return
-		}
-		c.api.Problem(w, r, taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err))
+		c.api.Problem(w, r, tokenProblem(req.Name, err))
 		return
 	}
 	audit.Log(r.Context(), c.api.logger, &audit.Event{
@@ -330,6 +328,24 @@ func (c *accountsAPI) createToken(w http.ResponseWriter, r *http.Request) {
 		created["expires"] = tok.Expires
 	}
 	c.api.JSON(w, http.StatusCreated, created)
+}
+
+// tokenProblem maps a token-creation error onto its catalog entry, the
+// way the /admin/accounts screen answers the same request.
+func tokenProblem(name string, err error) *taxonomy.Error {
+	switch {
+	case errors.Is(err, auth.ErrExists):
+		return taxonomy.New(taxonomy.CodeAccountExists, taxonomy.Params{"name": name}).WithCause(err)
+	case errors.Is(err, auth.ErrExpiryPast):
+		return taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
+			"file": "the request body", "path": "expires",
+			"constraint": "the expiry must be in the future (omit it for the default lifetime)",
+		}).WithCause(err)
+	case errors.Is(err, auth.ErrReservedName):
+		return taxonomy.New(taxonomy.CodeLocalNameReserved, taxonomy.Params{"name": name})
+	default:
+		return taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err)
+	}
 }
 
 // passwordRequest is the POST /api/v1/account/password body.

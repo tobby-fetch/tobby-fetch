@@ -411,7 +411,7 @@ func openMedia(ctx context.Context, cfg *config.Config, stderr io.Writer, intent
 	if cfg.State.Root != "" {
 		trustCache = statedir.Path(cfg.State.Root, statedir.TrustCache)
 	}
-	trust, err := engine.LoadTrust(cfg.Trust, trustCache, egress)
+	trust, err := engine.LoadTrustLogging(op.logger, cfg.Trust, trustCache, egress)
 	if err != nil {
 		op.close()
 		return nil, err

@@ -164,7 +164,7 @@ codes:
 
   TBY-AUTH-009:
     offline: "oui"
-    blocks: "la création du compte seulement"
+    blocks: "la création du compte ou du jeton seulement"
 
   TBY-AUTH-010:
     offline: "oui"

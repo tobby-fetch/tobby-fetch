@@ -197,7 +197,7 @@ func runPlan(cmd *cobra.Command, cfg *config.Config, f planFlags) error {
 	if cfg.State.Root != "" {
 		trustCache = statedir.Path(cfg.State.Root, statedir.TrustCache)
 	}
-	trust, err := engine.LoadTrust(cfg.Trust, trustCache, egress)
+	trust, err := engine.LoadTrustLogging(logger, cfg.Trust, trustCache, egress)
 	if err != nil {
 		return err
 	}

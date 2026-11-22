@@ -162,11 +162,11 @@ mode.
 
 ### TBY-AUTH-009
 
-- **What happened:** The account *\<name\>* already exists.
-- **Probable cause:** This instance already holds a local account with that login; logins are unique.
-- **Corrective action:** Choose another login, or manage the existing account from the accounts screen — its role can be changed and its password reset without creating a second one.
+- **What happened:** The name *\<name\>* is already taken.
+- **Probable cause:** This instance already holds an account, or a token in use, with that name; names are unique.
+- **Corrective action:** Choose another name. An existing account is managed from the accounts screen — its role can be changed and its password reset without creating a second one; an existing token is revoked first if it is to be replaced.
 - **Class:** operational failure (exit 1) · **HTTP status:** 409
-- **Fixable offline:** yes · **Blocks:** the account creation only
+- **Fixable offline:** yes · **Blocks:** the account or token creation only
 
 ### TBY-AUTH-010
 

@@ -77,19 +77,73 @@ type accountListReport struct {
 	Accounts []accountReport `json:"accounts"`
 }
 
-// stateStore opens the account store from the resolved configuration.
+// stateRoot resolves the state directory from the configuration.
 // Validation is scoped to what `tobby user` actually uses: the state
 // directory — never a mode (R-34, B-006).
-func (f *userFlags) stateStore(cmd *cobra.Command) (*auth.Store, error) {
+func (f *userFlags) stateRoot(cmd *cobra.Command) (string, error) {
 	cfg, err := f.loadFor(cmd, config.ScopeState)
+	if err != nil {
+		return "", err
+	}
+	if cfg.State.Root == "" {
+		return "", fmt.Errorf("state.root is required: set --state-root, %s, or \"state.root:\" in the configuration file", config.EnvStateRoot)
+	}
+	return cfg.State.Root, nil
+}
+
+// stateStore opens the account store for reading.
+func (f *userFlags) stateStore(cmd *cobra.Command) (*auth.Store, error) {
+	root, err := f.stateRoot(cmd)
 	if err != nil {
 		return nil, err
 	}
-	if cfg.State.Root == "" {
-		return nil, fmt.Errorf("state.root is required: set --state-root, %s, or \"state.root:\" in the configuration file", config.EnvStateRoot)
-	}
-	return auth.Open(cfg.State.Root)
+	return auth.Open(root)
 }
+
+// lockedStateStore opens the account store for writing, holding the state
+// directory until release is called (B-082). A running instance keeps the
+// accounts in memory and rewrites accounts.yaml from that copy at every
+// save — a login included — so a change written here behind its back
+// would be silently reverted: while one holds the state directory, the
+// command refuses and says what to do instead. The hold is also what
+// makes an instance starting meanwhile wait for the write to finish
+// rather than load the file half-way through it.
+func (f *userFlags) lockedStateStore(cmd *cobra.Command, instead string) (store *auth.Store, release func(), err error) {
+	root, err := f.stateRoot(cmd)
+	if err != nil {
+		return nil, nil, err
+	}
+	lock, err := auth.LockState(root)
+	if errors.Is(err, auth.ErrStateHeld) {
+		holder := "a running instance"
+		if m, ok := readServingMarker(root); ok && m.URL != "" {
+			holder += " (" + m.URL + ")"
+		}
+		return nil, nil, taxonomy.New(taxonomy.CodeConfigInvalid, taxonomy.Params{
+			"detail": "state.root " + root + " is held by " + holder + ", or by another `tobby user` command. " +
+				"A running instance keeps the accounts in memory and rewrites accounts.yaml from that copy at its next save, " +
+				"so a change written here would be silently reverted: nothing was written. " + instead,
+		}).WithCause(err)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	release = func() { _ = lock.Release() }
+	store, err = auth.Open(root)
+	if err != nil {
+		release()
+		return nil, nil, err
+	}
+	return store, release, nil
+}
+
+// The alternatives a refusal names, per command.
+const (
+	userAddInstead = "Create the account on the instance itself — the accounts screen (/admin/accounts) or POST /api/v1/accounts — " +
+		"or stop the instance, run this command again, and start it."
+	userPasswdInstead = "Stop the instance, run this command again, and start it; the account's holder can also change their own " +
+		"password on the running instance (/account, or POST /api/v1/account/password)."
+)
 
 func newUserAddCmd() *cobra.Command {
 	flags := newUserFlags()
@@ -97,15 +151,29 @@ func newUserAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add <name>",
 		Short: "Create a local account (the first account defaults to admin)",
-		Args:  cobra.ExactArgs(1),
+		Long: `Create a local account on the host; the tool computes the argon2id hash.
+
+The first account of an instance is an administrator unless stated otherwise.
+
+The command refuses, and writes nothing, while an instance holds the state
+directory: a running instance keeps the accounts in memory and rewrites
+accounts.yaml from that copy at its next save, so an account added behind
+its back would vanish. The check is an operating-system lock the instance
+holds for its lifetime — it does not depend on how the instance is reached
+(plain HTTP, TLS, self-signed included), and an instance that crashed holds
+nothing. On a running instance, create the account from the accounts screen
+(/admin/accounts) or with POST /api/v1/accounts; otherwise stop the
+instance first.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := flags.report.validate(cmd); err != nil {
 				return err
 			}
-			store, err := flags.stateStore(cmd)
+			store, release, err := flags.lockedStateStore(cmd, userAddInstead)
 			if err != nil {
 				return err
 			}
+			defer release()
 			name := args[0]
 
 			// R-01: the first account of an instance is admin unless stated
@@ -129,8 +197,11 @@ func newUserAddCmd() *cobra.Command {
 				return err
 			}
 			if err := store.AddAccount(name, role, password, time.Now()); err != nil {
-				if errors.Is(err, auth.ErrReservedName) {
+				switch {
+				case errors.Is(err, auth.ErrReservedName):
 					return taxonomy.New(taxonomy.CodeLocalNameReserved, taxonomy.Params{"name": name})
+				case errors.Is(err, auth.ErrExists):
+					return taxonomy.New(taxonomy.CodeAccountExists, taxonomy.Params{"name": name})
 				}
 				return err
 			}
@@ -158,20 +229,40 @@ func newUserPasswdCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "passwd <name>",
 		Short: "Change a local account's password",
-		Args:  cobra.ExactArgs(1),
+		Long: `Change a local account's password on the host; the tool computes the
+argon2id hash.
+
+The command refuses, and writes nothing, while an instance holds the state
+directory: a running instance keeps the accounts in memory and rewrites
+accounts.yaml from that copy at its next save — a login is enough — so a
+password rotated behind its back would be silently reverted. The check is an
+operating-system lock the instance holds for its lifetime — it does not
+depend on how the instance is reached (plain HTTP, TLS, self-signed
+included), and an instance that crashed holds nothing. Stop the instance,
+run this command, then start it again; on a running instance an account's
+holder can change their own password from /account or with
+POST /api/v1/account/password.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := flags.report.validate(cmd); err != nil {
 				return err
 			}
-			store, err := flags.stateStore(cmd)
+			store, release, err := flags.lockedStateStore(cmd, userPasswdInstead)
 			if err != nil {
 				return err
+			}
+			defer release()
+			if _, ok := store.Account(args[0]); !ok {
+				return taxonomy.New(taxonomy.CodeAccountUnknown, taxonomy.Params{"name": args[0]})
 			}
 			password, err := readPassword(cmd, flags.stdin, true)
 			if err != nil {
 				return err
 			}
 			if err := store.SetPassword(args[0], password, time.Now()); err != nil {
+				if errors.Is(err, auth.ErrNotFound) {
+					return taxonomy.New(taxonomy.CodeAccountUnknown, taxonomy.Params{"name": args[0]})
+				}
 				return err
 			}
 			auditLocal(cmd, &audit.Event{
