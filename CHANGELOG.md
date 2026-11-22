@@ -71,6 +71,20 @@ the complete bilingual documentation.
   `registryCredentials.existingSecret` or
   `registryCredentials.dockerconfigjson`. With `registryCredentials` off
   the key is left to the operator.
+- **One instance per state directory** (B-082, B-093): `tobby serve`
+  holds an operating-system lock on its state directory for its whole
+  life. A second `serve` on the same directory waits five seconds, then
+  refuses with `TBY-CFG-001`; `tobby user add` and `tobby user passwd`
+  refuse the same way while an instance runs, naming what to use instead.
+  They used to write `accounts.yaml` under a running instance, which
+  silently reverted the change at its next write — a password rotated
+  from the host stayed valid. The lock falls with the process, so a crash
+  leaves nothing to clean up.
+- **A store follows its source's signatures** (B-081): signatures are
+  copied on every synchronization and pushed on every promotion, for
+  content already held too. A signature altered in a store is replaced by
+  the source's at the next synchronization; the verification before each
+  push is unchanged.
 - **A media import is refused at the door on an instance that cannot run
   it** (B-077, B-079): without a `zone:`, or without a
   `destination.registry`, `POST /api/v1/media/import` and the Media
@@ -254,6 +268,51 @@ the complete bilingual documentation.
 
 ### Fixed
 
+- **A re-signed recipe or ingredient reaches every zone** (B-081): a
+  signature added upstream to a digest a store already held was never
+  copied, nor pushed to a destination already holding the content, in
+  either cosign layout. After a key rotation the plan said `verified`
+  and the push refused with `TBY-SIG-001`; re-signing needed a new
+  version. Re-signing in place now crosses stores, registries and media,
+  air gap included, and a cycle with nothing new still writes nothing.
+- **A certificate adopted from the Network screen survives a restart**
+  (B-083): an instance that started self-signed went back to its
+  self-signed certificate at the next start, while the screen said the
+  replacement was in effect. An adopted pair is now preferred while it
+  loads and has not expired; the start log names the source used.
+- **`tobby serve` exits 0 when the grace period expires** (B-094): a
+  connection still open at the deadline made it return `draining http
+  server: context deadline exceeded`, exit non-zero and audit the stop as
+  a failure, without closing anything. It now logs a warning, closes what
+  is left and stops cleanly (FR-093).
+- **The running-instance guard holds under self-signed TLS** (B-093): it
+  probed a URL the default client refused, so `tobby store verify` ran
+  against a live self-signed instance. It now reads the state lock.
+- **`POST /api/v1/tokens` answers 409 and 422, not 500** (B-085): a name
+  already taken answers 409 `TBY-AUTH-009`, an expiry in the past 422
+  `TBY-VAL-001`. `TBY-AUTH-009` now reads "The name … is already taken",
+  for accounts and tokens alike.
+- **Helm chart under in-pod TLS** (B-084): with `config.server.tls` on,
+  the probes stayed in HTTP and the pod restarted forever. The chart now
+  sets `scheme: HTTPS` on the three probes and `https` on the
+  ServiceMonitor; new value `metrics.serviceMonitor.tlsConfig`
+  (certificate verification is skipped by default only for the
+  self-signed case).
+- **Helm chart: `storageClassName: "-"` follows the Helm convention**
+  (B-086) and renders `storageClassName: ""`; it used to name a class
+  called `-`, leaving the claim pending.
+- **Helm chart: `syncMaxAgeSeconds: 0` removes only `TobbySyncStale`**
+  (B-091); it also dropped `TobbySyncNeverSucceeded`.
+- **The raw manifests deploy the current image** (B-087): they pinned
+  `v0.3.0`. The chart version check now covers them.
+- **A Retriever artifact with more than one layer is refused with
+  `TBY-VAL-001`** naming the constraint (B-088), not a bare
+  `TBY-SRV-001`.
+- **`TBY-POL-004` quotes manifest digests** (B-089), the ones `crane
+  digest` shows; it quoted the digest of the document layer.
+- **A trust root whose `keyURL` does not answer is logged** (B-090): the
+  cached key still stands in, with a warning naming the URL, the failure
+  and the age of the cache.
 - **`TBY-REG-003` names the configuration key that exists** (B-080): its
   action said to set `registries.credentials`; the key is
   `registries.credentialsFile`.

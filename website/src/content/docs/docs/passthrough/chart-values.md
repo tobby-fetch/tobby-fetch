@@ -180,7 +180,7 @@ inside the other). See [Deploy](../deploy/#store-and-state-are-not-the-same-volu
 | `persistence.storage.existingClaim` | `""` | Use a claim you own. The chart then creates none. |
 | `persistence.storage.accessModes` | `[ReadWriteOnce]` | Access modes of the claim the chart creates. |
 | `persistence.storage.size` | `100Gi` | Requested size. |
-| `persistence.storage.storageClassName` | `""` | Empty uses the cluster's default class. Any other value is written to the claim as is. |
+| `persistence.storage.storageClassName` | `""` | Empty leaves the field out: the cluster's default class. `"-"` writes `storageClassName: ""`, which disables dynamic provisioning (the claim binds only a pre-created volume without a class). Any other value is the class name. |
 | `persistence.storage.annotations` | `{}` | Added to the claim. |
 | `persistence.state.enabled` | `true` | `false` falls back to an `emptyDir`, which loses every account when the pod is replaced. Defensible only in a throwaway environment. |
 | `persistence.state.mountPath` | `/var/lib/tobby/state` | Becomes `state.root`. |
@@ -238,7 +238,8 @@ changes one field. A list is replaced as a whole: setting
 
 `/healthz` answers as soon as the listener is up. `/readyz` answers `503`
 until the store and the configuration are usable, and again during the
-shutdown drain. The probes are `httpGet` on the container port.
+shutdown drain. The probes are `httpGet` on the container port, over HTTPS
+when the pod serves TLS (below).
 
 | Key | Startup | Liveness | Readiness |
 |---|---|---|---|
@@ -256,15 +257,20 @@ for a store that takes longer.
 
 ### TLS on the listener and the probes
 
-If you give the listener its own certificate (`config.server.tls`), it
-serves **only** TLS. The chart's probes and its ServiceMonitor speak plain
-HTTP, and the chart has no value to change that: the listener answers them
-`400 Bad Request` ("Client sent an HTTP request to an HTTPS server"), and
-the probes fail. The path the chart is written for is TLS ending at an
-ingress or a mesh, with `config.server.secureCookies: true`. If you serve
-TLS from the pod, set `probes.<name>.enabled` to `false` and give up the
-ServiceMonitor, or maintain your own probes through a patched copy of the
-chart.
+If the pod serves TLS itself (`config.server.tls.enabled`, or a
+`certFile`/`keyFile` pair), its single listener serves **only** TLS, and the
+chart follows on its own: the three probes get `scheme: HTTPS` (the kubelet
+does not verify the certificate, so a self-signed one is fine), and the
+ServiceMonitor scrapes with `scheme: https`. For the scrape's TLS settings,
+see `metrics.serviceMonitor.tlsConfig` below. The Service port keeps the name
+`http`.
+
+An ingress in front of a TLS pod must speak HTTPS to it. That setting is the
+controller's and the chart does not render it: add it under
+`ingress.annotations` (for ingress-nginx,
+`nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"`). The other common
+path is TLS ending at the ingress or a mesh, with a plain-HTTP pod and
+`config.server.secureCookies: true`.
 
 ## Metrics, alerts and dashboard
 
@@ -277,11 +283,12 @@ themselves, and the thresholds' meaning, are on
 | Key | Default | Effect |
 |---|---|---|
 | `metrics.podAnnotations` | `false` | `true` adds `prometheus.io/scrape`, `prometheus.io/port` and `prometheus.io/path` to the pod, for annotation-based discovery. |
-| `metrics.serviceMonitor.enabled` | `false` | Renders a ServiceMonitor. Needs the Prometheus Operator CRDs. It scrapes `/metrics` over `http`. |
+| `metrics.serviceMonitor.enabled` | `false` | Renders a ServiceMonitor. Needs the Prometheus Operator CRDs. It scrapes `/metrics` over `http`, or `https` when the pod serves TLS. |
 | `metrics.serviceMonitor.namespace` | `""` | Namespace of the ServiceMonitor, when not the release's. |
 | `metrics.serviceMonitor.interval` | `30s` | Scrape interval. |
 | `metrics.serviceMonitor.scrapeTimeout` | `10s` | Scrape timeout. |
 | `metrics.serviceMonitor.labels` | `{}` | Labels your Prometheus selects ServiceMonitors by. |
+| `metrics.serviceMonitor.tlsConfig` | `{}` | The scrape's TLS settings (Prometheus Operator `TLSConfig`), used only when the pod serves TLS. Empty, the chart adds `insecureSkipVerify: true` for the self-signed fallback only, and nothing for your own pair: set `ca` (and `serverName` if the certificate does not name the Service) for a private authority. Any value replaces that default whole. |
 | `metrics.serviceMonitor.basicAuth` | `{}` | Only for an authenticating proxy in front of the instance; `/metrics` itself asks for nothing. |
 | `metrics.serviceMonitor.relabelings`, `metricRelabelings` | `[]` | Passed to the endpoint as written. |
 | `alerting.prometheusRule.enabled` | `false` | Renders a `PrometheusRule` with ten alerts. Needs the Operator CRDs. |
@@ -291,7 +298,7 @@ themselves, and the thresholds' meaning, are on
 | `alerting.extraLabels` | `{}` | Labels added to every alert. |
 | `alerting.thresholds.syncFailures` | `3` | Failed runs, within the window below, that fire `TobbySyncFailing`. |
 | `alerting.thresholds.syncFailuresWindow` | `1h` | The window of the rule above; also the `for` of `TobbySyncNeverSucceeded`. |
-| `alerting.thresholds.syncMaxAgeSeconds` | `21600` | Age of the last successful sync, in seconds, past which `TobbySyncStale` fires. `0` leaves out `TobbySyncStale` **and** `TobbySyncNeverSucceeded`: eight alerts remain. For mirror instances. |
+| `alerting.thresholds.syncMaxAgeSeconds` | `21600` | Age of the last successful sync, in seconds, past which `TobbySyncStale` fires. `0` leaves out `TobbySyncStale` only: nine alerts remain, `TobbySyncNeverSucceeded` among them. For mirror instances. |
 | `alerting.thresholds.saturationFor` | `15m` | How long transfers stay pinned at `sync.parallelism`. |
 | `alerting.thresholds.storeOccupancyFor` | `15m` | How long the store stays beyond `storage.occupancyThreshold`. |
 | `alerting.thresholds.scannerFor` | `1h` | How long the vulnerability database or the scanner stays degraded. |

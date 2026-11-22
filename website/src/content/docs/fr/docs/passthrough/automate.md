@@ -338,7 +338,8 @@ référence, et n'écrase jamais une version publiée. Son rapport, avec
   inoffensif.
 - Un document différent sous une version publiée sort `3` avec
   [`TBY-POL-004`](../../reference/errors/#tby-pol-004) : publiez sous une
-  nouvelle `metadata.version`.
+  nouvelle `metadata.version`. Le message cite les digests de manifeste des
+  deux, les valeurs qu'affiche `crane digest` et que prend `cosign sign`.
 - Les identifiants du registre viennent de la configuration
   (`registries.credentialsFile`), comme tout appel sortant, avec les
   variables d'environnement `TOBBY_*` habituelles par-dessus ; la commande

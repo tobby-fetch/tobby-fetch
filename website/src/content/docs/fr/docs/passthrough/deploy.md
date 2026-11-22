@@ -118,7 +118,11 @@ kubectl apply -f ./deploy/manifests/
 
 Modifiez `20-secret-config.yaml` (posez `mode`, et `retriever.source` si
 vous en avez un) et `21-secret-registry-credentials.yaml` (la charge
-livrée est un `{"auths":{}}` vide et valide) avant d'appliquer.
+livrée est un `{"auths":{}}` vide et valide) avant d'appliquer. La ligne
+d'image de `40-deployment.yaml` épingle `v1.0.0-rc.1`. Si vous activez
+`server.tls` dans la configuration, ajoutez à la main `scheme: HTTPS` aux
+trois sondes `httpGet` de `40-deployment.yaml` : le pod n'a qu'un listener,
+et ces manifestes ne suivent pas le réglage comme le fait le chart.
 
 ### Vérifier l'image avant de déployer
 
@@ -248,8 +252,9 @@ serve --config /etc/tobby/config.yaml`. Le premier compte d'une instance
 reçoit toujours le rôle `admin` (`quickstart` et les exemples le nomment
 `admin`, mais le nom est libre), et l'outil calcule lui-même le hash du mot de
 passe. Sur Kubernetes, où l'image n'a pas de shell, exécutez l'étape
-`user add` dans un pod éphémère montant le claim d'état — la recette
-exacte est dans
+`user add` dans un pod éphémère montant le claim d'état, après avoir
+ramené l'instance à zéro réplique (`user add` refuse tant qu'une
+instance tient le répertoire d'état) — la recette exacte est dans
 [`deploy/README.md`](https://github.com/tobby-fetch/tobby-fetch/blob/main/deploy/README.md).
 
 S'il vous faut absolument tourner ouvert, `auth.disabled: true` est un

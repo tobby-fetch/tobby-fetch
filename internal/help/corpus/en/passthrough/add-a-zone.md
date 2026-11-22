@@ -164,9 +164,10 @@ replay produced it, has the one layer the instance needs:
 ```
 
 A second file pushed in the same artifact makes two layers, and the
-instance refuses it with a bare
-[`TBY-SRV-001`](../../reference/errors/#tby-srv-001) whose cause (the
-layer count) is in the logs only.
+instance refuses it with
+[`TBY-VAL-001`](../../reference/errors/#tby-val-001), naming the
+reference and the constraint: exactly one document layer, and how many
+this artifact has.
 
 Where to put it is your call. Anywhere the new instance can read, under a
 repository that is not a cookbook. The registry of the zone above is

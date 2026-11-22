@@ -143,6 +143,11 @@ Startup is fail-fast and secure by default:
 - An invalid configuration (bad proxy URL, half-declared TLS pair,
   malformed trust scope…) refuses startup with an actionable message rather
   than degrading silently.
+- The instance holds an operating-system lock on its state directory
+  (`state.root/serving.json`) for its lifetime; the lock goes with the
+  process if it dies. A second `tobby serve` on the same state directory
+  waits 5 seconds, then refuses with
+  [`TBY-CFG-001`](../../reference/errors/#tby-cfg-001).
 - On SIGTERM/SIGINT, readiness flips to 503 first, then in-flight requests
   get the grace period to finish.
 
@@ -523,9 +528,12 @@ running. `TOBBY_INSTANCE_URL` alone, without the flag, selects the remote
 form below. Trust roots come from the
 configuration (`trust.roots`, `trust.scopes`), never from the store. When an
 instance *is* serving the store, that form **refuses** — it cannot see the
-instance's content lock — and names `--instance`: the verification then runs
-on the instance as a tracked task, under its content lock, on a lane of its
-own that never holds up a synchronization. See
+instance's content lock — and names `--instance`. The serving instance is
+recognised by the lock it holds on its state directory, whatever its
+listener (self-signed TLS included); one that crashed holds nothing. With
+`--instance`, the verification then runs on the instance as a tracked
+task, under its content lock, on a lane of its own that never holds up a
+synchronization. See
 [Verify the store's integrity](../../passthrough/verify-store/).
 
 | Flag | Purpose |
@@ -674,6 +682,15 @@ Manages the instance's local accounts, directly against the state
 directory on the instance host. The first account created defaults to the
 `admin` role; later ones default to `viewer`. The tool computes the
 password hash (argon2id) — a hash never has to be crafted by hand.
+
+`add` and `passwd` refuse with
+[`TBY-CFG-001`](../../reference/errors/#tby-cfg-001), and write nothing,
+while an instance holds the state directory: a running instance keeps the
+accounts in memory and would overwrite the change at its next save. The
+message names the alternative — the accounts screen or
+`POST /api/v1/accounts` for `add`; for `passwd`, stopping the instance, or
+the account holder's own `/account` screen. See
+[Account passwords](../../security/key-rotation/#account-passwords).
 
 The audit record of an account operation goes to **stderr**, with every
 other structured log: stdout carries the report.

@@ -16,10 +16,10 @@ est sur [Secrets](../secrets/) ; la façon dont trust roots et périmètres
 décident est sur [Signatures, trust roots et liste d'autorisation](../content-trust/).
 
 :::tip[En bref]
-- Une clé de signature de recipe se renouvelle par recouvrement. Ajoutez la nouvelle clé publique comme second trust root sur chaque instance qui vérifie, en commençant par la zone isolée. Signez ensuite avec la nouvelle clé. Retirez l'ancien root en dernier, quand une vérification du store sous la nouvelle configuration est propre. [Procédure](#renouveler-une-clé-de-signature-de-recipe)
-- Signez de **nouvelles versions de recipes** avec la nouvelle clé. Une signature ajoutée après coup à une version qu'un store détient déjà n'atteint jamais ce store : l'ancienne clé continue d'y décider de cette version. [Pourquoi](#un-store-garde-les-signatures-de-sa-première-copie)
+- Une clé de signature de recipe se renouvelle par recouvrement. Ajoutez la nouvelle clé publique comme second trust root sur chaque instance qui vérifie, en commençant par la zone isolée. Re-signez ensuite sur place les recipes publiées avec la nouvelle clé, et laissez les synchronisations faire descendre la signature. Retirez l'ancien root en dernier, quand une vérification du store sous la nouvelle configuration est propre. [Procédure](#renouveler-une-clé-de-signature-de-recipe)
+- Re-signer ne demande aucune nouvelle version. Une signature ajoutée en amont à un digest qu'un store détient déjà atteint ce store à sa synchronisation suivante, et le registry de zone à son push suivant. [Comment](#un-store-suit-les-signatures-de-sa-source)
 - Trust roots, identifiants de registry, matériel OIDC et SAML et mot de passe du proxy sont lus au démarrage. Un changement demande un redémarrage, et un redémarrage déconnecte toutes les sessions du navigateur. La paire TLS est relue à la poignée de main suivante. [Tableau](#quand-un-changement-prend-effet)
-- Changez mots de passe et tokens sur l'instance en marche (écran ou API). `tobby user add` et `tobby user passwd` ne sont sûrs que lorsque l'instance est arrêtée. [Comptes](#mots-de-passe-des-comptes)
+- Changez mots de passe et tokens sur l'instance en marche (écran ou API). `tobby user add` et `tobby user passwd` refusent de s'exécuter tant qu'une instance tient le répertoire d'état. [Comptes](#mots-de-passe-des-comptes)
 :::
 
 ## Quand un changement prend effet
@@ -88,50 +88,26 @@ l'écran Recipes) est celui pris à sa synchronisation. Il n'est pas réévalué
 quand les roots changent ; c'est une vérification du store qui répond à cette
 question.
 
-### Un store garde les signatures de sa première copie
+### Un store suit les signatures de sa source
 
-Une synchronisation copie les signatures d'une recipe dans le store quand elle
-y range cette version de recipe pour la première fois : les deux formats
-cosign, attaché et bundle. Lors d'une synchronisation suivante, une version
-que le store détient déjà au même digest est sautée comme à jour, et ses
-signatures ne sont **pas recopiées**. Il en va de même pour un ingrédient que
-le store détient déjà.
+Chaque synchronisation aligne la copie que le store détient des signatures
+d'une recipe sur celle de la source, dans les deux formats cosign (attaché et
+bundle), y compris pour une version de recipe que le store détient déjà au
+même digest. Une signature ajoutée en amont à ce digest atteint le store à la
+synchronisation suivante, et le registry de zone au push suivant. Les
+ingrédients suivent la même règle. Re-signer ne demande donc aucune nouvelle
+version : signez avec la nouvelle clé le digest déjà publié, et les
+synchronisations font descendre la signature.
 
-La conséquence pour un renouvellement : signer une seconde fois, avec la
-nouvelle clé, une version de recipe **déjà publiée** n'ajoute cette signature
-qu'au cookbook. Chaque store qui détenait déjà la version ne garde que
-l'ancienne signature, comme les supports et le registry de zone remplis à
-partir de lui. Une fois l'ancien root retiré, cette version est refusée au push
-suivant, à la vérification de store suivante et côté destination, alors que le
-plan la dit toujours vérifiée, parce que le plan lit le cookbook.
+Le store reflète sa source. Une signature modifiée localement dans le store
+est remplacée par celle de la source à la synchronisation suivante, et la
+vérification avant chaque push lit toujours la copie du store, contre les
+roots de l'instance.
 
-Ceci a été rejoué en local : la version `1.0.0` signée avec `release-2025` et
-promue, puis signée une seconde fois avec `release-2026`, puis l'instance
-redémarrée avec `release-2026` comme seul root.
-
-```
-$ tobby sync --wait
-task tsk_dac2a194b92b on http://127.0.0.1:18090
-  type:      sync
-  reference: ./retriever.yaml
-  status:    failed
-  duration:  1s
-  items:     3 (0 done, 2 skipped, 1 failed)
-  failed   push/alpine@1.0.0/recipe — TBY-SIG-001
-  principal: TBY-SIG-001 (verification)
-TBY-SIG-001 — The recipe signature could not be verified.
-  cause:  No trust root of the default set validates the signature of alpine@1.0.0 (keys tried: sha256:f3212501fb7a…). …
-```
-
-Le code de sortie est `4`. Avec la même configuration, `tobby sync --dry-run`
-indique `alpine 1.0.0 … verified` et sort en `0`.
-
-**Signez de nouvelles versions avec la nouvelle clé.** Un nouveau
-`metadata.version` est un nouveau digest de recipe, rangé pour la première
-fois, avec les signatures présentes dans le cookbook à ce moment. Les versions
-publiées sont immuables : c'est aussi la seule façon de changer ce qu'une
-version épingle. Une recipe qui n'a encore été synchronisée nulle part peut
-simplement être signée avec les deux clés.
+Une exception : quand le registry de destination détient déjà la même recipe
+sous un **digest de manifeste différent** (le même document, publié là par un
+autre outil), Tobby n'y pousse aucune signature. Ses signatures nomment un
+manifeste que ce registry ne détient pas : ce registry garde les siennes.
 
 ### Renouveler une clé de signature de recipe
 
@@ -186,13 +162,21 @@ de haut en bas**.
        roots: [org-emergency-2025, org-emergency-2026]
    ```
 
-4. **Signez de nouvelles versions de recipes avec la nouvelle clé**, hors
+4. **Re-signez les recipes publiées avec la nouvelle clé**, sur place, hors
    ligne comme toujours (`--use-signing-config=false --tlog-upload=false`,
-   voir [Signer avec cosign](../../recipes/write-and-publish/#signer-avec-cosign)).
-   Faites passer les Retrievers à ces versions. Elles sont synchronisées,
-   transportées et poussées avec la nouvelle signature.
+   voir [Signer avec cosign](../../recipes/write-and-publish/#signer-avec-cosign)) :
+   `cosign sign` sur le digest déjà publié, à côté de l'ancienne signature.
+   Rien n'est republié et les Retrievers ne changent pas. Signez désormais
+   les nouvelles versions avec la nouvelle clé.
 
-5. **Répétez le retrait sur chaque store** avant de le faire. Écrivez la
+5. **Synchronisez partout**, de haut en bas. Chaque instance copie la
+   nouvelle signature dans son store à sa synchronisation suivante (ou
+   `tobby sync --wait`) et la pousse dans son registry de zone, où la zone
+   du dessous la récupère à son tour. Pour une zone isolée, synchronisez le
+   miroir sur un nouveau support, puis vérifiez-le et importez-le sur la
+   destination : la destination lit la signature sur le support.
+
+6. **Répétez le retrait sur chaque store** avant de le faire. Écrivez la
    configuration sans l'ancien root dans un fichier séparé et vérifiez le
    store contre elle. La commande ne fait que lire, et nomme la clé qui a
    vérifié chaque recipe :
@@ -205,6 +189,9 @@ de haut en bas**.
      DEFECT  TBY-SIG-001 alpine@1.0.0
    ```
 
+   Ici, `alpine@1.0.0` n'a pas encore été re-signée, ou ce store n'a pas
+   synchronisé depuis : reprenez les étapes 4 et 5 pour elle.
+
    Exécutée dans son propre processus, cette forme refuse un store qu'une
    instance sert : lancez-la pendant un court arrêt, ou sur un store miroir
    avant son départ. Avec `--instance`, la vérification s'exécute sur
@@ -212,7 +199,7 @@ de haut en bas**.
    Ne comptez pas sur `tobby sync --dry-run` pour ce contrôle : il lit les
    signatures du cookbook, pas celles du store.
 
-6. **Retirez l'ancien root**, de haut en bas : les instances qui lisent le
+7. **Retirez l'ancien root**, de haut en bas : les instances qui lisent le
    cookbook d'abord, les destinations de transferts physiques en dernier,
    quand plus aucun support en circulation ne porte de recipe que seule
    l'ancienne clé vérifie. Redémarrez chaque instance.
@@ -229,7 +216,7 @@ facile à rater.
 | Où | Ce qui se passe |
 | --- | --- |
 | Synchronisation | une recipe dont seule la clé retirée vérifie la signature du cookbook est refusée, `TBY-SIG-001` nommant les empreintes essayées. Le passage est incomplet : aucun prune ne s'exécute, et rien de ce qu'il détient n'est supprimé. |
-| Push vers le registry de zone | une recipe dont seule la clé retirée vérifie la copie du **store** est refusée avant le push, `TBY-SIG-001`, même quand le cookbook porte une signature plus récente. Le refus est compté dans `tobby_promotion_refusals_total{code="TBY-SIG-001"}`. |
+| Push vers le registry de zone | une recipe dont seule la clé retirée vérifie la copie du **store** est refusée avant le push, `TBY-SIG-001`. Le refus est compté dans `tobby_promotion_refusals_total{code="TBY-SIG-001"}`. |
 | Plan | la recipe affiche `refused` dans la colonne `SIGNATURE` ; code de sortie `4`. |
 | Vérification du store | `DEFECT TBY-SIG-001` sur la recipe ; code de sortie `4`. Le store n'est pas modifié. |
 | Destination d'un support | la recipe est `BLOCKED`, le support est `partial`. Voir plus bas. |
@@ -288,10 +275,11 @@ confrontée au support avant de redémarrer l'instance avec elle. Voir
 Un root `keyURL` est téléchargé au chargement de la configuration (au
 démarrage, et à chaque exécution des commandes ci-dessus) et mis en cache dans
 `state.root/trust-cache/<nom du root>.pub`. Si l'URL ne répond pas, l'instance
-utilise la copie en cache, **sans le dire** : aucune ligne de journal
-n'indique que la copie en cache a servi. Retirer une ancienne clé du fichier
-servi à l'URL n'a donc aucun effet sur une instance qui ne joint pas l'URL à
-son prochain démarrage. Pour un renouvellement que vous devez voir se
+vérifie avec la copie en cache et journalise une ligne `WARN`,
+`trust root key URL unreachable: verifying with the cached copy`, avec l'URL,
+l'erreur, le chemin du cache et l'âge de la copie (`cache_age`). Retirer une
+ancienne clé du fichier servi à l'URL n'a donc aucun effet sur une instance
+qui ne joint pas l'URL à son prochain démarrage : surveillez cette ligne. Pour un renouvellement que vous devez voir se
 produire, utilisez `keyFile` ou `key`, ou vérifiez la clé en usage par une
 vérification du store.
 
@@ -328,16 +316,15 @@ par vous.
 1. Ajoutez la nouvelle clé publique de l'éditeur comme root, à côté de
    l'ancienne, sur chaque instance qui vérifie, et dans le même périmètre que
    l'ancienne si un périmètre la liste. Redémarrez.
-2. Faites épingler par les recipes des digests d'ingrédients que l'éditeur a
-   signés avec la nouvelle clé, dans de nouvelles versions de recipes.
+2. Synchronisez : un éditeur qui re-signe un digest existant avec sa nouvelle
+   clé ne demande aucune nouvelle version de recipe, le store et le registry
+   de zone reçoivent la nouvelle signature comme pour les recipes
+   ([plus haut](#un-store-suit-les-signatures-de-sa-source)).
 3. Répétez avec `tobby store verify --config proposed.yaml`, puis retirez
    l'ancien root.
 
-La limite du store vaut aussi pour les ingrédients : un ingrédient que le store
-détient déjà garde les signatures de sa première copie, et le contrôle de
-l'ingrédient lit cette copie. Un éditeur qui re-signe un digest existant avec
-sa nouvelle clé ne change pas ce que détient le store. Un ingrédient situé
-dans un périmètre `allowUnsigned` est dispensé de l'exigence.
+Un ingrédient situé dans un périmètre `allowUnsigned` est dispensé de
+l'exigence.
 
 ## Mots de passe des comptes
 
@@ -359,13 +346,16 @@ mot de passe.
   ([`TBY-AUTH-011`](../../reference/errors/#tby-auth-011)). Les tokens ne sont
   pas rattachés aux comptes et ne sont pas touchés.
 - **Sur l'hôte** : `tobby user passwd <nom>` et `tobby user add` écrivent
-  directement `accounts.yaml`, et une instance en marche ne le relit pas.
-  Lancez-les **uniquement quand l'instance est arrêtée**. Lancés contre une
-  instance en marche, le changement n'est pas vu, et la prochaine écriture de
-  l'instance remet sa propre copie en place. Rejoué : après
-  `tobby user passwd admin` sur une instance en marche, le nouveau mot de passe
-  est refusé (`401`), l'ancien accepté, et après un redémarrage c'est toujours
-  l'ancien qui fonctionne.
+  directement `accounts.yaml`, qu'une instance en marche écraserait avec sa
+  propre copie. Ils refusent donc avec
+  [`TBY-CFG-001`](../../reference/errors/#tby-cfg-001), sans rien écrire,
+  tant qu'une instance tient le répertoire d'état. L'instance tient un verrou
+  du système d'exploitation sur `state.root/serving.json` pendant toute sa
+  vie, quelle que soit sa configuration TLS, et le verrou disparaît avec le
+  processus s'il meurt. Le message nomme l'alternative : pour `user add`,
+  l'écran des comptes (`/admin/accounts`) ou `POST /api/v1/accounts` ; pour
+  `user passwd`, arrêter l'instance et lancer la commande, ou laisser le
+  titulaire du compte changer son mot de passe sur `/account`.
 
 ## Tokens d'API
 
@@ -374,8 +364,10 @@ la création et est stocké sous forme de hash (FR-072). Renouvelez par
 recouvrement :
 
 1. Créez le remplaçant sur `/admin/accounts` ou avec `POST /api/v1/tokens`.
-   Le nom d'un token actif ne peut pas être réutilisé : donnez-lui un nouveau
-   nom (`ci-2026`). Une valeur `expires`, ou `auth.tokens.defaultLifetime`,
+   Le nom d'un token actif ne peut pas être réutilisé (`409`,
+   [`TBY-AUTH-009`](../../reference/errors/#tby-auth-009)) : donnez-lui un
+   nouveau nom (`ci-2026`). Une expiration passée est refusée (`422`,
+   [`TBY-VAL-001`](../../reference/errors/#tby-val-001) sur `expires`). Une valeur `expires`, ou `auth.tokens.defaultLifetime`,
    fait que le renouvellement suivant arrive de lui-même.
 2. Faites passer les clients au nouveau secret.
 3. Révoquez l'ancien token (`POST /api/v1/tokens/{name}/revoke`). La
@@ -410,21 +402,15 @@ fin de validité ([réseau](../../passthrough/network/)).
 :::note[Une instance démarrée en auto-signé]
 Sur une instance qui tourne avec le certificat de repli généré, l'écran Réseau
 écrit la nouvelle paire dans `state.root/tls/server.crt` et `server.key` et
-l'adopte aussitôt. La configuration ne nomme toujours aucune paire : **au
-redémarrage suivant, l'instance sert de nouveau le repli généré** (rejoué).
-Après avoir adopté une paire depuis l'écran, faites-la pointer par la
-configuration pour qu'elle survive au redémarrage :
-
-```yaml
-server:
-  tls:
-    certFile: /var/lib/tobby/state/tls/server.crt
-    keyFile: /var/lib/tobby/state/tls/server.key
-```
-
-Dès lors, les fichiers sont relus à chaque changement comme toute paire
-configurée. La forme API du remplacement (`PUT /api/v1/network/certificate`)
-refuse une instance qui tourne sur le repli.
+l'adopte aussitôt. Au démarrage suivant, l'instance sert de nouveau cette
+paire tant qu'elle se charge et n'a pas expiré, et la relit à chaque
+changement comme une paire configurée. Une paire expirée ou illisible est
+écartée : l'instance revient au certificat généré, et le journal de démarrage
+dit pourquoi. La voie déclarative reste disponible, et c'est celle à préférer
+pour une paire que vous gérez de l'extérieur : faites pointer
+`server.tls.certFile` et `server.tls.keyFile` vers les fichiers. La forme API
+du remplacement (`PUT /api/v1/network/certificate`) refuse une instance qui
+tourne sur le repli.
 :::
 
 ## Identifiants de registry
@@ -486,16 +472,12 @@ pas de seconde copie à mettre à jour.
 
 ## Limites
 
-- **Re-signer une version déjà rangée n'atteint pas les stores qui la
-  détiennent.** La procédure ci-dessus le contourne par de nouvelles versions ;
-  un store garde les signatures de sa première copie, pour les recipes comme
-  pour les ingrédients.
 - **Retirer un trust root ne retire rien de ce qui a déjà été livré.** Cela
   arrête les synchronisations, les push et les imports de supports à venir ; le
   contenu déjà servi par une instance passthrough ou poussé dans un registry de
   zone y reste.
-- **Un root `keyURL` peut retomber sans bruit** sur une clé en cache quand son
-  URL ne répond pas.
+- **Un root `keyURL` retombe** sur sa clé en cache quand son URL ne répond
+  pas, avec un `WARN` au journal, et continue de vérifier avec elle.
 - **La garde des clés appartient à l'organisation.** Tobby n'a ni liste de
   révocation ni expiration de clé. Une clé de signature compromise cesse d'être
   de confiance seulement quand son root est retiré de chaque instance, et

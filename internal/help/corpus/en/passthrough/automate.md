@@ -328,7 +328,8 @@ overwrites a published version. Its report, with `--output json`:
   before signing, and signing a digest twice is harmless.
 - A different document under a published version exits `3` with
   [`TBY-POL-004`](../../reference/errors/#tby-pol-004): publish under a new
-  `metadata.version`.
+  `metadata.version`. The message quotes the manifest digests of both, the
+  values `crane digest` shows and `cosign sign` takes.
 - Credentials for the registry come from the configuration
   (`registries.credentialsFile`), like every outbound call, with the
   usual `TOBBY_*` environment variables on top; the command needs no mode

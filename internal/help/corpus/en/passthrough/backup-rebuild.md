@@ -30,7 +30,7 @@ Nothing else is written there.
 | `trust-cache/` | discardable | no | Trust roots fetched from HTTPS URLs when the configuration was read. | Fetched again. |
 | `partials/` | discardable | no | Resumable partial downloads. | A blob restarts at zero. |
 | `scanner/` | discardable | no | The vulnerability scanner's private work directory. | Rebuilt from the delivery. |
-| `serving.json` | discardable | no | Marks the instance serving the store, for the local command line. | Recreated at the next start. |
+| `serving.json` | discardable | no | The file a running instance holds an operating-system lock on, with the store and address it serves, for the local command line. Emptied at stop, not removed. | Recreated at the next start. |
 
 The state directory lives outside the store and never inside it:
 the store leaves the site on a medium, the state does not.

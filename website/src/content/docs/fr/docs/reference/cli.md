@@ -147,6 +147,11 @@ Le démarrage échoue vite et est sécurisé par défaut :
 - Une configuration invalide (URL de proxy erronée, paire TLS à moitié
   déclarée, périmètre de confiance mal formé…) refuse le démarrage avec un
   message actionnable plutôt que de dégrader en silence.
+- L'instance tient un verrou du système d'exploitation sur son répertoire
+  d'état (`state.root/serving.json`) pendant toute sa vie ; le verrou
+  disparaît avec le processus s'il meurt. Un second `tobby serve` sur le même
+  répertoire d'état attend 5 secondes, puis refuse avec
+  [`TBY-CFG-001`](../../reference/errors/#tby-cfg-001).
 - Sur SIGTERM/SIGINT, la disponibilité passe d'abord à 503, puis les requêtes
   en cours disposent du délai de grâce pour se terminer.
 
@@ -541,8 +546,10 @@ ne tourne. `TOBBY_INSTANCE_URL` seul, sans l'option, sélectionne la forme
 distante ci-dessous. Les trust roots viennent
 de la configuration (`trust.roots`, `trust.scopes`), jamais du store. Quand une
 instance sert *effectivement* le store, cette forme **refuse** — elle ne voit
-pas le verrou de contenu de l'instance — et nomme `--instance` : la vérification
-s'exécute alors sur l'instance comme tâche suivie, sous son verrou de contenu,
+pas le verrou de contenu de l'instance — et nomme `--instance`. L'instance qui
+sert est reconnue au verrou qu'elle tient sur son répertoire d'état, quel que
+soit son listener (TLS auto-signé compris) ; une instance tombée ne tient rien.
+Avec `--instance`, la vérification s'exécute alors sur l'instance comme tâche suivie, sous son verrou de contenu,
 sur une voie à part qui ne retarde jamais une synchronisation. Voir
 [Vérifier l'intégrité du store](../../passthrough/verify-store/).
 
@@ -696,6 +703,15 @@ Gère les comptes locaux de l'instance, directement contre le répertoire d'éta
 sur l'hôte de l'instance. Le premier compte créé a par défaut le rôle `admin` ;
 les suivants `viewer`. L'outil calcule le hachage du mot de passe (argon2id) —
 il n'y a jamais à fabriquer un hachage à la main.
+
+`add` et `passwd` refusent avec
+[`TBY-CFG-001`](../../reference/errors/#tby-cfg-001), sans rien écrire, tant
+qu'une instance tient le répertoire d'état : une instance en marche garde les
+comptes en mémoire et écraserait le changement à sa prochaine sauvegarde. Le
+message nomme l'alternative — l'écran des comptes ou `POST /api/v1/accounts`
+pour `add` ; pour `passwd`, arrêter l'instance, ou l'écran `/account` du
+titulaire du compte. Voir
+[Mots de passe des comptes](../../security/key-rotation/#mots-de-passe-des-comptes).
 
 L'enregistrement d'audit d'une opération sur un compte va sur **stderr**, avec
 tous les autres journaux structurés : stdout porte le rapport.

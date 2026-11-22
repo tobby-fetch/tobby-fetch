@@ -57,7 +57,10 @@ the OpenAPI document.
 
 When an instance **is** serving the store, this form refuses and tells you
 what to do: it cannot see the instance's content lock, so a removal in
-progress would read as a defect. Hand the work to the instance instead:
+progress would read as a defect. The instance is recognised by the
+operating-system lock it holds on its state directory, whatever its
+listener (self-signed TLS included); one that crashed holds nothing and
+does not block this form. Hand the work to the instance instead:
 
 ```sh
 tobby store verify --instance https://tobby.example:8443 --wait

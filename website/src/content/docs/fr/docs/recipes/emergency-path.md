@@ -283,10 +283,9 @@ La voie d'urgence sert à livrer, pas à s'installer. Refermez-la proprement :
    qu'aucun root configuré ne vérifie.
 3. Renouvelez la clé d'urgence si elle est sortie de sa garde. La rotation se
    fait par recouvrement, comme pour tout trust root : ajoutez le nouveau
-   root, publiez ce qui est encore utilisé sous de nouvelles versions signées
-   avec la nouvelle clé, puis retirez l'ancien. Re-signer une version déjà
-   synchronisée n'atteint pas les stores qui la détiennent : voir
-   [Renouveler les clés et les secrets](../../security/key-rotation/#un-store-garde-les-signatures-de-sa-première-copie).
+   root, re-signez avec la nouvelle clé ce qui est encore utilisé, laissez
+   chaque zone synchroniser, puis retirez l'ancien : voir
+   [Renouveler les clés et les secrets](../../security/key-rotation/#renouveler-une-clé-de-signature-de-recipe).
 4. Conservez la référence du ticket dans les annotations de la recipe et la
    synchronisation dans vos archives : le rapport de tâche et le journal
    d'audit sont la preuve de qui a admis quoi, et quand.

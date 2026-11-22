@@ -30,7 +30,7 @@ emporter. Rien d'autre n'y est écrit.
 | `trust-cache/` | jetable | non | Les clés de confiance récupérées par des URL HTTPS à la lecture de la configuration. | Récupérées de nouveau. |
 | `partials/` | jetable | non | Les téléchargements partiels reprenables. | Un blob repart de zéro. |
 | `scanner/` | jetable | non | Le répertoire de travail privé du scanner de vulnérabilités. | Reconstruit à partir de la livraison. |
-| `serving.json` | jetable | non | Marque l'instance qui sert le store, pour la ligne de commande locale. | Recréé au démarrage suivant. |
+| `serving.json` | jetable | non | Le fichier sur lequel une instance en marche tient un verrou du système d'exploitation, avec le store et l'adresse qu'elle sert, pour la ligne de commande locale. Vidé à l'arrêt, pas supprimé. | Recréé au démarrage suivant. |
 
 Le répertoire d'état vit hors du store, jamais dedans : le store
 quitte le site sur un support, l'état non.

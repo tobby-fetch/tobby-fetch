@@ -182,7 +182,7 @@ dans l'autre). Voir [Déployer](../deploy/#store-et-état-ne-sont-pas-le-même-v
 | `persistence.storage.existingClaim` | `""` | Utilise un claim qui vous appartient. Le chart n'en crée alors aucun. |
 | `persistence.storage.accessModes` | `[ReadWriteOnce]` | Modes d'accès du claim créé par le chart. |
 | `persistence.storage.size` | `100Gi` | Taille demandée. |
-| `persistence.storage.storageClassName` | `""` | Vide : la classe par défaut du cluster. Toute autre valeur est écrite telle quelle dans le claim. |
+| `persistence.storage.storageClassName` | `""` | Vide : le champ est omis, la classe par défaut du cluster s'applique. `"-"` écrit `storageClassName: ""`, ce qui désactive le provisionnement dynamique (le claim ne se lie qu'à un volume créé d'avance, sans classe). Toute autre valeur est le nom de la classe. |
 | `persistence.storage.annotations` | `{}` | Ajoutées au claim. |
 | `persistence.state.enabled` | `true` | `false` retombe sur un `emptyDir`, qui perd tous les comptes au remplacement du pod. Défendable seulement dans un environnement jetable. |
 | `persistence.state.mountPath` | `/var/lib/tobby/state` | Devient `state.root`. |
@@ -240,7 +240,8 @@ ne change qu'un champ. Une liste est remplacée en entier : poser
 
 `/healthz` répond dès que le listener est up. `/readyz` répond `503` tant que le
 store et la configuration ne sont pas utilisables, et de nouveau pendant le
-drain d'arrêt. Les sondes sont des `httpGet` sur le port du conteneur.
+drain d'arrêt. Les sondes sont des `httpGet` sur le port du conteneur, en
+HTTPS quand le pod sert du TLS (plus bas).
 
 | Clé | Démarrage | Vivacité | Disponibilité |
 |---|---|---|---|
@@ -258,15 +259,20 @@ mort. Relevez `probes.startup.failureThreshold` pour un store plus long à ouvri
 
 ### TLS sur le listener et les sondes
 
-Si vous donnez au listener son propre certificat (`config.server.tls`), il ne
-sert **que** du TLS. Les sondes du chart et son ServiceMonitor parlent HTTP en
-clair, et le chart n'a aucune valeur pour changer cela : le listener leur répond
-`400 Bad Request` (« Client sent an HTTP request to an HTTPS server ») et les
-sondes échouent. Le chemin pour lequel le chart est écrit est un TLS terminé sur
-un ingress ou un maillage, avec `config.server.secureCookies: true`. Si vous
-servez le TLS depuis le pod, passez `probes.<nom>.enabled` à `false` et
-renoncez au ServiceMonitor, ou maintenez vos propres sondes dans une copie
-modifiée du chart.
+Si le pod sert lui-même du TLS (`config.server.tls.enabled`, ou une paire
+`certFile`/`keyFile`), son listener unique ne sert **que** du TLS, et le chart
+suit de lui-même : les trois sondes reçoivent `scheme: HTTPS` (le kubelet ne
+vérifie pas le certificat, un auto-signé convient donc), et le ServiceMonitor
+collecte en `scheme: https`. Pour les réglages TLS de la collecte, voir
+`metrics.serviceMonitor.tlsConfig` plus bas. Le port du Service garde le nom
+`http`.
+
+Un ingress placé devant un pod en TLS doit lui parler en HTTPS. Ce réglage
+appartient au contrôleur et le chart ne le rend pas : ajoutez-le sous
+`ingress.annotations` (pour ingress-nginx,
+`nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"`). L'autre chemin
+courant est un TLS terminé sur l'ingress ou un maillage, avec un pod en HTTP
+clair et `config.server.secureCookies: true`.
 
 ## Métriques, alertes et tableau de bord
 
@@ -278,11 +284,12 @@ et le sens des seuils, sont sur [Superviser une instance](../monitoring/).
 | Clé | Défaut | Effet |
 |---|---|---|
 | `metrics.podAnnotations` | `false` | `true` ajoute `prometheus.io/scrape`, `prometheus.io/port` et `prometheus.io/path` au pod, pour la découverte par annotations. |
-| `metrics.serviceMonitor.enabled` | `false` | Rend un ServiceMonitor. Demande les CRD du Prometheus Operator. Il collecte `/metrics` en `http`. |
+| `metrics.serviceMonitor.enabled` | `false` | Rend un ServiceMonitor. Demande les CRD du Prometheus Operator. Il collecte `/metrics` en `http`, ou en `https` quand le pod sert du TLS. |
 | `metrics.serviceMonitor.namespace` | `""` | Namespace du ServiceMonitor, quand ce n'est pas celui de la release. |
 | `metrics.serviceMonitor.interval` | `30s` | Intervalle de collecte. |
 | `metrics.serviceMonitor.scrapeTimeout` | `10s` | Délai de collecte. |
 | `metrics.serviceMonitor.labels` | `{}` | Labels par lesquels votre Prometheus sélectionne les ServiceMonitors. |
+| `metrics.serviceMonitor.tlsConfig` | `{}` | Les réglages TLS de la collecte (`TLSConfig` du Prometheus Operator), utilisés seulement quand le pod sert du TLS. Vide, le chart ajoute `insecureSkipVerify: true` pour le repli auto-signé uniquement, et rien pour votre propre paire : posez `ca` (et `serverName` si le certificat ne nomme pas le Service) pour une autorité privée. Toute valeur remplace entièrement ce défaut. |
 | `metrics.serviceMonitor.basicAuth` | `{}` | Seulement pour un proxy d'authentification devant l'instance ; `/metrics` lui-même ne demande rien. |
 | `metrics.serviceMonitor.relabelings`, `metricRelabelings` | `[]` | Transmis au point d'accès tels quels. |
 | `alerting.prometheusRule.enabled` | `false` | Rend une `PrometheusRule` de dix alertes. Demande les CRD de l'Operator. |
@@ -292,7 +299,7 @@ et le sens des seuils, sont sur [Superviser une instance](../monitoring/).
 | `alerting.extraLabels` | `{}` | Labels ajoutés à chaque alerte. |
 | `alerting.thresholds.syncFailures` | `3` | Exécutions en échec, dans la fenêtre ci-dessous, qui déclenchent `TobbySyncFailing`. |
 | `alerting.thresholds.syncFailuresWindow` | `1h` | Fenêtre de la règle précédente ; c'est aussi le `for` de `TobbySyncNeverSucceeded`. |
-| `alerting.thresholds.syncMaxAgeSeconds` | `21600` | Âge de la dernière synchronisation réussie, en secondes, au-delà duquel `TobbySyncStale` se déclenche. `0` retire `TobbySyncStale` **et** `TobbySyncNeverSucceeded` : il reste huit alertes. Pour les instances miroir. |
+| `alerting.thresholds.syncMaxAgeSeconds` | `21600` | Âge de la dernière synchronisation réussie, en secondes, au-delà duquel `TobbySyncStale` se déclenche. `0` retire seulement `TobbySyncStale` : il reste neuf alertes, dont `TobbySyncNeverSucceeded`. Pour les instances miroir. |
 | `alerting.thresholds.saturationFor` | `15m` | Durée pendant laquelle les transferts restent au plafond de `sync.parallelism`. |
 | `alerting.thresholds.storeOccupancyFor` | `15m` | Durée pendant laquelle le store reste au-delà de `storage.occupancyThreshold`. |
 | `alerting.thresholds.scannerFor` | `1h` | Durée pendant laquelle la base de vulnérabilités ou l'analyseur reste dégradé. |

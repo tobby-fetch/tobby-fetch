@@ -15,10 +15,10 @@ that it worked. The inventory of what is secret, and where it lives, is on
 [Signatures, trust roots and allowlist](../content-trust/).
 
 :::tip[In short]
-- A recipe signing key rotates by overlap. Add the new public key as a second trust root on every instance that verifies, starting with the isolated zone. Then sign with the new key. Remove the old root last, once a store verification under the new configuration is clean. [Procedure](#rotate-a-recipe-signing-key)
-- Sign **new recipe versions** with the new key. A signature added later to a version a store already holds never reaches that store, so the old key keeps deciding that version there. [Why](#a-store-keeps-the-signatures-of-its-first-copy)
+- A recipe signing key rotates by overlap. Add the new public key as a second trust root on every instance that verifies, starting with the isolated zone. Then re-sign the published recipes in place with the new key and let the synchronizations carry the signature down. Remove the old root last, once a store verification under the new configuration is clean. [Procedure](#rotate-a-recipe-signing-key)
+- Re-signing needs no new version. A signature added upstream to a digest a store already holds reaches that store at its next synchronization, and the zone registry at its next push. [How](#a-store-follows-its-sources-signatures)
 - Trust roots, registry credentials, OIDC and SAML material and the proxy password are read at startup. A change needs a restart, and a restart signs every browser session out. The TLS pair is re-read on the next handshake. [Table](#what-a-change-needs-to-take-effect)
-- Change passwords and tokens on the running instance (screen or API). `tobby user add` and `tobby user passwd` are safe only while the instance is stopped. [Accounts](#account-passwords)
+- Change passwords and tokens on the running instance (screen or API). `tobby user add` and `tobby user passwd` refuse to run while an instance holds the state directory. [Accounts](#account-passwords)
 :::
 
 ## What a change needs to take effect
@@ -85,48 +85,24 @@ Recipes screen) is the one taken at its synchronization. It is not
 re-evaluated when the roots change; a store verification is what answers
 that question.
 
-### A store keeps the signatures of its first copy
+### A store follows its source's signatures
 
-A synchronization copies a recipe's signatures into the store when it first
-stores that recipe version: both cosign layouts, attached and bundle. On a
-later synchronization, a recipe version the store already holds at the same
-digest is skipped as up to date, and its signatures are **not copied again**.
-The same holds for an ingredient the store already holds.
+Every synchronization brings the store's copy of a recipe's signatures in
+line with the source's, in both cosign layouts (attached and bundle), also
+for a recipe version the store already holds at the same digest. A signature
+added upstream to that digest reaches the store at the next synchronization,
+and the zone registry at the next push. Ingredients follow the same rule.
+Re-signing therefore needs no new version: sign the digest already published
+with the new key, and the synchronizations carry the signature down.
 
-The consequence for a rotation: signing an **already published** recipe
-version a second time, with the new key, adds that signature to the cookbook
-only. Every store that held the version before keeps only the old signature,
-and so do the media and the zone registry filled from it. Once the old root is
-removed, that version is refused on the next push, in the next store
-verification and on the destination side, while the plan still calls it
-verified because the plan reads the cookbook.
+The store mirrors its source. A signature altered locally in the store is
+replaced by the source's at the next synchronization, and the verification
+before each push still reads the store's copy, against the instance's roots.
 
-This was replayed locally: version `1.0.0` signed with `release-2025` and
-promoted, then signed a second time with `release-2026`, then the instance
-restarted with `release-2026` as its only root.
-
-```
-$ tobby sync --wait
-task tsk_dac2a194b92b on http://127.0.0.1:18090
-  type:      sync
-  reference: ./retriever.yaml
-  status:    failed
-  duration:  1s
-  items:     3 (0 done, 2 skipped, 1 failed)
-  failed   push/alpine@1.0.0/recipe — TBY-SIG-001
-  principal: TBY-SIG-001 (verification)
-TBY-SIG-001 — The recipe signature could not be verified.
-  cause:  No trust root of the default set validates the signature of alpine@1.0.0 (keys tried: sha256:f3212501fb7a…). …
-```
-
-The exit code is `4`. With the same configuration, `tobby sync --dry-run`
-reports `alpine 1.0.0 … verified` and exits `0`.
-
-**Sign new versions with the new key.** A new `metadata.version` is a new
-recipe digest, stored for the first time, with the signatures present in the
-cookbook at that moment. Published versions are immutable, so this is also
-the only way to change what a version pins. A recipe that has not been
-synchronized anywhere yet can simply be signed with both keys.
+One exception: when the destination registry already holds the same recipe
+under a **different manifest digest** (the same document, published there by
+another tool), Tobby pushes no signatures to it. Its signatures name a
+manifest that registry does not hold, so that registry keeps its own.
 
 ### Rotate a recipe signing key
 
@@ -179,13 +155,21 @@ from the top down**.
        roots: [org-emergency-2025, org-emergency-2026]
    ```
 
-4. **Sign new recipe versions with the new key**, offline as always
-   (`--use-signing-config=false --tlog-upload=false`, see
-   [Sign with cosign](../../recipes/write-and-publish/#sign-with-cosign)).
-   Move the Retrievers to those versions. They are synchronized, carried and
-   pushed with the new signature.
+4. **Re-sign the published recipes with the new key**, in place, offline as
+   always (`--use-signing-config=false --tlog-upload=false`, see
+   [Sign with cosign](../../recipes/write-and-publish/#sign-with-cosign)):
+   `cosign sign` on the digest already published, beside the old signature.
+   Nothing is republished and the Retrievers do not change. Sign new
+   versions with the new key from now on.
 
-5. **Rehearse the removal on each store** before doing it. Write the
+5. **Synchronize everywhere**, top down. Each instance copies the new
+   signature into its store at its next synchronization (or
+   `tobby sync --wait`) and pushes it to its zone registry, where the zone
+   below picks it up in turn. For an isolated zone, synchronize the mirror
+   onto a new medium, then verify and import it on the destination: the
+   destination reads the signature from the medium.
+
+6. **Rehearse the removal on each store** before doing it. Write the
    configuration without the old root to a separate file and verify the
    store against it. The command only reads, and names the key that verified
    each recipe:
@@ -198,13 +182,16 @@ from the top down**.
      DEFECT  TBY-SIG-001 alpine@1.0.0
    ```
 
+   Here `alpine@1.0.0` has not been re-signed yet, or this store has not
+   synchronized since: go back to steps 4 and 5 for it.
+
    Run in-process, this form refuses a store that an instance is serving:
    run it during a short stop, or on a mirror store before it leaves. With
    `--instance`, the verification runs on the instance, against the roots it
    runs with, not the proposed ones. Do not rely on `tobby sync --dry-run`
    for this check: it reads the cookbook's signatures, not the store's.
 
-6. **Remove the old root**, top down: the instances that read from the
+7. **Remove the old root**, top down: the instances that read from the
    cookbook first, the destinations of physical transfers last, once no
    medium in circulation still carries a recipe that only the old key
    verifies. Restart each instance.
@@ -220,7 +207,7 @@ shared root is easy to get wrong.
 | Where | What happens |
 | --- | --- |
 | Synchronization | a recipe whose cookbook signature only the removed key verifies is refused, `TBY-SIG-001` naming the fingerprints tried. The run is incomplete, so no prune runs, and nothing it holds is deleted. |
-| Push to the zone registry | a recipe whose **store** copy only the removed key verifies is refused before the push, `TBY-SIG-001`, even when the cookbook carries a newer signature. The refusal is counted in `tobby_promotion_refusals_total{code="TBY-SIG-001"}`. |
+| Push to the zone registry | a recipe whose **store** copy only the removed key verifies is refused before the push, `TBY-SIG-001`. The refusal is counted in `tobby_promotion_refusals_total{code="TBY-SIG-001"}`. |
 | Plan | the recipe shows `refused` in the `SIGNATURE` column; exit code `4`. |
 | Store verification | `DEFECT TBY-SIG-001` on the recipe; exit code `4`. The store is not modified. |
 | Destination of a medium | the recipe is `BLOCKED`, the medium is `partial`. See below. |
@@ -275,11 +262,13 @@ medium before the instance is restarted with it. See
 A `keyURL` root is downloaded when the configuration loads (at startup, and
 at each run of the commands above) and cached in
 `state.root/trust-cache/<root name>.pub`. If the URL cannot be fetched, the
-instance uses the cached copy, and **says nothing about it**: no log line
-records that the cached copy was used. Removing an old key from the file
-served at the URL therefore has no effect on an instance that cannot reach the
-URL at its next start. For a rotation you need to see happen, use `keyFile`
-or `key`, or check the key in use with a store verification.
+instance verifies with the cached copy and logs a `WARN` line,
+`trust root key URL unreachable: verifying with the cached copy`, with the
+URL, the error, the cache path and the copy's age (`cache_age`). Removing an
+old key from the file served at the URL therefore has no effect on an
+instance that cannot reach the URL at its next start: watch for that line.
+For a rotation you need to see happen, use `keyFile` or `key`, or check the
+key in use with a store verification.
 
 ### Where the change is visible
 
@@ -313,16 +302,14 @@ rotation is announced by the publisher, not decided by you:
 1. Add the publisher's new public key as a root, beside the old one, on every
    instance that verifies, and in the same scope as the old one if a scope
    lists it. Restart.
-2. Have recipes pin ingredient digests the publisher signed with the new key,
-   in new recipe versions.
+2. Synchronize: a publisher that re-signs an existing digest with its new key
+   needs no new recipe version, the store and the zone registry receive the
+   new signature as for recipes
+   ([above](#a-store-follows-its-sources-signatures)).
 3. Rehearse with `tobby store verify --config proposed.yaml`, then remove the
    old root.
 
-The store limit above applies to ingredients too: an ingredient the store
-already holds keeps the signatures it was first copied with, and the
-ingredient check reads that copy. A publisher that re-signs an existing
-digest with its new key does not change what the store holds. An ingredient
-inside an `allowUnsigned` scope is exempt from the requirement.
+An ingredient inside an `allowUnsigned` scope is exempt from the requirement.
 
 ## Account passwords
 
@@ -342,12 +329,16 @@ last-login time of each password sign-in.
   cannot be deleted ([`TBY-AUTH-011`](../../reference/errors/#tby-auth-011)).
   Tokens are not attached to accounts and are not affected.
 - **On the host**: `tobby user passwd <name>` and `tobby user add` write
-  `accounts.yaml` directly, and a running instance does not read it again.
-  Run them **only while the instance is stopped**. Run against a running
-  instance, the change is not seen, and the instance's next write puts its
-  own copy back. Replayed: after `tobby user passwd admin` on a running
-  instance, the new password is refused (`401`), the old one is accepted, and
-  after a restart the old one is still the one that works.
+  `accounts.yaml` directly, which a running instance would overwrite from
+  its own copy. They therefore refuse with
+  [`TBY-CFG-001`](../../reference/errors/#tby-cfg-001), and write nothing,
+  while an instance holds the state directory. The instance holds an
+  operating-system lock on `state.root/serving.json` for its lifetime,
+  whatever its TLS setup, and the lock goes with the process if it dies.
+  The message names the alternative: for `user add`, the accounts screen
+  (`/admin/accounts`) or `POST /api/v1/accounts`; for `user passwd`, stop
+  the instance and run the command, or let the account's holder change the
+  password on `/account`.
 
 ## API tokens
 
@@ -355,8 +346,10 @@ A token carries its own name and role, is shown once at creation, and is
 stored as a hash (FR-072). Rotate by overlap:
 
 1. Create the replacement on `/admin/accounts` or with
-   `POST /api/v1/tokens`. An active token's name cannot be reused, so give it
-   a new name (`ci-2026`). An `expires` value, or
+   `POST /api/v1/tokens`. An active token's name cannot be reused (`409`,
+   [`TBY-AUTH-009`](../../reference/errors/#tby-auth-009)), so give it a new
+   name (`ci-2026`). An expiry in the past is refused (`422`,
+   [`TBY-VAL-001`](../../reference/errors/#tby-val-001) on `expires`). An `expires` value, or
    `auth.tokens.defaultLifetime`, makes the next rotation happen by itself.
 2. Roll the clients onto the new secret.
 3. Revoke the old token (`POST /api/v1/tokens/{name}/revoke`). Revocation is
@@ -389,21 +382,14 @@ the end of validity ([network](../../passthrough/network/#server-tls-what-the-in
 :::note[An instance that started self-signed]
 On an instance that runs the generated fallback, the Network screen writes
 the new pair to `state.root/tls/server.crt` and `server.key` and adopts it
-at once. The configuration still names no pair, so **at the next restart the
-instance serves the generated fallback again** (replayed). After adopting a
-pair from the screen, point the configuration at it so it survives the
-restart:
-
-```yaml
-server:
-  tls:
-    certFile: /var/lib/tobby/state/tls/server.crt
-    keyFile: /var/lib/tobby/state/tls/server.key
-```
-
-From then on, the files are re-read on change like any configured pair. The
-API form of the replacement (`PUT /api/v1/network/certificate`) refuses an
-instance running the fallback.
+at once. At the next start, the instance serves that pair again as long as
+it loads and has not expired, and re-reads it on change like a configured
+one. An expired or unreadable pair is passed over: the instance falls back
+to the generated certificate, and the start log says why. The declarative
+way stays available, and is the one to prefer for a pair you manage from
+outside: point `server.tls.certFile` and `server.tls.keyFile` at the files.
+The API form of the replacement (`PUT /api/v1/network/certificate`) refuses
+an instance running the fallback.
 :::
 
 ## Registry credentials
@@ -460,14 +446,11 @@ copy to update.
 
 ## Limits
 
-- **Re-signing a stored version does not reach the stores that hold it.**
-  The rotation above works around it with new versions; a store keeps the
-  signatures it first copied, for recipes and ingredients alike.
 - **Removing a trust root withdraws nothing already delivered.** It stops
   future synchronizations, pushes and media imports; content already served
   by a passthrough instance or pushed to a zone registry stays.
-- **A `keyURL` root can silently fall back** to a cached key when its URL is
-  unreachable.
+- **A `keyURL` root falls back** to its cached key when its URL is
+  unreachable, with a `WARN` in the log, and keeps verifying with it.
 - **Key custody is the organization's.** Tobby has no revocation list and no
   key expiry. A compromised signing key stops being trusted only when its root
   is removed from every instance, and only for what is verified after that.

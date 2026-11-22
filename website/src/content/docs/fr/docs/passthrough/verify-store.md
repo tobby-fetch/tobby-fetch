@@ -58,8 +58,10 @@ le document est décrit par le schéma publié à côté du document OpenAPI.
 
 Quand une instance **sert** le store, cette forme refuse et dit quoi faire :
 elle ne voit pas le verrou de contenu de l'instance, si bien qu'une
-suppression en cours se lirait comme un défaut. Confiez le travail à
-l'instance :
+suppression en cours se lirait comme un défaut. L'instance est reconnue au
+verrou du système d'exploitation qu'elle tient sur son répertoire d'état,
+quel que soit son listener (TLS auto-signé compris) ; une instance tombée ne
+tient rien et ne bloque pas cette forme. Confiez le travail à l'instance :
 
 ```sh
 tobby store verify --instance https://tobby.example:8443 --wait

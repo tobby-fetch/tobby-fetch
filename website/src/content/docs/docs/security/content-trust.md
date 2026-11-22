@@ -55,9 +55,10 @@ touches the network (FR-033).
 add the new root alongside the old, re-sign the recipes upstream, then
 remove the old root once nothing verified by it remains in flight. There
 is no cutover instant during which verification would have to be relaxed.
-One limit decides the order: a signature added later to a recipe version a
-store already holds is not copied into that store, so the new key signs
-**new versions**. The full procedure is on
+Re-signing a published version in place is enough: the next
+synchronization copies the new signature into each store that already
+holds that digest, and the next push into the zone registry. The full
+procedure is on
 [Rotate keys and secrets](../key-rotation/#rotate-a-recipe-signing-key).
 
 ## Relaxation scopes — and their visibility

@@ -276,11 +276,10 @@ The emergency path is for delivery, not for staying. Close it properly:
    [`TBY-SIG-001`](../../reference/errors/#tby-sig-001), like any recipe
    no configured root verifies.
 3. Rotate the emergency key if it left its custody. Rotation is by
-   overlap, like any trust root: add the new root, publish what is still
-   in use as new versions signed with the new key, then remove the old
-   one. Signing an already synchronized version again does not reach the
-   stores that hold it: see
-   [Rotate keys and secrets](../../security/key-rotation/#a-store-keeps-the-signatures-of-its-first-copy).
+   overlap, like any trust root: add the new root, re-sign what is still
+   in use with the new key, let every zone synchronize, then remove the
+   old one: see
+   [Rotate keys and secrets](../../security/key-rotation/#rotate-a-recipe-signing-key).
 4. Keep the ticket reference in the recipe's annotations and the
    synchronization run in your records: the task report and the audit log
    are the evidence of who admitted what, and when.

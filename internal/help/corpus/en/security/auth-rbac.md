@@ -119,10 +119,11 @@ This is an executable proof, not a review habit — see
 
 Accounts are managed with `tobby user add | passwd | list` on the host
 (the first account is forced `admin`; `--password-stdin` for automation)
-and from `/admin/accounts` or the API. Use the command line while the
-instance is stopped: a running instance holds the accounts in memory and
-overwrites the file at its next change, so an account added or a password
-set beside it is lost (see
+and from `/admin/accounts` or the API. The command line refuses to write
+while an instance holds the state directory: a running instance holds the
+accounts in memory and overwrites the file at its next change, so
+`tobby user add` and `tobby user passwd` answer `TBY-CFG-001`, write
+nothing, and name the screen or API to use instead (see
 [Account passwords](../key-rotation/#account-passwords)). The argon2id hash is always
 computed by the tool — no surface anywhere accepts a pre-computed hash.
 Every authenticated account can change its own password, providing the

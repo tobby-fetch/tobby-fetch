@@ -170,8 +170,9 @@ l'instance a besoin :
 ```
 
 Un second fichier poussé dans le même artefact fait deux couches, et
-l'instance le refuse avec un [`TBY-SRV-001`](../../reference/errors/#tby-srv-001)
-nu, dont la cause (le nombre de couches) n'est que dans les journaux.
+l'instance le refuse avec [`TBY-VAL-001`](../../reference/errors/#tby-val-001),
+en nommant la référence et la contrainte : exactement une couche de document,
+et combien en a cet artefact.
 
 Où le mettre, c'est votre choix : n'importe où l'instance peut lire, sous
 un dépôt qui n'est pas un cookbook. Le registre de la zone amont est
