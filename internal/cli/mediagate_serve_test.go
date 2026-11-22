@@ -183,9 +183,13 @@ func startServe(t *testing.T, cfg *config.Config) string {
 	done := make(chan error, 1)
 	go func() { done <- runServe(ctx, cfg) }()
 	t.Cleanup(func() {
-		// Hang up before asking for a clean drain: a spare connection the
-		// client transport dialed would otherwise outlive the two-second
-		// grace period (see TestRunServeServesRegistry).
+		// Hang up before asking for a clean drain, so the drain usually
+		// ends at once. Not every client can be reached from here (the
+		// registry pushes go through go-containerregistry's own
+		// transport), and a spare connection one of them dialed is only
+		// counted idle by net/http after five seconds: the server then
+		// closes it when the two-second grace period expires, and the
+		// drain must still return nil (FR-093, TestDrainClosesASilentConnection).
 		http.DefaultClient.CloseIdleConnections()
 		cancel()
 		if err := <-done; err != nil {

@@ -211,7 +211,8 @@ func (s *Server) Addr() string {
 
 // Run serves until ctx is canceled, then drains gracefully: readiness flips
 // to 503 first, in-flight requests get the grace period to finish, then the
-// listener closes (FR-093). Run returns nil after a clean drain.
+// listener closes (FR-093). Run returns nil once drained: connections still
+// open when the grace period expires are closed, not waited on.
 func (s *Server) Run(ctx context.Context) error {
 	ln, err := net.Listen("tcp", s.httpSrv.Addr)
 	if err != nil {
@@ -252,8 +253,32 @@ func (s *Server) Run(ctx context.Context) error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), s.gracePeriod)
 	defer cancel()
-	if err := s.httpSrv.Shutdown(shutdownCtx); err != nil {
+	err = s.httpSrv.Shutdown(shutdownCtx)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
 		return fmt.Errorf("draining http server: %w", err)
+	}
+	// The grace period is over: what is still open is cut, and the stop
+	// is still a clean one (FR-093: exit 0 once the grace period is
+	// spent; an interrupted transfer is safe by construction, ADR-0012).
+	// Shutdown alone never closes a connection it is waiting on: without
+	// Close those connections stayed open while serve went on to release
+	// the store, and the stop was reported as a failure (a non-zero exit
+	// and an instance.stop audit event with outcome failure).
+	//
+	// Not every connection left here is a request in flight. net/http
+	// only counts a connection that has not sent its first request as
+	// idle after five seconds, and Go's transport routinely leaves such
+	// a connection behind: a spare it dialed while a request waited for
+	// a pooled one. A grace period shorter than that is enough to land
+	// here with nothing in flight at all.
+	s.logger.LogAttrs(context.Background(), slog.LevelWarn,
+		"grace period expired: closing the connections still open",
+		slog.String("grace_period", s.gracePeriod.String()))
+	if err := s.httpSrv.Close(); err != nil {
+		return fmt.Errorf("closing http server: %w", err)
 	}
 	return nil
 }
