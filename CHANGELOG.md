@@ -254,6 +254,9 @@ the complete bilingual documentation.
 
 ### Fixed
 
+- **`TBY-REG-003` names the configuration key that exists** (B-080): its
+  action said to set `registries.credentials`; the key is
+  `registries.credentialsFile`.
 - **Media waivers are audited at every operation they are applied to,
   verification included** (B-073): the Media screen's Verify step,
   `POST /api/v1/media/verify`, `tobby media verify` and `tobby media slip`
@@ -557,6 +560,15 @@ the complete bilingual documentation.
   then the same image across an air gap on one machine), a glossary, and
   a home page with a door for operators. The project site is
   `https://tobbyfetch.dev`.
+- **The error reference is generated from the catalog** (`mise run
+  errors-ref`): cause and action of every `TBY-*` code are the binary's
+  own sentences, in both languages, with an index by domain and the
+  exit-code table; every existing anchor is kept, and CI fails when a
+  page drifts from the catalog.
+- **Five advanced pages**, in English and French, replayed against real
+  instances where the page says so: upgrade and rollback, adding a zone
+  to a cascade, automating through the API and CI, the chart values with
+  sizing, and rotating keys and secrets.
 - The diagnostic bundle page says the archive holds personal data — the
   actors and client addresses of the audit records, the zone, host paths —
   to be handled as such; the backup and rebuild page states that POSIX ACLs
