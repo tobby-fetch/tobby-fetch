@@ -49,6 +49,18 @@ the complete bilingual documentation.
 - **`GET /api/v1/policy` requires the admin role**, like the
   `/admin/policy` screen it mirrors: `tobby scan exceptions --instance`
   needs an admin token.
+- **The Helm chart refuses `config.registries.credentialsFile` while
+  `registryCredentials` is enabled** (B-072), like `config.storage.root`,
+  `config.state.root` and `config.server.addr`; it used to override the
+  mounted credentials file silently. Use
+  `registryCredentials.existingSecret` or
+  `registryCredentials.dockerconfigjson`. With `registryCredentials` off
+  the key is left to the operator.
+- **A media import is refused at the door on an instance that cannot run
+  it** (B-077, B-079): without a `zone:`, or without a
+  `destination.registry`, `POST /api/v1/media/import` and the Media
+  screen's Push answer `TBY-CFG-001` before enqueuing or auditing
+  anything; they used to answer 201 with a task bound to fail.
 
 ### Added
 
@@ -227,6 +239,29 @@ the complete bilingual documentation.
 
 ### Fixed
 
+- **Media waivers are audited at every operation they are applied to,
+  verification included** (B-073): the Media screen's Verify step,
+  `POST /api/v1/media/verify`, `tobby media verify` and `tobby media slip`
+  write a `media.override` success record (actor, origin, guard), like the
+  import paths. A waived verification can open the serving gate, and it
+  used to leave no audit record. Every such record carries
+  `detail: operation=verify|import zone=… media=…`, so a Verify followed by
+  a Push under the same waiver leaves two records, one per application.
+- `tobby media import` refuses an instance with no `destination.registry`
+  before it writes its operation log onto the medium (B-079); verification
+  still needs no destination registry.
+- `tobby media verify|import --help` states that the command line checks
+  no role (audit actor `local`), lists exit code 1, and says the medium's
+  operation log is written before verification (B-078).
+- `tobby diagnostics bundle` and `tobby store verify` drive the running
+  instance when `TOBBY_INSTANCE_URL` is set, without `--instance`, as
+  `tobby scan exceptions` already did (B-074).
+- OpenAPI: `trustScope` is described as the matching declared scope,
+  verified or not (B-076); `GET /api/v1/media` and
+  `GET /api/v1/media/verification` are documented as answering 200 on an
+  instance with no zone (B-077).
+- The chart comment on `config.mode` says what the chart does: it defaults
+  to `passthrough` and refuses an empty value (B-075).
 - **An image signed by its publisher with a key the zone does not know
   blocked its whole recipe at import** (B-062). An ingredient whose own
   signature did not verify against the zone's trust roots was refused
@@ -498,6 +533,15 @@ the complete bilingual documentation.
 
 ### Documentation
 
+- **The documentation was checked statement by statement against the
+  code**, then reviewed independently: about seventy statements corrected
+  in English and French, among them how media waivers, the unsigned
+  Retriever and a stale vulnerability database really behave. The
+  newcomer path is rebuilt: two tutorials that state their prerequisites
+  and show each expected result (a first promotion into a zone registry,
+  then the same image across an air gap on one machine), a glossary, and
+  a home page with a door for operators. The project site is
+  `https://tobbyfetch.dev`.
 - The diagnostic bundle page says the archive holds personal data — the
   actors and client addresses of the audit records, the zone, host paths —
   to be handled as such; the backup and rebuild page states that POSIX ACLs

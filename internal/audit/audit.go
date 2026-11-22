@@ -18,6 +18,7 @@ package audit
 import (
 	"context"
 	"log/slog"
+	"strings"
 )
 
 // SchemaVersion is stamped on every record as "audit_schema". Bump only on
@@ -168,10 +169,15 @@ const (
 	ActionMediaImport = "media.import"
 
 	// ActionMediaOverride is an administrator waiving one FR-054 guard on
-	// a media import — the zone-identity refusal or the R-28 freshness
-	// refusal. Both requirements name the audit record explicitly, and it
-	// carries the guard as its target so the trail says WHICH barrier was
-	// lowered and not merely that one was.
+	// a media verification or a media import — the zone-identity refusal
+	// or the R-28 freshness refusal. Both requirements name the audit
+	// record explicitly, and it carries the guard as its target so the
+	// trail says WHICH barrier was lowered and not merely that one was.
+	// A success record is written each time a waiver is applied to an
+	// operation — a waived verification can open the serving gate as
+	// surely as a waived import pushes — and its detail names that
+	// operation (MediaOverrideDetail), so a Verify followed by an import
+	// under the same waiver reads as the two applications it is.
 	ActionMediaOverride = "media.override"
 
 	// ActionServerCertReplace is a replacement of the listener's own
@@ -316,4 +322,30 @@ func Log(ctx context.Context, logger *slog.Logger, e *Event) {
 			slog.String("exception_expires", e.ExceptionExpires))
 	}
 	logger.LogAttrs(ctx, slog.LevelInfo, e.Action, attrs...)
+}
+
+// The operations a media waiver is applied to, as MediaOverrideDetail
+// names them.
+const (
+	// MediaOperationVerify is a verification of the medium on its own —
+	// the screen's Verify step, POST /api/v1/media/verify, `tobby media
+	// verify`. Its verdict reaches the serving gate (FR-054).
+	MediaOperationVerify = "verify"
+	// MediaOperationImport is a media import, which re-verifies under the
+	// same waiver before it pushes anything (FR-052).
+	MediaOperationImport = "import"
+)
+
+// MediaOverrideDetail is the detail of an applied media.override record:
+// the operation the waiver was applied to, the zone this instance serves
+// and the medium's identity, space-separated key=value pairs. An empty
+// value is left out rather than written as "zone=".
+func MediaOverrideDetail(operation, zone, mediaID string) string {
+	parts := make([]string, 0, 3)
+	for _, kv := range [][2]string{{"operation", operation}, {"zone", zone}, {"media", mediaID}} {
+		if kv[1] != "" {
+			parts = append(parts, kv[0]+"="+kv[1])
+		}
+	}
+	return strings.Join(parts, " ")
 }

@@ -62,7 +62,7 @@ the table:
 | Vulnerabilities reported, not blocking | the default `scan.mode: warn`; `block` is opt-in | advisory banner, `TBY-SCN-006` on each violating item |
 | Vulnerability threshold raised, or exceptions added, by the Retriever | `spec.scanPolicy` in the Retriever, which is not signed; its threshold replaces the instance's in either direction | each item's report (`threshold_level: retriever`); the Retriever's exceptions on `/admin/policy`; `TBY-SCN-028` for an exception without expiry; no audit event |
 | Registries contacted without restriction | no `registries.allowlist` key | reported as *undeclared* |
-| Medium for another zone, or older than the last one imported | a waiver (`TBY-MED-006`, `TBY-MED-007`), per verification or import: `admin` on the screen and the API, anyone with host access on the command line | audit event when an import is requested; none when given at the Verify step (known defect) |
+| Medium for another zone, or older than the last one imported | a waiver (`TBY-MED-006`, `TBY-MED-007`), per verification or import: `admin` on the screen and the API, anyone with host access on the command line | `media.override` audit event each time a waiver is applied, at a verification as at an import |
 | A FileSet served without a login | `anonymous: true` on its `files.filesets` entry | permanent banner |
 
 The Retriever is unsigned by design: it carries the trust of the instance
@@ -159,9 +159,9 @@ The only two waivers (a medium addressed to another zone, a medium older
 than the last imported) are anti-accident guards: they are not security
 controls, because a manifest field can be forged. That is why they alone
 can be waived: by an administrator on the screen and the API, by anyone
-with access to the host on the command line. A waiver applied to an import
-is audited; a waiver given at the Verify step is not, although on the
-screen and the API it can open the serving gate (a known defect).
+with access to the host on the command line. Every waiver applied is
+audited, at the Verify step — where, on the screen and the API, a waived
+verification can open the serving gate — as at the import.
 → [Media security model](../../air-gap/media-security/), [Media workflow](../../air-gap/media-workflow/)
 
 ## 6. Trust scopes

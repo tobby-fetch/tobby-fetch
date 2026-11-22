@@ -37,6 +37,9 @@ const maxMediaRequest = 4 << 10
 // MediaVerifier is the destination-side engine as this surface needs it.
 type MediaVerifier interface {
 	Zone() string
+	// Destination is the zone registry an import pushes into; nil when
+	// destination.registry is not configured. Verification needs none.
+	Destination() *engine.Destination
 	MediaSummary() engine.MediaSummary
 	VerifyMedia(ctx context.Context, logger *slog.Logger, opts engine.MediaOptions) (*media.Report, error)
 }
@@ -129,7 +132,7 @@ func (m *mediaAPI) verification(w http.ResponseWriter, r *http.Request) {
 // re-hashes every covered file on the medium, which on a full disk is
 // minutes of I/O. A GET would invite caches and retries to repeat it.
 func (m *mediaAPI) verify(w http.ResponseWriter, r *http.Request) {
-	if m.opts.Engine == nil {
+	if m.opts.Engine == nil || m.opts.Engine.Zone() == "" {
 		m.api.Problem(w, r, notADestination())
 		return
 	}
@@ -153,6 +156,12 @@ func (m *mediaAPI) verify(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// FR-094 (B-073): a waived verification can end pushable and open the
+	// serving gate, so the waiver is recorded with the actor and the real
+	// network origin here, as on an import — after the refusals above,
+	// which apply nothing, and before the verification it lowers a guard
+	// for.
+	m.auditOverrides(r, id.Name, req, audit.MediaOperationVerify)
 	rep, verr := m.opts.Engine.VerifyMedia(r.Context(), m.api.logger, engine.MediaOptions{
 		AllowZoneMismatch: req.AllowZoneMismatch,
 		AllowStale:        req.AllowStale,
@@ -179,6 +188,21 @@ func (m *mediaAPI) importMedia(w http.ResponseWriter, r *http.Request) {
 		m.api.Problem(w, r, notADestination())
 		return
 	}
+	// B-077: an instance with no zone identity cannot run the import it
+	// would enqueue (the engine refuses it, TBY-CFG-001), so it refuses at
+	// the door — before any waiver is recorded, any task created or any
+	// media.import success written — exactly as the verification does.
+	if m.opts.Engine.Zone() == "" {
+		m.api.Problem(w, r, notADestination())
+		return
+	}
+	// B-079: likewise without destination.registry — verification needs
+	// none, the push does, and the task would only fail with this code
+	// after a 201 and a media.import success record.
+	if m.opts.Engine.Destination() == nil {
+		m.api.Problem(w, r, noDestinationRegistry())
+		return
+	}
 	req, ok := m.decodeMediaRequest(w, r)
 	if !ok {
 		return
@@ -189,22 +213,10 @@ func (m *mediaAPI) importMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var overrides []string
-	if req.AllowZoneMismatch {
-		overrides = append(overrides, tasks.OverrideZone)
-	}
-	if req.AllowStale {
-		overrides = append(overrides, tasks.OverrideFreshness)
-	}
 	// FR-094: the waiver is recorded with the actor and the real network
 	// origin BEFORE the task exists, so a queue that refuses the task
 	// still leaves the attempt in the trail.
-	for _, guard := range overrides {
-		audit.Log(r.Context(), m.api.logger, &audit.Event{
-			Actor: id.Name, Action: audit.ActionMediaOverride, Target: guard,
-			Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r),
-		})
-	}
+	overrides := m.auditOverrides(r, id.Name, req, audit.MediaOperationImport)
 
 	task, cerr := m.opts.Queue.Create(tasks.TypeMediaImport, m.opts.StorageRoot, id.Name, nil,
 		tasks.WithMediaOverrides(overrides...))
@@ -241,6 +253,33 @@ func (m *mediaAPI) authorizeOverrides(r *http.Request, id auth.Identity, req *me
 	return taxonomy.New(taxonomy.CodeRoleDenied, taxonomy.Params{"role": string(auth.RoleAdmin)})
 }
 
+// auditOverrides writes the FR-094 record of each waiver req applies to
+// operation — one media.override success per guard, with the actor, the
+// network origin, and a detail naming the operation, the zone and the
+// medium — and returns the guards it recorded, in the form a task
+// carries them. It is called once the waiver has been authorized and the
+// operation is about to run under it, never for a refused request.
+func (m *mediaAPI) auditOverrides(r *http.Request, actor string, req *mediaRequest, operation string) []string {
+	var overrides []string
+	if req.AllowZoneMismatch {
+		overrides = append(overrides, tasks.OverrideZone)
+	}
+	if req.AllowStale {
+		overrides = append(overrides, tasks.OverrideFreshness)
+	}
+	if len(overrides) == 0 {
+		return nil
+	}
+	detail := audit.MediaOverrideDetail(operation, m.opts.Engine.Zone(), m.opts.Engine.MediaSummary().MediaID)
+	for _, guard := range overrides {
+		audit.Log(r.Context(), m.api.logger, &audit.Event{
+			Actor: actor, Action: audit.ActionMediaOverride, Target: guard,
+			Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r), Detail: detail,
+		})
+	}
+	return overrides
+}
+
 // decodeMediaRequest reads the optional body. An absent one is the
 // ordinary case — no waiver — and not an error. On failure the request
 // has been answered.
@@ -267,6 +306,16 @@ func notADestination() *taxonomy.Error {
 	return taxonomy.New(taxonomy.CodeConfigInvalid, taxonomy.Params{
 		"detail": "this instance is not configured as the destination side of a physical transfer " +
 			"(FR-052): set \"zone:\" to the identity of the zone it serves",
+	})
+}
+
+// noDestinationRegistry is the answer of a destination instance asked to
+// import with nowhere to push: the same refusal the engine gives
+// (internal/engine/mediaimport.go), given at the door.
+func noDestinationRegistry() *taxonomy.Error {
+	return taxonomy.New(taxonomy.CodeConfigInvalid, taxonomy.Params{
+		"detail": "no destination registry is configured (destination.registry, FR-052): " +
+			"a medium can be verified without one, but not imported",
 	})
 }
 

@@ -88,11 +88,13 @@ func (f *mediaFlags) register(cmd *cobra.Command) {
 	// `verify` — which writes nothing and pushes nothing — it previews,
 	// so an operator can see what a waived import would do before
 	// committing to it. That is the same pair the API's two endpoints
-	// take, for the same reason (FR-061).
+	// take, for the same reason (FR-061). No role is checked here (B-078):
+	// whoever can run the binary on the host holds the medium, and the
+	// audit record names the actor "local".
 	fs.BoolVar(&f.allowZoneMismatch, "allow-zone-mismatch", false,
-		"proceed on a medium addressed to another zone (administrator override, audited)")
+		"proceed on a medium addressed to another zone (no role is checked on the command line; audited as actor \"local\")")
 	fs.BoolVar(&f.allowStale, "allow-stale", false,
-		"proceed on a medium older than the last one imported for this zone (administrator override, audited)")
+		"proceed on a medium older than the last one imported for this zone (no role is checked on the command line; audited as actor \"local\")")
 }
 
 // load builds the effective configuration for a media command and settles
@@ -143,10 +145,14 @@ whose signature verifies and whose every reachable file matches its pinned
 digest is pushable; any other is blocked whole, with no override. A
 missing or unreadable manifest, and an altered recipe graph, block the
 medium as a whole. A medium addressed to another zone, or older than the
-last one imported here, block it too — those two an administrator may
-waive on 'tobby media import'.
+last one imported here, block it too — those two can be waived with
+--allow-zone-mismatch and --allow-stale, which on 'verify' preview what a
+waived import would do. The command line checks no role: whoever can run
+this command on the host can waive, and each waiver applied is written to
+the audit log on stderr with the actor and origin "local".
 
-Exit codes: 0 every delivery is pushable, 3 refused by policy (zone
+Exit codes: 0 every delivery is pushable, 1 an operational failure (the
+store or the configuration could not be read), 3 refused by policy (zone
 identity, freshness), 4 a verification failure.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -170,19 +176,28 @@ func newMediaImportCmd() *cobra.Command {
 zone registry.
 
 The order is not a sequence of steps, it is the guarantee: nothing is
-pushed, served or written before the whole medium has been re-verified.
-What is pushed then goes through the same controls a passthrough
-promotion goes through — the registry allow-list and the recipe
-signatures, re-checked over the exact bytes about to leave — and the
-signed recipes land in the zone's own cookbook. The operation is
-journalled onto the medium itself, outside the manifest's coverage, as
-the return audit channel.
+pushed into the zone, and nothing is written to the store or to the
+freshness record, before the whole medium has been re-verified. The one
+write that precedes verification is the operation log: the operation is
+journalled onto the medium itself, under _tobby/ and outside the manifest's
+coverage, from its first line — it is the return audit channel, and
+writing it cannot invalidate the inventory being verified. What is pushed
+then goes through the same controls a passthrough promotion goes through —
+the registry allow-list and the recipe signatures, re-checked over the
+exact bytes about to leave — and the signed recipes land in the zone's own
+cookbook.
 
 Content the medium carries that no verified recipe reaches is reported and
 never pushed.
 
-Exit codes: 0 imported, 1 a push failed, 3 refused by policy, 4 a
-verification failure.`,
+--allow-zone-mismatch and --allow-stale waive the two guards for this
+import. The command line checks no role: whoever can run this command on
+the host can waive, and each waiver applied is written to the audit log —
+on stderr and in the medium's log — with the actor and origin "local".
+
+Exit codes: 0 imported, 1 an operational failure (a push failed, or the
+store, the configuration or the destination could not be used), 3 refused
+by policy, 4 a verification failure.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := flags.load(cmd)
@@ -204,6 +219,12 @@ func runMediaVerify(cmd *cobra.Command, cfg *config.Config, flags *mediaFlags) e
 	}
 	defer op.close()
 
+	// FR-094 (B-073): a waiver applied to a verification is recorded like
+	// one applied to an import, with the local actor and origin — no role
+	// is checked on this surface, host access is the control. It goes to
+	// the instance stream (stderr): `media verify` writes nothing onto the
+	// medium, not even its operation log.
+	op.auditWaivers(cmd.Context(), cfg, flags, audit.MediaOperationVerify)
 	rep, err := op.eng.VerifyMedia(cmd.Context(), op.logger, engine.MediaOptions{
 		AllowZoneMismatch: flags.allowZoneMismatch,
 		AllowStale:        flags.allowStale,
@@ -232,19 +253,7 @@ func runMediaImport(cmd *cobra.Command, cfg *config.Config, flags *mediaFlags) e
 	// before it is applied, not after it worked. On this surface the
 	// actor is the local invocation — whoever holds the host holds the
 	// medium — and the trail is written to the medium's own log too.
-	var overrides []string
-	if flags.allowZoneMismatch {
-		overrides = append(overrides, tasks.OverrideZone)
-	}
-	if flags.allowStale {
-		overrides = append(overrides, tasks.OverrideFreshness)
-	}
-	for _, guard := range overrides {
-		audit.Log(cmd.Context(), op.logger, &audit.Event{
-			Actor: audit.ActorLocal, Action: audit.ActionMediaOverride,
-			Target: guard, Outcome: audit.OutcomeSuccess, Origin: audit.OriginLocal,
-		})
-	}
+	overrides := op.auditWaivers(cmd.Context(), cfg, flags, audit.MediaOperationImport)
 	audit.Log(cmd.Context(), op.logger, &audit.Event{
 		Actor: audit.ActorLocal, Action: audit.ActionMediaImport,
 		Target: cfg.Storage.Root, Outcome: audit.OutcomeSuccess, Origin: audit.OriginLocal,
@@ -336,6 +345,14 @@ func openMedia(ctx context.Context, cfg *config.Config, stderr io.Writer, intent
 		return nil, taxonomy.New(taxonomy.CodeMediaManifestMissing, taxonomy.Params{
 			"path": media.ManifestPath,
 		}).WithCause(err)
+	}
+
+	// B-079: an import with nowhere to push is refused before anything is
+	// opened — in particular before the medium's operation log, the one
+	// write an import makes ahead of verification. Verifying needs no
+	// destination; only the import is refused.
+	if intent == importMedium && !cfg.Destination.Configured() {
+		return nil, noMediaDestination()
 	}
 
 	level, err := logging.ParseLevel(cfg.Logging.Level)
@@ -442,15 +459,21 @@ func openMedia(ctx context.Context, cfg *config.Config, stderr io.Writer, intent
 		}
 		if dest == nil {
 			op.close()
-			return nil, taxonomy.New(taxonomy.CodeConfigInvalid, taxonomy.Params{
-				"detail": "no destination registry is configured (destination.registry, FR-052): " +
-					"`tobby media verify` needs none, importing does",
-			})
+			return nil, noMediaDestination()
 		}
 		eng.SetDestination(dest)
 	}
 	op.eng = eng
 	return op, nil
+}
+
+// noMediaDestination is the refusal of an import with no destination
+// registry configured.
+func noMediaDestination() *taxonomy.Error {
+	return taxonomy.New(taxonomy.CodeConfigInvalid, taxonomy.Params{
+		"detail": "no destination registry is configured (destination.registry, FR-052): " +
+			"`tobby media verify` needs none, importing does",
+	})
 }
 
 // flush forces the medium's log to stable storage (FR-056).
@@ -475,6 +498,32 @@ func (o *mediaOp) close() {
 	if o.mlog != nil {
 		_ = o.mlog.Close()
 	}
+}
+
+// auditWaivers writes one media.override success record per waiver the
+// flags apply to operation, with the local actor and origin, and returns
+// the guards in the form a task carries them — the same records the API
+// and the screen write (internal/api/media.go), with the detail naming
+// the operation, the zone and the medium.
+func (o *mediaOp) auditWaivers(ctx context.Context, cfg *config.Config, flags *mediaFlags, operation string) []string {
+	var overrides []string
+	if flags.allowZoneMismatch {
+		overrides = append(overrides, tasks.OverrideZone)
+	}
+	if flags.allowStale {
+		overrides = append(overrides, tasks.OverrideFreshness)
+	}
+	if len(overrides) == 0 {
+		return nil
+	}
+	detail := audit.MediaOverrideDetail(operation, cfg.Zone, o.st.MediaID())
+	for _, guard := range overrides {
+		audit.Log(ctx, o.logger, &audit.Event{
+			Actor: audit.ActorLocal, Action: audit.ActionMediaOverride,
+			Target: guard, Outcome: audit.OutcomeSuccess, Origin: audit.OriginLocal, Detail: detail,
+		})
+	}
+	return overrides
 }
 
 // writeReport renders a verification report.

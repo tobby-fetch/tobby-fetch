@@ -29,7 +29,7 @@ et
 :::tip[En bref]
 - Cinq étapes, dans cet ordre : préparer (mode miroir, Retriever de la zone, racines de confiance), pré-vol (`tobby sync --dry-run`, qui refuse les transferts impossibles), exporter (un `tobby sync --wait` déclenché à la main, manifeste écrit en dernier), transporter (hors de Tobby), importer. [Les étapes](#les-cinq-étapes)
 - Côté isolé, `tobby media verify` puis `tobby media import` vérifient le support entier avant tout push ; la sortie `0` signifie le succès. [Importer](#5--importer)
-- Seuls deux refus peuvent être levés : par un `admin` sur l'écran et l'API, par quiconque a accès à l'hôte en ligne de commande. Une dérogation donnée à l'étape Vérifier n'est pas auditée ; les échecs d'intégrité et de signature n'ont aucun contournement. [L'écran Média](#lécran-média)
+- Seuls deux refus peuvent être levés : par un `admin` sur l'écran et l'API, par quiconque a accès à l'hôte en ligne de commande. Toute dérogation appliquée est auditée, à l'étape Vérifier comme à l'import ; les échecs d'intégrité et de signature n'ont aucun contournement. [L'écran Média](#lécran-média)
 :::
 
 ## Deux instances, un répertoire
@@ -243,9 +243,10 @@ l'enchaînement guidé :
 
 Un désaccord de zone et un support plus ancien que le dernier importé ici sont
 les deux seuls refus qu'un administrateur peut lever sur l'écran. Elles se
-cochent à l'étape Vérifier et sont reportées sur Pousser : la dérogation est
-auditée au clic sur Pousser, pas quand la vérification avec dérogation ouvre
-le verrou de service (un défaut connu). Les verdicts d'intégrité et de signature
+cochent à l'étape Vérifier et sont reportées sur Pousser, et la dérogation est
+auditée à chaque application : une fois au lancement de la vérification avec
+dérogation — elle peut ouvrir le verrou de service —, une fois encore au clic
+sur Pousser. Les verdicts d'intégrité et de signature
 n'admettent aucune dérogation, pour personne. Pas à pas :
 [importer côté zone isolée](../../air-gap/import-destination/).
 

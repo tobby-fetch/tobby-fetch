@@ -149,11 +149,11 @@ Blocking is equally fixed:
   here, block everything and are the **only two** that may be waived. On
   the screen and the API a waiver needs the `admin` role; on the command
   line there is no role check, and whoever can run `tobby media` on the
-  host can waive. A waiver applied when an import is requested is written
-  to the [audit log](../../security/audit-log/) (actor and origin on the
-  screen and the API, actor `local` on the command line). A waiver given at
-  the Verify step is **not audited**, although on the screen and the API it
-  can open the serving gate: a known defect, see
+  host can waive. Every waiver applied is written to the
+  [audit log](../../security/audit-log/) (actor and origin on the screen
+  and the API, actor and origin `local` on the command line), at the
+  Verify step — where a waived verification can open the serving gate —
+  as at the import, one record per application: see
   [import on the isolated side](../../air-gap/import-destination/#four-refusals-stay-medium-wide).
 
 The two waivable refusals are anti-accident guards over an *unsigned* claim,
@@ -233,8 +233,8 @@ inspection station. Tobby assumes this step rather than fighting it:
 - Integrity is checked file by file before anything is pushed or served.
 - Exactly two refusals can be waived, both over unsigned claims: by an
   `admin` on the screen and the API, by anyone with access to the host on
-  the command line. A waiver is audited when an import is requested, not
-  when it is given at the Verify step. Integrity and signature failures
+  the command line. Every waiver applied is audited, at the Verify step as
+  at the import. Integrity and signature failures
   have no override for anyone.
 - Nothing was served off the medium before it was verified — the registry
   and the file surfaces stay closed until then, and no setting reopens

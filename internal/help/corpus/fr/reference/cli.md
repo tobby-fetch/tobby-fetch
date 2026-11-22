@@ -407,7 +407,7 @@ entièrement, sans levée possible, et ses voisines sur le même support ne sont
 pas touchées. Un manifeste absent ou illisible et un graphe de recipes altéré
 bloquent le support dans son ensemble, sans levée possible ; un support adressé
 à une autre zone ou plus ancien que le dernier importé ici le bloquent aussi,
-et ces deux-là peuvent être levés avec les options ci-dessous. La ligne de commande ne contrôle aucun rôle : quiconque peut lancer `tobby media` sur l'hôte peut les lever.
+et ces deux-là peuvent être levés avec les options ci-dessous. La ligne de commande ne contrôle aucun rôle : quiconque peut lancer `tobby media` sur l'hôte peut les lever. Chaque levée appliquée est écrite au [journal d'audit](../../security/audit-log/) sur stderr, en enregistrement `media.override` avec l'acteur et l'origine `local` et le détail `operation=verify`.
 
 | Option | Rôle |
 |---|---|
@@ -421,8 +421,10 @@ tobby media verify --storage-root /mnt/usb --zone production
 tobby media verify --storage-root /mnt/usb --zone production --output json | jq .verdict
 ```
 
-Codes de sortie : `0` chaque livraison est poussable, `3` refusé par la
-politique (identité de zone, fraîcheur), `4` un échec de vérification.
+Codes de sortie : `0` chaque livraison est poussable, `1` un échec
+opérationnel (la configuration ou le store n'a pas pu être utilisé), `3`
+refusé par la politique (identité de zone, fraîcheur), `4` un échec de
+vérification.
 
 ### tobby media slip
 
@@ -468,8 +470,10 @@ tobby media import [flags]
 
 Vérifie un store transporté et pousse ce que la vérification a validé vers la
 registry de la zone (SRS FR-052). L'ordre n'est pas une suite d'étapes, c'est
-la garantie : rien n'est poussé, servi ou écrit avant que le support entier ait
-été re-vérifié.
+la garantie : rien n'est poussé ni servi, et rien n'est écrit dans le store ni
+dans l'enregistrement de fraîcheur, avant que le support entier ait été
+re-vérifié. La seule écriture qui précède est le journal d'opérations décrit
+plus bas.
 
 Ce qui traverse passe ensuite par les mêmes contrôles qu'une promotion
 passthrough — la liste blanche de registries et les signatures des recipes,
@@ -479,15 +483,20 @@ re-vérifiées sur les octets exacts sur le point de partir — seul ce qui manq
 recipe vérifiée n'atteint est rapporté et jamais poussé.
 
 L'opération se journalise sur le support, sous `_tobby/logs/`, hors de la
-couverture du manifeste : le canal d'audit de retour du transfert. Un import
+couverture du manifeste, dès sa première ligne — avant la vérification : le
+canal d'audit de retour du transfert, qui ne peut pas invalider l'inventaire
+en cours de vérification. Un import
 terminé fait avancer l'enregistrement de fraîcheur par zone, ce qui fait que
 ré-importer le support du mois dernier est un refus plutôt qu'un retour en
 arrière silencieux.
 
 Elle prend les mêmes options que `media verify`, plus un `destination.registry`
-configuré — vérifier n'en demande aucun, importer ne peut pas avancer sans. Lever
-un garde-fou est un acte d'administrateur et est consigné dans le journal
-d'audit.
+configuré — vérifier n'en demande aucun, importer ne peut pas avancer sans. La
+ligne de commande ne contrôle aucun rôle : quiconque peut la lancer sur l'hôte
+peut lever un garde-fou, et chaque levée appliquée est consignée au journal
+d'audit — sur stderr et dans le journal du support — en enregistrement
+`media.override` avec l'acteur et l'origine `local` et le détail
+`operation=import`.
 
 Elle ne porte pas de `--wait` : la tâche s'exécute dans ce processus, la
 commande est donc déjà bloquante. Sous `--output json`, son rapport est la
@@ -497,8 +506,9 @@ tâche elle-même, dans la forme que sert `GET /api/v1/tasks/{id}`.
 tobby media import --config /etc/tobby/config.yaml
 ```
 
-Codes de sortie : `0` importé, `1` un push a échoué, `3` refusé par la
-politique, `4` un échec de vérification.
+Codes de sortie : `0` importé, `1` un échec opérationnel (un push a échoué,
+ou la configuration, le store ou la destination n'a pas pu être utilisé), `3`
+refusé par la politique, `4` un échec de vérification.
 
 ### tobby store verify
 
@@ -525,8 +535,10 @@ concerné ; le contenu orphelin est une note et ne fait jamais passer le verdict
 à `defects`. Elle refuse un répertoire qui n'est pas déjà un store Tobby plutôt
 que de l'estampiller.
 
-Sans `--instance`, elle s'exécute dans ce processus, contre le répertoire, et
-fonctionne sur un hôte où aucune instance ne tourne. Les trust roots viennent
+Sans `--instance`, et `TOBBY_INSTANCE_URL` non défini, elle s'exécute dans ce
+processus, contre le répertoire, et fonctionne sur un hôte où aucune instance
+ne tourne. `TOBBY_INSTANCE_URL` seul, sans l'option, sélectionne la forme
+distante ci-dessous. Les trust roots viennent
 de la configuration (`trust.roots`, `trust.scopes`), jamais du store. Quand une
 instance sert *effectivement* le store, cette forme **refuse** — elle ne voit
 pas le verrou de contenu de l'instance — et nomme `--instance` : la vérification
@@ -539,7 +551,7 @@ sur une voie à part qui ne retarde jamais une synchronisation. Voir
 | `--storage-root` | Le store à vérifier. Requis — par l'option, `TOBBY_STORAGE_ROOT`, ou `storage.root:` dans le fichier de configuration. |
 | `--output text\|json` | `json` émet le rapport lui-même sur stdout, le même document que sert `GET /api/v1/store/verification` sous `verification`. Avec `--instance` et sans `--wait`, la tâche que l'instance a créée. |
 | `--instance` | URL de base de l'instance en marche à piloter (défaut `TOBBY_INSTANCE_URL`, puis l'adresse d'écoute configurée) ; token pris dans `TOBBY_API_TOKEN` ou `--token-file`, envoyé en `http://` uniquement vers cet hôte sauf `--allow-plaintext-token`. |
-| `--wait`, `--wait-timeout` | Avec `--instance` : suit la tâche jusqu'à sa fin, affiche le rapport, et sort sur son résultat. |
+| `--wait`, `--wait-timeout` | Avec `--instance` (ou `TOBBY_INSTANCE_URL`) : suit la tâche jusqu'à sa fin, affiche le rapport, et sort sur son résultat. |
 
 Il n'y a ni planification ni option de réparation : la v1 vérifie à la demande
 et rapporte.
@@ -574,14 +586,13 @@ nomme le fichier. Tobby n'envoie l'archive nulle part. Le nom par défaut est
 existant n'est jamais écrasé, et l'archive est écrite lisible par son seul
 propriétaire.
 
-Sans `--instance`, l'archive est assemblée sur l'hôte à partir de la
-configuration, du store et du répertoire d'état ; la fenêtre de journal et les
-métriques appartiennent à un processus en marche et figurent au manifeste comme
-écartées, avec la raison. Avec `--instance`, l'archive
-est demandée à l'instance en marche, avec le jeton de l'administrateur pris dans
-`TOBBY_API_TOKEN` ou `--token-file`, et les inclut. `TOBBY_INSTANCE_URL` seule
-ne choisit pas cette forme : elle ne fournit l'URL qu'une fois l'option donnée.
-La demande est auditée dans les deux cas. Codes de sortie : `0` écrite, `3` refusée (contrôle d'expurgation,
+Sans `--instance`, et `TOBBY_INSTANCE_URL` non défini, l'archive est
+assemblée sur l'hôte à partir de la configuration, du store et du répertoire
+d'état ; la fenêtre de journal et les métriques appartiennent à un processus en
+marche et figurent au manifeste comme écartées, avec la raison. Avec
+`--instance`, ou avec `TOBBY_INSTANCE_URL` défini, l'archive est demandée à
+l'instance en marche, avec le jeton de l'administrateur pris dans
+`TOBBY_API_TOKEN` ou `--token-file`, et les inclut. La demande est auditée dans les deux cas. Codes de sortie : `0` écrite, `3` refusée (contrôle d'expurgation,
 ou rôle), `1` échec. Voir
 [Collecter un bundle de diagnostic](../../passthrough/diagnostics/).
 

@@ -45,8 +45,10 @@ schéma :
   ils sont fournis par le client.
 
 Des champs facultatifs s'y ajoutent quand ils s'appliquent : `actor_name`,
-le nom lisible d'une identité fédérée ; `setting`, la clé de configuration
-qui a décidé de l'issue d'un événement `hardening.refused` ; et `exception`,
+le nom lisible d'une identité fédérée ; `detail`, un contexte libre qui
+n'est pas la cible (l'écart d'un événement `clock.implausible`, l'opération,
+la zone et le support d'une dérogation `media.override`) ; `setting`, la clé
+de configuration qui a décidé de l'issue d'un événement `hardening.refused` ; et `exception`,
 `exception_source` et `exception_expires`, l'exception d'analyse dont parle
 un événement `scan.exception_expired`.
 
@@ -68,7 +70,7 @@ même discipline de compatibilité que l'API REST
 | `import.create`, `sync.create`, `recipe.publish`, `content.delete` | actions qui touchent au contenu, avec leur acteur | v0.4.x |
 | `config.promotion_interval`, `config.server_certificate` | modifications sensibles de la configuration d'une instance en cours d'exécution (FR-013, FR-082) | v0.4.x |
 | `media.import` | un support transporté poussé dans la zone (FR-052) | v0.5.x |
-| `media.override` | l'une des deux gardes de média dont on peut s'affranchir : une tentative refusée faute du rôle `admin`, ou une dérogation appliquée à la demande d'un import (FR-054). Une dérogation donnée à l'étape Vérifier n'écrit aucun enregistrement (voir plus bas) | v0.5.x |
+| `media.override` | l'une des deux gardes de média dont on peut s'affranchir (FR-054) : une tentative refusée faute du rôle `admin` (issue `denied`), ou une dérogation appliquée (issue `success`) — à une vérification comme à un import, un enregistrement par garde et par application. La cible est la garde (`zone` ou `freshness`) ; le détail nomme l'opération, la zone et le support (`operation=verify` ou `operation=import`, `zone=…`, `media=…`) | v0.5.x |
 | `store.reset` | la réinitialisation confirmée du store, y compris une confirmation refusée (FR-046) | v0.5.x |
 | `layout.export`, `layout.import` | un layout d'image OCI qui quitte ou entre dans le store (FR-051) | v0.5.x |
 | `fileset.pack` | un répertoire de l'hôte empaqueté dans le store comme FileSet (FR-048) | v0.5.x |
@@ -88,19 +90,24 @@ Les événements de média ont rejoint le catalogue avec la v0.5.0 : les deux
 dérogations d'un import de média — un support adressé à une autre zone et un
 support plus ancien que le dernier importé ici — et la réinitialisation
 confirmée du store (FR-046). Sur l'écran et l'API, une tentative refusée et
-une dérogation appliquée à un import sont consignées avec l'acteur et
-l'origine réseau. En ligne de commande, `tobby media import` consigne la
-dérogation avec l'acteur et l'origine `local` : il n'y a pas de contrôle de
-rôle à cet endroit, l'accès à l'hôte est le contrôle.
+une dérogation appliquée sont consignées avec l'acteur et l'origine réseau.
+En ligne de commande, `tobby media verify`, `tobby media slip` et
+`tobby media import` consignent la dérogation avec l'acteur et l'origine
+`local` : il n'y a pas de contrôle de rôle à cet endroit, l'accès à l'hôte
+est le contrôle.
 
-**Limite actuelle.** Une dérogation donnée à l'étape Vérifier — l'étape
-Vérifier de l'écran, `POST /api/v1/media/verify`, `tobby media verify` —
-n'écrit aucun enregistrement d'audit, seulement une ligne `WARN` du journal
-de l'instance (stderr pour `tobby media verify`), sans acteur ni origine.
-Sur l'écran et l'API, une telle
-vérification avec dérogation peut ouvrir le verrou de service. C'est un
-défaut connu ; tant qu'il n'est pas corrigé, la piste d'audit ne montre pas
-toutes les dérogations qui ont ouvert le verrou.
+Une dérogation est consignée chaque fois qu'elle est appliquée, **à l'étape
+Vérifier comme à l'import** — l'étape Vérifier de l'écran,
+`POST /api/v1/media/verify`, `tobby media verify` avec `operation=verify` ;
+Pousser, `POST /api/v1/media/import`, `tobby media import` avec
+`operation=import`. Une vérification avec dérogation peut ouvrir le verrou
+de service, et son enregistrement est écrit au lancement de la vérification,
+avant tout verdict. Sur l'écran, où la dérogation se coche à l'étape
+Vérifier et est reportée sur Pousser, un import avec dérogation laisse donc
+deux enregistrements `media.override` : la vérification qui a pu ouvrir le
+verrou, puis l'import qui a poussé. Ce sont deux applications, distinguées
+par leur détail, pas un doublon. `tobby media verify` n'écrit rien sur le
+support : son enregistrement va sur stderr seulement.
 
 ## Durabilité — et la piste qui traverse l'air gap
 

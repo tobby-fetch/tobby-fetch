@@ -213,9 +213,10 @@ type RecipeRecord struct {
 	Zone        string    `json:"zone,omitempty"`
 	ResolvedAt  time.Time `json:"resolvedAt"`
 	Verified    bool      `json:"verified"`
-	// TrustScope names the declared relaxed scope that admitted the recipe
-	// when Verified is false (never empty in that case — FR-033: no
-	// undeclared bypass exists).
+	// TrustScope names the declared trust scope that matched the recipe,
+	// verified or not (B-076: a scope may pin its own roots as well as
+	// admit unsigned recipes); empty under the strict default. Never empty
+	// when Verified is false — FR-033: no undeclared bypass exists.
 	TrustScope string `json:"trustScope,omitempty"`
 	// Assurance is the reduced-assurance marker of a recipe admitted under
 	// a relaxed scope (FR-037, R-22): the same fact as Verified=false with

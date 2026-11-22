@@ -41,16 +41,21 @@ A source-side instance reads its zone from the Retriever it resolves and
 sets nothing here. A destination has no Retriever — its content arrives on a
 medium — and without `zone:` it cannot tell whether a medium is addressed to
 it at all. Without it, `tobby media verify`, `tobby media import`, the
-screen's Verify and Push buttons and `POST /api/v1/media/verify` refuse,
-naming the setting ([`TBY-CFG-001`](../../reference/errors/#tby-cfg-001)).
-`POST /api/v1/media/import` accepts the request and answers `201`; the task
-it creates then fails with that code. `GET /api/v1/media` answers `200`
-with an empty `zone`, and `GET /api/v1/media/verification` answers `200`
-with no verification session.
+screen's Verify and Push buttons, `POST /api/v1/media/verify` and
+`POST /api/v1/media/import` refuse, naming the setting
+([`TBY-CFG-001`](../../reference/errors/#tby-cfg-001)): nothing is
+enqueued and nothing is audited. The two reads report what the instance
+knows: `GET /api/v1/media` answers `200` with an empty `zone`, and
+`GET /api/v1/media/verification` answers `200` with an unguarded gate
+(`guarded: false`) and no verification session.
 
 Verifying needs nothing else. **Importing additionally needs
 `destination.registry`**: verification reads, the push writes, and the push
-has to have somewhere to go.
+has to have somewhere to go. Without it, verification works on every
+surface, while `tobby media import`, the screen's Push button and
+`POST /api/v1/media/import` refuse with
+[`TBY-CFG-001`](../../reference/errors/#tby-cfg-001) naming the setting,
+before anything is enqueued, audited or written to the medium.
 
 ## The Media screen
 
@@ -155,26 +160,31 @@ Who may waive, and what is recorded, depends on the surface:
 
 - **Screen and API.** A waiver needs the `admin` role. A refused attempt by a
   lesser role is written to the [audit log](../../security/audit-log/)
-  (`media.override`, outcome `denied`). A waiver applied **when an import is
-  requested** is written too, with the actor and the origin
-  (`media.override`, then `media.import`).
+  (`media.override`, outcome `denied`).
 - **Command line.** There is no role check. Whoever can run `tobby media` on
-  the host, against the store, can waive. On `tobby media import` the waiver
-  is recorded with the actor `local`. Access to the host is the control.
-- **At the Verify step, no audit record.** A waiver ticked on the screen's
-  Verify step, sent to `POST /api/v1/media/verify`, or passed to
-  `tobby media verify` is applied without any audit record. The only trace
-  is a `WARN` line in the instance log (stderr for `tobby media verify`),
-  without actor or origin. On the screen and the API this matters: a waived
-  verification can reach a `pushable` verdict and open the [serving
-  gate](#an-unverified-medium-serves-nothing), so an administrator can make
-  the instance serve a medium addressed to another zone, or an older one,
-  with no `media.override` record. This is a known defect. On the screen
-  there is no audited path: the waiver can only be ticked at the Verify
-  step, which opens the gate unaudited; it is recorded only if Push is then
-  clicked. Until it is fixed, waive through `POST /api/v1/media/import` (or
-  `tobby media import`) directly, without a waived verification, where the
-  waiver is audited before anything is served.
+  the host, against the store, can waive. The waiver is recorded with the
+  actor and origin `local`. Access to the host is the control.
+- **Every waiver applied is audited, Verify included.** Each time a waiver
+  is applied to an operation, one `media.override` record per guard is
+  written, outcome `success`, with the actor, the origin, the guard
+  (`zone` or `freshness`) as target, and a detail naming the operation,
+  the zone and the medium (`operation=verify zone=… media=…`). That holds
+  for the screen's Verify step, `POST /api/v1/media/verify`,
+  `tobby media verify` and `tobby media slip` (`operation=verify`) as for
+  Push, `POST /api/v1/media/import` and `tobby media import`
+  (`operation=import`, followed by `media.import`). It matters at the
+  Verify step: a waived verification can reach a `pushable` verdict and
+  open the [serving gate](#an-unverified-medium-serves-nothing), and the
+  record is written as the verification starts, before any verdict.
+- **Verify then Push: two records.** On the screen the waiver is ticked
+  at the Verify step and carried to Push. The trail then holds two
+  `media.override` records, one per operation the waiver was applied to —
+  the verification that may have opened the gate, then the import that
+  pushed — told apart by their `operation=` detail. They are two
+  applications, not a duplicate. On the command line,
+  `tobby media verify` writes its record to stderr only, since it writes
+  nothing to the medium; `tobby media import` writes it to stderr and to
+  the medium's log.
 
 **No role waives an integrity or a signature verdict.** There is no flag, no
 confirmation dialog and no configuration key for it, for anyone,

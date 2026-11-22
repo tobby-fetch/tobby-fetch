@@ -93,3 +93,17 @@ func TestOptionalFieldsOnlyWhenSet(t *testing.T) {
 		t.Error("detail emitted while unset")
 	}
 }
+
+// TestMediaOverrideDetail: the detail of an applied media waiver names the
+// operation, the zone and the medium, and leaves out what is unknown
+// rather than writing an empty value (B-073).
+func TestMediaOverrideDetail(t *testing.T) {
+	for _, c := range []struct{ op, zone, id, want string }{
+		{MediaOperationVerify, "zone-alpha", "20260826T000000Z-abcdef", "operation=verify zone=zone-alpha media=20260826T000000Z-abcdef"},
+		{MediaOperationImport, "zone-alpha", "", "operation=import zone=zone-alpha"},
+	} {
+		if got := MediaOverrideDetail(c.op, c.zone, c.id); got != c.want {
+			t.Errorf("MediaOverrideDetail(%q, %q, %q) = %q, want %q", c.op, c.zone, c.id, got, c.want)
+		}
+	}
+}

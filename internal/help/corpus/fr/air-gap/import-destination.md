@@ -42,16 +42,21 @@ Une instance côté source lit sa zone dans le Retriever qu'elle résout et ne
 pose rien ici. Une destination n'a pas de Retriever — son contenu arrive sur
 un support — et sans `zone:` elle ne peut pas savoir si un support lui est
 adressé. Sans elle, `tobby media verify`, `tobby media import`, les boutons
-Vérifier et Pousser de l'écran et `POST /api/v1/media/verify` refusent, en
-nommant le réglage ([`TBY-CFG-001`](../../reference/errors/#tby-cfg-001)).
-`POST /api/v1/media/import` accepte la demande et répond `201` ; la tâche
-créée échoue ensuite avec ce code. `GET /api/v1/media` répond `200` avec
-une `zone` vide, et `GET /api/v1/media/verification` répond `200` sans
-session de vérification.
+Vérifier et Pousser de l'écran, `POST /api/v1/media/verify` et
+`POST /api/v1/media/import` refusent, en nommant le réglage
+([`TBY-CFG-001`](../../reference/errors/#tby-cfg-001)) : rien n'est mis en
+file et rien n'est audité. Les deux lectures disent ce que l'instance sait :
+`GET /api/v1/media` répond `200` avec une `zone` vide, et
+`GET /api/v1/media/verification` répond `200` avec un verrou inactif
+(`guarded: false`) et sans session de vérification.
 
 Vérifier ne demande rien d'autre. **Importer exige en plus
 `destination.registry`** : la vérification lit, le push écrit, et le push
-doit avoir où aller.
+doit avoir où aller. Sans lui, la vérification fonctionne sur toutes les
+surfaces, tandis que `tobby media import`, le bouton Pousser de l'écran et
+`POST /api/v1/media/import` refusent avec
+[`TBY-CFG-001`](../../reference/errors/#tby-cfg-001) en nommant le réglage,
+avant que rien ne soit mis en file, audité ou écrit sur le support.
 
 ## L'écran Média
 
@@ -162,27 +167,34 @@ Qui peut lever, et ce qui est consigné, dépend de la surface :
 - **Écran et API.** Une dérogation exige le rôle `admin`. Une tentative
   refusée à un rôle inférieur est écrite au
   [journal d'audit](../../security/audit-log/) (`media.override`, résultat
-  `denied`). Une dérogation appliquée **à la demande d'un import** l'est
-  aussi, avec l'acteur et l'origine (`media.override`, puis `media.import`).
+  `denied`).
 - **Ligne de commande.** Aucun contrôle de rôle. Quiconque peut lancer
-  `tobby media` sur l'hôte, contre le store, peut lever. Sur
-  `tobby media import`, la dérogation est consignée avec l'acteur `local`.
-  L'accès à l'hôte est le contrôle.
-- **À l'étape Vérifier, aucun enregistrement d'audit.** Une dérogation cochée
-  à l'étape Vérifier de l'écran, envoyée à `POST /api/v1/media/verify` ou
-  passée à `tobby media verify` est appliquée sans enregistrement d'audit. La
-  seule trace est une ligne `WARN` du journal de l'instance (stderr pour
-  `tobby media verify`), sans acteur ni origine. Sur l'écran et l'API, cela compte : une vérification avec
-  dérogation peut aboutir à un verdict `pushable` et ouvrir le [verrou de
-  service](#un-support-non-vérifié-ne-sert-rien), si bien qu'un
-  administrateur peut faire servir par l'instance un support adressé à une
-  autre zone, ou plus ancien, sans enregistrement `media.override`. C'est un
-  défaut connu. Sur l'écran, aucun chemin n'est audité : la dérogation ne se
-  coche qu'à l'étape Vérifier, qui ouvre le verrou sans audit ; elle n'est
-  consignée que si l'on clique ensuite sur Pousser. En attendant sa
-  correction, levez par `POST /api/v1/media/import` (ou `tobby media import`)
-  directement, sans vérification avec dérogation : la dérogation y est
-  auditée avant que quoi que ce soit soit servi.
+  `tobby media` sur l'hôte, contre le store, peut lever. La dérogation est
+  consignée avec l'acteur et l'origine `local`. L'accès à l'hôte est le
+  contrôle.
+- **Toute dérogation appliquée est auditée, Vérifier compris.** Chaque fois
+  qu'une dérogation est appliquée à une opération, un enregistrement
+  `media.override` par garde est écrit, résultat `success`, avec l'acteur,
+  l'origine, la garde (`zone` ou `freshness`) pour cible, et un détail qui
+  nomme l'opération, la zone et le support
+  (`operation=verify zone=… media=…`). C'est vrai pour l'étape Vérifier de
+  l'écran, `POST /api/v1/media/verify`, `tobby media verify` et
+  `tobby media slip` (`operation=verify`) comme pour Pousser,
+  `POST /api/v1/media/import` et `tobby media import` (`operation=import`,
+  suivi de `media.import`). Cela compte à l'étape Vérifier : une
+  vérification avec dérogation peut aboutir à un verdict `pushable` et
+  ouvrir le [verrou de service](#un-support-non-vérifié-ne-sert-rien), et
+  l'enregistrement est écrit au lancement de la vérification, avant tout
+  verdict.
+- **Vérifier puis Pousser : deux enregistrements.** Sur l'écran, la
+  dérogation se coche à l'étape Vérifier et est reportée sur Pousser. La
+  piste porte alors deux enregistrements `media.override`, un par opération
+  à laquelle la dérogation a été appliquée — la vérification qui a pu ouvrir
+  le verrou, puis l'import qui a poussé —, distingués par leur détail
+  `operation=`. Ce sont deux applications, pas un doublon. En ligne de
+  commande, `tobby media verify` écrit son enregistrement sur stderr
+  seulement, puisqu'il n'écrit rien sur le support ; `tobby media import`
+  l'écrit sur stderr et dans le journal du support.
 
 **Aucun rôle ne lève un verdict d'intégrité ou de signature.** Il n'existe
 ni drapeau, ni boîte de confirmation, ni clé de configuration pour cela,

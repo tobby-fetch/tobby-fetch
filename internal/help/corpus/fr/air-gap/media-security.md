@@ -160,12 +160,12 @@ Le blocage est tout aussi fixe :
   dernier importé ici, bloquent tout et sont les **deux seuls** que l'on
   peut lever. Sur l'écran et l'API, une dérogation exige le rôle `admin` ;
   en ligne de commande il n'y a aucun contrôle de rôle, et quiconque peut
-  lancer `tobby media` sur l'hôte peut lever. Une dérogation appliquée à la
-  demande d'un import est écrite au
-  [journal d'audit](../../security/audit-log/) (acteur et origine sur
-  l'écran et l'API, acteur `local` en ligne de commande). Une dérogation
-  donnée à l'étape Vérifier n'est **pas auditée**, alors que sur l'écran et
-  l'API elle peut ouvrir le verrou de service : un défaut connu, voir
+  lancer `tobby media` sur l'hôte peut lever. Toute dérogation appliquée est
+  écrite au [journal d'audit](../../security/audit-log/) (acteur et origine
+  sur l'écran et l'API, acteur et origine `local` en ligne de commande), à
+  l'étape Vérifier — où une vérification avec dérogation peut ouvrir le
+  verrou de service — comme à l'import, un enregistrement par application :
+  voir
   [importer côté zone isolée](../../air-gap/import-destination/#quatre-refus-restent-globaux).
 
 Les deux refus levables sont des gardes anti-accident sur une affirmation
@@ -254,8 +254,8 @@ lieu de la combattre :
 - L'intégrité est contrôlée fichier par fichier avant tout push ou service.
 - Exactement deux refus peuvent être levés, tous deux sur des affirmations
   non signées : par un `admin` sur l'écran et l'API, par quiconque a accès
-  à l'hôte en ligne de commande. Une dérogation est auditée à la demande
-  d'un import, pas quand elle est donnée à l'étape Vérifier. Les échecs
+  à l'hôte en ligne de commande. Toute dérogation appliquée est auditée, à
+  l'étape Vérifier comme à l'import. Les échecs
   d'intégrité et de signature n'admettent aucune dérogation, pour personne.
 - Rien n'a été servi depuis le support avant sa vérification — la registry
   et la surface de fichiers restent fermées jusque-là, et aucun réglage ne

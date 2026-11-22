@@ -20,14 +20,18 @@
 package ui
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -41,9 +45,18 @@ const testMediaZone = "zone-destination"
 type mediaZoneStub struct {
 	zone string
 	last *media.ImportRecord
+	// noDest is an instance without destination.registry (B-079).
+	noDest bool
 }
 
 func (m mediaZoneStub) Zone() string { return m.zone }
+
+func (m mediaZoneStub) Destination() *engine.Destination {
+	if m.noDest {
+		return nil
+	}
+	return &engine.Destination{}
+}
 
 func (m mediaZoneStub) LastMediaImport() (media.ImportRecord, bool) {
 	if m.last == nil {
@@ -108,12 +121,19 @@ func mediumStore(t *testing.T, zone string) *store.Store {
 // mediaUI wires the screen over a real medium and a real gate.
 func mediaUI(t *testing.T) (*UI, *mediagate.Gate) {
 	t.Helper()
+	return mediaUIWithLogs(t, nil)
+}
+
+// mediaUIWithLogs is mediaUI with the screen's log stream sent to logw,
+// for the tests that read the FR-094 audit trail.
+func mediaUIWithLogs(t *testing.T, logw io.Writer) (*UI, *mediagate.Gate) {
+	t.Helper()
 	st := mediumStore(t, testMediaZone)
 	gate := mediagate.Open(context.Background(), st.Root(), testMediaZone, slog.New(slog.DiscardHandler))
 	return newTestUIWithOptions(t, &Options{
 		Store: st, Queue: newTestQueue(t),
 		MediaZone: mediaZoneStub{zone: testMediaZone}, MediaGate: gate,
-	}, nil), gate
+	}, logw), gate
 }
 
 // wholeReport clears both deliveries of the fixture graph.
@@ -475,5 +495,109 @@ func TestMediaImportEnqueuesTheJourney(t *testing.T) {
 	}
 	if len(list[0].MediaOverrides) != 1 || list[0].MediaOverrides[0] != tasks.OverrideFreshness {
 		t.Errorf("the task carries %v, want the granted freshness waiver", list[0].MediaOverrides)
+	}
+}
+
+// TestMediaVerifyAuditsAnAppliedWaiver (B-073, FR-094): on the screen the
+// waiver checkboxes exist only in the Verify form, and a waived
+// verification can end pushable and open the serving gate — so the Verify
+// step records the waiver when its run starts, with the actor, the origin
+// and the guard. The Push that carries the same waiver as hidden fields
+// records its own application: two records, each naming its operation.
+//
+// Proved fallible: removing the auditMediaWaivers call from mediaVerify
+// leaves the first assertion with no record.
+func TestMediaVerifyAuditsAnAppliedWaiver(t *testing.T) {
+	logs := &bytes.Buffer{}
+	u, gate := mediaUIWithLogs(t, logs)
+	mux := mount(u)
+	c := login(t, mux, "alexis", "pw-admin")
+	gate.SetVerify(func(_ context.Context, _ mediagate.Options, _ func(media.Progress)) (*media.Report, error) {
+		return wholeReport(), nil
+	})
+
+	w := postForm(t, mux, c, "/media/verify", "csrf="+csrfOf(t, u, c)+"&allowZoneMismatch=1", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST /media/verify = %d, want 200", w.Code)
+	}
+	waitRunning(t, gate, false)
+	recs := overrideRecords(t, logs.String())
+	if len(recs) != 1 {
+		t.Fatalf("media.override records after a waived Verify = %d, want 1:\n%s", len(recs), logs.String())
+	}
+	r := recs[0]
+	if r["outcome"] != "success" || r["actor"] != "alexis" || r["target"] != tasks.OverrideZone || r["origin"] == "" {
+		t.Errorf("record = %v, want success by alexis on %q with an origin", r, tasks.OverrideZone)
+	}
+	if d, _ := r["detail"].(string); !strings.Contains(d, "operation=verify") || !strings.Contains(d, "zone="+testMediaZone) {
+		t.Errorf("detail = %q, want the operation and the zone named", d)
+	}
+
+	w = postForm(t, mux, c, "/media/import", "csrf="+csrfOf(t, u, c)+"&allowZoneMismatch=1",
+		map[string]string{"HX-Request": "true"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST /media/import = %d, want 200 with HX-Redirect", w.Code)
+	}
+	recs = overrideRecords(t, logs.String())
+	if len(recs) != 2 {
+		t.Fatalf("media.override records after Verify then Push = %d, want 2", len(recs))
+	}
+	if d, _ := recs[1]["detail"].(string); !strings.Contains(d, "operation=import") {
+		t.Errorf("Push record detail = %q, want operation=import", d)
+	}
+
+	// A Verify with no waiver records none.
+	waitRunning(t, gate, false)
+	postForm(t, mux, c, "/media/verify", "csrf="+csrfOf(t, u, c), nil)
+	waitRunning(t, gate, false)
+	if n := len(overrideRecords(t, logs.String())); n != 2 {
+		t.Errorf("a plain Verify added a media.override record (%d in all)", n)
+	}
+}
+
+// overrideRecords decodes the media.override audit records of a JSON log.
+func overrideRecords(t *testing.T, logs string) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(logs), "\n") {
+		if line == "" {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("log line is not JSON: %v\n%s", err, line)
+		}
+		if rec["log_type"] == "audit" && rec["action"] == "media.override" {
+			out = append(out, rec)
+		}
+	}
+	return out
+}
+
+// TestMediaPushRefusesAnInstanceWithNoDestination (B-079): the Push step
+// of an instance with a zone but no destination.registry is refused at
+// the door with TBY-CFG-001 — no task, no waiver record, no media.import
+// success — rather than enqueuing an import bound to fail.
+func TestMediaPushRefusesAnInstanceWithNoDestination(t *testing.T) {
+	var logs bytes.Buffer
+	st := mediumStore(t, testMediaZone)
+	gate := mediagate.Open(context.Background(), st.Root(), testMediaZone, slog.New(slog.DiscardHandler))
+	u := newTestUIWithOptions(t, &Options{
+		Store: st, Queue: newTestQueue(t),
+		MediaZone: mediaZoneStub{zone: testMediaZone, noDest: true}, MediaGate: gate,
+	}, &logs)
+	mux := mount(u)
+	c := login(t, mux, "alexis", "pw-admin")
+	gate.Observe(wholeReport())
+
+	w := postForm(t, mux, c, "/media/import", "csrf="+csrfOf(t, u, c)+"&allowStale=1", nil)
+	if w.Code < 400 || !strings.Contains(w.Body.String(), string(taxonomy.CodeConfigInvalid)) {
+		t.Fatalf("POST /media/import with no destination = %d, want a %s refusal", w.Code, taxonomy.CodeConfigInvalid)
+	}
+	if n := len(u.queue.List("", "", "")); n != 0 {
+		t.Errorf("%d tasks were enqueued with nowhere to push", n)
+	}
+	if strings.Contains(logs.String(), `"action":"media.import"`) || strings.Contains(logs.String(), `"action":"media.override"`) {
+		t.Errorf("a refused Push left audit records:\n%s", logs.String())
 	}
 }

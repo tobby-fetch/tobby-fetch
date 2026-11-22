@@ -28,7 +28,7 @@ and
 :::tip[In short]
 - Five steps, in this order: prepare (mirror mode, the zone's Retriever, trust roots), pre-flight (`tobby sync --dry-run`, which refuses impossible transfers), export (a manual `tobby sync --wait`, manifest written last), transport (outside Tobby), import. [Steps](#the-five-steps)
 - On the isolated side, `tobby media verify` then `tobby media import` verify the whole medium before anything is pushed; exit `0` means success. [Import](#5--import)
-- Only two refusals can be waived: by an `admin` on the screen and the API, by anyone with access to the host on the command line. A waiver given at the Verify step is not audited; integrity and signature failures have no override. [The Media screen](#the-media-screen)
+- Only two refusals can be waived: by an `admin` on the screen and the API, by anyone with access to the host on the command line. Every waiver applied is audited, at the Verify step as at the import; integrity and signature failures have no override. [The Media screen](#the-media-screen)
 :::
 
 ## Two instances, one directory
@@ -230,9 +230,9 @@ guided sequence:
 
 A zone mismatch and a medium older than the last one imported here are the
 only two refusals an administrator may waive on the screen. They are ticked
-at the Verify step and carried to Push: the waiver is audited when Push is
-clicked, not when the waived verification opens the serving gate (a known
-defect). Integrity and signature
+at the Verify step and carried to Push, and the waiver is audited at each
+application: once when the waived verification starts — it can open the
+serving gate — and once more when Push is clicked. Integrity and signature
 verdicts have no override, for anyone. Step by step:
 [import on the isolated side](../../air-gap/import-destination/).
 

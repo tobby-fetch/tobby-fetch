@@ -394,7 +394,7 @@ digest is pushable; any other is blocked whole, with no override, and its
 neighbours on the same medium are unaffected. A missing or unreadable
 manifest and an altered recipe graph block the medium as a whole with no
 override; a medium addressed to another zone or older than the last one
-imported here block it too, and those two can be waived with the flags below. The command line checks no role: whoever can run `tobby media` on the host can waive.
+imported here block it too, and those two can be waived with the flags below. The command line checks no role: whoever can run `tobby media` on the host can waive. Each waiver applied is written to the [audit log](../../security/audit-log/) on stderr, as a `media.override` record with the actor and origin `local` and the detail `operation=verify`.
 
 | Flag | Purpose |
 |---|---|
@@ -408,7 +408,8 @@ tobby media verify --storage-root /mnt/usb --zone production
 tobby media verify --storage-root /mnt/usb --zone production --output json | jq .verdict
 ```
 
-Exit codes: `0` every delivery is pushable, `3` refused by policy (zone
+Exit codes: `0` every delivery is pushable, `1` an operational failure (the
+configuration or the store could not be used), `3` refused by policy (zone
 identity, freshness), `4` a verification failure.
 
 ### tobby media slip
@@ -454,8 +455,9 @@ tobby media import [flags]
 
 Verifies a transported store and pushes what verification cleared into the
 zone registry (SRS FR-052). The order is not a sequence of steps, it is the
-guarantee: nothing is pushed, served or written before the whole medium has
-been re-verified.
+guarantee: nothing is pushed or served, and nothing is written to the store
+or the freshness record, before the whole medium has been re-verified. The
+one write that comes first is the operation log described below.
 
 What crosses then goes through the same controls a passthrough promotion
 goes through — the registry allow-list and the recipe signatures, re-checked
@@ -465,15 +467,19 @@ signatures. Content the medium carries that no verified recipe reaches is
 reported and never pushed.
 
 The operation journals itself onto the medium, under `_tobby/logs/`,
-outside the manifest's coverage: the return audit channel of the transfer.
+outside the manifest's coverage, from its first line — before verification:
+the return audit channel of the transfer, which cannot invalidate the
+inventory being verified.
 A completed import advances the per-zone freshness record, which is what
 makes re-importing last month's medium a refusal rather than a silent
 rollback.
 
 Takes the same flags as `media verify`, plus a configured
 `destination.registry` — verifying needs none, importing cannot proceed
-without one. Waiving a guard is an administrator's act and is recorded in
-the audit journal.
+without one. The command line checks no role: whoever can run it on the
+host can waive a guard, and each waiver applied is recorded in the audit
+log — on stderr and in the medium's log — as a `media.override` record with
+the actor and origin `local` and the detail `operation=import`.
 
 It carries no `--wait`: the task runs in this process, so the command is
 already blocking. Under `--output json` its report is the task itself, in
@@ -483,8 +489,9 @@ the shape `GET /api/v1/tasks/{id}` serves it.
 tobby media import --config /etc/tobby/config.yaml
 ```
 
-Exit codes: `0` imported, `1` a push failed, `3` refused by policy, `4` a
-verification failure.
+Exit codes: `0` imported, `1` an operational failure (a push failed, or the
+configuration, the store or the destination could not be used), `3` refused
+by policy, `4` a verification failure.
 
 ### tobby store verify
 
@@ -510,8 +517,10 @@ as a taxonomy code with the file or object concerned; orphaned content is a
 note and never makes the verdict `defects`. It refuses a directory that is
 not already a Tobby store rather than stamp it.
 
-Without `--instance` it runs in this process, against the directory, and
-works on a host where no instance is running. Trust roots come from the
+Without `--instance`, and with `TOBBY_INSTANCE_URL` unset, it runs in this
+process, against the directory, and works on a host where no instance is
+running. `TOBBY_INSTANCE_URL` alone, without the flag, selects the remote
+form below. Trust roots come from the
 configuration (`trust.roots`, `trust.scopes`), never from the store. When an
 instance *is* serving the store, that form **refuses** — it cannot see the
 instance's content lock — and names `--instance`: the verification then runs
@@ -524,7 +533,7 @@ own that never holds up a synchronization. See
 | `--storage-root` | The store to verify. Required — from the flag, `TOBBY_STORAGE_ROOT`, or `storage.root:` in the configuration file. |
 | `--output text\|json` | `json` emits the report itself on stdout, the same document `GET /api/v1/store/verification` serves under `verification`. With `--instance` and no `--wait`, the task the instance created. |
 | `--instance` | Base URL of the running instance to drive (default `TOBBY_INSTANCE_URL`, then the configured listen address); token from `TOBBY_API_TOKEN` or `--token-file`, sent over `http://` only to this host unless `--allow-plaintext-token`. |
-| `--wait`, `--wait-timeout` | With `--instance`: follow the task to its end, print the report, and exit on its outcome. |
+| `--wait`, `--wait-timeout` | With `--instance` (or `TOBBY_INSTANCE_URL`): follow the task to its end, print the report, and exit on its outcome. |
 
 There is no schedule and no repair flag: v1 verifies on demand and reports.
 
@@ -556,14 +565,13 @@ Tobby sends the archive nowhere. The default file name is
 `tobby-diagnostics-<UTC time>.tar.gz` in the current directory; an existing file
 is never overwritten, and the archive is written readable by its owner only.
 
-Without `--instance` the archive is assembled on the host from the
-configuration, the store and the state directory; the log window and the
-metrics belong to a running process and appear in the manifest as omitted,
-with the reason. With `--instance` the archive is
-requested from the running instance, with the administrator's token from
-`TOBBY_API_TOKEN` or `--token-file`, and includes them. `TOBBY_INSTANCE_URL`
-alone does not select this form: it only supplies the URL once the flag is
-given. The request is audited either way. Exit codes: `0` written, `3` refused (the redaction check,
+Without `--instance`, and with `TOBBY_INSTANCE_URL` unset, the archive is
+assembled on the host from the configuration, the store and the state
+directory; the log window and the metrics belong to a running process and
+appear in the manifest as omitted, with the reason. With `--instance`, or with
+`TOBBY_INSTANCE_URL` set, the archive is requested from the running instance,
+with the administrator's token from `TOBBY_API_TOKEN` or `--token-file`, and
+includes them. The request is audited either way. Exit codes: `0` written, `3` refused (the redaction check,
 or the role), `1` failed. See
 [Collect a diagnostic bundle](../../passthrough/diagnostics/).
 

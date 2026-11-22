@@ -64,7 +64,7 @@ figurent dans le tableau :
 | Vulnérabilités signalées sans bloquer | le défaut `scan.mode: warn` ; `block` est opt-in | bandeau consultatif, `TBY-SCN-006` sur chaque élément en infraction |
 | Seuil de vulnérabilité relevé, ou dérogations ajoutées, par le Retriever | `spec.scanPolicy` dans le Retriever, qui n'est pas signé ; son seuil remplace celui de l'instance dans les deux sens | le rapport de chaque élément (`threshold_level: retriever`) ; les dérogations du Retriever sur `/admin/policy` ; `TBY-SCN-028` pour une dérogation sans échéance ; aucun événement d'audit |
 | Registries contactées sans restriction | aucune clé `registries.allowlist` | signalé comme *non déclaré* |
-| Support destiné à une autre zone, ou plus ancien que le dernier importé | une dérogation (`TBY-MED-006`, `TBY-MED-007`), à chaque vérification ou import : `admin` sur l'écran et l'API, quiconque a accès à l'hôte en ligne de commande | événement d'audit à la demande d'un import ; aucun quand elle est donnée à l'étape Vérifier (défaut connu) |
+| Support destiné à une autre zone, ou plus ancien que le dernier importé | une dérogation (`TBY-MED-006`, `TBY-MED-007`), à chaque vérification ou import : `admin` sur l'écran et l'API, quiconque a accès à l'hôte en ligne de commande | événement d'audit `media.override` à chaque application d'une dérogation, à une vérification comme à un import |
 | Un FileSet servi sans connexion | `anonymous: true` sur son entrée `files.filesets` | bandeau permanent |
 
 Le Retriever n'est pas signé, par choix de conception : il porte la
@@ -169,9 +169,9 @@ plus ancien que le dernier importé) sont des garde-fous anti-accident : ce ne
 sont pas des contrôles de sécurité, car un champ du manifeste peut être
 falsifié. C'est pourquoi elles seules peuvent être levées : par un
 administrateur sur l'écran et l'API, par quiconque a accès à l'hôte en ligne
-de commande. Une dérogation appliquée à un import est auditée ; une
-dérogation donnée à l'étape Vérifier ne l'est pas, alors que sur l'écran et
-l'API elle peut ouvrir le verrou de service (un défaut connu).
+de commande. Toute dérogation appliquée est auditée, à l'étape Vérifier — où,
+sur l'écran et l'API, une vérification avec dérogation peut ouvrir le verrou
+de service — comme à l'import.
 → [Modèle de sécurité des médias](../../air-gap/media-security/), [Parcours d'un média](../../air-gap/media-workflow/)
 
 ## 6. Les périmètres de confiance

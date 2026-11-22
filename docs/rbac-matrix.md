@@ -64,7 +64,7 @@ possible at all.
 | `POST /recipes/plan` | operator | A plan mutates nothing, but it makes this instance reach out to every registry the submitted Retriever names. |
 | `GET /media` | viewer | The Media screen (FR-062 amendment R-02): the medium's inventory summary, the verification verdicts, and the guided sequence. Reading it is a listing like any other. |
 | `GET /media/slip` | viewer | The transfer slip (R-07): the Media screen's content as a printable, bilingual, unsigned document (HTML or text). A read of records the instance already holds — it hashes nothing and runs no verification — hence a listing like the screen itself. |
-| `POST /media/verify` | operator | Starts the FR-054 verification: it re-reads and re-hashes the whole medium, which is work rather than a read. The two waivers below need admin. |
+| `POST /media/verify` | operator | Starts the FR-054 verification: it re-reads and re-hashes the whole medium, which is work rather than a read. The two waivers below need admin; a waiver applied here is audited (FR-094), since its verdict can open the serving gate. |
 | `GET /integrity` | viewer | The Store integrity screen (FR-057, R-31): the last on-demand verification report of the store, in both modes. Reading it is a listing like any other. |
 | `POST /integrity/verify` | operator | Starts the on-demand verification: it re-reads and re-hashes the whole store, which is work rather than a read — disk I/O for minutes, holding the serial task worker. It repairs and deletes nothing. |
 | `POST /integrity/cancel` | operator | Stops the verification in flight; the task ends failed with `TBY-INT-006`. |
@@ -161,8 +161,10 @@ operator actions; **waiving** one of the two FR-054 guards — a medium
 addressed to another zone, or older than the last one imported here — is
 an administrator's, and the handler refuses `allowZoneMismatch` or
 `allowStale` from anyone below admin with the same `TBY-AUTH-003` the
-middleware would have produced. Both the attempt and the applied waiver
-are audited (FR-094). No role, admin included, can waive an integrity or
+middleware would have produced. Both the refused attempt and the applied
+waiver are audited (FR-094) — on a verification as on an import, one
+`media.override` record per application, since a waived verification can
+open the serving gate. No role, admin included, can waive an integrity or
 signature verdict: those have no override at all (R-19). The same rule is
 enforced a second time on the UI side, in `POST /media/verify` and
 `POST /media/import`: two doors, one rule, and the waiver checkboxes are

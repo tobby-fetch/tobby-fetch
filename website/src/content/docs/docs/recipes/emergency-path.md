@@ -239,7 +239,7 @@ Nothing is hidden because the signature is valid.
 | Surface | What you see |
 | --- | --- |
 | Effective configuration | `trust.scopes` with `emergency` and its repositories and roots (`tobby config dump`, and the configuration shown by the instance). |
-| Recipes | `GET /api/v1/recipes`: `verified: true` and `trustScope: "emergency"` on the recorded recipe. The Recipes screen shows only the "verified" badge for a verified recipe; it prints the scope beside the verdict when the recipe is not verified. |
+| Recipes | `GET /api/v1/recipes`: `verified: true` and `trustScope: "emergency"` on the recorded recipe — `trustScope` names the declared scope that matched, whether the recipe verified or not. The Recipes screen shows only the "verified" badge for a verified recipe; it prints the scope beside the verdict when the recipe is not verified. |
 | Task reports | `trust_scope: "emergency"` on the recipe's row of `resolutions` in the synchronization task (`GET /api/v1/tasks/{id}`). |
 | Plan | The trust scope that decided each recipe's verdict: the `SCOPE` column of `tobby sync --dry-run`, `trust_scope` in its `--output json` report, and the plan screen. |
 | Media | The scope is shown beside the recipe on the Media screen of a medium carrying it; the destination takes its **own** verdict from its own trust roots, so the destination must declare the same emergency scope and root to admit the recipe. |

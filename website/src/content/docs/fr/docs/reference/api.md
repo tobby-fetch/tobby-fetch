@@ -144,10 +144,11 @@ le chemin laisserait deviner.
   `allowStale`, les deux garde-fous levables. Envoyer l'un des deux depuis un
   rôle inférieur donne [`TBY-AUTH-003`](../../reference/errors/#tby-auth-003), et
   la tentative refusée est consignée dans le journal d'audit. Une levée
-  appliquée sur `POST /api/v1/media/import` l'est aussi ; une levée appliquée
-  sur `POST /api/v1/media/verify` ne l'est pas aujourd'hui, c'est un défaut
-  connu. Rien ne lève un verdict d'intégrité ou de signature, quel que soit le
-  rôle.
+  appliquée l'est sur les deux points d'accès — `POST /api/v1/media/verify`,
+  dont le verdict avec levée peut ouvrir le verrou de service, comme
+  `POST /api/v1/media/import` —, un enregistrement `media.override` par garde
+  et par appel, dont le détail nomme l'opération. Rien ne lève un verdict
+  d'intégrité ou de signature, quel que soit le rôle.
 - **`POST /api/v1/diagnostics/bundle` répond avec l'archive elle-même**
   (`application/gzip`, `Content-Disposition: attachment`), pour l'administrateur
   seulement. Elle est construite et contrôlée avant le premier octet envoyé :
@@ -163,10 +164,19 @@ le chemin laisserait deviner.
   ancre, à tout rôle ; le second l'inventaire du répertoire d'état, noms, tailles
   et permissions, aux administrateurs.
 
-Sur une instance qui n'est pas le côté destination d'un transfert physique,
-les quatre points d'accès du média répondent
+Sur une instance qui n'est pas le côté destination d'un transfert physique —
+aucune `zone:` configurée —, `POST /api/v1/media/verify` et
+`POST /api/v1/media/import` refusent avec
 [`TBY-CFG-001`](../../reference/errors/#tby-cfg-001) en nommant le réglage
-`zone:` manquant, plutôt que de prétendre n'avoir rien à montrer.
+manquant, avant que rien ne soit mis en file ou audité. Les deux lectures
+disent ce que l'instance sait : `GET /api/v1/media` répond `200` avec une
+`zone` vide, et `GET /api/v1/media/verification` répond `200` avec un verrou
+inactif (`guarded: false`, `serving: true`). `GET /api/v1/media/slip`
+fonctionne des deux côtés d'un transfert. Une destination dotée d'une zone
+mais sans `destination.registry` vérifie normalement — la vérification ne
+pousse rien —, tandis que `POST /api/v1/media/import` refuse avec le même
+code, en nommant `destination.registry`, avant que rien ne soit mis en file
+ou audité.
 
 Le segment `/-/` est le séparateur déterministe entre un chemin de dépôt — qui
 peut lui-même contenir des barres obliques — et sa sous-ressource (`tags`,

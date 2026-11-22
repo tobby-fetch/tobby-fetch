@@ -246,7 +246,7 @@ Rien n'est caché parce que la signature est valide.
 | Surface | Ce que vous voyez |
 | --- | --- |
 | Configuration effective | `trust.scopes` avec `emergency`, ses dépôts et ses roots (`tobby config dump`, et la configuration affichée par l'instance). |
-| Recipes | `GET /api/v1/recipes` : `verified: true` et `trustScope: "emergency"` sur la recipe enregistrée. L'écran Recipes n'affiche que le badge « verified » pour une recipe vérifiée ; il imprime le périmètre à côté du verdict lorsque la recipe n'est pas vérifiée. |
+| Recipes | `GET /api/v1/recipes` : `verified: true` et `trustScope: "emergency"` sur la recipe enregistrée — `trustScope` nomme le périmètre déclaré qui a correspondu, que la recipe soit vérifiée ou non. L'écran Recipes n'affiche que le badge « verified » pour une recipe vérifiée ; il imprime le périmètre à côté du verdict lorsque la recipe n'est pas vérifiée. |
 | Rapports de tâche | `trust_scope: "emergency"` sur la ligne de la recipe dans `resolutions` de la tâche de synchronisation (`GET /api/v1/tasks/{id}`). |
 | Plan | Le périmètre de confiance qui a décidé du verdict de chaque recipe : la colonne `SCOPE` de `tobby sync --dry-run`, `trust_scope` dans son rapport `--output json`, et l'écran de plan. |
 | Média | Le périmètre est affiché à côté de la recipe sur l'écran Média d'un support qui la porte ; la destination rend son **propre** verdict à partir de ses propres trust roots, elle doit donc déclarer le même périmètre d'urgence et le même root pour admettre la recipe. |

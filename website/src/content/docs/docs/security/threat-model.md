@@ -49,9 +49,10 @@ so a hostile party can forge either field — which is exactly why they are
 the only two that may be waived, and why the recorded high-water mark never
 moves backwards when one is waived. On the screen and the API a waiver
 needs the `admin` role; on the command line there is no role check, and
-host access is the control. A waiver applied to an import is audited
-(FR-094); a waiver given at the Verify step is not, although on the screen
-and the API it can open the serving gate. That gap is a known defect.
+host access is the control. Every waiver applied is audited (FR-094), at
+the Verify step as at the import: on the screen and the API a waived
+verification can open the serving gate, so its record is written as the
+verification starts, before any verdict.
 
 **A client asking an unverified instance for content.** A destination
 instance holding a transported medium withholds `/v2/` and `/files/`

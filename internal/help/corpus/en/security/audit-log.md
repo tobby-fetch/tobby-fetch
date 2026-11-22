@@ -43,7 +43,9 @@ Six fields on every record, plus the marker and the schema version:
   origin: they are client-supplied.
 
 Optional fields join them when they apply: `actor_name`, the readable
-name of a federated identity; `setting`, the configuration key that
+name of a federated identity; `detail`, free context that is not the
+target (the gap of a `clock.implausible` event, the operation, zone and
+medium of a `media.override` waiver); `setting`, the configuration key that
 decided the outcome of a `hardening.refused` event; and `exception`,
 `exception_source` and `exception_expires`, the scan exception a
 `scan.exception_expired` event is about.
@@ -66,7 +68,7 @@ only, with the same compatibility discipline as the REST API
 | `import.create`, `sync.create`, `recipe.publish`, `content.delete` | content-affecting actions with their actor | v0.4.x |
 | `config.promotion_interval`, `config.server_certificate` | sensitive configuration changes on a running instance (FR-013, FR-082) | v0.4.x |
 | `media.import` | a transported medium pushed into the zone (FR-052) | v0.5.x |
-| `media.override` | one of the two waivable media guards: an attempt refused for lack of the `admin` role, or a waiver applied when an import is requested (FR-054). A waiver given at the Verify step writes no record (see below) | v0.5.x |
+| `media.override` | one of the two waivable media guards (FR-054): an attempt refused for lack of the `admin` role (outcome `denied`), or a waiver applied (outcome `success`) — at a verification as at an import, one record per guard and per application. The target is the guard (`zone` or `freshness`); the detail names the operation, the zone and the medium (`operation=verify` or `operation=import`, `zone=…`, `media=…`) | v0.5.x |
 | `store.reset` | the confirmed store reset, including a refused confirmation (FR-046) | v0.5.x |
 | `layout.export`, `layout.import` | OCI image layout leaving or entering the store (FR-051) | v0.5.x |
 | `fileset.pack` | a host directory packed into the store as a FileSet (FR-048) | v0.5.x |
@@ -85,18 +87,24 @@ only, with the same compatibility discipline as the REST API
 The media events joined the catalogue with v0.5.0: the two waivers of a
 media import — a medium addressed to another zone and a medium older than
 the last one imported here — and the confirmed store reset (FR-046). On the
-screen and the API, a refused attempt and a waiver applied to an import are
-recorded with the actor and the network origin. On the command line,
-`tobby media import` records the waiver with the actor and origin `local`:
-there is no role check there, host access is the control.
+screen and the API, a refused attempt and a waiver applied are recorded
+with the actor and the network origin. On the command line,
+`tobby media verify`, `tobby media slip` and `tobby media import` record
+the waiver with the actor and origin `local`: there is no role check
+there, host access is the control.
 
-**Current limit.** A waiver given at the Verify step — the screen's Verify
-step, `POST /api/v1/media/verify`, `tobby media verify` — writes no audit
-record, only a `WARN` line in the instance log (stderr for `tobby media verify`)
-without actor or origin. On
-the screen and the API such a waived verification can open the serving
-gate. This is a known defect; until it is fixed, the audit trail does not
-show every waiver that opened the gate.
+A waiver is recorded each time it is applied, **at the Verify step as at
+the import** — the screen's Verify step, `POST /api/v1/media/verify`,
+`tobby media verify` with `operation=verify`; Push,
+`POST /api/v1/media/import`, `tobby media import` with
+`operation=import`. A waived verification can open the serving gate, and
+its record is written as the verification starts, before any verdict. On
+the screen, where the waiver is ticked at the Verify step and carried to
+Push, a waived import therefore leaves two `media.override` records: the
+verification that may have opened the gate, then the import that pushed.
+They are two applications, told apart by their detail, not a duplicate.
+`tobby media verify` writes nothing to the medium, so its record goes to
+stderr only.
 
 ## Durability — and the trail that crosses the air gap
 

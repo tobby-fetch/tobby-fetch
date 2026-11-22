@@ -53,9 +53,10 @@ qui explique précisément pourquoi ce sont les deux seuls que l'on peut lever,
 et pourquoi le point haut enregistré ne recule jamais quand l'un d'eux est
 levé. Sur l'écran et l'API, une dérogation exige le rôle `admin` ; en ligne
 de commande il n'y a aucun contrôle de rôle, et l'accès à l'hôte est le
-contrôle. Une dérogation appliquée à un import est auditée (FR-094) ; une
-dérogation donnée à l'étape Vérifier ne l'est pas, alors que sur l'écran et
-l'API elle peut ouvrir le verrou de service. Cet écart est un défaut connu.
+contrôle. Toute dérogation appliquée est auditée (FR-094), à l'étape
+Vérifier comme à l'import : sur l'écran et l'API, une vérification avec
+dérogation peut ouvrir le verrou de service, aussi son enregistrement est-il
+écrit au lancement de la vérification, avant tout verdict.
 
 **Un client qui demande du contenu à une instance non vérifiée.** Une instance
 de destination qui détient un support transporté retient `/v2/` et `/files/`

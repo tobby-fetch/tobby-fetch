@@ -138,10 +138,12 @@ would guess from the path.
   the endpoint's own operator floor: `allowZoneMismatch` and `allowStale`,
   the two waivable guards. Sending either from a lower role is
   [`TBY-AUTH-003`](../../reference/errors/#tby-auth-003), and the
-  refused attempt is audit-logged. A waiver applied on
-  `POST /api/v1/media/import` is audit-logged too; one applied on
-  `POST /api/v1/media/verify` currently is not, a known defect. Nothing
-  waives an integrity or signature verdict, for any role.
+  refused attempt is audit-logged. A waiver applied is audit-logged on
+  both endpoints — `POST /api/v1/media/verify`, whose waived verdict can
+  open the serving gate, as `POST /api/v1/media/import` — one
+  `media.override` record per guard and per call, its detail naming the
+  operation. Nothing waives an integrity or signature verdict, for any
+  role.
 - **`POST /api/v1/diagnostics/bundle` answers with the archive itself**
   (`application/gzip`, `Content-Disposition: attachment`), for the
   administrator only. It is built and checked before the first byte is sent:
@@ -156,10 +158,18 @@ would guess from the path.
   anchor, for any role; the second the state-directory inventory, names, sizes
   and permissions, for administrators.
 
-On an instance that is not the destination side of a physical transfer, the
-four media endpoints answer
+On an instance that is not the destination side of a physical transfer — no
+`zone:` configured — `POST /api/v1/media/verify` and
+`POST /api/v1/media/import` refuse with
 [`TBY-CFG-001`](../../reference/errors/#tby-cfg-001) naming the missing
-`zone:` setting rather than pretending to have nothing to show.
+setting, before anything is enqueued or audited. The two reads report what
+the instance knows: `GET /api/v1/media` answers `200` with an empty
+`zone`, and `GET /api/v1/media/verification` answers `200` with an
+unguarded gate (`guarded: false`, `serving: true`). `GET /api/v1/media/slip`
+works on both sides of a transfer. A destination with a zone but no
+`destination.registry` verifies normally — verification pushes nothing —
+while `POST /api/v1/media/import` refuses with the same code, naming
+`destination.registry`, before anything is enqueued or audited.
 
 The `/-/` segment is the deterministic separator between a repository path
 — which may itself contain slashes — and its sub-resource (`tags`,
