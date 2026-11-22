@@ -80,6 +80,10 @@ type mediaZone struct{}
 
 func (mediaZone) Zone() string { return mediumZone }
 
+// Destination is non-nil: the instance of the Media scenarios has a zone
+// registry to push into, so the Push step is offered (B-079).
+func (mediaZone) Destination() *engine.Destination { return &engine.Destination{} }
+
 func (mediaZone) LastMediaImport() (media.ImportRecord, bool) {
 	return media.ImportRecord{}, false
 }
@@ -405,7 +409,7 @@ func seedRecipe(t *testing.T, st *store.Store) []byte {
 	defer srv.Close()
 	addr := srv.Listener.Addr().String()
 
-	doc := []byte(`apiVersion: recipe.tobby.dev/v1alpha1
+	doc := []byte(`apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: wordpress
