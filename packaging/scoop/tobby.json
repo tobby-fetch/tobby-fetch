@@ -45,7 +45,7 @@
     ],
     "version": "0.0.0",
     "description": "Secure artifact fetch-and-relocate tool with an embedded OCI registry. Tobby fetches OCI assets — container images, Helm charts, AI models, and files — and carries them across isolated network zones, from connected, through restricted, down to fully air-gapped environments.",
-    "homepage": "https://tobby-fetch.github.io/tobby-fetch/",
+    "homepage": "https://tobbyfetch.dev/",
     "license": "GPL-3.0-only",
     "architecture": {
         "64bit": {

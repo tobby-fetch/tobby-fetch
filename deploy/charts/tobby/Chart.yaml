@@ -26,7 +26,7 @@ appVersion: "1.0.0-rc.1"
 # defaults assume the restricted Pod Security Standard is enforceable.
 kubeVersion: ">=1.25.0-0"
 
-home: https://tobby-fetch.github.io/tobby-fetch/
+home: https://tobbyfetch.dev/
 sources:
   - https://github.com/tobby-fetch/tobby-fetch
 keywords:
