@@ -315,11 +315,13 @@ func TestVerificationProgressPollsThenStops(t *testing.T) {
 	c := login(t, mux, "alexis", "pw-admin")
 
 	release := make(chan struct{})
+	reported := make(chan struct{})
 	gate.SetVerify(func(_ context.Context, _ mediagate.Options, progress func(media.Progress)) (*media.Report, error) {
 		progress(media.Progress{
 			Stage: media.StageRecipes, Recipe: "redis@7.2.5",
 			Bytes: 512, TotalBytes: 2048, Files: 3, TotalFiles: 12,
 		})
+		close(reported)
 		<-release
 		return wholeReport(), nil
 	})
@@ -329,6 +331,14 @@ func TestVerificationProgressPollsThenStops(t *testing.T) {
 		t.Fatalf("POST /media/verify = %d, want 200", w.Code)
 	}
 	waitRunning(t, gate, true)
+	// The run is "running" from the moment it starts, before its first
+	// notification: reading the screen on that alone raced the stub and
+	// found a bar at 0 % on a loaded runner.
+	select {
+	case <-reported:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the verification never reported its progress")
+	}
 
 	body := get(t, mux, c, "/media", nil).Body.String()
 	for _, want := range []string{
