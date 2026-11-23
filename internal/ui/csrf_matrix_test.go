@@ -18,7 +18,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -164,31 +164,44 @@ func TestOverrideRefusesCrossOriginUI(t *testing.T) {
 	}
 }
 
-// stateDigest fingerprints everything a request could durably change: the
-// store tree, the task queue, the accounts and the tokens.
-func (e *rbacEnv) stateDigest(t *testing.T) string {
-	t.Helper()
+// stateDigest fingerprints a state listing. It is computed from the very
+// listing a failure prints, never from a second read of the disk, so a
+// digest that moved always comes with the lines that moved it.
+func stateDigest(lines []string) string {
 	h := sha256.New()
-	_, _ = io.WriteString(h, strings.Join(e.stateLines(t), "\n"))
+	_, _ = io.WriteString(h, strings.Join(lines, "\n"))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// stateLines is the state stateDigest fingerprints, one line per entry, so
-// that a failure can name what changed.
+// stateLines lists everything a request could durably change — the store
+// tree, the task queue, the accounts and the tokens — one sorted line per
+// entry, so that a failure can name what changed.
+//
+// A file is recorded by its size and the hash of its CONTENT, a directory
+// by its name: nothing here is filesystem metadata. Modification times
+// made this baseline racy on Windows, where the size and time a directory
+// listing reports are the copy NTFS keeps in the parent's index, which it
+// may refresh after the file was written: the digest moved between two
+// reads of an untouched store, and the failure printed an empty diff. A
+// GET that creates, deletes or rewrites anything is still seen, through
+// the names and the bytes.
 func (e *rbacEnv) stateLines(t *testing.T) []string {
 	t.Helper()
 	var out []string
-	root := e.u.store.Root()
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	tree := os.DirFS(e.u.store.Root())
+	err := fs.WalkDir(tree, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		info, err := d.Info()
+		if d.IsDir() {
+			out = append(out, path+"/")
+			return nil
+		}
+		raw, err := fs.ReadFile(tree, path)
 		if err != nil {
 			return err
 		}
-		rel, _ := filepath.Rel(root, path)
-		out = append(out, fmt.Sprintf("%s %d %d", rel, info.Size(), info.ModTime().UnixNano()))
+		out = append(out, fmt.Sprintf("%s %d %x", path, len(raw), sha256.Sum256(raw)))
 		return nil
 	})
 	if err != nil {
@@ -197,15 +210,14 @@ func (e *rbacEnv) stateLines(t *testing.T) []string {
 	for _, task := range e.u.queue.List(tasks.Status(""), "", "") {
 		out = append(out, fmt.Sprintf("task %s %s", task.ID, task.Status))
 	}
-	var lines []string
 	for _, a := range e.u.authn.Store.Accounts() {
-		lines = append(lines, fmt.Sprintf("account %s %s", a.Name, a.Role))
+		out = append(out, fmt.Sprintf("account %s %s", a.Name, a.Role))
 	}
 	for _, tok := range e.u.authn.Store.Tokens() {
-		lines = append(lines, fmt.Sprintf("token %s %s %v", tok.Name, tok.Role, tok.Revoked))
+		out = append(out, fmt.Sprintf("token %s %s %v", tok.Name, tok.Role, tok.Revoked))
 	}
-	sort.Strings(lines)
-	return append(out, lines...)
+	sort.Strings(out)
+	return out
 }
 
 // stateDiff names the entries present in one state listing and not the other.
@@ -236,8 +248,8 @@ func stateDiff(before, after []string) string {
 // is the same afterwards.
 func TestNoSafeRouteWrites(t *testing.T) {
 	env := newRBACEnv(t)
-	before := env.stateDigest(t)
 	beforeLines := env.stateLines(t)
+	before := stateDigest(beforeLines)
 	for _, surface := range []struct {
 		api  bool
 		rows []rbacRoute
@@ -252,8 +264,8 @@ func TestNoSafeRouteWrites(t *testing.T) {
 			} else {
 				env.probeUI(t, auth.RoleAdmin, row)
 			}
-			if after := env.stateDigest(t); after != before {
-				afterLines := env.stateLines(t)
+			afterLines := env.stateLines(t)
+			if after := stateDigest(afterLines); after != before {
 				t.Errorf("%s changed the instance's state: %s", row.Pattern, stateDiff(beforeLines, afterLines))
 				before, beforeLines = after, afterLines
 			}
@@ -263,7 +275,7 @@ func TestNoSafeRouteWrites(t *testing.T) {
 	// nothing.
 	env.probeAPI(t, auth.RoleAdmin, &rbacRoute{Method: http.MethodPost, Path: "/api/v1/tokens",
 		Body: `{"name":"digest-control","role":"viewer"}`})
-	if env.stateDigest(t) == before {
+	if stateDigest(env.stateLines(t)) == before {
 		t.Fatal("creating a token left the state digest unchanged: the digest is blind")
 	}
 }
