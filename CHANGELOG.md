@@ -268,6 +268,11 @@ the complete bilingual documentation.
 
 ### Fixed
 
+- **Windows: two writers committing the same blob both succeed**
+  (B-095): two ingredients of one synchronization sharing a layer, or two
+  pushes of the same content, could fail with `Access is denied` — the
+  second rename onto a blob another handle held open was refused. A blob
+  already present at its content-addressed path is now the commit.
 - **A re-signed recipe or ingredient reaches every zone** (B-081): a
   signature added upstream to a digest a store already held was never
   copied, nor pushed to a destination already holding the content, in
