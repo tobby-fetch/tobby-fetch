@@ -210,8 +210,12 @@ func TestMoveOntoAnExistingBlobIsACommit(t *testing.T) {
 		t.Error("a refused rename onto an absent blob reported success")
 	}
 	// Destination present: the blob is already committed.
+	// Written through this package's own driver, as the store does: the
+	// library's PutContent renames its temporary file while still holding
+	// it open, which Windows refuses.
+	seed := &storeDriver{StorageDriver: base, root: root}
 	for _, k := range []string{blob, link} {
-		if err := base.PutContent(ctx, k, []byte("{}")); err != nil {
+		if err := seed.PutContent(ctx, k, []byte("{}")); err != nil {
 			t.Fatal(err)
 		}
 	}
