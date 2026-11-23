@@ -1750,6 +1750,14 @@ components:
           description: >-
             The FR-033 verdict on the recipe itself, which is reachable
             without pulling any ingredient content.
+        status:
+          type: string
+          enum: [new, outdated, up-to-date, unknown]
+          description: >-
+            The verdict on the recipe artifact itself against the local
+            store, which keeps it under the relocated cookbook path for
+            the zone below. A recipe that is new or outdated makes the
+            plan changes-planned even when all its ingredients are held.
         total_bytes:
           type: integer
           format: int64
@@ -1823,6 +1831,12 @@ components:
       properties:
         recipes:
           type: integer
+        recipes_new:
+          type: integer
+          description: Recipe artifacts absent from the local cookbook path.
+        recipes_outdated:
+          type: integer
+          description: Recipe artifacts held under that tag at another digest.
         ingredients:
           type: integer
         new:

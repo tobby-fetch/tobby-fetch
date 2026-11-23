@@ -259,6 +259,7 @@ func (p *Planner) planRecipe(ctx context.Context, cookbookRef string, entry *spe
 		Requested: entry.Version,
 		Cookbook:  cookbookRef,
 		Signature: SignatureNotEvaluated,
+		Status:    StatusUnknown,
 	}
 	p.noteHost(hosts, cookbookRef+"/"+entry.Name, "cookbook")
 
@@ -312,8 +313,20 @@ func (p *Planner) planRecipe(ctx context.Context, cookbookRef string, entry *spe
 
 	// The recipe artifact itself lands in the store as the cookbook of
 	// the zone below (cascade), so it is part of the volume.
+	//
+	// Its status is asked of the store the way storeRecipeArtifact asks
+	// before it writes — the tag, at this digest — so the plan and the
+	// run cannot disagree on whether the recipe is work to do (B-092).
 	if local, lerr := relocate.PathWithBase(p.cfg.BasePrefix, fetched.NominalRepo); lerr == nil {
 		resolvedRepos[local] = true
+		switch d, ok := p.store.ResolveTag(ctx, local, fetched.Tag); {
+		case ok && d == fetched.ManifestDigest:
+			pr.Status = StatusUpToDate
+		case ok:
+			pr.Status = StatusOutdated
+		default:
+			pr.Status = StatusNew
+		}
 	}
 
 	local := newDedup()
@@ -586,6 +599,13 @@ func (p *Planner) summarize(plan *Plan, ledger *dedup) {
 	t := &plan.Totals
 	t.Recipes = len(plan.Recipes)
 	for i := range plan.Recipes {
+		switch plan.Recipes[i].Status {
+		case StatusNew:
+			t.RecipesNew++
+		case StatusOutdated:
+			t.RecipesOutdated++
+		case StatusUpToDate, StatusUnknown, StatusNotProbed:
+		}
 		for j := range plan.Recipes[i].Ingredients {
 			t.Ingredients++
 			switch plan.Recipes[i].Ingredients[j].Status {

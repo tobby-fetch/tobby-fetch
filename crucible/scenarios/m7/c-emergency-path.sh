@@ -395,9 +395,9 @@ inc file push "$WORK/retriever.yaml" "$NODE/root/retriever.yaml" >/dev/null
 RC=0
 inc exec "$NODE" -- sh -c "cd /root && $B_PLAN" >"$WORK/plan.txt" 2>&1 || RC=$?
 [ "$RC" = "5" ] || fail "R-21: the page's plan exited $RC, not 5 (changes planned): $(tr '\n' ' ' <"$WORK/plan.txt")"
-# NAME REQUESTED RESOLVED SIGNATURE SCOPE TRANSFER
-ROW_H=$(awk '$1 == "hotfix-gateway" {print $4 "/" $5}' "$WORK/plan.txt")
-ROW_G=$(awk '$1 == "gateway" {print $4 "/" $5}' "$WORK/plan.txt")
+# NAME REQUESTED RESOLVED STATUS SIGNATURE SCOPE TRANSFER
+ROW_H=$(awk '$1 == "hotfix-gateway" {print $5 "/" $6}' "$WORK/plan.txt")
+ROW_G=$(awk '$1 == "gateway" {print $5 "/" $6}' "$WORK/plan.txt")
 [ "$ROW_H" = "verified/emergency" ] && [ "$ROW_G" = "verified/-" ] ||
     fail "R-21: the plan does not show hotfix-gateway verified under emergency and gateway verified under no scope: $(tr '\n' ' ' <"$WORK/plan.txt")"
 inc exec "$NODE" -- sh -c "cd /root && tobby sync --dry-run --retriever ./retriever.yaml --output json" >"$WORK/plan.json" 2>/dev/null || true

@@ -228,21 +228,25 @@ func TestPlanTextNamesTrustScope(t *testing.T) {
 	plan := &engine.Plan{
 		Source: "./retriever.yaml", Outcome: engine.OutcomeChangesPlanned,
 		Recipes: []engine.PlanRecipe{
-			{Name: "gateway", Requested: "1.4.2", Resolved: "1.4.2", Signature: engine.SignatureVerified},
+			{Name: "gateway", Requested: "1.4.2", Resolved: "1.4.2", Status: engine.StatusUpToDate, Signature: engine.SignatureVerified},
 			{Name: "hotfix-gateway", Requested: "1.4.2-hotfix.1", Resolved: "1.4.2-hotfix.1",
-				Signature: engine.SignatureVerified, TrustScope: "emergency"},
+				Status: engine.StatusNew, Signature: engine.SignatureVerified, TrustScope: "emergency"},
 		},
 		Prune: engine.PrunePlan{Evaluated: true},
 	}
 	var buf bytes.Buffer
 	writePlanText(&buf, plan)
-	rows := map[string]string{}
+	rows, status := map[string]string{}, map[string]string{}
 	for _, line := range strings.Split(buf.String(), "\n") {
-		// NAME REQUESTED RESOLVED SIGNATURE SCOPE TRANSFER, the transfer
-		// being "0 B" — two fields — on the recipe rows.
-		if f := strings.Fields(line); len(f) >= 6 && (f[0] == "NAME" || strings.HasSuffix(f[0], "gateway")) {
-			rows[f[0]] = f[4]
+		// NAME REQUESTED RESOLVED STATUS SIGNATURE SCOPE TRANSFER, the
+		// transfer being "0 B" — two fields — on the recipe rows.
+		if f := strings.Fields(line); len(f) >= 7 && (f[0] == "NAME" || strings.HasSuffix(f[0], "gateway")) {
+			rows[f[0]] = f[5]
+			status[f[0]] = f[3]
 		}
+	}
+	if status["NAME"] != "STATUS" || status["hotfix-gateway"] != "new" || status["gateway"] != "up-to-date" {
+		t.Errorf("STATUS column = %v, want hotfix-gateway=new, gateway=up-to-date:\n%s", status, buf.String())
 	}
 	if rows["NAME"] != "SCOPE" {
 		t.Fatalf("the recipes table has no SCOPE column:\n%s", buf.String())

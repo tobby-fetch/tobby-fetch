@@ -176,8 +176,15 @@ type PlanRecipe struct {
 	// Cookbook is the nominal cookbook repository the recipe came from.
 	Cookbook string `json:"cookbook"`
 	// TrustScope is the declared scope that decided the verdict (FR-033).
-	TrustScope  string           `json:"trust_scope,omitempty"`
-	Signature   Signature        `json:"signature"`
+	TrustScope string    `json:"trust_scope,omitempty"`
+	Signature  Signature `json:"signature"`
+	// Status is the verdict on the recipe artifact ITSELF against the
+	// local store, in the words FR-026 uses for an ingredient: a run
+	// stores the recipe under the relocated cookbook path, where the zone
+	// below reads it, so a recipe whose version moved is work to do even
+	// when every ingredient it names is already held (B-092). "unknown"
+	// when the recipe was never reached.
+	Status      ItemStatus       `json:"status"`
 	Ingredients []PlanIngredient `json:"ingredients,omitempty"`
 	// TotalBytes and TransferBytes are deduplicated by digest WITHIN this
 	// recipe. They do not add up to the totals when two recipes share a
@@ -220,11 +227,18 @@ type PruneEntry struct {
 // plan and net of what the local store already holds, except TotalBytes,
 // which is the gross figure.
 type PlanTotals struct {
-	Recipes     int `json:"recipes"`
-	Ingredients int `json:"ingredients"`
-	New         int `json:"new"`
-	Outdated    int `json:"outdated"`
-	UpToDate    int `json:"up_to_date"`
+	Recipes int `json:"recipes"`
+	// RecipesNew and RecipesOutdated count the recipe artifacts a run
+	// would store: absent from the local cookbook path, or present under
+	// that tag at another digest. They are counted apart from the
+	// ingredients because they are a different thing to an operator — no
+	// volume to speak of, and still a change the zone below will see.
+	RecipesNew      int `json:"recipes_new"`
+	RecipesOutdated int `json:"recipes_outdated"`
+	Ingredients     int `json:"ingredients"`
+	New             int `json:"new"`
+	Outdated        int `json:"outdated"`
+	UpToDate        int `json:"up_to_date"`
 
 	TotalBytes       int64 `json:"total_bytes"`
 	TransferBytes    int64 `json:"transfer_bytes"`
@@ -319,7 +333,8 @@ type Plan struct {
 
 // HasChanges reports whether the plan found work to do.
 func (p *Plan) HasChanges() bool {
-	return p.Totals.New > 0 || p.Totals.Outdated > 0 || p.Prune.TotalBytes > 0 ||
+	return p.Totals.New > 0 || p.Totals.Outdated > 0 ||
+		p.Totals.RecipesNew > 0 || p.Totals.RecipesOutdated > 0 || p.Prune.TotalBytes > 0 ||
 		len(p.Prune.Repositories) > 0 || p.Totals.PushUpperBoundBytes > 0
 }
 
