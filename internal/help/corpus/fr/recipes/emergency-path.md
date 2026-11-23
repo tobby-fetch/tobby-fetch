@@ -90,7 +90,7 @@ Une recipe du cookbook normal signée avec la clé d'urgence est refusée avec
 [`TBY-SIG-001`](../../reference/errors/#tby-sig-001), et le message nomme
 `org-emergency-key` et le périmètre `emergency` auquel elle est réservée.
 
-:::caution[Changé en v1.0.0-rc.1]
+:::caution[Changé en v0.7.0]
 Jusqu'à la v0.6.x, un dépôt qui ne correspondait à aucun périmètre était
 vérifié contre **tous** les roots configurés, clé d'urgence comprise (B-057),
 et cette page recommandait un second périmètre fourre-tout

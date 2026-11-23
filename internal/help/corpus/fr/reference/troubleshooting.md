@@ -119,7 +119,7 @@ un bandeau, un rapport et une métrique.
 | Une dérogation « ne couvre pas » un élément | [`TBY-SCN-026`](../errors/#tby-scn-026) | Sa portée (digest, dépôt, recipe) exclut l'élément. Élargir la portée si l'élément devait être couvert ; `tobby scan exceptions` montre chaque portée. |
 | L'instance refuse de démarrer sur un document OpenVEX | [`TBY-SCN-027`](../errors/#tby-scn-027) | Le fichier listé sous `scan.vex` est illisible ou n'est pas un document OpenVEX v0.2.0 valide ; le détail nomme le champ. Le corriger ou le retirer. |
 | Une dérogation de Retriever « n'a pas d'échéance » | [`TBY-SCN-028`](../errors/#tby-scn-028) | Elle s'applique, sans limite. Demander au propriétaire du Retriever d'ajouter `expires` et une justification. |
-| L'instance refuse de démarrer sur `scan.exceptions[i]` | [`TBY-CFG-001`](../errors/#tby-cfg-001) | Depuis v1.0.0-rc.1, chaque dérogation d'instance exige `expires` et `justification` ; le message nomme l'entrée. |
+| L'instance refuse de démarrer sur `scan.exceptions[i]` | [`TBY-CFG-001`](../errors/#tby-cfg-001) | Depuis v0.7.0, chaque dérogation d'instance exige `expires` et `justification` ; le message nomme l'entrée. |
 
 ## Un média amovible est bloqué
 

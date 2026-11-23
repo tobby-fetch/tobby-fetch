@@ -168,11 +168,11 @@ func (c *checker) authMethods() *result {
 var v1TagRe = regexp.MustCompile(`^refs/tags/v1(\.\d+\.\d+)?$`)
 
 // specTag is criterion 11: the stable v1 format specification is tagged in
-// the recipe-spec repository. A release candidate does not have it —
+// the recipe-spec repository. A release before 1.0.0 does not have it —
 // the tag is set after the acceptance — and says so.
 func (c *checker) specTag() *result {
 	r := &result{id: 11, title: "Format specification v1 (stable) tagged in " + c.specRepo}
-	if c.prerelease() {
+	if c.beforeV1() {
 		r.expectedKO = "expected at 1.0"
 	}
 	if !c.cmd.has("gh") {

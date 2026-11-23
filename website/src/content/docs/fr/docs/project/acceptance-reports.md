@@ -24,7 +24,7 @@ vérifications après le passage à Go 1.27 et à la dernière version de chaque
 dépendance, dans un seul rapport. Le plus récent date du 2026-11-12, pour la
 v0.6.0 : les jalons 1 à 5 de nouveau (les mêmes 88 vérifications) et les six
 scénarios du jalon 6 (81 vérifications), sur le commit `4d8ad1b`. Le
-dernier de tous date du 2026-11-16, pour la v1.0.0-rc.1 : les jalons 1 à 6
+dernier de tous date du 2026-11-16, pour la v0.7.0 : les jalons 1 à 6
 de nouveau et les onze scénarios du jalon 7, couronne comprise.
 
 ## Les rapports
@@ -170,7 +170,7 @@ par `helm push` qui puisse être synchronisé, parce que helm omet un champ que
 les fixtures de test écrivaient toujours (B-056). Les deux sont corrigés en
 v0.6.0, chacun avec un test qui échouait avant.
 
-### Jalon 7 — finitions, documentation et recette (v1.0.0-rc.1)
+### Jalon 7 — finitions, documentation et recette (v0.7.0)
 
 Exécuté le 2026-11-16 sur des hôtes bare-metal jetables, chacun créé et
 détruit dans la même session. Les jalons 1 à 6 rejoués d'abord sur le

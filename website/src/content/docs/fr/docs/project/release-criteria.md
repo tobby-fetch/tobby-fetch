@@ -11,8 +11,8 @@ de preuves qui existent — les rapports d'acceptation bruts, les verdicts de la
 CI et du pipeline de release, les artefacts publiés, l'arborescence taguée :
 
 ```bash
-mise run release-criteria -- --version v1.0.0-rc.1
-# ou : go run ./tools/release-criteria --version v1.0.0-rc.1
+mise run release-criteria -- --version v0.7.0
+# ou : go run ./tools/release-criteria --version v0.7.0
 ```
 
 Lancez-le depuis un clone qui contient le tag (`git fetch --tags`), avec
@@ -25,7 +25,7 @@ quand un critère vérifiable est `KO`.
 
 | Critère | Preuve |
 |---|---|
-| Les deux modes validés de bout en bout et acceptés | **Non vérifiable par un script** : la preuve est le procès-verbal de recette signé de la release candidate. |
+| Les deux modes validés de bout en bout et acceptés | **Non vérifiable par un script** : la preuve est le procès-verbal de recette signé de la release. |
 | Suite crucible verte, couronne comprise | Pour les jalons 1 à 7, les rapports bruts de `docs/acceptance/` *au tag* : chacun se termine par sa ligne `scenario … complete` et ne contient aucune ligne `FAIL`. Les jalons 6 et 7 doivent avoir un rapport pour chaque script de scénario, et le jalon 7 le scénario couronne (`z-crown-rke2`) avec le pied de rapport attestant la destruction du nœud d'acceptation. |
 | Conformité OCI | Les jobs de CI `conformance` (linux/amd64 et linux/arm64) du run sur le commit tagué. |
 | SLSA L3 et cosign | Les commandes de [Vérifier une version](../verify-a-release/), exécutées sur les artefacts publiés avec une configuration Docker vide (accès anonyme aux registries) : `slsa-verifier` sur chaque binaire, paquet et image, `cosign verify-blob` sur les SBOM, `cosign verify` sur l'image, le chart et le FileSet. |
@@ -35,7 +35,7 @@ quand un critère vérifiable est `KO`.
 | Documentation en anglais et en français | Chaque page anglaise a sa page française au tag, et le site se construit. |
 | i18n | Le job de CI `i18n completeness`. |
 | Quatre méthodes d'authentification | Les tests nommés d'OIDC, de SAML, des jetons statiques et de l'authentification basic existent au tag, et le job de tests de la CI est vert. |
-| Spécification du format `v1` | Un tag `v1` dans `tobby-fetch/recipe-spec`. Sur une release candidate, ce critère est attendu `KO` (**attendu à la 1.0**) et ne fait pas échouer l'exécution. |
+| Spécification du format `v1` | Un tag `v1` dans `tobby-fetch/recipe-spec`. Tant que le format n'est pas gelé à la 1.0, ce critère est `KO` ; sur une version `0.x` ou une pré-release (comme `-rc.1`), il est signalé **attendu à la 1.0** et ne fait pas échouer l'exécution. |
 
 ## Honnête sur ce qu'il ne voit pas
 

@@ -258,15 +258,15 @@ plan of oci://127.0.0.1:5012/config/zone-b:v1 (zone zone-b)
   outcome: changes-planned
 …
 totals
-  recipes:     1
+  recipes:     1 (1 new, 0 outdated)
   ingredients: 1 (1 new, 0 outdated, 0 up-to-date)
   to transfer: 28.4 MiB (29761656 bytes, deduplicated by digest, net of the local store)
   store:       0 B → 28.4 MiB
   to promote:  at most 28.4 MiB towards 127.0.0.1:5013
 
 recipes
-  NAME    REQUESTED  RESOLVED  SIGNATURE  SCOPE  TRANSFER
-  alpine  3.22.x     3.22.0    verified   -      28.4 MiB
+  NAME    REQUESTED  RESOLVED  STATUS  SIGNATURE  SCOPE  TRANSFER
+  alpine  3.22.x     3.22.0    new     verified   -      28.4 MiB
 
 registry policy
   allow-list:  not declared (no registry is refused on that ground)

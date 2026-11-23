@@ -170,7 +170,7 @@ d'intégrité du store à la demande avec un rapport horodaté (v0.6.0 —
 de vulnérabilités avec politique bloquante ou consultative (v0.6.0 —
 [analyse de vulnérabilités](../../security/vulnerability-scanning/)), et la
 sauvegarde du répertoire d'état avec une procédure de reconstruction testée
-de bout en bout (v1.0.0-rc.1 —
+de bout en bout (v0.7.0 —
 [sauvegarder et reconstruire une instance](../../passthrough/backup-rebuild/)).
 
 Chaque fonctionnalité est suivie, avec son statut et son jalon, sur la page

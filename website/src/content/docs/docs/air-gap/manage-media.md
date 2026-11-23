@@ -188,7 +188,7 @@ The reset is also available as `POST /api/v1/store/reset`. There is no
 ## Clocks, and Tobby itself
 
 **Clock coherence.** Freshness comparisons assume plausible clocks. Since
-v1.0.0-rc.1, an implausible clock — behind the build of the binary at
+v0.7.0, an implausible clock — behind the build of the binary at
 startup, or behind the production of a medium when it is opened — is
 warned about and audited, and never silently corrected: a banner, a log
 record, the command line's error output, a metric and an audit event name

@@ -24,7 +24,7 @@ same 88 checks after the move to Go 1.27 and every dependency's latest
 release, in one report. The latest is 2026-11-12, for v0.6.0: milestones 1
 to 5 again (the same 88 checks) and the six milestone-6 scenarios (81
 checks), on commit `4d8ad1b`. The latest of all is 2026-11-16, for
-v1.0.0-rc.1: milestones 1 to 6 again and the eleven milestone-7
+v0.7.0: milestones 1 to 6 again and the eleven milestone-7
 scenarios, crown included.
 
 
@@ -160,7 +160,7 @@ carries a port (B-055), and no chart published by `helm push` able to be
 synchronized, because helm omits a field the test fixtures always wrote
 (B-056). Both are fixed in v0.6.0, each with a test that failed before.
 
-### Milestone 7 — finishing, documentation and acceptance (v1.0.0-rc.1)
+### Milestone 7 — finishing, documentation and acceptance (v0.7.0)
 
 Run 2026-11-16 on disposable bare-metal hosts, each created and destroyed
 in the same session. Milestones 1 to 6 replayed first on commit `05dafee`,

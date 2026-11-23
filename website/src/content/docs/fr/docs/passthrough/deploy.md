@@ -44,7 +44,7 @@ accueille aussi les spools de téléchargements reprenables, voir
 ### Avec Helm
 
 ```sh
-helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0-rc.1 \
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.7.0 \
   --namespace tobby --create-namespace \
   --set config.mode=passthrough
 ```
@@ -56,7 +56,7 @@ vous n'avez pas choisie. Chaque chart publié est signé sans clé par le
 workflow de release, comme l'image :
 
 ```sh
-cosign verify ghcr.io/tobby-fetch/charts/tobby:1.0.0-rc.1 \
+cosign verify ghcr.io/tobby-fetch/charts/tobby:0.7.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
 ```
@@ -94,7 +94,7 @@ kubectl -n tobby create secret docker-registry tobby-registry-credentials \
   --docker-username=tobby \
   --docker-password="$(cat ./token)"
 
-helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 1.0.0-rc.1 \
+helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.7.0 \
   --namespace tobby --reuse-values \
   --set registryCredentials.enabled=true \
   --set registryCredentials.existingSecret=tobby-registry-credentials
@@ -119,7 +119,7 @@ kubectl apply -f ./deploy/manifests/
 Modifiez `20-secret-config.yaml` (posez `mode`, et `retriever.source` si
 vous en avez un) et `21-secret-registry-credentials.yaml` (la charge
 livrée est un `{"auths":{}}` vide et valide) avant d'appliquer. La ligne
-d'image de `40-deployment.yaml` épingle `v1.0.0-rc.1`. Si vous activez
+d'image de `40-deployment.yaml` épingle `v0.7.0`. Si vous activez
 `server.tls` dans la configuration, ajoutez à la main `scheme: HTTPS` aux
 trois sondes `httpGet` de `40-deployment.yaml` : le pod n'a qu'un listener,
 et ces manifestes ne suivent pas le réglage comme le fait le chart.

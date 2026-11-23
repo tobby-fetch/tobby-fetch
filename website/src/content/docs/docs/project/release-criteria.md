@@ -11,8 +11,8 @@ exists — the raw acceptance reports, the CI and release-pipeline verdicts,
 the published artifacts, the tagged tree:
 
 ```bash
-mise run release-criteria -- --version v1.0.0-rc.1
-# or: go run ./tools/release-criteria --version v1.0.0-rc.1
+mise run release-criteria -- --version v0.7.0
+# or: go run ./tools/release-criteria --version v0.7.0
 ```
 
 Run it from a clone that has the tag (`git fetch --tags`), with
@@ -25,7 +25,7 @@ a criterion that can be verified is `KO`.
 
 | Criterion | Evidence |
 |---|---|
-| Both modes validated end to end and accepted | **Not verifiable by a script**: the proof is the signed acceptance record of the release candidate. |
+| Both modes validated end to end and accepted | **Not verifiable by a script**: the proof is the signed acceptance record of the release. |
 | Crucible suite green, crown included | For milestones 1 to 7, the raw reports under `docs/acceptance/` *at the tag*: each ends with its `scenario … complete` line and has no `FAIL` line. Milestones 6 and 7 must have a report for every scenario script, and m7 the crown scenario (`z-crown-rke2`) with the footer stating the acceptance node was destroyed. |
 | OCI conformance | The `conformance` CI jobs (linux/amd64 and linux/arm64) of the run on the tagged commit. |
 | SLSA L3 and cosign | The commands of [Verify a release](../verify-a-release/), run on the published assets with an empty Docker configuration (anonymous registry access): `slsa-verifier` on every binary, package and image, `cosign verify-blob` on the SBOMs, `cosign verify` on the image, chart and FileSet. |
@@ -35,7 +35,7 @@ a criterion that can be verified is `KO`.
 | Documentation in English and French | Every English page has a French page at the tag, and the website builds. |
 | i18n | The `i18n completeness` CI job. |
 | Four authentication methods | The named tests of OIDC, SAML, static tokens and basic auth exist at the tag, and the CI test job is green. |
-| Format specification `v1` | A `v1` tag in `tobby-fetch/recipe-spec`. On a release candidate this is expected to be `KO` (**expected at 1.0**) and does not fail the run. |
+| Format specification `v1` | A `v1` tag in `tobby-fetch/recipe-spec`. Until the format is frozen at 1.0 this is `KO`; on a `0.x` release or a pre-release (such as `-rc.1`) it is flagged **expected at 1.0** and does not fail the run. |
 
 ## Honest about what it cannot see
 

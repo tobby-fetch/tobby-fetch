@@ -75,7 +75,7 @@ Il affiche une ligne — la version, le commit, la date de build, la
 version de Go et votre plateforme :
 
 ```
-tobby v1.0.0-rc.1 (commit …, built …, go1.27.4, linux/amd64)
+tobby v0.7.0 (commit …, built …, go1.27.4, linux/amd64)
 ```
 
 Chaque artefact de release porte une provenance SLSA Build L3, un SBOM

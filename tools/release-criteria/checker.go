@@ -36,7 +36,11 @@ func newChecker(ctx context.Context, cmd commander, version, repo, specRepo, dir
 	}
 }
 
-func (c *checker) prerelease() bool { return strings.Contains(c.version, "-") }
+// beforeV1 reports a version that is not 1.0.0 or later: a 0.x release,
+// or a pre-release of any version (v1.0.0-rc.1).
+func (c *checker) beforeV1() bool {
+	return strings.Contains(c.version, "-") || strings.HasPrefix(c.version, "v0.")
+}
 
 // git runs git in the local clone.
 func (c *checker) git(args ...string) execResult {

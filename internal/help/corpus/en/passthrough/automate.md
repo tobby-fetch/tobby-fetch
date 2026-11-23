@@ -237,7 +237,7 @@ the verdict:
 | Exit | `outcome` in the report | Meaning for a gate |
 | --- | --- | --- |
 | `0` | `up-to-date` | Nothing to do. |
-| `5` | `changes-planned` | Work is planned: new or outdated ingredients, or a prune. A success that deserves a look, not a broken build. |
+| `5` | `changes-planned` | Work is planned: new or outdated ingredients, a new or republished recipe version (even one that moves no content), or a prune. A success that deserves a look, not a broken build. |
 | `3` | `policy-refused` | A registry is outside `registries.allowlist` ([`TBY-POL-001`](../../reference/errors/#tby-pol-001)). |
 | `4` | `verification-failed` | A recipe signature no trust root validates, or content that does not match its pinned digest ([`TBY-SIG-001`](../../reference/errors/#tby-sig-001)). |
 | `1` | `failed` | The plan could not complete: a registry that does not answer, a recipe or version that does not exist, an unreadable store. |
@@ -250,8 +250,8 @@ plan of oci://127.0.0.1:5012/config/zone-b:v1 (zone zone-b)
   outcome: verification-failed
 …
 recipes
-  NAME    REQUESTED  RESOLVED  SIGNATURE  SCOPE  TRANSFER
-  alpine  3.22.x     3.22.0    refused    -      0 B
+  NAME    REQUESTED  RESOLVED  STATUS   SIGNATURE  SCOPE  TRANSFER
+  alpine  3.22.x     3.22.0    unknown  refused    -      0 B
 …
 problems
   TBY-SIG-001  verification   alpine

@@ -128,14 +128,14 @@ the reduced-assurance marker. A recipe that carries a signature no
 applicable root verifies is refused with `TBY-SIG-001`, exactly as outside
 the scope — including when no root applies to the scope at all because
 every configured root is reserved elsewhere, and the refusal then names
-the reserved root that does verify it. Before v1.0.0-rc.1, such a recipe was
+the reserved root that does verify it. Before v0.7.0, such a recipe was
 admitted as unsigned when the scope had no key to try (B-068): a scope's
 verdict on the same signed recipe depended on whether roots happened to be
 configured for other scopes. The same rule applies on a synchronization, in
 a plan, on the re-check before a push, in `media verify` and in
 `store verify`.
 
-:::caution[Changed in v1.0.0-rc.1 — breaking]
+:::caution[Changed in v0.7.0 — breaking]
 Up to v0.6.x, the strict default verified against **every** configured
 root, scoped or not: a key listed by a scope also verified any recipe
 outside it (B-057). A configuration that relied on this — a recipe
@@ -146,7 +146,7 @@ workaround, a catch-all `**` scope listing only the normal keys, is no
 longer needed and can be removed.
 :::
 
-Trust is also visible **content by content** (R-17, since v1.0.0-rc.1):
+Trust is also visible **content by content** (R-17, since v0.7.0):
 every repository of the store carries its provenance class — `recipe`
 (verified against these roots, with the reduced-assurance marker when a
 relaxed scope admitted it), `unit-import` or `seed` (a direct push) — in the

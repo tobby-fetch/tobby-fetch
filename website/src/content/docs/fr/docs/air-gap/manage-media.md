@@ -200,7 +200,7 @@ a pas de `tobby store reset` en ligne de commande.
 ## Les horloges, et Tobby lui-même
 
 **La cohérence d'horloge.** Les comparaisons de fraîcheur supposent des
-horloges plausibles. Depuis la v1.0.0-rc.1 une horloge implausible —
+horloges plausibles. Depuis la v0.7.0 une horloge implausible —
 antérieure à la compilation du binaire au démarrage, ou à la production d'un
 support à son ouverture — est signalée et consignée à l'audit, jamais
 corrigée en silence : une bannière, un enregistrement de journal, la sortie

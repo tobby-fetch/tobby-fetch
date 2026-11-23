@@ -8,12 +8,13 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
-## [1.0.0-rc.1] - 2026-11-16
+## [0.7.0] - 2026-11-16
 
-The first release candidate of 1.0 — milestone 7: finishing, documentation
-and acceptance. It brings the consumption aids (mapping
-table exports, a generated K3s/RKE2 `registries.yaml`), a redacted
-diagnostic bundle, the supervision kit (signed OpenAPI document and
+Milestone 7: finishing, documentation and acceptance. 0.7.0 is a regular
+minor release; 1.0.0 will follow once the code, maintainability and
+security audits are done and their main findings fixed. It brings the
+consumption aids (mapping table exports, a generated K3s/RKE2
+`registries.yaml`), a redacted diagnostic bundle, the supervision kit (signed OpenAPI document and
 metrics reference, alert rules and a dashboard in the chart), a clock
 plausibility check, a normative state directory with a tested rebuild,
 scoped and bounded vulnerability exceptions with OpenVEX input, provenance
@@ -268,6 +269,18 @@ the complete bilingual documentation.
 
 ### Fixed
 
+- **A plan counts a recipe whose version alone moved** (B-092): a new
+  version of a recipe naming the very same pinned ingredients moves no
+  content, and a synchronization still stores the new recipe and its
+  signature for the zone below. `tobby sync --dry-run` answered
+  `up-to-date`, exit `0`, over that run, so a pipeline gating on exit `5`
+  never triggered it. The plan now reports the recipe's own status
+  against the local store (`status` on each recipe: `new`, `outdated`,
+  `up-to-date`), counts them in the totals (`recipes_new`,
+  `recipes_outdated`) and answers `changes-planned`. The text report gains
+  a `STATUS` column in the recipes table, between `RESOLVED` and
+  `SIGNATURE`: a script reading that table by column position must be
+  adjusted — `--output json` is the stable form.
 - **Windows: two writers committing the same blob both succeed**
   (B-095): two ingredients of one synchronization sharing a layer, or two
   pushes of the same content, could fail with `Access is denied` — the
@@ -2119,8 +2132,8 @@ import, track, browse, pull) behind authentication that is on by default.
 - Release chain groundwork for SLSA Build L3 provenance and signed
   artifacts.
 
-[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v1.0.0-rc.1...HEAD
-[1.0.0-rc.1]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.6.0...v1.0.0-rc.1
+[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.0...v0.5.1

@@ -23,8 +23,9 @@ d'après le
 | v0.5.x | Miroir et air-gap | v0.5.0 — 2026-08-27 | miroir sur un store transportable, parcours média, mode plan, FileSets |
 | v0.6.x | Contrôles renforcés et identité d'entreprise | v0.6.0 — 2026-11-12 | analyse de vulnérabilités avec politique, OIDC et SAML, vérification du store |
 
-Le jalon 7 (finitions, documentation et recette) vise `v1.0.0-rc.1`, puis la
-1.0.0.
+Le jalon 7 (finitions, documentation et recette) sort en `v0.7.0`, une
+version mineure ordinaire. La 1.0.0 suivra quand les audits de code, de
+maintenabilité et de sécurité seront faits et leurs constats principaux corrigés.
 
 L'état courant et le chemin vers la 1.0 sont sur la page
 [état du projet](../../discover/status/) — la source de vérité unique pour le

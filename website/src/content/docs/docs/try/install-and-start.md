@@ -72,7 +72,7 @@ It prints one line — the version, the commit, the build date, the Go
 version and your platform:
 
 ```
-tobby v1.0.0-rc.1 (commit …, built …, go1.27.4, linux/amd64)
+tobby v0.7.0 (commit …, built …, go1.27.4, linux/amd64)
 ```
 
 Every release asset carries SLSA Build L3 provenance, a signed SBOM and a

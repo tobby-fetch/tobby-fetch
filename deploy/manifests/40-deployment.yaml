@@ -63,7 +63,7 @@ spec:
           # Multi-arch (amd64/arm64), Wolfi-based, no shell, already
           # non-root. Pin by digest in production: the digest is what the
           # release provenance and the cosign signature are made against.
-          image: ghcr.io/tobby-fetch/tobby-fetch:v1.0.0-rc.1
+          image: ghcr.io/tobby-fetch/tobby-fetch:v0.7.0
           imagePullPolicy: IfNotPresent
           # The image entrypoint is /usr/bin/tobby, and the configuration
           # is mounted at Tobby's default path, so `serve` needs no

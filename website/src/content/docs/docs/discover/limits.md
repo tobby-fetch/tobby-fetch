@@ -160,7 +160,7 @@ verification with a timestamped report (v0.6.0 —
 vulnerability scanning with a blocking or advisory policy (v0.6.0 —
 [vulnerability scanning](../../security/vulnerability-scanning/)), and the
 backup of the state directory with a rebuild procedure tested end to end
-(v1.0.0-rc.1 —
+(v0.7.0 —
 [back up and rebuild an instance](../../passthrough/backup-rebuild/)).
 
 Every feature is tracked, with its status and milestone, on the

@@ -23,8 +23,9 @@ so far, from the
 | v0.5.x | Mirror and air-gap | v0.5.0 — 2026-08-27 | mirror onto a transportable store, media journey, plan mode, FileSets |
 | v0.6.x | Hardened controls and enterprise identity | v0.6.0 — 2026-11-12 | vulnerability scanning with policy, OIDC and SAML, store verification |
 
-Milestone 7 (finishing, documentation and acceptance) targets
-`v1.0.0-rc.1`, then 1.0.0.
+Milestone 7 (finishing, documentation and acceptance) ships as
+`v0.7.0`, an ordinary minor release. 1.0.0 follows once the code,
+maintainability and security audits are done and their main findings fixed.
 
 The current state and the path to 1.0 are on the
 [project status](../../discover/status/) page — the single source of truth

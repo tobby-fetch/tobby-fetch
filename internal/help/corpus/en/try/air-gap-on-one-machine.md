@@ -200,7 +200,7 @@ tobby media verify --config destination.yaml
 ```
 
 ```
-medium … addressed to zone isolated-zone, resolved …, produced by tobby v1.0.0-rc.1
+medium … addressed to zone isolated-zone, resolved …, produced by tobby v0.7.0
 verdict: pushable (135 checked files, 30315074 bytes)
   pushable  alpine@3.24.4 (129 files, 30311807 bytes)
 ```

@@ -56,8 +56,9 @@ completed milestones stays replayable, in whole or per milestone, at any time
 ([ADR-0014](docs/adr/ADR-0014-crucible-test-infrastructure-incus.md)).
 
 > 🐕 **Released and under active development.** The current release is
-> **v1.0.0-rc.1**, the first release candidate of 1.0.0, with all seven
-> milestones delivered:
+> **v0.7.0**, which closes milestone 7 — all seven milestones are
+> delivered; 1.0.0 will follow the code, maintainability and security
+> audits:
 >
 > 1. **Foundations** — the application skeleton (layered configuration,
 >    structured JSON logging with run correlation, security audit log,
@@ -86,7 +87,7 @@ completed milestones stays replayable, in whole or per milestone, at any time
 > 7. **Finishing, documentation & acceptance** — the complete bilingual
 >    documentation, scoped and expiring vulnerability exceptions, the
 >    monitoring kit, the diagnostic bundle, instance backup and rebuild,
->    and the acceptance campaign that leads to 1.0.0.
+>    and the acceptance campaign that precedes 1.0.0.
 >
 > The [project status page](https://tobbyfetch.dev/docs/discover/status/)
 > tracks every feature; for what comes next, see the [roadmap](https://tobbyfetch.dev/roadmap.html).

@@ -244,7 +244,7 @@ est le verdict :
 | Sortie | `outcome` dans le rapport | Sens pour une barrière |
 | --- | --- | --- |
 | `0` | `up-to-date` | Rien à faire. |
-| `5` | `changes-planned` | Du travail est planifié : ingrédients nouveaux ou périmés, ou un prune. Un succès qui mérite un coup d'œil, pas un build cassé. |
+| `5` | `changes-planned` | Du travail est planifié : ingrédients nouveaux ou périmés, version de recipe nouvelle ou republiée (même si elle ne déplace aucun contenu), ou un prune. Un succès qui mérite un coup d'œil, pas un build cassé. |
 | `3` | `policy-refused` | Un registre est hors de `registries.allowlist` ([`TBY-POL-001`](../../reference/errors/#tby-pol-001)). |
 | `4` | `verification-failed` | Une signature de recipe qu'aucune racine de confiance ne valide, ou un contenu qui ne correspond pas à son digest épinglé ([`TBY-SIG-001`](../../reference/errors/#tby-sig-001)). |
 | `1` | `failed` | Le plan n'a pas pu se terminer : un registre qui ne répond pas, une recipe ou une version inexistante, un store illisible. |
@@ -257,8 +257,8 @@ plan of oci://127.0.0.1:5012/config/zone-b:v1 (zone zone-b)
   outcome: verification-failed
 …
 recipes
-  NAME    REQUESTED  RESOLVED  SIGNATURE  SCOPE  TRANSFER
-  alpine  3.22.x     3.22.0    refused    -      0 B
+  NAME    REQUESTED  RESOLVED  STATUS   SIGNATURE  SCOPE  TRANSFER
+  alpine  3.22.x     3.22.0    unknown  refused    -      0 B
 …
 problems
   TBY-SIG-001  verification   alpine

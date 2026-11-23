@@ -86,7 +86,7 @@ cookbook signed with the emergency key is refused with
 [`TBY-SIG-001`](../../reference/errors/#tby-sig-001), and the message names
 `org-emergency-key` and the `emergency` scope it is reserved to.
 
-:::caution[Changed in v1.0.0-rc.1]
+:::caution[Changed in v0.7.0]
 Up to v0.6.x, a repository that matched no scope was verified against
 **every** configured root, the emergency key included (B-057), and this
 page recommended a second, catch-all scope (`repositories: ["**"]`,
