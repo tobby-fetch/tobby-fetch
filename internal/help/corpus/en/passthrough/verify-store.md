@@ -2,7 +2,7 @@
 title: Verify the store's integrity
 description: Verify a whole store on demand, in either mode — blobs against their digests, manifests for completeness, recipe signatures against the trust roots configured now, and orphaned content — from the command line, the interface and the API.
 sidebar:
-  order: 8
+  order: 9
 ---
 
 A store is only as good as its bytes. Tobby already checks them in pieces:
@@ -22,7 +22,7 @@ Four checks, each independent of the others' verdict:
 | Check | What it establishes | Defect |
 |---|---|---|
 | **Blobs** | Every blob in the content-addressed tree is re-hashed and compared with the digest it is stored under. A truncated or altered file is named by its path, with the digest it should have and the one it has. | [`TBY-INT-001`](../../reference/errors/#tby-int-001) |
-| **Manifests** | Every manifest reachable from a recorded recipe — the recipe artifact, its signature artifacts, every ingredient — is complete: the manifest itself, its config and layers, the children of an index. A platform-filtered index keeps its pinned digest while carrying only some of its children (FR-022), so a child the recipe did *not* select is no defect — but a child it retained, recorded in the recipe graph at synchronization, that is now absent is a lost platform, and is one. A recipe recorded before v0.6.0 does not state what it retained: its absent children are read as unselected until a synchronization rewrites the record. A manifest that cannot be parsed is reported too, because what it references could not be checked. | [`TBY-INT-002`](../../reference/errors/#tby-int-002), [`TBY-INT-005`](../../reference/errors/#tby-int-005) |
+| **Manifests** | Every manifest reachable from a recorded recipe — the recipe artifact, its signature artifacts, every ingredient — is complete: the manifest itself, its config and layers, the children of an index. A platform-filtered index keeps its pinned digest while carrying only some of its children, so a child the recipe did *not* select is no defect — but a child it retained, recorded in the recipe graph at synchronization, that is now absent is a lost platform, and is one. A recipe recorded before v0.6.0 does not state what it retained: its absent children are read as unselected until a synchronization rewrites the record. A manifest that cannot be parsed is reported too, because what it references could not be checked. | [`TBY-INT-002`](../../reference/errors/#tby-int-002), [`TBY-INT-005`](../../reference/errors/#tby-int-005) |
 | **Signatures** | Every recorded recipe's signature is verified against the trust roots configured on **this instance now**, with scopes applied. A key that has since left the trust roots, or a scope that no longer admits unsigned recipes, shows up here. A recipe admitted unsigned by a declared scope is reported with its [reduced-assurance marker](../../security/reduced-assurance/). | [`TBY-SIG-001`](../../reference/errors/#tby-sig-001), naming the scope |
 | **Orphans** | Content that no recorded recipe and no protected root reaches is listed. Protected roots are the ones the prune keeps: unit imports, content seeded through `/v2/`, the offline vulnerability database. | [`TBY-INT-003`](../../reference/errors/#tby-int-003) |
 
@@ -57,7 +57,10 @@ the OpenAPI document.
 
 When an instance **is** serving the store, this form refuses and tells you
 what to do: it cannot see the instance's content lock, so a removal in
-progress would read as a defect. Hand the work to the instance instead:
+progress would read as a defect. The instance is recognised by the
+operating-system lock it holds on its state directory, whatever its
+listener (self-signed TLS included); one that crashed holds nothing and
+does not block this form. Hand the work to the instance instead:
 
 ```sh
 tobby store verify --instance https://tobby.example:8443 --wait

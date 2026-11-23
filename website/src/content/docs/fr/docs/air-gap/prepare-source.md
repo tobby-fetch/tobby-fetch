@@ -88,7 +88,8 @@ et n'est pas un supplément anodin.
 ### La synchronisation est manuelle, toujours
 
 Une instance miroir n'a pas d'ordonnanceur. `sync.interval` et `sync.prune`
-sont des réglages de passthrough et sont refusés en mode miroir. La
+sont des réglages de passthrough : en mode miroir, `sync.interval` est
+ignoré et `sync.prune` est refusé au démarrage. La
 préparation d'un support se déclenche depuis l'interface, depuis
 `POST /api/v1/sync`, ou avec
 [`tobby sync`](../../reference/cli/#tobby-sync) contre l'instance qui tourne
@@ -102,8 +103,7 @@ personne ne peut répondre.
 ## Pré-vol : est-ce que ça tient, est-ce que ça passera ?
 
 Avant tout transfert, Tobby calcule ce qui voyagerait et le compare à ce que
-la cible peut contenir. Il en sort deux refus et deux avertissements
-(FR-055).
+la cible peut contenir. Il en sort deux refus et deux avertissements.
 
 **Le volume contre l'espace.** Les octets à transférer sont calculés par
 recipe depuis les manifests source, dédupliqués par digest et nets de ce que
@@ -173,7 +173,7 @@ l'œil :
 | `5` | des changements sont prévus |
 | `3` | refusé par la politique (un registre hors liste blanche) |
 | `4` | échec de vérification (une signature de recipe qu'aucune clé de confiance ne valide) |
-| `1` | le plan n'a pas pu aboutir |
+| `1` | le plan n'a pas pu aboutir, ou le pré-vol a refusé la cible (espace, système de fichiers : `TBY-STO-004`, `TBY-STO-005`) |
 
 Le même rapport est sur `POST /api/v1/plan` et sur l'écran `/recipes/plan`,
 où un Retriever **candidat** peut être planifié à la place de celui qui est
@@ -245,5 +245,8 @@ L'écran **Média** côté source est la liste de colisage de ce moment précis 
 ce qu'il pèse.
 
 <!-- TODO: screenshot: l'écran Média côté source — la fiche de remise, lue avant de démonter le support -->
+
+Une préparation refusée avant de commencer, ou une source qui ne répond
+pas : voir le [Dépannage](../../reference/troubleshooting/#un-transfert-est-refusé-avant-de-commencer).
 
 Ensuite : [importer côté zone isolée](../../air-gap/import-destination/).

@@ -22,7 +22,7 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/sirupsen/logrus v1.10.2
 	github.com/spf13/cobra v1.10.2
-	github.com/tobby-fetch/recipe-spec v0.0.0-20261111194520-644ee8630ec0
+	github.com/tobby-fetch/recipe-spec v0.0.0-20261122171738-6d5d72abd9e6
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.62.0
 	golang.org/x/oauth2 v0.38.0

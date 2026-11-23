@@ -13,8 +13,7 @@ partagé par tous les chemins qui quittent le processus — le moteur de
 recipes, les imports ponctuels, les dépôts de charts Helm, le document
 Retriever, les trust roots récupérées par URL, et les pushes vers la
 destination. Configurez-le une fois et tous les chemins l'empruntent ;
-un test de la suite prouve qu'aucun chemin sortant ne le contourne
-(FR-080).
+un test de la suite prouve qu'aucun chemin sortant ne le contourne.
 
 ## Proxy authentifié
 
@@ -40,7 +39,7 @@ network:
 
 **Le mot de passe ne passe jamais par une ligne de commande.** Il n'y a
 délibérément aucun drapeau pour lui — une valeur de drapeau est lisible
-dans la table des processus et dans l'historique du shell (NFR-015). Il
+dans la table des processus et dans l'historique du shell. Il
 arrive par le fichier de configuration (`network.proxy.password`) ou par
 l'environnement :
 
@@ -60,7 +59,7 @@ secret, pas du code qui l'imprime.
 ## Autorités de certification privées — sans désactiver TLS
 
 Un registre ou un proxy derrière une PKI interne devient joignable en
-ajoutant son autorité au magasin de confiance sortant (FR-081) :
+ajoutant son autorité au magasin de confiance sortant :
 
 ```yaml
 network:
@@ -77,7 +76,7 @@ network:
   restreindre la confiance.
 
 Il n'existe **aucun réglage, nulle part dans Tobby, qui désactive la
-vérification des certificats**. FR-081 demande que des autorités privées
+vérification des certificats**. Le but est que des autorités privées
 soient reconnues, pas que le contrôle soit abandonné — une CA privée
 authentifie toujours le pair ; un contrôle désactivé n'authentifie rien.
 Le réglage voisin `registries.insecure` répond à une autre question
@@ -92,7 +91,7 @@ TLS vers le proxy lui-même.
 
 Un seul listener porte l'interface, l'API et le registre embarqué, donc
 un seul certificat couvre les trois — aucune surface ne peut être
-laissée en clair par accident (FR-082). Derrière un ingress ou un reverse
+laissée en clair par accident. Derrière un ingress ou un reverse
 proxy qui termine TLS, vous pouvez laisser cela désactivé ; posez-y
 `server.secureCookies: true` pour que les cookies de session soient
 marqués `Secure` même si le listener ne voit que du HTTP clair. Quand
@@ -148,9 +147,15 @@ dans le répertoire d'état — le seul endroit où une clé privée peut vivre
 — à côté de la paire générée plutôt que par-dessus, et l'adoption est une
 étape explicite, distincte de l'écriture des fichiers. Chaque
 remplacement, et chaque tentative refusée, est audité avec l'empreinte du
-certificat comme cible (FR-094).
+certificat comme cible. La paire adoptée est servie de nouveau après un
+redémarrage, tant qu'elle se charge et n'a pas expiré ; une paire expirée
+cède la place au repli auto-signé, et le journal de démarrage dit pourquoi
+(voir [Certificat TLS du serveur](../../security/key-rotation/#certificat-tls-du-serveur)).
 
 ![L'écran d'administration Réseau : la posture TLS avec l'empreinte du certificat et le formulaire de remplacement](../../../../../assets/docs/admin-network.png)
+
+Une source qui ne répond toujours pas après cette page :
+[Dépannage — un registre source ne répond pas](../../reference/troubleshooting/#un-registre-source-ne-répond-pas).
 
 Suite : donnez à l'instance quelque chose à promouvoir —
 [le Retriever de zone et la cascade](../../passthrough/retriever-cascade/).

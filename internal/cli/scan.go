@@ -7,16 +7,20 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/metrics"
 	"github.com/tobby-fetch/tobby-fetch/internal/scan"
 	"github.com/tobby-fetch/tobby-fetch/internal/scan/trivy"
+	"github.com/tobby-fetch/tobby-fetch/internal/scan/vex"
+	"github.com/tobby-fetch/tobby-fetch/internal/scanpolicy"
 	"github.com/tobby-fetch/tobby-fetch/internal/slip"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
+	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 	"github.com/tobby-fetch/tobby-fetch/internal/ui"
 )
 
@@ -33,12 +37,18 @@ type scanning struct {
 	eng         *engine.Engine
 	maxAge      time.Duration
 	logger      *slog.Logger
+	// policy is the effective content policy (R-15): the view behind
+	// GET /api/v1/policy, /admin/policy and the exception gauge.
+	policy *scanpolicy.Source
 }
 
 // setupScanning builds the scanner, locates its binary and database, and
 // announces the posture at startup on the log — the degraded mode and the
 // advisory policy are both stated, never silent (FR-075).
-func setupScanning(ctx context.Context, cfg *config.Config, st *store.Store, eng *engine.Engine, reg *metrics.Registry, logger *slog.Logger) *scanning {
+//
+// docs are the scan.vex documents, read and validated before anything
+// was opened (loadVEX); their exceptions join the instance level.
+func setupScanning(ctx context.Context, cfg *config.Config, st *store.Store, eng *engine.Engine, reg *metrics.Registry, logger *slog.Logger, docs []*vex.Translation, hard hardening.Switches) *scanning {
 	// The scanner's private directory — the unpacked database, a
 	// channel-delivered binary, one scratch copy per scan — lives in the
 	// state directory, never in the transportable store (R-16).
@@ -50,7 +60,7 @@ func setupScanning(ctx context.Context, cfg *config.Config, st *store.Store, eng
 	// a work directory it does not own anyway.
 	workDir, temp := "", false
 	if cfg.State.Root != "" {
-		workDir = filepath.Join(cfg.State.Root, "scanner")
+		workDir = statedir.Path(cfg.State.Root, statedir.Scanner)
 	} else if d, err := os.MkdirTemp("", "tobby-scanner-"); err == nil {
 		workDir, temp = d, true
 	} else {
@@ -70,26 +80,23 @@ func setupScanning(ctx context.Context, cfg *config.Config, st *store.Store, eng
 		logger: logger,
 	}
 	settings := engine.ScanSettingsFrom(&cfg.Scan, s.scanner)
-	settings.Observe = func(r *scan.Report) {
-		reg.Scan.Items.WithLabelValues(string(r.Policy.Verdict)).Inc()
-		for sev, n := range map[string]int{
-			"CRITICAL": r.Counts.Critical, "HIGH": r.Counts.High, "MEDIUM": r.Counts.Medium,
-			"LOW": r.Counts.Low, "UNKNOWN": r.Counts.Unknown,
-		} {
-			if n > 0 {
-				reg.Scan.Findings.WithLabelValues(sev).Add(float64(n))
-			}
-		}
-	}
+	settings.Exceptions = append(settings.Exceptions, scanpolicy.Exceptions(docs)...)
+	settings.Observe = observeScan(reg)
 	settings.Refresh = func(ctx context.Context) { s.refresh(ctx) }
 	eng.SetScan(&settings)
 	reg.Scan.SetState(s.metricState)
+	s.policy = scanpolicy.New(&scanpolicy.Options{
+		Scan: &cfg.Scan, Documents: docs, Hardening: hard,
+		Retriever: eng.RetrieverExceptions, Blocking: eng.ScanPolicyBlocking,
+	})
+	reg.RegisterScanExceptions(s.policy.Counts)
+	logExceptions(ctx, logger, s.policy.View())
 
 	s.refresh(ctx)
 	if eng.ScanPolicyBlocking() {
 		logger.LogAttrs(ctx, slog.LevelInfo, "vulnerability policy is blocking",
 			slog.String("threshold", scan.FormatScore(cfg.Scan.Threshold)),
-			slog.Int("exceptions", len(cfg.Scan.Exceptions)),
+			slog.Int("exceptions", len(settings.Exceptions)),
 			slog.String("requirement", "FR-031"))
 	} else {
 		logger.LogAttrs(ctx, slog.LevelWarn, "vulnerability policy is advisory",
@@ -103,6 +110,82 @@ func setupScanning(ctx context.Context, cfg *config.Config, st *store.Store, eng
 			slog.String("max_db_age", cfg.Scan.MaxDBAge.String()), slog.String("requirement", "R-13"))
 	}
 	return s
+}
+
+// observeScan feeds the per-item scan metrics: the verdict, the findings
+// by severity, and the re-block counter (R-15) — an item refused because
+// an exception that admitted it has expired.
+func observeScan(reg *metrics.Registry) func(*scan.Report) {
+	return func(r *scan.Report) {
+		reg.Scan.Items.WithLabelValues(string(r.Policy.Verdict)).Inc()
+		if len(r.Reblocked()) > 0 {
+			reg.Scan.Reblocked.Inc()
+		}
+		for sev, n := range map[string]int{
+			"CRITICAL": r.Counts.Critical, "HIGH": r.Counts.High, "MEDIUM": r.Counts.Medium,
+			"LOW": r.Counts.Low, "UNKNOWN": r.Counts.Unknown,
+		} {
+			if n > 0 {
+				reg.Scan.Findings.WithLabelValues(sev).Add(float64(n))
+			}
+		}
+	}
+}
+
+// loadVEX reads and validates the scan.vex documents (FR-031 amendment
+// 2026-11-16): a document that cannot be read or validated refuses the
+// start with TBY-SCN-027, naming the file. Local files only, never
+// fetched (NFR-019). What each document admitted and ignored is logged.
+func loadVEX(ctx context.Context, cfg *config.Config, logger *slog.Logger) ([]*vex.Translation, error) {
+	docs, err := scanpolicy.LoadDocuments(cfg.Scan.VEX)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range docs {
+		logger.LogAttrs(ctx, slog.LevelInfo, "OpenVEX document read",
+			slog.String("path", d.Path), slog.String("document_id", d.DocumentID),
+			slog.Time("expires", d.Expires),
+			slog.Int("statements", d.Statements), slog.Int("admitted", d.Admitted), slog.Int("ignored", d.Ignored),
+			slog.Int("exceptions", len(d.Exceptions)),
+			slog.String("requirement", "FR-031/R-15"))
+		for _, n := range d.Notes {
+			level := slog.LevelInfo
+			if n.Reason == vex.NoteUnboundedProduct || n.Reason == vex.NoteImpactStatementOnly {
+				level = slog.LevelWarn
+			}
+			attrs := []slog.Attr{
+				slog.String("path", d.Path), slog.Int("statement", n.Statement),
+				slog.String("vulnerability", n.Vulnerability), slog.String("reason", n.Reason),
+				slog.String("detail", n.Detail), slog.String("requirement", "FR-031/R-15"),
+			}
+			if n.Product != "" {
+				attrs = append(attrs, slog.String("product", n.Product))
+			}
+			logger.LogAttrs(ctx, level, "OpenVEX statement adds no exception", attrs...)
+		}
+	}
+	return docs, nil
+}
+
+// logExceptions states the configured exceptions at startup: how many are
+// active and expired per source, and each expired one by name — an
+// exception that lapsed while the instance was down re-blocks at the next
+// evaluation, and the operator reads why here first.
+func logExceptions(ctx context.Context, logger *slog.Logger, v *scanpolicy.View) {
+	counts := map[string]int{}
+	for _, ex := range v.Exceptions {
+		counts[ex.Origin+"_"+ex.State]++
+		if ex.State == scanpolicy.StateExpired {
+			logger.LogAttrs(ctx, slog.LevelWarn, "scan exception expired: the findings it covered are judged again",
+				slog.String("id", ex.ID), slog.String("source", ex.Origin), slog.String("document", ex.Document),
+				slog.Time("expires", *ex.Expires),
+				slog.String("code", string(taxonomy.CodeScanExceptionExpired)), slog.String("requirement", "FR-031/R-15"))
+		}
+	}
+	logger.LogAttrs(ctx, slog.LevelInfo, "scan exceptions",
+		slog.Int("instance_active", counts["instance_active"]), slog.Int("instance_expired", counts["instance_expired"]),
+		slog.Int("vex_active", counts["vex_active"]), slog.Int("vex_expired", counts["vex_expired"]),
+		slog.String("requirement", "FR-031/R-15"))
 }
 
 // close removes the work directory this process created for itself.

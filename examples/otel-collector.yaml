@@ -4,7 +4,7 @@
 # pinned by digest. This one can be published to a cookbook as it stands.
 #
 # Verified against chart 0.178.2 / appVersion 0.163.2 on 2026-11-09.
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 
 metadata:
@@ -15,7 +15,7 @@ metadata:
     the telemetry hop that lets a restricted zone keep its metrics, logs
     and traces inside its own perimeter.
   annotations:
-    recipe.tobby.dev/cooked-at: "2026-11-09T09:00:00Z"
+    recipe.tobbyfetch.dev/cooked-at: "2026-11-09T09:00:00Z"
     org.opencontainers.image.source: https://github.com/open-telemetry/opentelemetry-helm-charts
 
 spec:

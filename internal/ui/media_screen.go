@@ -43,6 +43,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/assurance"
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
@@ -57,6 +58,9 @@ import (
 type MediaZone interface {
 	Zone() string
 	LastMediaImport() (media.ImportRecord, bool)
+	// Destination is the zone registry Push imports into; nil when
+	// destination.registry is not configured (B-079).
+	Destination() *engine.Destination
 }
 
 // The three stages R-02 asks to be rendered separately, in the order the
@@ -546,6 +550,13 @@ func (u *UI) mediaVerify(w http.ResponseWriter, r *http.Request) {
 		u.mediaRefusal(w, r, opts, e)
 		return
 	}
+	// FR-094 (B-073): the run just started carries the waiver, and a
+	// waived verification can end pushable and open the serving gate — so
+	// the waiver is recorded here, with the actor and the real network
+	// origin, as on the Push step. Not before Start: a refused start (a
+	// run already walking the disk, no medium) applies nothing, and a
+	// success record for it would be a waiver that never happened.
+	u.auditMediaWaivers(r, id.Name, opts, audit.MediaOperationVerify)
 	d := u.mediaScreenData(r)
 	d.ZoneWaived, d.StaleWaived = opts.AllowZoneMismatch, opts.AllowStale
 	if isFragment(r) {
@@ -580,24 +591,24 @@ func (u *UI) mediaImport(w http.ResponseWriter, r *http.Request) {
 		}))
 		return
 	}
+	// B-079: nowhere to push is refused here too, before any waiver record,
+	// task or media.import success — verification needed no registry, the
+	// push does, and the task would only fail with this code.
+	if u.mediaZone.Destination() == nil {
+		u.mediaRefusal(w, r, opts, taxonomy.New(taxonomy.CodeConfigInvalid, taxonomy.Params{
+			"detail": "no destination registry is configured (destination.registry, FR-052): " +
+				"a medium can be verified without one, but not imported",
+		}))
+		return
+	}
 
-	var overrides []string
-	if opts.AllowZoneMismatch {
-		overrides = append(overrides, tasks.OverrideZone)
-	}
-	if opts.AllowStale {
-		overrides = append(overrides, tasks.OverrideFreshness)
-	}
 	// FR-094: the waiver is recorded with the actor and the real network
 	// origin BEFORE the task exists, so a queue that refuses the task
 	// still leaves the attempt in the trail — the same order the API
-	// mirror uses (internal/api/media.go).
-	for _, guard := range overrides {
-		audit.Log(r.Context(), u.logger, &audit.Event{
-			Actor: id.Name, Action: audit.ActionMediaOverride, Target: guard,
-			Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r),
-		})
-	}
+	// mirror uses (internal/api/media.go). A Verify run under the same
+	// waiver wrote its own record: two applications, two records, each
+	// naming its operation.
+	overrides := u.auditMediaWaivers(r, id.Name, opts, audit.MediaOperationImport)
 
 	root := ""
 	if u.store != nil {
@@ -632,6 +643,39 @@ func (u *UI) authorizeMediaWaivers(r *http.Request, id auth.Identity, opts media
 		Outcome: audit.OutcomeDenied, Origin: auth.ClientOrigin(r),
 	})
 	return taxonomy.New(taxonomy.CodeRoleDenied, taxonomy.Params{"role": string(auth.RoleAdmin)})
+}
+
+// auditMediaWaivers writes one media.override success record per waiver
+// opts applies to operation — the actor, the network origin, and a detail
+// naming the operation, the zone and the medium — and returns the guards
+// in the form a task carries them. The API mirror writes the same records
+// (internal/api/media.go).
+func (u *UI) auditMediaWaivers(r *http.Request, actor string, opts mediagate.Options, operation string) []string {
+	var overrides []string
+	if opts.AllowZoneMismatch {
+		overrides = append(overrides, tasks.OverrideZone)
+	}
+	if opts.AllowStale {
+		overrides = append(overrides, tasks.OverrideFreshness)
+	}
+	if len(overrides) == 0 {
+		return nil
+	}
+	zone, mediaID := "", ""
+	if u.mediaZone != nil {
+		zone = u.mediaZone.Zone()
+	}
+	if u.store != nil {
+		mediaID = u.store.MediaID()
+	}
+	detail := audit.MediaOverrideDetail(operation, zone, mediaID)
+	for _, guard := range overrides {
+		audit.Log(r.Context(), u.logger, &audit.Event{
+			Actor: actor, Action: audit.ActionMediaOverride, Target: guard,
+			Outcome: audit.OutcomeSuccess, Origin: auth.ClientOrigin(r), Detail: detail,
+		})
+	}
+	return overrides
 }
 
 func (u *UI) auditMediaImport(r *http.Request, actor, target, outcome string) {

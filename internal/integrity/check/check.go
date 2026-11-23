@@ -411,11 +411,16 @@ func (w *walker) signature(rec *store.RecipeRecord, row *integrity.Recipe) {
 	row.TrustScope = d.Scope
 	subject := rec.CookbookRepo + ":" + rec.ArtifactTag
 
+	sigSrc := &manifests{st: w.st, repo: rec.ArtifactRepo}
 	refuse := func(fingerprints string) {
 		row.Signature = integrity.SignatureRefused
-		w.defect(taxonomy.CodeSignature, rec.Name+"@"+rec.Version, map[string]string{
-			"recipe": subject, "fingerprints": fingerprints, "scope": d.Scope,
-		})
+		params := map[string]string{"recipe": subject, "fingerprints": fingerprints, "scope": d.Scope}
+		// B-057: name the reserved root the signature does verify against,
+		// so the refusal says why a valid key did not apply here.
+		if reserved, reservedTo := media.SignatureElsewhere(w.ctx, sigSrc, rec.ArtifactRepo, rec.Digest, d); reserved != "" {
+			params["reserved"], params["reservedto"] = reserved, reservedTo
+		}
+		w.defect(taxonomy.CodeSignature, rec.Name+"@"+rec.Version, params)
 	}
 	admitUnsigned := func() {
 		row.Signature = integrity.SignatureUnsignedAdmitted
@@ -423,14 +428,20 @@ func (w *walker) signature(rec *store.RecipeRecord, row *integrity.Recipe) {
 	}
 
 	if d.Keys == nil {
-		if d.AllowUnsigned {
+		// B-068: inside an allowUnsigned scope, only a recipe that carries
+		// no signature at all is admitted; a present signature no
+		// applicable root verifies is refused, as when keys apply.
+		switch {
+		case !d.AllowUnsigned:
+			refuse(media.NoKeyDetail(d))
+		case !media.Unsigned(w.ctx, sigSrc, rec.ArtifactRepo, rec.Digest):
+			refuse(media.SignedNoKeyDetail(d))
+		default:
 			admitUnsigned()
-			return
 		}
-		refuse("none — no trust root is configured")
 		return
 	}
-	fingerprint, err := sigverify.Verify(w.ctx, &manifests{st: w.st, repo: rec.ArtifactRepo}, rec.ArtifactRepo, rec.Digest, d.Keys)
+	fingerprint, err := sigverify.Verify(w.ctx, sigSrc, rec.ArtifactRepo, rec.Digest, d.Keys)
 	switch {
 	case err == nil:
 		row.Signature, row.KeyFingerprint = integrity.SignatureVerified, fingerprint

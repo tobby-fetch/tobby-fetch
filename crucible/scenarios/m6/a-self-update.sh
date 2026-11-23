@@ -131,7 +131,7 @@ for v in 0.6.0 0.6.1; do
         awk '/^Digest:/{print $2}') || true
     [ -n "$CHART" ] || fail "pushing the chart $v"
     cat >"$WORK/recipe-$v.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: tobby
@@ -174,7 +174,7 @@ check "tobby 0.6.0 signed by the site key, 0.6.1 by the project key only (each c
 
 # -- 3. The standard mirror flow ----------------------------------------------
 cat >"$WORK/retriever.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: $ZONE

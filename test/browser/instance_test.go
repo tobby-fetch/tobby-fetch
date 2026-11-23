@@ -27,11 +27,13 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/consume"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/federation"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity/check"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
+	"github.com/tobby-fetch/tobby-fetch/internal/server"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/ui"
@@ -77,6 +79,10 @@ const mediumZone = "zone-destination"
 type mediaZone struct{}
 
 func (mediaZone) Zone() string { return mediumZone }
+
+// Destination is non-nil: the instance of the Media scenarios has a zone
+// registry to push into, so the Push step is offered (B-079).
+func (mediaZone) Destination() *engine.Destination { return &engine.Destination{} }
 
 func (mediaZone) LastMediaImport() (media.ImportRecord, bool) {
 	return media.ImportRecord{}, false
@@ -246,6 +252,9 @@ func newInstance(t *testing.T, opts ...option) *instance {
 	uiOpts := &ui.Options{
 		Version: "0.3.0-e2e", Mode: "mirror", Store: st, Queue: inst.Queue, Scan: sp.scan,
 		Federation: sp.fed,
+		// The consumption aids (FR-065): a zone registry the screens can
+		// point at, so the NFR-017 pass audits them filled in.
+		Aids: consume.New(st, &consume.Settings{Registry: "registry.zone.example", Version: "0.3.0-e2e"}),
 	}
 	if sp.medium {
 		seedMedium(t, st)
@@ -264,7 +273,10 @@ func newInstance(t *testing.T, opts ...option) *instance {
 	webUI := ui.New(authn, logger, uiOpts)
 	webUI.Mount(mux)
 	webUI.MountFederation(mux)
-	srv := httptest.NewServer(mux)
+	// Behind the listener's security-header middleware, as in production
+	// (NFR-022): the suite is what proves htmx and the inline scripts
+	// still run under the real CSP and referrer policy.
+	srv := httptest.NewServer(server.SecurityHeaders(mux, server.HeaderPolicy{HTML: ui.ContentSecurityPolicy()}))
 	t.Cleanup(srv.Close)
 	inst.URL = srv.URL
 	return inst
@@ -397,7 +409,7 @@ func seedRecipe(t *testing.T, st *store.Store) []byte {
 	defer srv.Close()
 	addr := srv.Listener.Addr().String()
 
-	doc := []byte(`apiVersion: recipe.tobby.dev/v1alpha1
+	doc := []byte(`apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: wordpress

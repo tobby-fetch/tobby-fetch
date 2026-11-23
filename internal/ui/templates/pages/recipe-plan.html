@@ -114,6 +114,7 @@
         <span class="t-tile-label">{{$.T "plan.t_items"}}</span>
         <span class="t-tile-value">{{.Totals.Ingredients}}</span>
         <span class="t-tile-sub">{{$.T "plan.t_items_value" "New" .Totals.New "Outdated" .Totals.Outdated "UpToDate" .Totals.UpToDate}}</span>
+        <span class="t-tile-sub">{{$.T "plan.t_recipes_value" "Recipes" .Totals.Recipes "New" .Totals.RecipesNew "Outdated" .Totals.RecipesOutdated}}</span>
       </div>
       {{if .Totals.PushEvaluated}}
       <div class="t-tile">
@@ -202,6 +203,8 @@
                 <span class="t-mono" translate="no">{{if .Resolved}}{{.Resolved}}{{else}}—{{end}}</span></td></tr>
         <tr><th scope="row">{{$.T "plan.r_cookbook"}}</th>
             <td class="t-mono t-muted" translate="no" title="{{.Cookbook}}">{{$.Trunc .Cookbook 44}}</td></tr>
+        <tr><th scope="row">{{$.T "plan.r_status"}}</th>
+            <td><span class="t-badge t-badge--{{.Status}}" translate="no" lang="en">{{.Status}}</span></td></tr>
         <tr><th scope="row">{{$.T "plan.r_signature"}}</th>
             <td>
               <span class="t-badge t-badge--{{.SignatureClass}}">{{$.T .SignatureKey}}</span>

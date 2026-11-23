@@ -1,0 +1,24 @@
+# Acceptance host: Scaleway Elastic Metal EM-L101X-SATA (fr-par-2, hourly), Xeon E5-1410 v2, Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ e9ea100; node created 2026-11-23T14:03Z, destroyed 2026-11-23T15:10Z (verified)
+ok   scenario m7 started 2026-11-23T14:56:32Z
+ok   tooling available (curl, go)
+ok   built tobby for linux/amd64
+ok   built the documentation crawler (test/topology/helpcrawl)
+ok   egress canary failed as required: tbc-m7e-canary (10.180.10.104) answers the crucible host and not tbc-m7e-airgap (10.180.20.77); no route to the internet
+ok   the node holds no documentation file beside the binary; the corpus embedded in it is the published one (corpus in sync with website/src/content/docs/docs (147 files), every English page translated)
+ok   instance under test: mirror on tbc-airgap, authentication on (anonymous /help answers 303), a viewer account for the reader
+ok   /help (en): the navigation lists the 65 published pages and nothing else; the index carries every one of the 118 catalog codes, each linked and with what, cause and action
+ok   every one of the 65 published pages is served in en at /help/<section>/<page>, titled as published, without English fallback
+ok   crawl (en): 1246 links, 809 anchors and 13 images followed on the served pages, none dangling; 164 external links, marked as such, not followed offline
+ok   every one of the 1033 links and images written in the en sources is present on its served page
+ok   UI (en): the 404 error block renders TBY-SRV-002 and links to /help#TBY-SRV-002, an entry of the index
+ok   API (en): the problem document carries TBY-SRV-002 and type /help#TBY-SRV-002, an entry of the index
+ok   /help (fr): the navigation lists the 65 published pages and nothing else; the index carries every one of the 118 catalog codes, each linked and with what, cause and action
+ok   every one of the 65 published pages is served in fr at /help/<section>/<page>, titled as published, without English fallback
+ok   crawl (fr): 1242 links, 801 anchors and 13 images followed on the served pages, none dangling; 164 external links, marked as such, not followed offline
+ok   every one of the 1029 links and images written in the fr sources is present on its served page
+ok   UI (fr): the 404 error block renders TBY-SRV-002 and links to /help#TBY-SRV-002, an entry of the index
+ok   API (fr): the problem document carries TBY-SRV-002 and type /help#TBY-SRV-002, an entry of the index
+ok   every one of the 118 taxonomy entries reads differently in French and in English (translated, not a fallback)
+ok   the served pages name 117 distinct taxonomy codes, every one with its entry on /help in both languages
+ok   NFR-021: the 15 required pages are published and served in English and in French: try/install-and-start, passthrough/deploy, reference/configuration, passthrough/operate, air-gap/media-workflow, air-gap/import-destination, security/model, security/content-trust, security/threat-model, security/input-validation, passthrough/monitoring, reference/metrics-logs, passthrough/backup-rebuild, reference/troubleshooting, recipes/emergency-path
+ok   scenario m7 e-docs-offline complete — report: crucible-report-m7-e-docs-offline.txt

@@ -1,0 +1,697 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# What the published error reference says beyond the catalog, in this
+# language. tools/errorsref merges it with internal/taxonomy and writes the
+# page; the page itself is never edited by hand.
+#
+# Per code: `offline` (can an isolated zone fix it with local means) and
+# `blocks` (the blast radius) are required. `details` is optional: extra
+# bullets carrying what the three catalog sentences do not say. Never repeat
+# the catalog text, the class, the exit code or the HTTP status here: the
+# tool prints them from the code.
+title: "Errors and troubleshooting (TBY-*)"
+description: "The full error taxonomy — what happened, probable cause, corrective action per code, whether it is fixable offline, and what it blocks."
+order: 4
+intro: |
+  Every user-visible Tobby error carries a short stable code (`TBY-<area>-<nnn>`)
+  and a structured message — what happened, probable cause, corrective action —
+  rendered identically by the web UI, the CLI and the API (as RFC 9457 problem
+  documents). Codes are part of the product contract: **a code is never
+  renumbered or reused**, and its class decides the
+  [process exit code](#exit-codes).
+
+  This page is generated from the taxonomy catalog embedded in the binary
+  (`internal/taxonomy`): what happened, probable cause and corrective action
+  are, word for word, what the instance prints. Each code has its own
+  heading, so the anchor `#tby-reg-003` is stable — the same anchors the
+  in-instance troubleshooting guide (`/help#TBY-REG-003`) resolves.
+
+  A check regenerates the page and fails when it differs from the catalog,
+  in either language — the catalog is the source of truth, this page is its
+  published rendering.
+
+  **How to read each entry:**
+
+  - **Fixable offline** — whether an operator in an isolated zone can resolve
+    the condition with local means only (configuration, disk, accounts), or
+    whether the fix requires reaching a source registry or the upstream
+    authoring pipeline.
+  - **Blocks** — the blast radius: the whole instance (startup refusal), one
+    task or recipe, or just the request at hand.
+  - **Override** — policy refusals are lifted by changing the audited
+    configuration that enforces them (allowlist, trust scopes, accounts);
+    verification failures cannot be overridden at all. The only runtime
+    overrides are admin-only and audited, and both sit at media import: the
+    zone mismatch (TBY-MED-006) and the staleness guard (TBY-MED-007).
+exitCodes:
+  title: "Exit codes"
+  before: |
+    The class of a code decides the process exit code: it is the command-line
+    projection of this taxonomy (FR-066, R-08 amendment). **The table below is
+    produced from the code** (`internal/taxonomy`), and a test fails when the
+    two differ — in both directions: a code the table does not list, or a row
+    nothing can produce.
+
+    It is covered by the project's semantic-versioning promise: removing a
+    code or renumbering one is a breaking change. The `Name` column is the
+    stable machine name of the row; it is part of the contract and is never
+    translated.
+  after: |
+    The [CLI reference](../../reference/cli/#exit-codes) repeats this table
+    with every command, the `--output json` contract and the non-interactive
+    mode.
+labels:
+  index: "Index by domain"
+  indexDomain: "Domain"
+  indexCodes: "Codes"
+  what: "What happened"
+  cause: "Probable cause"
+  action: "Corrective action"
+  note: "Note"
+  class: "Class"
+  exit: "exit"
+  http: "HTTP status"
+  offline: "Fixable offline"
+  blocks: "Blocks"
+  operational: "operational failure"
+  policy: "policy refusal"
+  verification: "verification failure"
+  colon: ":"
+domains:
+  - id: AUTH
+    title: "Authentication and accounts"
+  - id: CFG
+    title: "Configuration"
+  - id: NET
+    title: "Outbound network and TLS"
+  - id: VAL
+    title: "Recipe and retriever validation"
+  - id: REG
+    title: "Source registry access"
+  - id: POL
+    title: "Policy refusals"
+  - id: SIG
+    title: "Signature and digest verification"
+  - id: SCN
+    title: "Vulnerability scanning"
+  - id: DST
+    title: "Destination limits"
+  - id: CHT
+    title: "Helm charts"
+  - id: STO
+    title: "Local store and state"
+  - id: MED
+    title: "Removable-media transport"
+  - id: INT
+    title: "Store integrity"
+  - id: LAY
+    title: "OCI image layout export and import"
+  - id: FIL
+    title: "Packing file sets"
+  - id: AID
+    title: "Consumption aids"
+  - id: DIA
+    title: "Diagnostic bundle"
+  - id: CLK
+    title: "Clock plausibility"
+  - id: STA
+    title: "Instance state directory"
+  - id: TSK
+    title: "Tasks"
+  - id: SRV
+    title: "Instance"
+codes:
+  TBY-AUTH-001:
+    offline: "yes"
+    blocks: "the whole instance (secure-by-default startup refusal)"
+
+  TBY-AUTH-002:
+    offline: "yes"
+    blocks: "the sign-in attempt only"
+    details:
+      - text: "The message is deliberately parameter-free: it never reveals whether the account exists."
+
+  TBY-AUTH-003:
+    offline: "yes"
+    blocks: "the action, for this session"
+
+  TBY-AUTH-004:
+    offline: "yes"
+    blocks: "the submitted request only"
+    details:
+      - text: "Every state-changing request authenticated by the browser session carries the token, UI forms and API calls alike (`X-CSRF-Token` header on the API), and is refused when the browser says it comes from another origin."
+
+  TBY-AUTH-005:
+    offline: "yes"
+    blocks: "the session only"
+    details:
+      - text: "The idle timeout is `auth.session.idleTimeout` (default 30m) and the absolute lifetime is `auth.sessionTTL` (default 12h). Sessions live in memory, hence the restart case."
+      - text: "Each expiry is recorded as a `session.expire` audit event with its reason, `idle` or `lifetime`."
+
+  TBY-AUTH-006:
+    offline: "yes"
+    blocks: "the password change only"
+
+  TBY-AUTH-007:
+    offline: "yes"
+    blocks: "the password change only"
+
+  TBY-AUTH-008:
+    offline: "yes"
+    blocks: "the account operation only"
+
+  TBY-AUTH-009:
+    offline: "yes"
+    blocks: "the account or token creation only"
+
+  TBY-AUTH-010:
+    offline: "yes"
+    blocks: "the account operation only"
+
+  TBY-AUTH-011:
+    offline: "yes"
+    blocks: "the removal/demotion only"
+
+  TBY-AUTH-012:
+    offline: "yes"
+    blocks: "the network origin, temporarily"
+    details:
+      - text: "The expensive check is an argon2id computation."
+
+  TBY-AUTH-013:
+    offline: "yes"
+    blocks: "the request; the token stays refused"
+
+  TBY-AUTH-014:
+    offline: "yes"
+    blocks: "the sign-in attempt"
+
+  TBY-AUTH-015:
+    offline: "yes"
+    blocks: "the sign-in attempt"
+
+  TBY-AUTH-016:
+    offline: "depends: local sign-in works offline; federated sign-in needs the provider"
+    blocks: "federated sign-in only"
+
+  TBY-AUTH-017:
+    offline: "yes"
+    blocks: "the sign-in attempt"
+
+  TBY-AUTH-018:
+    offline: "yes"
+    blocks: "starting a federated sign-in from that address, for a few seconds; local accounts and tokens are not affected"
+
+  TBY-AUTH-019:
+    offline: "yes"
+    blocks: "the creation of that account or token"
+
+  TBY-CFG-001:
+    offline: "yes"
+    blocks: "the whole instance (startup refusal) or the command that loaded the configuration"
+    details:
+      - label: "See also"
+        text: "See the [configuration reference](../../reference/configuration/)."
+
+  TBY-CFG-002:
+    offline: "yes"
+    blocks: "the whole instance (startup refusal)"
+    details:
+      - text: "The settings checked are `state.root`, `registries.credentialsFile` and `server.tls.keyFile`, each against `storage.root` (NFR-020)."
+
+  TBY-NET-001:
+    offline: "yes"
+    blocks: "the whole instance (startup refusal)"
+
+  TBY-NET-002:
+    offline: "yes"
+    blocks: "the whole instance (startup refusal)"
+
+  TBY-NET-003:
+    offline: "yes"
+    blocks: "the whole instance (startup refusal)"
+
+  TBY-NET-004:
+    offline: "yes"
+    blocks: "the submitted replacement only — the instance keeps serving"
+    details:
+      - text: "Raised for a certificate replacement submitted from the administration surfaces."
+
+  TBY-VAL-001:
+    offline: "yes"
+    blocks: "the submitted file / the recipe concerned"
+    details:
+      - label: "See also"
+        text: "The grammar is normative on the [recipe specification site](https://tobby-fetch.github.io/recipe-spec/)."
+
+  TBY-REG-001:
+    offline: "yes"
+    blocks: "the operation using that reference"
+
+  TBY-REG-002:
+    offline: "no (needs the network path to the source)"
+    blocks: "the task concerned; retried with bounded backoff"
+
+  TBY-REG-003:
+    offline: "no (the configuration fix is local, but the retry needs the source registry)"
+    blocks: "the task concerned"
+
+  TBY-REG-004:
+    offline: "no (needs the source to answer)"
+    blocks: "the inspection/import concerned"
+    details:
+      - text: "Deliberately distinct from \"unreachable\"."
+
+  TBY-REG-005:
+    offline: "no (the truth lives on the source registry)"
+    blocks: "the task concerned"
+
+  TBY-REG-006:
+    offline: "no (resolution needs the source's tag list)"
+    blocks: "the recipe/ingredient concerned"
+
+  TBY-REG-007:
+    offline: "no (source-side; the `resumeThreshold: 0` workaround is local)"
+    blocks: "the task concerned"
+    details:
+      - text: "Typical causes: a 206 response starting at the wrong byte, a `Content-Range` contradicting the manifest, a refused range, or content that changed between two attempts."
+      - text: "Operational, not a verification verdict: nothing was proven wrong about the content — the conversation about it broke."
+
+  TBY-REG-008:
+    offline: "no (the truth lives in the source index)"
+    blocks: "the ingredient concerned"
+    details:
+      - text: "Registries commonly describe their arm64 child as `linux/arm64` with variant `v8`, so a selector naming a variant the source does not publish matches nothing."
+
+  TBY-POL-001:
+    offline: "yes"
+    blocks: "every transfer touching that host, pre-data; lifted by an audited configuration change"
+
+  TBY-POL-002:
+    offline: "yes"
+    blocks: "the removal request only"
+
+  TBY-POL-003:
+    offline: "yes"
+    blocks: "the removal request only"
+
+  TBY-POL-004:
+    offline: "no (a new signed version comes from the authoring pipeline)"
+    blocks: "the publication only; never overridable"
+    details:
+      - text: "Publishing the identical document twice is a no-op, not this error."
+
+  TBY-POL-005:
+    offline: "yes"
+    blocks: "the import or packing; recipe synchronizations are unaffected"
+    details:
+      - label: "Where"
+        text: "the import screen and `POST /api/v1/import` with its inspection (HTTP 403), FileSet packing on the screen, the API and `tobby fileset pack`; each refusal is a `hardening.refused` audit event naming the setting"
+
+  TBY-POL-006:
+    offline: "yes"
+    blocks: "the push; pulls and recipe synchronizations are unaffected"
+    details:
+      - label: "Where"
+        text: "every write to `/v2/` — blob upload, chunk, commit, mount, manifest put, deletion — for every client and role, administrators included, as the OCI `DENIED` error (HTTP 403) whose message starts with the code, which `docker`, `helm`, `oras` and `skopeo` print; each refusal is a `hardening.refused` audit event naming the setting"
+
+  TBY-SIG-001:
+    offline: "yes, when the right public key is available locally (trust roots are destination configuration); a genuinely unsigned or wrongly signed recipe must be re-signed upstream"
+    blocks: "the recipe concerned; never overridable"
+    details:
+      - label: "Ingredients"
+        text: "an ingredient's own signature raises this code only on an instance that sets `trust.requireIngredientSignatures: true`. The subject then reads *ingredient \\<name\\> of \\<recipe\\> (\\<repository\\>@\\<digest\\>)*, the fingerprints are those the ingredient's applicable roots offered (or \"no signature artifact found\"), and the whole recipe is withheld. Without that setting, an ingredient signature that does not verify is recorded and blocks nothing."
+      - text: "When every configured root is reserved to a scope, nothing is tried and the message says so."
+      - label: "See also"
+        text: "[Signatures, trust roots and allowlist](../../security/content-trust/)."
+
+  TBY-SIG-002:
+    offline: "no"
+    blocks: "the ingredient/recipe concerned; never overridable"
+
+  TBY-SIG-003:
+    offline: "no"
+    blocks: "the ingredient/recipe concerned; never overridable"
+    details:
+      - text: "This is the check against tag reuse and repository confusion."
+
+  TBY-SCN-001:
+    offline: "yes, once the tobby-system recipe has crossed"
+    blocks: "scanning; under block mode, every push"
+
+  TBY-SCN-002:
+    offline: "yes"
+    blocks: "scanning"
+
+  TBY-SCN-003:
+    offline: "yes, once the tobby-system recipe has crossed"
+    blocks: "scanning; under block mode, every push"
+
+  TBY-SCN-004:
+    offline: "yes, once a fresh database has crossed"
+    blocks: "nothing under warn; the item's push under block"
+
+  TBY-SCN-005:
+    offline: "no: the fix comes from upstream, or from an exception decided by the zone"
+    blocks: "the item and its recipe"
+
+  TBY-SCN-006:
+    offline: "yes"
+    blocks: "nothing"
+
+  TBY-SCN-007:
+    offline: "yes"
+    blocks: "the item under block; nothing under warn"
+
+  TBY-SCN-008:
+    offline: "yes"
+    blocks: "the items scanned with it under `scan.maxDbAgeAction: block`; nothing under warn"
+    details:
+      - text: "A build time up to one hour ahead is tolerated as clock skew."
+
+  TBY-SCN-020:
+    offline: "yes"
+    blocks: "nothing"
+
+  TBY-SCN-021:
+    offline: "yes"
+    blocks: "nothing by itself"
+
+  TBY-SCN-022:
+    offline: "yes"
+    blocks: "nothing"
+
+  TBY-SCN-023:
+    offline: "yes"
+    blocks: "nothing by itself; the verdict beside it decides"
+
+  TBY-SCN-024:
+    offline: "yes"
+    blocks: "nothing"
+
+  TBY-SCN-025:
+    offline: "yes"
+    blocks: "nothing"
+
+  TBY-SCN-026:
+    offline: "yes"
+    blocks: "nothing by itself — the finding is judged without the exception"
+
+  TBY-SCN-027:
+    offline: "yes"
+    blocks: "the start of the instance"
+
+  TBY-SCN-028:
+    offline: "yes"
+    blocks: "nothing — the exception applies and is reported as unbounded"
+
+  TBY-DST-001:
+    offline: "yes"
+    blocks: "the push of that reference only"
+    details:
+      - text: "The limit is typically a path-length or naming constraint. The settings that shape the path are `destination.basePath` and `storage.basePrefix`."
+
+  TBY-CHT-001:
+    offline: "no (the chart must be repackaged where it is built)"
+    blocks: "the import of that chart"
+
+  TBY-STO-001:
+    offline: "yes"
+    blocks: "the operation concerned; a persistent condition affects the whole instance"
+    details:
+      - text: "Typical causes: an unmounted volume, permissions, an I/O error."
+
+  TBY-STO-002:
+    offline: "yes"
+    blocks: "the operation concerned; a persistent condition affects the whole instance"
+    details:
+      - text: "Most often free space or permissions."
+
+  TBY-STO-003:
+    offline: "yes"
+    blocks: "the resumable transfers concerned"
+    details:
+      - text: "Deliberately distinct from [TBY-STO-002](#tby-sto-002): the state directory and the store have different owners, different sizing and different fixes."
+
+  TBY-STO-004:
+    offline: "yes"
+    blocks: "the synchronization or export concerned; nothing is written"
+    details:
+      - text: "The safety margin is `preflight.safetyMarginPercent`, 10 % by default."
+      - text: "`preflight.disabled: true` removes the check entirely and is announced at startup."
+
+  TBY-STO-005:
+    offline: "yes"
+    blocks: "the synchronization or export concerned; on a mid-write failure the store is left intact"
+    details:
+      - text: "The usual case is FAT32, whose limit is 4 GiB minus one byte. A single-tar export archive counts as one file."
+      - text: "The same code is raised when the condition arrives mid-write instead of at the pre-flight check: a medium swapped between the two, or a filesystem this build could not identify."
+
+  TBY-STO-006:
+    offline: "yes"
+    blocks: "nothing — the store is untouched"
+    details:
+      - text: "The audit trail is kept as well: a trail a destructive action erases is not a trail."
+
+  TBY-MED-001:
+    offline: "yes"
+    blocks: "the whole medium, no override"
+
+  TBY-MED-002:
+    offline: "yes"
+    blocks: "the whole medium, no override"
+    details:
+      - text: "Typical inconsistencies: a path escaping the store, a duplicated inventory entry, a repository name that is not one."
+
+  TBY-MED-003:
+    offline: "yes"
+    blocks: "the whole medium"
+
+  TBY-MED-004:
+    offline: "yes"
+    blocks: "the whole medium"
+
+  TBY-MED-005:
+    offline: "yes"
+    blocks: "the whole medium, no override"
+
+  TBY-MED-006:
+    offline: "yes"
+    blocks: "the whole medium, admin override available"
+
+  TBY-MED-007:
+    offline: "yes"
+    blocks: "the whole medium, admin override available"
+    details:
+      - text: "An anti-accident guard, not a security control: the manifest is unsigned."
+
+  TBY-MED-010:
+    offline: "yes"
+    blocks: "that recipe whole, no override"
+
+  TBY-MED-011:
+    offline: "yes"
+    blocks: "the recipe reaching that file, no override"
+
+  TBY-MED-012:
+    offline: "yes"
+    blocks: "the recipe reaching that file, no override"
+
+  TBY-MED-013:
+    offline: "yes"
+    blocks: "that recipe whole, no override"
+
+  TBY-MED-014:
+    offline: "yes"
+    blocks: "that recipe whole"
+
+  TBY-MED-015:
+    offline: "yes"
+    blocks: "the recipe reaching that blob, no override"
+
+  TBY-MED-016:
+    offline: "yes"
+    blocks: "that recipe whole, no override"
+    details:
+      - text: "The bookkeeping is `meta/recipes.json`, copied into `meta/media.json`. The code is also raised when the artifact carries the document of another recipe, or when a digest or a location differs from what the signed document pins."
+
+  TBY-MED-020:
+    offline: "yes"
+    blocks: "nothing (reported only)"
+
+  TBY-MED-021:
+    offline: "yes"
+    blocks: "nothing (reported only)"
+
+  TBY-MED-022:
+    offline: "yes"
+    blocks: "nothing (reported only)"
+    details:
+      - text: "This covers the store's own ledgers other than the recipe graph, whose alteration blocks the whole medium ([TBY-MED-005](#tby-med-005))."
+
+  TBY-MED-023:
+    offline: "yes"
+    blocks: "nothing (reported only)"
+    details:
+      - text: "The source instance served FileSets from this store."
+      - text: "Anything under that directory that does not have the shape of an extraction is reported separately as [TBY-MED-020](#tby-med-020)."
+
+  TBY-MED-030:
+    offline: "yes"
+    blocks: "the embedded registry and the file surface, for this medium"
+    details:
+      - text: "FR-054 requires verification to precede any push, any serving and any local write, so `/v2/` and `/files/` stay closed until it has run."
+      - text: "There is deliberately no setting that serves a medium without verifying it."
+
+  TBY-MED-031:
+    offline: "yes"
+    blocks: "the second verification only"
+
+  TBY-MED-032:
+    offline: "yes"
+    blocks: "the embedded registry and the file surface, for this medium"
+    details:
+      - text: "The verdict is *partial* or *blocked*: at least one delivery failed its signature or one of its ingredient digests. `/v2/` and `/files/` hand out blobs."
+
+  TBY-MED-033:
+    offline: "yes"
+    blocks: "that request only"
+    details:
+      - text: "Once the gate is open, what `/v2/` and `/files/` serve is the pushable recipes' artifacts, signatures, ingredients and the ingredients' own signatures. A tag added or moved after verification, and every write, are refused."
+
+  TBY-MED-034:
+    offline: "yes"
+    blocks: "the embedded registry and the file surface, for this medium"
+    details:
+      - text: "The verdict is *pushable*, with nothing to push. Such a medium used to open the gate and serve its whole store."
+
+  TBY-INT-001:
+    offline: "depends: re-fetching needs a source; restoring a copy does not"
+    blocks: "nothing — the report states it"
+
+  TBY-INT-002:
+    offline: "depends: re-fetching needs a source; restoring a copy does not"
+    blocks: "nothing — the report states it"
+
+  TBY-INT-003:
+    offline: "yes"
+    blocks: "nothing"
+
+  TBY-INT-004:
+    offline: "yes"
+    blocks: "the request"
+
+  TBY-INT-005:
+    offline: "depends: re-fetching needs a source; restoring a copy does not"
+    blocks: "nothing — the report states it"
+
+  TBY-INT-006:
+    offline: "yes"
+    blocks: "nothing"
+
+  TBY-LAY-001:
+    offline: "yes"
+    blocks: "the import concerned; nothing is written"
+    details:
+      - text: "Typical causes: no `oci-layout` marker, an `index.json` that does not parse, or a blob that does not hash to the digest addressing it."
+      - text: "Tobby reads an uncompressed archive by seeking to a recorded blob offset, which also leaves a decompression bomb nothing to expand into."
+
+  TBY-LAY-002:
+    offline: "yes"
+    blocks: "the import concerned; nothing is written"
+    details:
+      - text: "This is a verification failure, not a damaged transfer."
+
+  TBY-LAY-003:
+    offline: "yes"
+    blocks: "the export concerned; nothing is written"
+    details:
+      - text: "An export writes to a staging path and renames it into place, so it never half-overwrites anything."
+
+  TBY-FIL-001:
+    offline: "yes"
+    blocks: "the packing concerned; nothing is written"
+    details:
+      - text: "Most often a directory that does not exist, is empty or is unreadable, or a name and version that do not parse."
+
+  TBY-FIL-002:
+    offline: "yes"
+    blocks: "the packing concerned; nothing is written"
+    details:
+      - text: "Also refused: a name carrying a backslash or a NUL byte. A name starting with `.wh.` is refused because a layer reader would take it for a deletion."
+      - text: "A file set is extracted and served on other machines, Windows included, so the refusals are about where the content lands, not about this host."
+
+  TBY-FIL-003:
+    offline: "yes"
+    blocks: "the packing concerned; nothing is written"
+    details:
+      - text: "Reading an arbitrary host directory on a network request is a capability an instance is given, not one it holds."
+      - text: "`tobby fileset pack` is not restricted on the instance host because whoever runs it already holds those filesystem rights."
+
+  TBY-AID-001:
+    offline: "yes"
+    blocks: "the generation of the aid"
+
+  TBY-DIA-001:
+    offline: "yes"
+    blocks: "the bundle"
+
+  TBY-DIA-002:
+    offline: "yes"
+    blocks: "the bundle — never shipped with a secret in it"
+
+  TBY-DIA-003:
+    offline: "yes"
+    blocks: "this bundle only — nothing was written or sent"
+
+  TBY-CLK-001:
+    offline: "yes"
+    blocks: "nothing — a warning, recorded in the audit log"
+
+  TBY-CLK-002:
+    offline: "yes"
+    blocks: "nothing — a warning, recorded in the audit log"
+
+  TBY-STA-001:
+    offline: "yes"
+    blocks: "the start of the instance"
+
+  TBY-STA-002:
+    offline: "yes"
+    blocks: "the start of the instance"
+
+  TBY-STA-003:
+    offline: "yes"
+    blocks: "nothing by itself — the instance starts without the entry"
+
+  TBY-TSK-001:
+    offline: "yes"
+    blocks: "the request only"
+
+  TBY-SRV-001:
+    offline: "yes (diagnosis is local)"
+    blocks: "the request only"
+    details:
+      - label: "See also"
+        text: "[Metrics and logs](../../reference/metrics-logs/)."
+
+  TBY-SRV-002:
+    offline: "yes"
+    blocks: "the request only"
+
+  TBY-SRV-003:
+    offline: "yes"
+    blocks: "the browser session's view only"
+    details:
+      - text: "A client-side condition rendered by the UI shell on transport failure, never served by the instance itself; it is catalogued so that this guide documents it."
+
+  TBY-SRV-004:
+    offline: "yes"
+    blocks: "the request only"
+    details:
+      - text: "Every API endpoint has a bound sized to its largest legitimate document: see the [input validation](../../security/input-validation/) table (NFR-023)."
+
+  TBY-SRV-005:
+    offline: "yes"
+    blocks: "the request only"
+    details:
+      - text: "A request carrying no `Content-Type` is refused the same way. Every API endpoint that reads a document decodes `application/json`."

@@ -25,6 +25,8 @@ import (
 
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"github.com/tobby-fetch/tobby-fetch/internal/store"
 )
 
 // --- harness ------------------------------------------------------------
@@ -213,6 +215,14 @@ func TestPackedManifestIsASingleManifestImage(t *testing.T) {
 	}
 	if m.Annotations[AnnotationPacked] != "true" {
 		t.Fatalf("annotations = %v, want %s=true", m.Annotations, AnnotationPacked)
+	}
+	// RECIPE-SPEC §7.4: the FileSet marker, spelled as the content
+	// browser reads it.
+	if m.Annotations[AnnotationKind] != KindFileSet {
+		t.Fatalf("annotations = %v, want %s=%s", m.Annotations, AnnotationKind, KindFileSet)
+	}
+	if AnnotationKind != store.AnnotationKind || AnnotationPacked != store.AnnotationFileSetPacked || KindFileSet != string(store.KindFileSet) {
+		t.Fatal("the FileSet markers written here and read by the content browser have drifted apart")
 	}
 
 	cfgRaw, err := st.Blob(context.Background(), res.Repository, m.Config.Digest.String())
@@ -624,4 +634,60 @@ func TestFilesSurfaceAcceptsNoWriteMethod(t *testing.T) {
 	if rec := get(t, s, "/files/docs/new.txt"); rec.Code != http.StatusNotFound {
 		t.Fatalf("after the refused writes, /files/docs/new.txt = %d, want 404", rec.Code)
 	}
+}
+
+// TestSurfacePackRunsThePackedHook: the screen and the API both pack
+// through Surface.Pack, and the instance re-resolves /files/ from its
+// Packed hook — so it must run once on success, before Pack returns, and
+// never on a refusal (B-058).
+func TestSurfacePackRunsThePackedHook(t *testing.T) {
+	src := tree(t, map[string]string{"a.txt": "a"})
+	calls := 0
+	s := &Surface{
+		Packer: NewPacker(newFakeStore(), "", nil, WithPackRoots([]string{src})),
+		Packed: func(context.Context) { calls++ },
+	}
+	if _, err := s.Pack(context.Background(), PackRequest{Source: src, Name: "docs", Version: "1.0.0"}); err != nil {
+		t.Fatalf("Pack: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("Packed ran %d times after a successful pack, want 1", calls)
+	}
+	if _, err := s.Pack(context.Background(), PackRequest{Source: t.TempDir(), Name: "docs", Version: "1.0.0"}); err == nil {
+		t.Fatal("packing outside the pack roots succeeded")
+	}
+	if calls != 1 {
+		t.Fatalf("Packed ran after a refused pack (%d calls)", calls)
+	}
+}
+
+// TestDiscardEmptiesTheCacheAndForcesAFreshExtraction: a cache carried in
+// from elsewhere — complete marker included — is trusted by Sync. Discard
+// is what makes the next Sync extract from the blobs instead (FR-054,
+// B-058), and it stops serving first.
+func TestDiscardEmptiesTheCacheAndForcesAFreshExtraction(t *testing.T) {
+	st := newFakeStore()
+	res := packInto(t, st, tree(t, map[string]string{"index.html": "genuine"}), "repo", "1.0.0")
+	s := servePacked(t, st, res)
+	set := FileSet{Name: res.Name, Repo: res.Repository, ManifestDigest: res.Digest}
+	if !s.Serves("repo") || s.Serves("other") {
+		t.Fatal("Serves does not reflect what is served")
+	}
+
+	// Tamper with the extracted tree the way a carried cache could be.
+	planted := filepath.Join(setDir(cacheDirOf(t, s), set), "rootfs", "index.html")
+	if err := os.WriteFile(planted, []byte("planted"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Discard(); err != nil {
+		t.Fatalf("Discard: %v", err)
+	}
+	if s.Serves("repo") {
+		t.Fatal("a discarded cache is still served")
+	}
+	if _, err := os.Stat(cacheDirOf(t, s)); !os.IsNotExist(err) {
+		t.Fatalf("the cache directory survived Discard (stat: %v)", err)
+	}
+	mustSync(t, s, set)
+	wantBody(t, get(t, s, "/files/repo/index.html"), http.StatusOK, "genuine")
 }

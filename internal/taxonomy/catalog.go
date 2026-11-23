@@ -11,7 +11,9 @@ import "net/http"
 // and digest verification, FR-033), DST (destination limits, FR-035), STO
 // (local store), MED (removable-media transport, FR-054), SCN
 // (vulnerability scanning, FR-031/FR-032), INT (on-demand store integrity,
-// FR-057), TSK (tasks), SRV (instance itself).
+// FR-057), AID (consumption aids, FR-065), DIA (diagnostic bundle,
+// FR-095), CLK (clock plausibility, FR-096), STA (instance state
+// directory, FR-097), TSK (tasks), SRV (instance itself).
 //
 // Codes marked "reserved" have no emitter yet: the class is fixed at
 // milestone 2 (roadmap directive) so later milestones plug engines into an
@@ -177,9 +179,22 @@ const (
 	// different content (RECIPE-SPEC §8: a cooked recipe is immutable —
 	// any change, even a single digest, requires a new metadata.version).
 	CodeTagImmutable Code = "TBY-POL-004"
+	// CodeUnitImportDisabled refuses a unit import or a local packing on an
+	// instance hardened with hardening.disableUnitImport (FR-098, R-17):
+	// the import screen and API, and every packing surface, the command
+	// line included (package hardening, fileserve.PackProblem).
+	CodeUnitImportDisabled Code = "TBY-POL-005"
+	// CodeRegistryPushDisabled refuses a push to the embedded registry on an
+	// instance hardened with hardening.disableRegistryPush (FR-098), in the
+	// OCI DENIED envelope on /v2/ (hardening.Registry).
+	CodeRegistryPushDisabled Code = "TBY-POL-006"
 
-	// CodeSignature is a recipe signature that no configured trust root
-	// validates (FR-033).
+	// CodeSignature is a recipe signature that no trust root applying to
+	// the recipe validates (FR-033). Optional parameters (B-057):
+	// "reserved" names a configured root that does verify the signature
+	// but does not apply here (name and fingerprint), "reservedto" the
+	// scopes that root is reserved to (empty for a root of the default
+	// set).
 	CodeSignature Code = "TBY-SIG-001"
 	// CodeDigestMismatch is fetched content not matching its pinned digest
 	// (FR-033). Reserved: emitter lands at milestone 3.
@@ -307,6 +322,14 @@ const (
 	// digest its own path claims — content-addressed storage disagreeing
 	// with itself, independently of what the inventory says.
 	CodeMediaContentAddress Code = "TBY-MED-015"
+	// CodeMediaIngredientsDisagree is a recipe whose ingredient list in
+	// the medium's bookkeeping (meta/recipes.json, meta/media.json) is not
+	// the one its signed recipe document pins: an ingredient the document
+	// does not name, a different digest or location, or a document of
+	// another recipe. The bookkeeping is unsigned (ADR-0006), so only the
+	// signed document decides what a delivery is; the recipe is blocked
+	// whole, no override (R-19).
+	CodeMediaIngredientsDisagree Code = "TBY-MED-016"
 
 	// CodeMediaUncovered reports a file under manifest coverage that the
 	// inventory does not list. Non-blocking: it is never pushed (FR-054).
@@ -318,6 +341,13 @@ const (
 	// other than the recipe graph, which blocks globally — that does not
 	// match its inventory entry. Non-blocking: nothing is pushed from it.
 	CodeMediaMetadataAltered Code = "TBY-MED-022"
+	// CodeMediaFileSetCache reports a FileSet extraction cache carried by
+	// the medium (meta/fileserve, outside coverage since B-060): never
+	// hashed, never served, discarded and rebuilt from the verified blobs
+	// by a serving destination. Non-blocking, and reported so that a tree
+	// nothing hashes does not cross the gap without a trace (A9 of the
+	// milestone-7 review).
+	CodeMediaFileSetCache Code = "TBY-MED-023"
 
 	// The serving half of FR-054. "Destination-side verification SHALL
 	// precede any push, any serving, and any local write": the push and
@@ -340,6 +370,17 @@ const (
 	// store as a whole — /v2/ and /files/ hand out blobs, and a blob a
 	// blocked recipe reaches is exactly the byte range that failed.
 	CodeMediaNotCleared Code = "TBY-MED-032"
+	// CodeMediaOutsideVerified is a request to an OPEN gate for something
+	// the verification did not clear: content no pushable recipe reaches,
+	// or a write (B-063). A guarded instance serves the verified set and
+	// nothing else, read-only.
+	CodeMediaOutsideVerified Code = "TBY-MED-033"
+	// CodeMediaNothingCleared is a medium whose verification cleared no
+	// content at all — its manifest lists no recipe, so the verdict is
+	// "pushable" with nothing to push. Serving stays closed (B-063): such
+	// a medium used to open the gate and serve its whole store, none of it
+	// hashed.
+	CodeMediaNothingCleared Code = "TBY-MED-034"
 
 	// CodeResetConfirmation is a store reset submitted without the exact
 	// typed confirmation FR-046 requires. Distinct from a validation
@@ -420,6 +461,21 @@ const (
 	// scanner are never refused by it, or the zone could never arm one
 	// (ADR-0017). Non-blocking.
 	CodeScanSystemAdvisory Code = "TBY-SCN-025"
+	// CodeScanExceptionOutOfScope reports an exception whose identifier
+	// matches a finding but whose scope (digest, repository, recipe)
+	// excludes the item: it does not apply here, and the report says why
+	// the item is still judged on the finding (FR-031 amendment, R-15).
+	// Non-blocking by itself.
+	CodeScanExceptionOutOfScope Code = "TBY-SCN-026"
+	// CodeScanVEXInvalid is a configured OpenVEX document that cannot be
+	// read or validated: the instance refuses to start (FR-031 amendment,
+	// R-15), naming the file. Also the refusal of `tobby scan exceptions`
+	// reading the same configuration.
+	CodeScanVEXInvalid Code = "TBY-SCN-027"
+	// CodeScanExceptionUnbounded reports a Retriever exception without
+	// expiry, applied but stated as unbounded until the v1 format makes the
+	// expiry mandatory there too (FR-031 amendment, R-15). Non-blocking.
+	CodeScanExceptionUnbounded Code = "TBY-SCN-028"
 
 	// On-demand store integrity verification (FR-057, R-31 — milestone
 	// 6). Read-only: every code reports, none repairs; signatures that no
@@ -445,6 +501,46 @@ const (
 	// it reached a verdict (FR-057): it reports nothing about the store.
 	CodeIntegrityCancelled Code = "TBY-INT-006"
 
+	// Milestone 7 — reserved at the opening of the milestone. No emitter
+	// yet: each track wires its own codes and drops the "Reserved" marker
+	// of the reference pages when it does.
+	//
+	// CodeAidsNoRegistry refuses to generate a consumption aid on an
+	// instance that names no registry the zone pulls from: neither
+	// destination.registry nor consumption.registry (FR-065 amendment, 7.1).
+	CodeAidsNoRegistry Code = "TBY-AID-001"
+	// CodeDiagnosticsFailed is a diagnostic bundle that could not be
+	// produced (FR-095, R-30).
+	CodeDiagnosticsFailed Code = "TBY-DIA-001"
+	// CodeDiagnosticsRedaction is a diagnostic bundle aborted because a
+	// member still held a secret value the instance knows: redaction fails
+	// closed (FR-095). Names the member, never the secret.
+	CodeDiagnosticsRedaction Code = "TBY-DIA-002"
+	// CodeDiagnosticsBusy refuses a diagnostic bundle requested while
+	// another is being built: one at a time (FR-095).
+	CodeDiagnosticsBusy Code = "TBY-DIA-003"
+	// CodeClockBeforeBuild reports a local clock earlier than the build time
+	// of the running binary beyond the tolerance (FR-096, R-32).
+	// Non-blocking: it warns and records.
+	CodeClockBeforeBuild Code = "TBY-CLK-001"
+	// CodeClockBeforeMedium reports a local clock earlier than the
+	// resolution time of the medium being opened beyond the tolerance
+	// (FR-096). Non-blocking.
+	CodeClockBeforeMedium Code = "TBY-CLK-002"
+	// CodeStateLayoutUnknown refuses to start on a state directory whose
+	// layout version this build does not know (FR-097, R-27).
+	CodeStateLayoutUnknown Code = "TBY-STA-001"
+	// CodeStatePermissions refuses to start on a state directory whose
+	// secret entry is readable by every user of the host (FR-097,
+	// NFR-020); group access, which a volume's fsGroup grants, is
+	// tolerated.
+	CodeStatePermissions Code = "TBY-STA-002"
+	// CodeStateIdentityMissing reports an identity entry of the state
+	// directory missing at startup — accounts, certificate, import record —
+	// typically after an incomplete restore (FR-097). Non-blocking by
+	// itself.
+	CodeStateIdentityMissing Code = "TBY-STA-003"
+
 	// CodeTaskNotFound is a task identifier unknown to this instance.
 	CodeTaskNotFound Code = "TBY-TSK-001"
 
@@ -457,6 +553,16 @@ const (
 	// rendered by the UI shell on transport failure; catalogued so the
 	// troubleshooting guide documents it. Never served by the instance.
 	CodeUnreachable Code = "TBY-SRV-003"
+	// CodeRequestTooLarge is a request body over its endpoint's bound,
+	// refused before it is parsed (NFR-023): limit is the bound, in
+	// bytes.
+	CodeRequestTooLarge Code = "TBY-SRV-004"
+	// CodeUnsupportedMediaType is a request body whose declared
+	// Content-Type is not the one its endpoint decodes (B-069): type is
+	// what was declared, want what the endpoint accepts. On the API it is
+	// what keeps a page of another origin from posting a document without
+	// a CORS preflight.
+	CodeUnsupportedMediaType Code = "TBY-SRV-005"
 )
 
 var catalog = map[Code]Entry{
@@ -516,7 +622,7 @@ var catalog = map[Code]Entry{
 	// source does not publish.
 	CodePlatformMissing: {Code: CodePlatformMissing, Class: ClassOperational, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "platforms", "available"}},
 
-	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "fingerprints", "scope"}},
+	CodeSignature:      {Code: CodeSignature, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "fingerprints", "scope", "reserved", "reservedto"}},
 	CodeDigestMismatch: {Code: CodeDigestMismatch, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "expected", "actual"}},
 	CodeArtifactType:   {Code: CodeArtifactType, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"reference", "expected", "actual"}},
 
@@ -552,16 +658,18 @@ var catalog = map[Code]Entry{
 	CodeMediaZoneMismatch:       {Code: CodeMediaZoneMismatch, Class: ClassPolicy, HTTPStatus: http.StatusConflict, Params: []string{"expected", "found"}},
 	CodeMediaStale:              {Code: CodeMediaStale, Class: ClassPolicy, HTTPStatus: http.StatusConflict, Params: []string{"zone", "resolved", "recorded", "media"}},
 
-	CodeMediaFileMissing:       {Code: CodeMediaFileMissing, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "recipe"}},
-	CodeMediaFileSize:          {Code: CodeMediaFileSize, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
-	CodeMediaFileDigest:        {Code: CodeMediaFileDigest, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
-	CodeMediaFileUninventoried: {Code: CodeMediaFileUninventoried, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "recipe"}},
-	CodeMediaContentUnreadable: {Code: CodeMediaContentUnreadable, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
-	CodeMediaContentAddress:    {Code: CodeMediaContentAddress, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
+	CodeMediaFileMissing:         {Code: CodeMediaFileMissing, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "recipe"}},
+	CodeMediaFileSize:            {Code: CodeMediaFileSize, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
+	CodeMediaFileDigest:          {Code: CodeMediaFileDigest, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
+	CodeMediaFileUninventoried:   {Code: CodeMediaFileUninventoried, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "recipe"}},
+	CodeMediaContentUnreadable:   {Code: CodeMediaContentUnreadable, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
+	CodeMediaContentAddress:      {Code: CodeMediaContentAddress, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "expected", "actual"}},
+	CodeMediaIngredientsDisagree: {Code: CodeMediaIngredientsDisagree, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"recipe", "detail"}},
 
 	CodeMediaUncovered:       {Code: CodeMediaUncovered, Class: ClassOperational, Params: []string{"path"}},
 	CodeMediaUnreachable:     {Code: CodeMediaUnreachable, Class: ClassOperational, Params: []string{"path"}},
 	CodeMediaMetadataAltered: {Code: CodeMediaMetadataAltered, Class: ClassOperational, Params: []string{"path"}},
+	CodeMediaFileSetCache:    {Code: CodeMediaFileSetCache, Class: ClassOperational, Params: []string{"path", "files", "bytes"}},
 
 	// 403 on both closed-gate codes, and deliberately not 404 or a bare
 	// 503: the content exists and the instance is alive — it is refusing,
@@ -574,6 +682,8 @@ var catalog = map[Code]Entry{
 	// for the run already in flight.
 	CodeMediaVerificationRunning: {Code: CodeMediaVerificationRunning, Class: ClassOperational, HTTPStatus: http.StatusConflict, Params: []string{"stage"}},
 	CodeMediaNotCleared:          {Code: CodeMediaNotCleared, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"surface", "media", "verdict", "screen"}},
+	CodeMediaOutsideVerified:     {Code: CodeMediaOutsideVerified, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"surface", "media", "path", "screen"}},
+	CodeMediaNothingCleared:      {Code: CodeMediaNothingCleared, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"surface", "media", "screen"}},
 
 	// 422: the request is well formed, the confirmation is simply not the
 	// word the requirement asks for.
@@ -607,9 +717,32 @@ var catalog = map[Code]Entry{
 	CodeIntegrityCancelled:  {Code: CodeIntegrityCancelled, Class: ClassOperational, Params: []string{"task"}},
 	CodeIntegrityUnreadable: {Code: CodeIntegrityUnreadable, Class: ClassVerification, HTTPStatus: http.StatusUnprocessableEntity, Params: []string{"path", "detail"}},
 
+	// Milestone 7 (see the declarations; TBY-SCN-026..028 are emitted
+	// since R-15). Startup refusals and non-blocking notes carry no
+	// status: they are never a response body.
+	CodeUnitImportDisabled:      {Code: CodeUnitImportDisabled, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"setting"}},
+	CodeRegistryPushDisabled:    {Code: CodeRegistryPushDisabled, Class: ClassPolicy, HTTPStatus: http.StatusForbidden, Params: []string{"setting"}},
+	CodeScanExceptionOutOfScope: {Code: CodeScanExceptionOutOfScope, Class: ClassOperational, Params: []string{"id", "reference", "scope"}},
+	CodeScanVEXInvalid:          {Code: CodeScanVEXInvalid, Class: ClassOperational, Params: []string{"path", "detail"}},
+	CodeScanExceptionUnbounded:  {Code: CodeScanExceptionUnbounded, Class: ClassOperational, Params: []string{"id"}},
+	// 409: the request is well formed; this instance's configuration is
+	// what cannot answer it.
+	CodeAidsNoRegistry:       {Code: CodeAidsNoRegistry, Class: ClassOperational, HTTPStatus: http.StatusConflict},
+	CodeDiagnosticsFailed:    {Code: CodeDiagnosticsFailed, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError, Params: []string{"detail"}},
+	CodeDiagnosticsRedaction: {Code: CodeDiagnosticsRedaction, Class: ClassPolicy, HTTPStatus: http.StatusInternalServerError, Params: []string{"member"}},
+	CodeDiagnosticsBusy:      {Code: CodeDiagnosticsBusy, Class: ClassOperational, HTTPStatus: http.StatusConflict},
+	CodeClockBeforeBuild:     {Code: CodeClockBeforeBuild, Class: ClassOperational, Params: []string{"now", "anchor", "gap"}},
+	CodeClockBeforeMedium:    {Code: CodeClockBeforeMedium, Class: ClassOperational, Params: []string{"now", "anchor", "gap", "medium"}},
+	CodeStateLayoutUnknown:   {Code: CodeStateLayoutUnknown, Class: ClassOperational, Params: []string{"root", "version"}},
+	CodeStatePermissions:     {Code: CodeStatePermissions, Class: ClassPolicy, Params: []string{"path", "mode"}},
+	CodeStateIdentityMissing: {Code: CodeStateIdentityMissing, Class: ClassOperational, Params: []string{"entry"}},
+
 	CodeTaskNotFound: {Code: CodeTaskNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound, Params: []string{"id"}},
 
 	CodeInternal:    {Code: CodeInternal, Class: ClassOperational, HTTPStatus: http.StatusInternalServerError},
 	CodeNotFound:    {Code: CodeNotFound, Class: ClassOperational, HTTPStatus: http.StatusNotFound},
 	CodeUnreachable: {Code: CodeUnreachable, Class: ClassOperational},
+
+	CodeRequestTooLarge:      {Code: CodeRequestTooLarge, Class: ClassOperational, HTTPStatus: http.StatusRequestEntityTooLarge, Params: []string{"limit"}},
+	CodeUnsupportedMediaType: {Code: CodeUnsupportedMediaType, Class: ClassOperational, HTTPStatus: http.StatusUnsupportedMediaType, Params: []string{"type", "want"}},
 }

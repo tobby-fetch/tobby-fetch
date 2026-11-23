@@ -26,7 +26,7 @@ import (
 // Scan configures vulnerability scanning and its policy at the instance
 // level (FR-031 amendment 2026-11-11, ADR-0008). The Retriever
 // (spec.scanPolicy, RECIPE-SPEC §10.4) and the recipe annotation
-// recipe.tobby.dev/scan-threshold refine it; the mode is set here only.
+// recipe.tobbyfetch.dev/scan-threshold refine it; the mode is set here only.
 //
 // There is deliberately no "enabled" switch: the scan always runs and its
 // results are always visible. Advisory is the default mode, not an
@@ -39,8 +39,9 @@ type Scan struct {
 	// override it in either direction; a recipe may only lower the result.
 	Threshold float64 `yaml:"threshold"`
 	// Exceptions are CVE identifiers tolerated beyond the threshold at
-	// the instance level, added to the Retriever's. List-valued:
-	// configuration file only.
+	// the instance level, added to the Retriever's. Each carries a
+	// mandatory expiry and justification, and an optional scope (FR-031
+	// amendment 2026-11-16, R-15). List-valued: configuration file only.
 	Exceptions []ScanException `yaml:"exceptions,omitempty"`
 	// MaxDBAge is the maximum age of the vulnerability database, measured
 	// from the build timestamp it records (FR-032 amendment, R-13).
@@ -58,6 +59,11 @@ type Scan struct {
 	DBRepository string `yaml:"dbRepository,omitempty"`
 	// Trivy locates and pins the scanner binary (ADR-0008 decision 4).
 	Trivy Trivy `yaml:"trivy"`
+	// VEX lists local OpenVEX documents whose justified not_affected
+	// statements become exceptions scoped by their products and bounded
+	// by the declared expiry (FR-031 amendment 2026-11-16, R-15). Read at
+	// startup, never fetched. List-valued: configuration file only.
+	VEX []VEXDocument `yaml:"vex,omitempty"`
 	// Timeout bounds one scan of one item, the scanner process included.
 	// Default 10m. An item whose scan times out is reported not scanned
 	// (and refused under a blocking policy).
@@ -69,12 +75,18 @@ type Scan struct {
 type ScanException struct {
 	// ID is the CVE identifier ("CVE-2024-12345").
 	ID string `yaml:"id"`
-	// Justification is optional at milestone 6 (R-15 bounds exceptions
-	// at milestone 7).
+	// Justification says why the risk is accepted. Required (FR-031
+	// amendment 2026-11-16, R-15): an exception relaxes a control, and
+	// the reason is part of it.
 	Justification string `yaml:"justification,omitempty"`
-	// Expires is optional at milestone 6. A past expiry means the
-	// exception no longer applies.
+	// Expires bounds the exception. Required (R-15): an instance
+	// exception is never open-ended. Past it, the exception no longer
+	// applies and the item it covered is refused again, visibly.
 	Expires time.Time `yaml:"expires,omitempty"`
+	// Scope narrows the exception to a digest, a source repository and a
+	// recipe (R-15, milestone7.go); the criteria present combine with
+	// AND, none keeps it instance-wide.
+	Scope ExceptionScope `yaml:"scope,omitempty"`
 }
 
 // Trivy locates the scanner binary. With every field empty the platform
@@ -282,10 +294,23 @@ func (c *Config) validateScan() []error {
 		if !cvePattern.MatchString(ex.ID) {
 			errs = append(errs, fmt.Errorf("scan.exceptions[%d]: %q is not a CVE identifier (CVE-<year>-<number>)", i, ex.ID))
 		}
-		if first, dup := seen[ex.ID]; dup {
-			errs = append(errs, fmt.Errorf("scan.exceptions[%d]: %s is already listed by scan.exceptions[%d]", i, ex.ID, first))
+		// Mandatory from R-15 on (FR-031 amendment 2026-11-16): a
+		// deliberate break before 1.0, announced in the changelog. The
+		// message names the entry and the remedy.
+		if ex.Expires.IsZero() {
+			errs = append(errs, fmt.Errorf("scan.exceptions[%d] (%s): expires is required — an exception is never open-ended; add an RFC 3339 date such as \"expires: 2027-03-31T00:00:00Z\" after which the finding is judged again, and renew it deliberately if the risk is still accepted", i, ex.ID))
+		}
+		if strings.TrimSpace(ex.Justification) == "" {
+			errs = append(errs, fmt.Errorf("scan.exceptions[%d] (%s): justification is required — say why the risk is accepted (\"justification: ...\"); it is shown wherever the exception applies", i, ex.ID))
+		}
+		// One identifier may be excepted for several scopes (R-15); the
+		// same identifier twice for the same scope is a copy-paste whose
+		// two expiries would contradict each other.
+		key := ex.ID + "\x00" + ex.Scope.Digest + "\x00" + ex.Scope.Repository + "\x00" + ex.Scope.Recipe
+		if first, dup := seen[key]; dup {
+			errs = append(errs, fmt.Errorf("scan.exceptions[%d]: %s is already listed by scan.exceptions[%d] with the same scope", i, ex.ID, first))
 		} else {
-			seen[ex.ID] = i
+			seen[key] = i
 		}
 	}
 	if s.DBRepository != "" {

@@ -3,7 +3,7 @@
 # PROFILE: cooked.
 #
 # Verified against chart keycloakx 7.4.0 / appVersion 26.8.1 on 2026-11-09.
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 
 metadata:
@@ -14,7 +14,7 @@ metadata:
     that has to authenticate its own users without reaching an external
     identity provider.
   annotations:
-    recipe.tobby.dev/cooked-at: "2026-11-09T09:00:00Z"
+    recipe.tobbyfetch.dev/cooked-at: "2026-11-09T09:00:00Z"
     org.opencontainers.image.source: https://github.com/codecentric/helm-charts
 
 spec:
@@ -44,10 +44,11 @@ spec:
     # DEPLOYS, never what it DEPENDS ON. Read the chart's values and its
     # README for external dependencies, and put them in the recipe.
     #
-    # Watch the platform label: this index declares linux/arm64/v8, not
-    # linux/arm64. Tobby matches the label exactly and fails the ingredient
-    # when it finds no match — better a loud failure than a silent
-    # architecture swap. Read the real labels off the index:
+    # Watch the platform label: this index declares linux/arm64/v8. A label
+    # without a variant (linux/arm64) matches any variant; a label that names
+    # one binds to that variant only. A label that matches nothing fails the
+    # ingredient — better a loud failure than a silent architecture swap.
+    # Read the real labels off the index:
     #
     #   oras manifest fetch docker.io/library/postgres:17.11-alpine \
     #     | jq -r '.manifests[].platform | .os+"/"+.architecture+(.variant//"" | if .=="" then "" else "/"+. end)'

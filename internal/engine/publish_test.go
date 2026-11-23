@@ -136,7 +136,8 @@ func TestPublishRecipeImmutability(t *testing.T) {
 	p := publisherFor(t, r)
 
 	first := cookedRecipeYAML(t, "wordpress", "6.8.2", []spec.Ingredient{cookedIngredient()})
-	if _, err := p.PublishRecipe(t.Context(), ref, first); err != nil {
+	published, err := p.PublishRecipe(t.Context(), ref, first)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -145,8 +146,25 @@ func TestPublishRecipeImmutability(t *testing.T) {
 	altered.Digest = "sha256:" + strings.Repeat("cd", 32)
 	second := cookedRecipeYAML(t, "wordpress", "6.8.2", []spec.Ingredient{altered})
 
-	_, err := p.PublishRecipe(t.Context(), ref, second)
-	assertTaxonomy(t, err, taxonomy.CodeTagImmutable)
+	_, perr := p.PublishRecipe(t.Context(), ref, second)
+	assertTaxonomy(t, perr, taxonomy.CodeTagImmutable)
+
+	// B-089: the message says what the tag "points at", so both sides are
+	// MANIFEST digests — the published one is what `crane digest` shows
+	// for the tag, the candidate what this publication would have written.
+	candidate, err := cookbook.Build(second, "wordpress", "6.8.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var te *taxonomy.Error
+	if !errors.As(perr, &te) {
+		t.Fatalf("not a taxonomy error: %v", perr)
+	}
+	params := te.ParamsMap()
+	if params["published"] != published.Digest || params["candidate"] != candidate.Manifest.Digest {
+		t.Errorf("TBY-POL-004 quotes published=%v candidate=%v, want the manifest digests %s and %s",
+			params["published"], params["candidate"], published.Digest, candidate.Manifest.Digest)
+	}
 }
 
 // TestPublishRecipeRefusals covers every pre-flight check. Each case is a

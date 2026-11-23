@@ -21,7 +21,7 @@
 # formula-installed CLI tools (no quarantine attribute on brew downloads).
 class Tobby < Formula
   desc "Carries OCI assets across network zones, down to air-gapped ones"
-  homepage "https://tobby-fetch.github.io/tobby-fetch/"
+  homepage "https://tobbyfetch.dev/"
   license "GPL-3.0-only"
   version "0.0.0" # bumped by the release workflow
 

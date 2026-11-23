@@ -101,7 +101,7 @@ type scanEnv struct {
 
 type scanEnvOpts struct {
 	policy     *spec.ScanPolicy
-	annotation string // recipe.tobby.dev/scan-threshold on "vuln"
+	annotation string // recipe.tobbyfetch.dev/scan-threshold on "vuln"
 	settings   ScanSettings
 }
 
@@ -487,11 +487,20 @@ func TestScanSettingsFromConfig(t *testing.T) {
 	c := config.Default().Scan
 	c.Mode = config.ScanModeBlock
 	c.MaxDBAgeAction = config.ScanModeBlock
-	c.Exceptions = []config.ScanException{{ID: "CVE-2024-1", Justification: "j"}}
+	c.Exceptions = []config.ScanException{
+		{ID: "CVE-2024-1", Justification: "j", Expires: scanNow},
+		{ID: "CVE-2024-2", Justification: "j", Expires: scanNow, Scope: config.ExceptionScope{Recipe: "wordpress@6.5.2", Repository: "docker.io/bitnami/**"}},
+	}
 	s := ScanSettingsFrom(&c, nil)
 	if s.Mode != scan.ModeBlock || s.Threshold != 7 || !s.Freshness.Block || s.Freshness.MaxAge != 168*time.Hour ||
-		len(s.Exceptions) != 1 || s.Exceptions[0].Level != scan.LevelInstance {
+		len(s.Exceptions) != 2 || s.Exceptions[0].Level != scan.LevelInstance || !s.Exceptions[0].Expires.Equal(scanNow) {
 		t.Errorf("settings = %+v", s)
+	}
+	// R-15: the scope is carried, never dropped — an ignored scope would
+	// make the exception broader than its author meant.
+	if s.Exceptions[0].Scope != nil || s.Exceptions[1].Scope == nil ||
+		s.Exceptions[1].Scope.Recipe != "wordpress@6.5.2" || s.Exceptions[1].Scope.Repository != "docker.io/bitnami/**" {
+		t.Errorf("scopes = %+v / %+v", s.Exceptions[0].Scope, s.Exceptions[1].Scope)
 	}
 }
 

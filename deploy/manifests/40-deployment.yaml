@@ -33,8 +33,8 @@ spec:
         app.kubernetes.io/instance: tobby
       # annotations:
       #   Annotation-based Prometheus discovery, if that is how your
-      #   cluster scrapes. /metrics sits behind the same authentication as
-      #   every other surface, so the scraper needs credentials.
+      #   cluster scrapes. /metrics is unauthenticated, like the probes, so
+      #   the scraper needs no credentials.
       #   prometheus.io/scrape: "true"
       #   prometheus.io/port: "8080"
       #   prometheus.io/path: /metrics
@@ -63,7 +63,7 @@ spec:
           # Multi-arch (amd64/arm64), Wolfi-based, no shell, already
           # non-root. Pin by digest in production: the digest is what the
           # release provenance and the cosign signature are made against.
-          image: ghcr.io/tobby-fetch/tobby-fetch:v0.3.0
+          image: ghcr.io/tobby-fetch/tobby-fetch:v0.7.0
           imagePullPolicy: IfNotPresent
           # The image entrypoint is /usr/bin/tobby, and the configuration
           # is mounted at Tobby's default path, so `serve` needs no
@@ -101,6 +101,8 @@ spec:
               type: RuntimeDefault
           # Opening a large store can take a while. The startup probe buys
           # that time without loosening the liveness threshold afterwards.
+          # (If you turn on config.server.tls in 20-secret-config.yaml, add
+          # `scheme: HTTPS` to the three httpGet probes: one listener.)
           startupProbe:
             httpGet:
               path: /healthz

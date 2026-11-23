@@ -1,0 +1,108 @@
+{{/* SPDX-License-Identifier: GPL-3.0-only — © 2026 infraBuilder SASU and contributors */}}
+{{/* /admin/policy — the effective content policy (FR-031 amendment R-15,
+     FR-098), read-only: the policy lives in the configuration file and
+     the Retriever. The same document as GET /api/v1/policy (FR-061). */}}
+{{define "title"}}{{.T "policy.title"}}{{end}}
+{{define "main"}}{{$v := .Data.View}}
+<section>
+  {{template "admin-subnav" .}}
+  <h1 class="t-page-title">{{.T "policy.title"}}</h1>
+  <p class="t-page-sub">{{.T "policy.subtitle"}}</p>
+  <p class="t-muted t-note">{{.T "policy.readonly"}}</p>
+  {{if $v}}
+  <div class="t-card">
+    <h2 class="t-kick">{{.T "policy.mode_title"}}</h2>
+    <dl class="t-kv" data-policy-mode="{{$v.Mode}}">
+      <dt>{{.T "policy.mode"}}</dt>
+      <dd>{{if $v.Blocking}}<span class="t-badge t-badge--done">{{.T "scan.mode_blocking"}}</span>{{else}}<span class="t-badge t-badge--pending">{{.T "scan.mode_advisory"}}</span>{{end}}</dd>
+      <dt>{{.T "policy.threshold"}}</dt><dd class="t-mono">{{$v.Threshold}}</dd>
+    </dl>
+  </div>
+
+  <div class="t-card">
+    <h2 class="t-kick">{{.T "policy.exceptions_title"}}</h2>
+    {{if not $v.RetrieverKnown}}<p class="t-muted t-note" data-policy-retriever-unknown>{{.T "policy.retriever_unknown"}}</p>{{end}}
+    {{if $v.Exceptions}}
+    <table class="t-table" data-policy-exceptions>
+      <caption class="t-visually-hidden">{{.T "policy.exceptions_caption"}}</caption>
+      <thead>
+        <tr>
+          <th scope="col">{{.T "policy.th_id"}}</th>
+          <th scope="col">{{.T "policy.th_origin"}}</th>
+          <th scope="col">{{.T "policy.th_scope"}}</th>
+          <th scope="col">{{.T "policy.th_justification"}}</th>
+          <th scope="col">{{.T "policy.th_expires"}}</th>
+          <th scope="col">{{.T "policy.th_state"}}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range $v.Exceptions}}
+        <tr data-policy-exception="{{.ID}}" data-policy-state="{{.State}}" data-policy-origin="{{.Origin}}">
+          <td class="t-mono" translate="no">{{.ID}}</td>
+          <td>{{$.T (printf "policy.origin_%s" .Origin)}}{{with .Document}}<br><span class="t-mono t-muted t-note" translate="no">{{.}}</span>{{end}}</td>
+          <td>{{with .Scope}}
+            {{with .Digest}}{{$.T "policy.scope_digest"}} <span class="t-mono" translate="no">{{.}}</span><br>{{end}}
+            {{with .Repository}}{{$.T "policy.scope_repository"}} <span class="t-mono" translate="no">{{.}}</span><br>{{end}}
+            {{with .Recipe}}{{$.T "policy.scope_recipe"}} <span class="t-mono" translate="no">{{.}}</span><br>{{end}}
+            {{with .Packages}}{{$.T "policy.scope_packages"}} <span class="t-mono" translate="no">{{range $i, $p := .}}{{if $i}}, {{end}}{{$p}}{{end}}</span>{{end}}
+          {{else}}<span class="t-muted">{{$.T "policy.scope_all"}}</span>{{end}}</td>
+          <td>{{.Justification}}</td>
+          <td>{{with .Expires}}{{$.FmtTime .}}{{else}}<span class="t-muted">{{$.T "policy.expires_none"}}</span>{{end}}</td>
+          <td>{{if eq .State "active"}}<span class="t-badge t-badge--done">{{$.T "policy.state_active"}}</span>
+            {{- else if eq .State "expired"}}<span class="t-badge t-badge--failed">{{$.T "policy.state_expired"}}</span>
+            {{- else}}<span class="t-badge t-badge--done-errors">{{$.T "policy.state_unbounded"}}</span> <span class="t-chip t-chip--code" translate="no">TBY-SCN-028</span>{{end}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}<p class="t-muted">{{.T "policy.exceptions_none"}}</p>{{end}}
+  </div>
+
+  <div class="t-card">
+    <h2 class="t-kick">{{.T "policy.vex_title"}}</h2>
+    {{if $v.Documents}}
+    <table class="t-table" data-policy-vex>
+      <caption class="t-visually-hidden">{{.T "policy.vex_caption"}}</caption>
+      <thead>
+        <tr>
+          <th scope="col">{{.T "policy.th_document"}}</th>
+          <th scope="col">{{.T "policy.th_expires"}}</th>
+          <th scope="col" class="t-num">{{.T "policy.th_statements"}}</th>
+          <th scope="col" class="t-num">{{.T "policy.th_admitted"}}</th>
+          <th scope="col" class="t-num">{{.T "policy.th_ignored"}}</th>
+          <th scope="col" class="t-num">{{.T "policy.th_exceptions"}}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range $v.Documents}}
+        <tr data-policy-document="{{.Path}}">
+          <td><span class="t-mono" translate="no">{{.Path}}</span><br><span class="t-muted t-note t-mono" translate="no">{{.DocumentID}}</span></td>
+          <td>{{$.FmtTime .Expires}} {{if eq .State "expired"}}<span class="t-badge t-badge--failed">{{$.T "policy.state_expired"}}</span>{{end}}</td>
+          <td class="t-num">{{.Statements}}</td>
+          <td class="t-num">{{.Admitted}}</td>
+          <td class="t-num">{{.Ignored}}</td>
+          <td class="t-num">{{.Exceptions}}</td>
+        </tr>
+        {{if .Notes}}
+        <tr><td colspan="6">
+          <details><summary>{{$.T "policy.vex_notes"}}</summary>
+            <ul class="t-note">{{range .Notes}}<li>{{$.T (printf "policy.note_%s" .Reason) "Statement" .Statement "ID" .Vulnerability "Product" .Product}}{{with .Detail}} <span class="t-muted">— {{.}}</span>{{end}}</li>{{end}}</ul>
+          </details>
+        </td></tr>
+        {{end}}
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}<p class="t-muted">{{.T "policy.vex_none"}}</p>{{end}}
+  </div>
+
+  <div class="t-card">
+    <h2 class="t-kick">{{.T "policy.hardening_title"}}</h2>
+    <dl class="t-kv" data-policy-hardening>
+      <dt class="t-mono" translate="no">hardening.disableUnitImport</dt><dd>{{if $v.Hardening.DisableUnitImport}}{{.T "policy.switch_on"}}{{else}}{{.T "policy.switch_off"}}{{end}}</dd>
+      <dt class="t-mono" translate="no">hardening.disableRegistryPush</dt><dd>{{if $v.Hardening.DisableRegistryPush}}{{.T "policy.switch_on"}}{{else}}{{.T "policy.switch_off"}}{{end}}</dd>
+    </dl>
+  </div>
+  {{end}}
+</section>
+{{end}}

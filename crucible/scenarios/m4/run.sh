@@ -228,7 +228,7 @@ IMG_B=$( cd "$ROOT" && go run ./test/topology/seed push "$SOURCE_IP:8080/library
 
 write_recipe() {
     cat >"$WORK/recipe-$1.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: zone-app
@@ -340,7 +340,7 @@ grep -A2 'capabilities:' "$WORK/rendered.yaml" | grep -q -- '- ALL' ||
     fail "the rendered chart no longer drops every capability"
 
 cat >"$WORK/retriever.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: zone-b

@@ -2,17 +2,27 @@
 title: Operate over time
 description: Probes, task tracking and resume, what to alert on, backup, store growth, upgrades, and graceful shutdown.
 sidebar:
-  order: 7
-  badge:
-    text: Partial
-    variant: caution
+  order: 8
 ---
 
 A passthrough instance is designed to run unattended for months. This
 page is what that costs you: what to watch, what to back up, what grows,
-and how to upgrade. Some of the tooling that will make parts of this
-easier is still ahead — those parts are badged below rather than
-hidden.
+and how to upgrade.
+
+:::tip[In short]
+- Probes: `/healthz` (alive), `/readyz` (503 until usable), `/metrics`
+  (unauthenticated) — [details](#probes-and-metrics).
+- Alert on `/readyz` non-200, failed tasks, and the age of the last
+  successful sync — [what to alert on](#what-to-alert-on).
+- Back up `state.root` (with the configuration file), never the store;
+  `tobby state inspect` lists it — [backup](#backup-the-state-directory).
+- Nothing cleans the store by default: set `sync.prune: true` to remove
+  what the Retriever no longer references, and
+  `storage.occupancyThreshold` to be warned about volume —
+  [store growth](#store-growth-stated-plainly).
+- `tobby sync --dry-run` previews the next synchronization (exit code `5`
+  means changes planned) — [seeing it coming](#seeing-it-coming).
+:::
 
 ## Probes and metrics
 
@@ -20,7 +30,7 @@ hidden.
 | --- | --- |
 | `/healthz` | Liveness. Answers as soon as the listener is up: the process is alive, not necessarily useful. |
 | `/readyz` | Readiness. 503 until the store and the configuration are usable, and 503 again during the shutdown drain. |
-| `/metrics` | OpenMetrics (FR-091). Behind the same authentication as every other surface — give your scraper a viewer account or token; the chart's ServiceMonitor supports basic auth. |
+| `/metrics` | OpenMetrics. Unauthenticated, like the two probes: it exposes counters and gauges, no instance content. The scraper needs no account; if that matters on your network, filter who can reach the listener (network policy or proxy). |
 
 Opening a large store takes time: the reference deployment uses a
 startup probe (30 × 5s) rather than a lax liveness threshold, so the
@@ -29,13 +39,13 @@ afterwards.
 
 ## Tasks are the unit of observation
 
-Every synchronization and every one-off import runs as a tracked task
-(FR-062): state, per-ingredient progress, and a log downloadable raw.
+Every synchronization and every one-off import runs as a tracked task:
+state, per-ingredient progress, and a log downloadable raw.
 The task list is `/tasks` in the UI and `GET /api/v1/tasks` in the API
 (both paginated); a task's detail and log are
 `GET /api/v1/tasks/{id}` and `GET /api/v1/tasks/{id}/logs`. Logs are
 structured JSON with stable correlation keys — run ID, task ID, recipe,
-ingredient, digest (FR-090) — so one synchronization is fully
+ingredient, digest — so one synchronization is fully
 reconstructable by filtering on its task ID. See
 [metrics and logs](../../reference/metrics-logs/) for the schema.
 
@@ -48,8 +58,8 @@ never purged.
 
 A killed process or a cut connection does not restart a run from
 scratch. A synchronization resumes from persisted state, and blobs
-already stored are never re-downloaded (FR-029). Since v0.4.0, resume is
-fine-grained inside large blobs too (R-29): above
+already stored are never re-downloaded. Since v0.4.0, resume is
+fine-grained inside large blobs too: above
 `transfer.resumeThreshold` (default 64MiB) the bytes are spooled in the
 state directory with their offset, and the next attempt asks for the
 rest with an HTTP `Range` request — a download interrupted at 90 %
@@ -70,39 +80,44 @@ and restores pure streaming.
 - `/readyz` non-200 outside deploy windows.
 - Failed tasks — poll `GET /api/v1/tasks` or alert on the task-failure
   metrics.
-- Policy refusals: allowlist rejections (FR-030) and signature
-  verification failures (FR-033) are logged, audited, and counted in
+- Policy refusals: allowlist rejections and signature
+  verification failures are logged, audited, and counted in
   metrics. In a healthy zone these are zero; any step is either an
   attack or a configuration drift, and both deserve a page.
 - A last-successful-sync age beyond a few multiples of `sync.interval` —
-  a proxy or credential silently broken shows up here first.
+  a proxy or credential silently broken shows up here first
+  (`tobby_sync_last_success_timestamp_seconds`).
+- A listener certificate close to its end (`tobby_server_certificate_expiry_timestamp_seconds`).
 - State-volume usage, since resumable spools live there.
 
-The metric families are listed in
-[metrics and logs](../../reference/metrics-logs/) — with the honest caveat
-that their names are not yet contractual.
+The reference chart ships alert rules for these conditions and an example
+dashboard, and every release publishes the metrics reference they are held
+to: see [Supervise an instance](../monitoring/). When an alert needs someone
+else's eyes, collect a [diagnostic bundle](../diagnostics/) — one redacted
+local archive. The families are listed in
+[metrics and logs](../../reference/metrics-logs/).
 
 ## Backup: the state directory
 
 The state root is **the** backup target. It holds what nothing
-recreates: accounts, tokens, the served TLS pair, the interval override.
-It is small, so back it up like any precious directory — snapshots or
-file copies of `state.root`, taken while the instance is stopped or from
-a filesystem snapshot. The store needs no backup: everything in it can
-be fetched again, and losing it costs bandwidth, not identity. Never
-put the state on the store volume; Tobby refuses the nesting outright.
+recreates: accounts, tokens, the served TLS pair, the import record, the
+interval override. It is small, so back it up like any precious
+directory — snapshots or file copies of `state.root`, taken while the
+instance is stopped or from a filesystem snapshot — together with the
+configuration file and the secret files it references. The store needs no
+backup: everything in it can be fetched again, and losing it costs
+bandwidth, not identity. Never put the state on the store volume; Tobby
+refuses the nesting outright.
 
-:::note[Upcoming — milestone 7]
-A documented restore-and-rebuild procedure (rebuilding a full instance
-from a state backup plus re-synchronization, R-27) is planned for
-milestone 7. Track it on the [project status](../../discover/status/) page.
-:::
+The layout of the state directory is documented and checked at every start,
+`tobby state inspect` lists it, and the rebuild procedure is tested end to end:
+[Back up and rebuild an instance](../backup-rebuild/).
 
 ## Store growth, stated plainly
 
 **By default, nothing cleans the store automatically in passthrough
 mode.** Every synchronized version and every one-off import stays until
-an administrator removes unit-imported repositories by hand (FR-044) —
+an administrator removes unit-imported repositories by hand —
 recipe-managed content is not individually removable at all. A zone whose
 recipes track moving constraints accumulates every version they ever
 resolved.
@@ -119,9 +134,9 @@ reconciliation cycle removes the recipe-managed content the resolved
 Retriever no longer references. Three kinds of content are **never**
 eligible, because none of them is recipe-managed:
 
-- unit imports (FR-023),
-- the offline vulnerability database (FR-032),
-- anything pushed through `/v2/` outside managed namespaces (UC3 seeding).
+- unit imports,
+- the offline vulnerability database,
+- anything pushed through `/v2/` outside managed namespaces (seeding).
 
 Two safeguards are worth knowing. A cycle in which **any** recipe failed
 to resolve prunes nothing and says so in the run log: content of a recipe
@@ -156,10 +171,41 @@ Exit code `5` means "changes planned", distinct from `0` ("nothing to do"),
 so a pipeline can gate on it without treating a plan with work in it as a
 broken build. See the [CLI reference](../../reference/cli/#tobby-sync).
 
-:::note[Upcoming — milestone 6]
-On-demand integrity verification of the store through the UI and API
-(R-31) ships with milestone 6.
+:::tip[Verify the store on demand]
+A plan reads metadata; to check the bytes, verify the store: every blob
+re-hashed against its digest, manifests checked for completeness, recipe
+signatures against the trust roots configured now, with a timestamped
+report — from the interface, the API or `tobby store verify`
+(since v0.6.0). See [verify the store's integrity](../verify-store/).
 :::
+
+## What the store holds, and from where
+
+Every repository of the content browser (`/content`) carries its
+**provenance class**: `recipe` — managed by recipes verified
+against this instance's trust roots, named on the repository page, with
+the reduced-assurance marker when a relaxed trust scope admitted them —
+`unit-import` — a [one-off import](../one-off-import/), or a FileSet
+packed on this instance (shown as such) — or `seed` — pushed through
+`/v2/` by a standard client. The repository page also shows, per tag, the
+result and the date of its last vulnerability scan with the age of the
+database it was scanned with, when this instance scanned it. The same facts
+are on `GET /api/v1/content` (the `provenance` of each row) and
+`GET /api/v1/content/{repo}` (the `provenance` object, and `lastScan` on
+each tag); the log records that concern a repository — an import, a push,
+a removal — carry a `provenance` field.
+
+`tobby_store_unmanaged_repositories{class}` counts what no recipe manages,
+by class: a zone that should hold recipe content only alerts on it being
+non-zero. To make that a guarantee rather than a watch, set the
+[hardening switches](../../security/model/#hardening-switches):
+`hardening.disableUnitImport` closes unit imports, OCI image layout
+imports and packing on every surface, `hardening.disableRegistryPush` makes `/v2/` read-only for every
+client and role. Both are stated at startup, in `tobby config dump`, on
+the screens they disable and in `tobby_hardening_enabled`; recipe
+synchronizations are unaffected. The last scan of a tag is read from the
+task reports the instance still holds, so `tasks.keepFinished` bounds how
+far back it reaches.
 
 ## Upgrading
 
@@ -182,10 +228,11 @@ formats are carried across versions — lives in
   PVCs carry `helm.sh/resource-policy: keep`, so even `helm uninstall`
   leaves the data behind.
 
-:::note[Upcoming — milestone 6]
-Tobby updating through its own OCI channel (R-25) — the new release
-travelling as verified content, across zones and through the air gap
-like everything else it carries — ships with milestone 6.
+:::tip[Through its own channel]
+Since v0.6.0, Tobby can also be updated through its own OCI channel:
+each release is published recipe-ready, and travels as verified
+content, across zones and through the air gap, like everything else it
+carries. See [updating Tobby in an isolated zone](../../air-gap/update-tobby/).
 :::
 
 ## Graceful shutdown
@@ -193,13 +240,18 @@ like everything else it carries — ships with milestone 6.
 On SIGTERM or SIGINT, the instance stops accepting new work, turns
 `/readyz` to 503, and gives in-flight transfers
 `shutdown.gracePeriod` (default 30s, `--shutdown-grace-period`) to
-finish or checkpoint before exiting 0 (FR-093). Checkpointed transfers
+finish or checkpoint before exiting 0. Checkpointed transfers
 resume on the next start. Whatever supervises the process must wait
 longer than the grace period — `terminationGracePeriodSeconds: 60` in
 the reference deployment, `TimeoutStopSec=60` in a systemd unit —
 or the final kill lands mid-checkpoint.
 
-That closes the passthrough journey. From here:
-[write recipes](../../recipes/write-and-publish/) to grow what the zone
-holds, or read how the same instance prepares for
+When something breaks, start from the symptom on
+[Troubleshooting](../../reference/troubleshooting/); when you need help from someone else, collect
+[a diagnostic bundle](../../passthrough/diagnostics/).
+
+Next: check the bytes the store holds with
+[verify the store's integrity](../../passthrough/verify-store/). Beyond
+this section, [write recipes](../../recipes/write-and-publish/) to grow
+what the zone holds, or read how the same instance prepares for
 [isolated zones](../../air-gap/media-workflow/).

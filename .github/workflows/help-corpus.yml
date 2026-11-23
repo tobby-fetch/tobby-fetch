@@ -9,7 +9,8 @@
 # an author editing only the documentation would get a green run for a
 # binary that ships the previous edition. This workflow is the half that
 # watches the source: it triggers on the documentation AND on the code that
-# embeds it, and it is cheap enough to run on every such change.
+# embeds it, and it is cheap enough to run on every such change. It also
+# runs the taxonomy tests that hold the reference pages to the code.
 #
 # Third-party actions are pinned by full commit SHA (ADR-0011).
 name: Help corpus
@@ -23,6 +24,8 @@ on:
       - "website/src/assets/docs/**"
       - "internal/help/**"
       - "tools/helpsync/**"
+      - "tools/errorsref/**"
+      - "internal/taxonomy/**"
       - ".github/workflows/help-corpus.yml"
   pull_request:
     paths: *corpus_paths
@@ -49,3 +52,20 @@ jobs:
       # every error code referenced by a page resolves — in both languages.
       - name: No dangling target in the embedded corpus
         run: go test -count=1 ./internal/help/...
+      # The reference pages are guarded by tests that live with the code
+      # they describe: the exit-code tables (English and French) must equal
+      # the rendered table, and every catalog code must have its section in
+      # the error reference. ci.yml ignores `website/**`, so without this
+      # step a documentation-only change could break either and stay green
+      # until the next code change.
+      - name: The reference pages still match the error taxonomy
+        run: go test -count=1 ./internal/taxonomy/...
+      # The error reference is generated (tools/errorsref): a catalog
+      # message reworded, a code added or a reference entry edited without
+      # regenerating the page fails here — `go run ./tools/errorsref` fixes
+      # it. The tool's own tests hold the one-heading-per-code contract the
+      # deep links rely on.
+      - name: The published error reference is the generated one
+        run: |
+          go run ./tools/errorsref -check
+          go test -count=1 ./tools/errorsref/...

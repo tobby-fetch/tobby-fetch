@@ -5,8 +5,8 @@ sidebar:
   order: 1
 ---
 
-This page documents the command-line interface as shipped in the current
-v0.5.x series, extracted from the binary itself (`tobby <command> --help`)
+This page documents the command-line interface as shipped in the release
+this documentation comes with, extracted from the binary itself (`tobby <command> --help`)
 and from the CLI source (`internal/cli/`).
 
 The CLI carries a **contract an automation can depend on across versions**
@@ -37,13 +37,23 @@ tobby
 ├── import         Import a standard OCI image layout into the store
 ├── config
 │   └── dump       Print the effective configuration (secrets redacted)
+├── consumption
+│   ├── table      Print the source→destination mapping table
+│   └── registries-yaml  Print the K3s/RKE2 registries.yaml mirror snippet
 ├── fileset
 │   └── pack       Package a local directory as a FileSet in the store
 ├── media
 │   ├── verify     Re-verify a transported store without pushing anything
+│   ├── slip       Draw the printable transfer slip of a store
 │   └── import     Verify a transported store, then push what it cleared
 ├── store
 │   └── verify     Verify the integrity of a whole store (either mode)
+├── diagnostics
+│   └── bundle     Write one redacted diagnostic archive for support
+├── state
+│   └── inspect    List the state directory: classes, sizes, permissions
+├── scan
+│   └── exceptions List the vulnerability exceptions with their origin, scope, expiry and state (R-15)
 ├── recipe
 │   └── push       Validate a recipe and publish it to a cookbook
 ├── user
@@ -92,7 +102,7 @@ destination as a positional argument, symmetric with `tobby import <path>`.
 
 | Value | Where | Meaning |
 |---|---|---|
-| `text` | default everywhere except `config dump` | The human report. |
+| `text` | default, except on `config dump` (`yaml`) and `consumption table` (`markdown`) | The human report. `media slip` also accepts `html`; `consumption table` also accepts `csv`. |
 | `json` | every reporting command | The machine document, alone on stdout. |
 | `yaml` | `config dump` only, and its default | The configuration as a file you can write back. |
 
@@ -133,6 +143,11 @@ Startup is fail-fast and secure by default:
 - An invalid configuration (bad proxy URL, half-declared TLS pair,
   malformed trust scope…) refuses startup with an actionable message rather
   than degrading silently.
+- The instance holds an operating-system lock on its state directory
+  (`state.root/serving.json`) for its lifetime; the lock goes with the
+  process if it dies. A second `tobby serve` on the same state directory
+  waits 5 seconds, then refuses with
+  [`TBY-CFG-001`](../../reference/errors/#tby-cfg-001).
 - On SIGTERM/SIGINT, readiness flips to 503 first, then in-flight requests
   get the grace period to finish.
 
@@ -276,6 +291,14 @@ Entries are independent: one image that did not survive the medium fails on
 its own line and the rest still lands. An import that lost entries exits
 `1` and names them.
 
+What lands is recorded as a unit import of origin `oci-layout`: content no
+recipe manages, never pruned, individually removable. The command honours
+`hardening.disableUnitImport`, read from the same configuration file as the
+instance (`--config`, or the default path when it exists): on a hardened
+instance it refuses with [TBY-POL-005](../errors/#tby-pol-005), writes
+nothing, records a `hardening.refused` audit event on stderr, and exits
+with the policy code `3`.
+
 ### tobby config dump
 
 ```
@@ -291,6 +314,39 @@ points at. Details in the
 
 `--output json` re-encodes the same redacted document for callers that
 would rather not carry a YAML parser.
+
+### tobby consumption table
+
+```
+tobby consumption table [--recipe <name>[@<version>]]... [--destination <host[:port]>] [--output markdown|json|csv]
+```
+
+Prints the source→destination mapping table (SRS FR-065): for every
+ingredient of the selected recipes — FileSets included — the reference the
+recipe names, the reference at the destination registry, and the pinned
+digest. It reads the recipe graph of the store directory, so it works on a
+host where no instance is running, and matches what was pushed.
+
+`--recipe` is repeatable (`name` selects every recorded version,
+`name@version` one of them; none selects the whole store). The registry is
+`--destination`, else `consumption.registry`, else `destination.registry`;
+with none, the command fails with `TBY-AID-001`. `--output` chooses the
+format — `markdown` (the default), `json` or `csv` — and all three carry the
+same rows. See [consumption aids](../../passthrough/consumption-aids/).
+
+### tobby consumption registries-yaml
+
+```
+tobby consumption registries-yaml [--recipe <name>[@<version>]]... [--destination <host[:port]>]
+```
+
+Prints, on stdout and as a single YAML document, the `registries.yaml` that
+makes K3s and RKE2 pull the selected recipes' images from the zone registry:
+one mirror per source registry host, with the zone registry as endpoint and a
+rewrite onto the relocated path. `tobby consumption registries` is an alias.
+No credential is ever written; the output is deterministic and carries no
+timestamp. It is the one command that owes no `--output json`: the file it
+prints is meant to be installed on the nodes as it is.
 
 ### tobby fileset pack
 
@@ -314,6 +370,13 @@ configuration block to add.
 In text mode the digest alone is on stdout, so the command composes into a
 script; the rest of the report is on stderr.
 
+The command honours `hardening.disableUnitImport`, read from the same
+configuration file as the instance (`--config`, or the default path when
+it exists): on a hardened instance it refuses with
+[TBY-POL-005](../errors/#tby-pol-005), writes nothing, records a
+`hardening.refused` audit event on stderr, and exits with the policy code
+`3`. Running it beside an instance does not bypass that instance's switch.
+
 ### tobby media verify
 
 ```
@@ -336,7 +399,7 @@ digest is pushable; any other is blocked whole, with no override, and its
 neighbours on the same medium are unaffected. A missing or unreadable
 manifest and an altered recipe graph block the medium as a whole with no
 override; a medium addressed to another zone or older than the last one
-imported here block it too, and those two an administrator may waive.
+imported here block it too, and those two can be waived with the flags below. The command line checks no role: whoever can run `tobby media` on the host can waive. Each waiver applied is written to the [audit log](../../security/audit-log/) on stderr, as a `media.override` record with the actor and origin `local` and the detail `operation=verify`.
 
 | Flag | Purpose |
 |---|---|
@@ -350,7 +413,8 @@ tobby media verify --storage-root /mnt/usb --zone production
 tobby media verify --storage-root /mnt/usb --zone production --output json | jq .verdict
 ```
 
-Exit codes: `0` every delivery is pushable, `3` refused by policy (zone
+Exit codes: `0` every delivery is pushable, `1` an operational failure (the
+configuration or the store could not be used), `3` refused by policy (zone
 identity, freshness), `4` a verification failure.
 
 ### tobby media slip
@@ -396,8 +460,9 @@ tobby media import [flags]
 
 Verifies a transported store and pushes what verification cleared into the
 zone registry (SRS FR-052). The order is not a sequence of steps, it is the
-guarantee: nothing is pushed, served or written before the whole medium has
-been re-verified.
+guarantee: nothing is pushed or served, and nothing is written to the store
+or the freshness record, before the whole medium has been re-verified. The
+one write that comes first is the operation log described below.
 
 What crosses then goes through the same controls a passthrough promotion
 goes through — the registry allow-list and the recipe signatures, re-checked
@@ -407,15 +472,19 @@ signatures. Content the medium carries that no verified recipe reaches is
 reported and never pushed.
 
 The operation journals itself onto the medium, under `_tobby/logs/`,
-outside the manifest's coverage: the return audit channel of the transfer.
+outside the manifest's coverage, from its first line — before verification:
+the return audit channel of the transfer, which cannot invalidate the
+inventory being verified.
 A completed import advances the per-zone freshness record, which is what
 makes re-importing last month's medium a refusal rather than a silent
 rollback.
 
 Takes the same flags as `media verify`, plus a configured
 `destination.registry` — verifying needs none, importing cannot proceed
-without one. Waiving a guard is an administrator's act and is recorded in
-the audit journal.
+without one. The command line checks no role: whoever can run it on the
+host can waive a guard, and each waiver applied is recorded in the audit
+log — on stderr and in the medium's log — as a `media.override` record with
+the actor and origin `local` and the detail `operation=import`.
 
 It carries no `--wait`: the task runs in this process, so the command is
 already blocking. Under `--output json` its report is the task itself, in
@@ -425,8 +494,9 @@ the shape `GET /api/v1/tasks/{id}` serves it.
 tobby media import --config /etc/tobby/config.yaml
 ```
 
-Exit codes: `0` imported, `1` a push failed, `3` refused by policy, `4` a
-verification failure.
+Exit codes: `0` imported, `1` an operational failure (a push failed, or the
+configuration, the store or the destination could not be used), `3` refused
+by policy, `4` a verification failure.
 
 ### tobby store verify
 
@@ -452,13 +522,18 @@ as a taxonomy code with the file or object concerned; orphaned content is a
 note and never makes the verdict `defects`. It refuses a directory that is
 not already a Tobby store rather than stamp it.
 
-Without `--instance` it runs in this process, against the directory, and
-works on a host where no instance is running. Trust roots come from the
+Without `--instance`, and with `TOBBY_INSTANCE_URL` unset, it runs in this
+process, against the directory, and works on a host where no instance is
+running. `TOBBY_INSTANCE_URL` alone, without the flag, selects the remote
+form below. Trust roots come from the
 configuration (`trust.roots`, `trust.scopes`), never from the store. When an
 instance *is* serving the store, that form **refuses** — it cannot see the
-instance's content lock — and names `--instance`: the verification then runs
-on the instance as a tracked task, under its content lock, on a lane of its
-own that never holds up a synchronization. See
+instance's content lock — and names `--instance`. The serving instance is
+recognised by the lock it holds on its state directory, whatever its
+listener (self-signed TLS included); one that crashed holds nothing. With
+`--instance`, the verification then runs on the instance as a tracked
+task, under its content lock, on a lane of its own that never holds up a
+synchronization. See
 [Verify the store's integrity](../../passthrough/verify-store/).
 
 | Flag | Purpose |
@@ -466,7 +541,7 @@ own that never holds up a synchronization. See
 | `--storage-root` | The store to verify. Required — from the flag, `TOBBY_STORAGE_ROOT`, or `storage.root:` in the configuration file. |
 | `--output text\|json` | `json` emits the report itself on stdout, the same document `GET /api/v1/store/verification` serves under `verification`. With `--instance` and no `--wait`, the task the instance created. |
 | `--instance` | Base URL of the running instance to drive (default `TOBBY_INSTANCE_URL`, then the configured listen address); token from `TOBBY_API_TOKEN` or `--token-file`, sent over `http://` only to this host unless `--allow-plaintext-token`. |
-| `--wait`, `--wait-timeout` | With `--instance`: follow the task to its end, print the report, and exit on its outcome. |
+| `--wait`, `--wait-timeout` | With `--instance` (or `TOBBY_INSTANCE_URL`): follow the task to its end, print the report, and exit on its outcome. |
 
 There is no schedule and no repair flag: v1 verifies on demand and reports.
 
@@ -479,6 +554,93 @@ Exit codes: `0` the store is intact, `1` the verification was cancelled or faile
 `4` a defect was found — a blob that
 does not match its digest, an incomplete or unreadable manifest, a
 signature that no longer verifies.
+
+### tobby diagnostics bundle
+
+```
+tobby diagnostics bundle [-o <file>] [--instance <url> [--token-file <file>]] [flags]
+```
+
+Writes one local, redacted archive for support (SRS FR-095): the version and
+build, the effective configuration, recent log records, the reports of the
+most recent tasks, a metrics snapshot, the last integrity report, the state
+inventory, and a `MANIFEST.json` with the digest of every file.
+
+Redaction fails closed: every file is searched for the secret values the
+instance knows before anything is written, and a match aborts the command
+with [`TBY-DIA-002`](../../reference/errors/#tby-dia-002), naming the file.
+Tobby sends the archive nowhere. The default file name is
+`tobby-diagnostics-<UTC time>.tar.gz` in the current directory; an existing file
+is never overwritten, and the archive is written readable by its owner only.
+
+Without `--instance`, and with `TOBBY_INSTANCE_URL` unset, the archive is
+assembled on the host from the configuration, the store and the state
+directory; the log window and the metrics belong to a running process and
+appear in the manifest as omitted, with the reason. With `--instance`, or with
+`TOBBY_INSTANCE_URL` set, the archive is requested from the running instance,
+with the administrator's token from `TOBBY_API_TOKEN` or `--token-file`, and
+includes them. The request is audited either way. Exit codes: `0` written, `3` refused (the redaction check,
+or the role), `1` failed. See
+[Collect a diagnostic bundle](../../passthrough/diagnostics/).
+
+### tobby state inspect
+
+```
+tobby state inspect [flags]
+```
+
+Lists the entries of the instance state directory (SRS FR-097) with their
+class — *identity* (back it up) or *discardable* — whether they are secret,
+their size and their permissions. Names, classes, sizes and modes only; never a
+content. It reads the directory without opening anything, so it is safe beside
+a running instance. A secret entry readable by every user of the host is
+flagged, and the command exits `3` with
+[`TBY-STA-002`](../../reference/errors/#tby-sta-002) — the refusal a start would
+give. See [Back up and rebuild an instance](../../passthrough/backup-rebuild/).
+
+### tobby scan exceptions
+
+```
+tobby scan exceptions [flags]
+```
+
+Lists the vulnerability exceptions of the scan policy (SRS FR-031,
+amendment R-15) — the same document as the
+[Content policy screen](../../security/vulnerability-scanning/#the-effective-policy)
+and `GET /api/v1/policy`: for each exception its origin (`instance`,
+`retriever`, or `vex` with the OpenVEX document), its scope, its
+justification, its expiry and its state **now** — `active`, `expired` (it no
+longer applies: the findings it covered are judged again) or `unbounded` (a
+Retriever exception of the `v1alpha1` format without expiry, applied,
+`TBY-SCN-028`). The OpenVEX documents are listed with the statements they
+admitted and ignored, and why; the hardening switches are stated.
+
+**Where it reads from.** By default, **this host's configuration**
+(`--config`, the environment) and its `scan.vex` documents, in this process,
+contacting nothing: a document that cannot be read or validated fails as it
+would refuse the start (`TBY-SCN-027`). The Retriever's exceptions are only
+known to a running instance that has served its Retriever — they are not
+listed in that mode, and the report says so (`"retriever_known": false`).
+With `--instance` (or `TOBBY_INSTANCE_URL` set) the command reads a running
+instance's effective policy instead, `GET /api/v1/policy`, the Retriever's
+exceptions included; the JSON document says which (`"source":
+"configuration"` or `"instance"`).
+
+| Flag | Purpose |
+|---|---|
+| `--config` | The configuration file to read (offline form). |
+| `--output text\|json` | `json` emits the policy document on stdout (`source`, `evaluated_at`, `mode`, `threshold`, `blocking`, `retriever_known`, `exceptions[]`, `vex_documents[]`, `hardening`). |
+| `--instance` | Base URL of the running instance to read; token (**admin** role, the floor of `GET /api/v1/policy` and of its screen) from `TOBBY_API_TOKEN` or `--token-file`, sent over `http://` only to this host unless `--allow-plaintext-token`. |
+
+```sh
+tobby scan exceptions
+tobby scan exceptions --output json | jq -r '.exceptions[] | select(.state=="expired") | .id'
+tobby scan exceptions --instance https://tobby.example:8443
+```
+
+The command changes nothing. Exit codes: `0` the policy was read, whatever
+the states; `1` the configuration or a VEX document could not be read; `2`
+usage error (an instance flag without `--instance`, for instance).
 
 ### tobby recipe push
 
@@ -520,6 +682,15 @@ Manages the instance's local accounts, directly against the state
 directory on the instance host. The first account created defaults to the
 `admin` role; later ones default to `viewer`. The tool computes the
 password hash (argon2id) — a hash never has to be crafted by hand.
+
+`add` and `passwd` refuse with
+[`TBY-CFG-001`](../../reference/errors/#tby-cfg-001), and write nothing,
+while an instance holds the state directory: a running instance keeps the
+accounts in memory and would overwrite the change at its next save. The
+message names the alternative — the accounts screen or
+`POST /api/v1/accounts` for `add`; for `passwd`, stopping the instance, or
+the account holder's own `/account` screen. See
+[Account passwords](../../security/key-rotation/#account-passwords).
 
 The audit record of an account operation goes to **stderr**, with every
 other structured log: stdout carries the report.

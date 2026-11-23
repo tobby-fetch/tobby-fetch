@@ -70,6 +70,12 @@ type Config struct {
 	Files       Files       `yaml:"files"`
 	Logging     Logging     `yaml:"logging"`
 	Shutdown    Shutdown    `yaml:"shutdown"`
+
+	// The milestone-7 surface (milestone7.go).
+	Consumption Consumption `yaml:"consumption"`
+	Diagnostics Diagnostics `yaml:"diagnostics"`
+	Clock       Clock       `yaml:"clock"`
+	Hardening   Hardening   `yaml:"hardening"`
 }
 
 // Retriever locates the desired-state document (FR-010): an HTTP(S) URL,
@@ -206,6 +212,20 @@ type Preflight struct {
 type Trust struct {
 	Roots  []TrustRoot  `yaml:"roots,omitempty"`
 	Scopes []TrustScope `yaml:"scopes,omitempty"`
+	// RequireIngredientSignatures is the opt-in hardening of ingredient
+	// signatures (FR-033, RECIPE-SPEC §12.2: a consumer policy decision).
+	// Off — the default — an ingredient's own signature is copied along,
+	// verified for information and recorded, and never blocks: the
+	// delivery's authenticity comes from the recipe signature, which pins
+	// every ingredient digest. On, every ingredient must carry a signature
+	// the applicable trust roots verify — the same scope resolution as a
+	// recipe, on the ingredient's canonical nominal repository — or its
+	// recipe is blocked whole (TBY-SIG-001), identically by the
+	// synchronization, the promotion, `media verify` and the media
+	// import. An ingredient inside an allowUnsigned scope is not required
+	// to carry one. Never omitted from the effective configuration
+	// (FR-075: a posture is always visible).
+	RequireIngredientSignatures bool `yaml:"requireIngredientSignatures"`
 }
 
 // TrustRoot is one trusted public key (cosign key-based, multi-key set for
@@ -222,8 +242,9 @@ type TrustRoot struct {
 // TrustScope declares one relaxed verification perimeter (§12.3: "a named
 // low-assurance source restricted to specific repositories"). Scopes are
 // evaluated in declaration order; the first match applies; no match means
-// the strict default (signature required, any configured root). A scope
-// must relax or restrict something: AllowUnsigned, or a Roots restriction.
+// the strict default (signature required, verified against the default
+// set: the roots no scope lists — B-057). A scope must relax or restrict
+// something: AllowUnsigned, or a Roots restriction.
 type TrustScope struct {
 	Name string `yaml:"name"`
 	// Repositories are glob patterns matched against the recipe's nominal
@@ -246,7 +267,10 @@ type TrustScope struct {
 	// every surface (banner, logs, task report), never silent (FR-075).
 	AllowUnsigned bool `yaml:"allowUnsigned,omitempty"`
 	// Roots restricts verification to the named trust roots within the
-	// scope (defense in depth for multi-tenant cookbooks).
+	// scope (defense in depth for multi-tenant cookbooks). Listing a root
+	// also RESERVES it: a root some scope lists verifies only inside the
+	// scopes listing it, never under the strict default (B-057). A scope
+	// without Roots verifies against the default set.
 	Roots []string `yaml:"roots,omitempty"`
 }
 
@@ -627,6 +651,7 @@ func Default() Config {
 		Shutdown:    Shutdown{GracePeriod: Duration(30 * time.Second)},
 	}
 	defaultMilestone6(&cfg)
+	defaultMilestone7(&cfg)
 	return cfg
 }
 
@@ -795,6 +820,7 @@ func (c *Config) validate(scope Scope) error {
 	errs = append(errs, c.validateFiles()...)
 	errs = append(errs, c.validateScan()...)
 	errs = append(errs, c.validateAuthMilestone6()...)
+	errs = append(errs, c.validateMilestone7(scope)...)
 	return errors.Join(errs...)
 }
 

@@ -16,8 +16,8 @@
 "TBY-AUTH-003.action": "Sign in with an account holding the {{.role}} role, or ask an administrator to grant it."
 
 "TBY-AUTH-004.what": "The form could not be submitted safely."
-"TBY-AUTH-004.cause": "The anti-forgery token is missing or has expired — the page was probably left open for a long time."
-"TBY-AUTH-004.action": "The form has been reloaded with a fresh token: submit it again."
+"TBY-AUTH-004.cause": "The anti-forgery token is missing, wrong or expired, or the request came from a page of another site — the page was probably left open for a long time."
+"TBY-AUTH-004.action": "Reload the page and submit again. A script or tool calling the API authenticates with a token (Authorization: Bearer), not with the browser session."
 
 "TBY-AUTH-005.what": "Your session has expired."
 "TBY-AUTH-005.cause": "No activity for longer than the idle timeout, the session reached its maximum lifetime, or the instance restarted."
@@ -35,9 +35,9 @@
 "TBY-AUTH-008.cause": "The login is empty, the role is not one of viewer, operator, or admin, or the password is empty or was mistyped in the confirmation field."
 "TBY-AUTH-008.action": "Give a non-empty login, pick one of the three roles, and type the same non-empty password in both password fields, then submit again."
 
-"TBY-AUTH-009.what": "The account {{.name}} already exists."
-"TBY-AUTH-009.cause": "This instance already holds a local account with that login; logins are unique."
-"TBY-AUTH-009.action": "Choose another login, or manage the existing account from the accounts screen — its role can be changed and its password reset without creating a second one."
+"TBY-AUTH-009.what": "The name {{.name}} is already taken."
+"TBY-AUTH-009.cause": "This instance already holds an account, or a token in use, with that name; names are unique."
+"TBY-AUTH-009.action": "Choose another name. An existing account is managed from the accounts screen — its role can be changed and its password reset without creating a second one; an existing token is revoked first if it is to be replaced."
 
 "TBY-AUTH-010.what": "No account named {{.name}} on this instance."
 "TBY-AUTH-010.cause": "The account was removed, or the login is misspelled — the screen you acted from may predate the removal."
@@ -117,7 +117,7 @@
 
 "TBY-REG-003.what": "The source registry refused authentication."
 "TBY-REG-003.cause": "Credentials for {{.host}} are missing or expired."
-"TBY-REG-003.action": "Set registries.credentials for {{.host}} in the configuration, then retry the import."
+"TBY-REG-003.action": "Add or renew the credentials for {{.host}} in the file named by `registries.credentialsFile`, then retry the import."
 
 "TBY-REG-004.what": "The inspection timed out."
 "TBY-REG-004.cause": "{{.host}} did not answer within {{.timeout}}."
@@ -155,9 +155,17 @@
 "TBY-POL-004.cause": "{{.reference}} already points at {{.published}}; the document offered would publish {{.candidate}}. A cooked recipe is immutable (RECIPE-SPEC §8)."
 "TBY-POL-004.action": "Publish the change under a new metadata.version and tag. Republishing a version onto different content would silently change what zones already resolved."
 
+"TBY-POL-005.what": "This instance does not accept unit imports."
+"TBY-POL-005.cause": "It is hardened with {{.setting}}: content enters its store through verified recipes only, and a unit import or a local packing would be content no recipe vouches for."
+"TBY-POL-005.action": "Deliver the content through a signed recipe. If unit imports are needed on this instance, an administrator removes {{.setting}} from its configuration and restarts it."
+
+"TBY-POL-006.what": "This registry is read-only: pushes are refused."
+"TBY-POL-006.cause": "The instance is hardened with {{.setting}}: its embedded registry serves content and accepts none from clients, whatever their role. Recipe synchronizations still write to the store."
+"TBY-POL-006.action": "Pull from this registry, or push to the zone registry instead. Seeding this instance by push requires an administrator to remove {{.setting}} and restart it."
+
 "TBY-SIG-001.what": "The recipe signature could not be verified."
-"TBY-SIG-001.cause": "{{if .scope}}No trust root allowed by the trust scope {{.scope}} validates the signature of {{.recipe}} (keys tried: {{.fingerprints}}). A key that is valid for another scope does not apply inside this one.{{else}}No configured trust root validates the signature of {{.recipe}} (keys tried: {{.fingerprints}}).{{end}}"
-"TBY-SIG-001.action": "{{if .scope}}Check the roots listed by the scope {{.scope}} (trust.scopes[].roots): they must include the key that signed this recipe, or the recipe belongs under another scope.{{else}}Check that the zone's trust roots include the key that signed this recipe.{{end}} An unverified recipe is never admitted."
+"TBY-SIG-001.cause": "{{if .scope}}No trust root allowed by the trust scope {{.scope}} validates the signature of {{.recipe}} (keys tried: {{.fingerprints}}). A key that is valid for another scope does not apply inside this one.{{else}}No trust root of the default set validates the signature of {{.recipe}} (keys tried: {{.fingerprints}}). A trust root that a scope lists is reserved to that scope and verifies nothing outside it.{{end}}{{if .reserved}} The signature does verify against the trust root {{.reserved}}, {{if .reservedto}}reserved to the trust scope {{.reservedto}}{{else}}a root of the default set, which does not apply inside this scope{{end}}.{{end}}"
+"TBY-SIG-001.action": "{{if .reservedto}}The key that signed this recipe is reserved to the trust scope {{.reservedto}}: if the recipe must be admitted under that key, add its repository to that scope's repositories (trust.scopes[].repositories); otherwise have it re-signed with a key that applies here.{{else if .reserved}}The key that signed this recipe belongs to the default set: list that root in the roots of the scope {{.scope}} (trust.scopes[].roots), or move the recipe out of that scope.{{else if .scope}}Check the roots listed by the scope {{.scope}} (trust.scopes[].roots): they must include the key that signed this recipe, or the recipe belongs under another scope.{{else}}Check that the zone's trust roots include the key that signed this recipe, and that no trust scope lists it: a root that a scope lists is reserved to that scope.{{end}} An unverified recipe is never admitted."
 
 "TBY-SIG-002.what": "A pinned digest does not match the fetched content."
 "TBY-SIG-002.cause": "{{.reference}} pins {{.expected}} but the registry served {{.actual}} — the content changed or was tampered with."
@@ -251,6 +259,10 @@
 "TBY-MED-015.cause": "{{.path}} is addressed as {{.expected}} but its bytes hash to {{.actual}} — the content-addressed store disagrees with itself."
 "TBY-MED-015.action": "Re-copy the store from the source instance. The recipe reaching this blob is blocked whole and has no override."
 
+"TBY-MED-016.what": "The medium's recipe graph does not match the signed recipe."
+"TBY-MED-016.cause": "For {{.recipe}}, the medium's own bookkeeping lists ingredients the signed recipe document does not pin: {{.detail}}. The bookkeeping is not signed; the recipe document is."
+"TBY-MED-016.action": "Do not import this delivery: the bookkeeping was altered, or the medium was assembled by hand. Re-produce the medium from the source instance. The recipe is blocked whole and has no override."
+
 "TBY-MED-020.what": "A file on the medium is not covered by the inventory."
 "TBY-MED-020.cause": "{{.path}} lies under manifest coverage but the manifest does not list it — it was added after the manifest was written."
 "TBY-MED-020.action": "Nothing to do to proceed: extraneous content is never pushed. Investigate how it got onto the medium if you did not put it there."
@@ -262,6 +274,9 @@
 "TBY-MED-022.what": "A bookkeeping file on the medium does not match its recorded digest."
 "TBY-MED-022.cause": "{{.path}} does not match its inventory entry — the store's own bookkeeping was altered after the manifest was written."
 "TBY-MED-022.action": "Nothing is pushed from this file, so verification continues; re-copy the store from the source instance if you did not alter it deliberately."
+"TBY-MED-023.what": "The medium carries a FileSet extraction cache, which is ignored and rebuilt."
+"TBY-MED-023.cause": "{{.path}} holds {{.files}} files ({{.bytes}} bytes) extracted elsewhere. The cache is outside the manifest's coverage, so none of it was hashed; this instance never serves it and rebuilds it from the verified blobs."
+"TBY-MED-023.action": "Nothing to do for the import. If you did not expect the medium to carry an extraction, inspect or remove the directory before the medium travels back: it crosses the gap unverified."
 
 "TBY-MED-030.what": "This medium has not been verified yet, so nothing is served from it."
 "TBY-MED-030.cause": "{{.surface}} is closed because medium {{.media}} arrived from another zone and no verification has established that its content is intact and signed (FR-054). The instance itself is running normally."
@@ -274,6 +289,12 @@
 "TBY-MED-032.what": "This medium did not clear verification, so nothing is served from it."
 "TBY-MED-032.cause": "{{.surface}} is closed because medium {{.media}} verified as {{.verdict}} rather than whole. Serving is a property of the store as a whole — a blob a blocked recipe reaches is exactly the content that failed — so unlike the push decision it is not taken recipe by recipe."
 "TBY-MED-032.action": "Read the report on {{.screen}}: it names each blocked recipe and the file that failed. Re-copy the medium from the source instance and verify again. The intact recipes can still be pushed into the zone registry, which then serves them."
+"TBY-MED-033.what": "This request is outside the content the verification of the medium cleared."
+"TBY-MED-033.cause": "{{.surface}} on medium {{.media}} serves only what the pushable recipes reach, read-only, and {{.path}} is not part of it — content no verified recipe reaches, a tag added after verification, or a write."
+"TBY-MED-033.action": "Read the report on {{.screen}}: content outside the verified set is listed in its findings and is never served. Deliver it through a recipe on a new medium, or push it into the zone registry."
+"TBY-MED-034.what": "The verification of this medium cleared no content, so nothing is served from it."
+"TBY-MED-034.cause": "Medium {{.media}} lists no recipe: nothing on it is reachable from a delivery and nothing was re-hashed. {{.surface}} serves only what the pushable recipes reach, which here is nothing."
+"TBY-MED-034.action": "Check that the source synchronization delivered its recipes before the medium was written, then re-copy the medium and verify it again on {{.screen}}."
 
 "TBY-STO-004.what": "The operation was refused before it started: the target does not have enough free space."
 "TBY-STO-004.cause": "{{.path}} needs {{.needed}} bytes and only {{.available}} are usable — {{.free}} bytes are free, minus the {{.margin}} % safety margin. It is short by {{.shortfall}} bytes."
@@ -333,7 +354,7 @@
 
 "TBY-SCN-020.what": "The scan threshold carried by {{.recipe}} was ignored."
 "TBY-SCN-020.cause": "The recipe asks for {{.annotation}}, above the {{.threshold}} in effect for this zone; a recipe can lower the threshold, never raise it."
-"TBY-SCN-020.action": "Nothing to do on this instance: the zone's threshold applies. The recipe author may remove or lower the `recipe.tobby.dev/scan-threshold` annotation."
+"TBY-SCN-020.action": "Nothing to do on this instance: the zone's threshold applies. The recipe author may remove or lower the `recipe.tobbyfetch.dev/scan-threshold` annotation."
 
 "TBY-SCN-021.what": "The exception for {{.id}} expired on {{.expires}} and no longer applies."
 "TBY-SCN-021.cause": "The exception declared at the {{.level}} level carries an expiry date that has passed."
@@ -354,6 +375,18 @@
 "TBY-SCN-025.what": "{{.reference}}, delivered by the signed {{.recipe}} recipe, is evaluated under an advisory policy."
 "TBY-SCN-025.cause": "It is the scanner's own delivery. Refusing it with the policy it arms would leave the zone unable to arm a scanner, or to update its database."
 "TBY-SCN-025.action": "Nothing to do. Its findings stay reported; the trust in this content rests on the tobby-system recipe's signature."
+
+"TBY-SCN-026.what": "The exception for {{.id}} does not cover {{.reference}}."
+"TBY-SCN-026.cause": "The exception is scoped to {{.scope}}, and this item lies outside that scope: the finding is judged as if no exception existed."
+"TBY-SCN-026.action": "Nothing to do if the scope is right. If this item was meant to be covered, widen the exception's scope in the configuration — it stays bounded by its expiry."
+
+"TBY-SCN-027.what": "The OpenVEX document {{.path}} cannot be used."
+"TBY-SCN-027.cause": "{{.detail}}"
+"TBY-SCN-027.action": "Fix or remove the document listed under scan.vex, then restart. Tobby reads OpenVEX documents and never fetches them: the file must be a valid local document."
+
+"TBY-SCN-028.what": "The Retriever exception for {{.id}} has no expiry."
+"TBY-SCN-028.cause": "It applies, but it is unbounded in time: exceptions declared by an instance must carry an expiry, and Retrievers will too from the v1 format on."
+"TBY-SCN-028.action": "Ask the owner of the zone's Retriever to give the exception an expires date and a justification."
 
 "TBY-INT-001.what": "The blob {{.path}} does not match its digest."
 "TBY-INT-001.cause": "Its content hashes to {{.actual}} instead of {{.expected}}: the file was damaged or altered on disk."
@@ -379,6 +412,44 @@
 "TBY-INT-006.cause": "Verification {{.task}} was stopped before it reached a verdict, so it says nothing about the store."
 "TBY-INT-006.action": "Start a new verification when you want an answer. Nothing was changed: a verification only reads."
 
+# Milestone 7 — reserved at the opening of the milestone.
+
+"TBY-AID-001.what": "No consumption aid can be generated: this instance names no registry the zone pulls from."
+"TBY-AID-001.cause": "The mapping table and the registries.yaml snippet point at the zone registry. This instance pushes to no destination.registry, and consumption.registry is not set."
+"TBY-AID-001.action": "Set destination.registry when this instance pushes to the zone registry, or consumption.registry to the address the zone's clients pull from — this instance itself when it serves the zone."
+
+"TBY-DIA-001.what": "The diagnostic bundle could not be produced."
+"TBY-DIA-001.cause": "{{.detail}}"
+"TBY-DIA-001.action": "Retry; if it fails again, collect the instance logs by the means of the deployment. Nothing was written or sent: a bundle is local only."
+
+"TBY-DIA-002.what": "The diagnostic bundle was withheld: {{.member}} still contained a secret."
+"TBY-DIA-002.cause": "Before releasing a bundle, Tobby searches every member for the secret values it knows. One was found, so the bundle was not written rather than written with it."
+"TBY-DIA-002.action": "Report this defect to the Tobby maintainers with the member name — never with the bundle. Meanwhile, collect the information by hand."
+
+"TBY-DIA-003.what": "A diagnostic bundle is already being built on this instance."
+"TBY-DIA-003.cause": "One bundle is built at a time: each holds the members in memory and searches them for secrets, and concurrent requests would multiply that."
+"TBY-DIA-003.action": "Wait a few seconds for the bundle in progress to finish, then ask again. Nothing was written or sent."
+
+"TBY-CLK-001.what": "The local clock reads {{.now}}, earlier than the build of this binary ({{.anchor}})."
+"TBY-CLK-001.cause": "The clock is {{.gap}} behind a date this binary proves has passed. Expiries, freshness checks and certificate validity are judged against this clock."
+"TBY-CLK-001.action": "Set the host's clock (time source of the zone, or by hand from a trusted reference), then restart. Tobby warns and records; it does not correct the clock."
+
+"TBY-CLK-002.what": "The local clock reads {{.now}}, earlier than the production of medium {{.medium}} ({{.anchor}})."
+"TBY-CLK-002.cause": "The medium was resolved {{.gap}} after the time this host believes it is: one of the two clocks is wrong, and freshness and expiry checks depend on it."
+"TBY-CLK-002.action": "Check this host's clock against a trusted reference before trusting expiry and freshness verdicts. Tobby warns and records; it does not correct the clock."
+
+"TBY-STA-001.what": "The instance refuses to start: the state directory {{.root}} has an unknown layout ({{.version}})."
+"TBY-STA-001.cause": "It was written by another version of Tobby, or it is not a Tobby state directory."
+"TBY-STA-001.action": "Start the version that wrote it, or restore the state directory from a backup made with this version. The documented layout is the backup contract."
+
+"TBY-STA-002.what": "The instance refuses to start: {{.path}} is open to every user of the host ({{.mode}})."
+"TBY-STA-002.cause": "It is a secret entry of the state directory — password or token hashes, a private key — readable by other users, or a directory holding one that other users can write to (and so replace the secret), or an entry whose access list could not be read, which Tobby refuses rather than assume it is narrow. Tobby creates them for its owner only; a broader mode usually comes from a restore that did not keep permissions."
+"TBY-STA-002.action": "Remove the access of other users (chmod o-rwx on Unix, on the entry and on the directories that hold it, and keep the state root out of a shared sticky directory owned by another account; on Windows, remove Everyone, Users, Authenticated Users and the other broad principals from its access list), check who could read or replace it meanwhile, then restart. Group access granted by the volume (Kubernetes fsGroup) is tolerated."
+
+"TBY-STA-003.what": "The state directory holds no {{.entry}}."
+"TBY-STA-003.cause": "An identity entry is missing — typically after an incomplete restore. The instance starts without it, and behaves as a new instance for what it held."
+"TBY-STA-003.action": "If this instance was restored, restore the missing entry from the same backup and restart; otherwise nothing to do."
+
 "TBY-TSK-001.what": "The task does not exist."
 "TBY-TSK-001.cause": "No task with identifier {{.id}} on this instance — wrong link, or the store was reset."
 "TBY-TSK-001.action": "Open the task list and follow the link of an existing task."
@@ -394,6 +465,13 @@
 "TBY-SRV-003.what": "The instance is unreachable."
 "TBY-SRV-003.cause": "The network connection dropped, or the instance is restarting."
 "TBY-SRV-003.action": "Check your network link and retry; the page resumes as soon as the instance answers."
+
+"TBY-SRV-004.what": "The request is too large."
+"TBY-SRV-004.cause": "Its body exceeds the {{.limit}} bytes this endpoint accepts; it was refused before being read."
+"TBY-SRV-004.action": "Send a smaller body. A document over the bound is not one this endpoint was built for: check that the right file was sent."
+"TBY-SRV-005.what": "The request body is not of a type this endpoint accepts."
+"TBY-SRV-005.cause": "It is declared {{.type}}; this endpoint decodes {{.want}} only. A browser page of another origin cannot send that type without a preflight the instance never grants, which is why nothing else is read."
+"TBY-SRV-005.action": "Send the body with the header Content-Type: {{.want}} (curl: -H 'Content-Type: {{.want}}'). The CLI and the interface already do."
 
 # Exit-code table (FR-066 amendment R-08). Not error codes: the rows of
 # the published command-line contract, rendered by ExitCodeTable into the

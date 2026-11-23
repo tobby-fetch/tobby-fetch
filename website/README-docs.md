@@ -8,9 +8,9 @@ fully offline.
 ## Layout and languages
 
 - English is canonical. Slugs are English and never change.
-- French exists today for: the docs home, the whole *Try* and *air-gap*
-  sections, and `reference/errors`. The rest falls back to English until
-  milestone 7. A French page mirrors the exact path under `fr/docs/`.
+- Every English page has a French counterpart that mirrors the exact path
+  under `fr/docs/` (same file name, same `sidebar.order`). A page added in
+  English is not finished until its French page exists.
 
 ## Frontmatter
 
@@ -98,6 +98,12 @@ What that implies when writing:
 - Editing a page is not finished until `mise run help-sync` has been run
   and the corpus change committed with it. CI fails otherwise, on the
   documentation workflow rather than on the Go one.
+- `reference/errors.md` is **generated**, in both languages, by
+  `mise run errors-ref` (`tools/errorsref`): the three sentences of each
+  code come from the catalog in `internal/taxonomy/messages/`, the rest
+  (fixable offline, blocks, notes, section titles, introduction) from
+  `tools/errorsref/reference/<lang>.yaml`. Edit those, never the page;
+  `mise run errors-ref-check` and CI fail on a hand edit.
 - `index.mdx` and `reference/errors.md` are deliberately **not** embedded.
   The first is replaced by the `/help` home; the second is rendered live
   from the error catalog inside the binary, so links to

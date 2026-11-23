@@ -48,8 +48,8 @@ const (
 	// The mandatory FR-025 trace, on the manifest itself so it travels
 	// with the content: the upstream digest the vendored artifact replaces
 	// and the list of what was embedded.
-	annotationVendoredUpstream = "dev.tobby.vendored/upstream-digest"
-	annotationVendoredDeps     = "dev.tobby.vendored/dependencies"
+	annotationVendoredUpstream = "dev.tobbyfetch.vendored/upstream-digest"
+	annotationVendoredDeps     = "dev.tobbyfetch.vendored/dependencies"
 )
 
 // vendorChartArtifact vendors the archive's missing dependencies and

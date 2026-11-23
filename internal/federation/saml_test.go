@@ -20,10 +20,12 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -586,5 +588,56 @@ func TestSAMLWrappingIsRefused(t *testing.T) {
 				t.Fatalf("WRAPPING ACCEPTED: an identity was released: %+v", res)
 			}
 		})
+	}
+}
+
+// TestSAMLMetadataUnreachable is R-20 for SAML: with the IdP metadata
+// fetched over the network, a metadata endpoint that does not answer marks
+// the provider unavailable — what the sign-in page states — and a
+// metadata endpoint that answers again brings it back without a restart.
+func TestSAMLMetadataUnreachable(t *testing.T) {
+	idp := newTestIDP(t)
+	var down atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if down.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write(idp.metadata())
+	}))
+	t.Cleanup(srv.Close)
+	dir := t.TempDir()
+	write := func(name string, data []byte) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	_, spCert, spKey := newKeyPair(t, "tobby-sp")
+	svc, err := New(&Options{
+		SAML: config.SAML{
+			Enabled: true, EntityID: testEntity, ACSURL: testACS,
+			IDPMetadataURL:     srv.URL + "/metadata",
+			IDPCertificateFile: write("pinned.crt", idp.pemCert),
+			CertFile:           write("sp.crt", spCert), KeyFile: write("sp.key", spKey),
+			Roles: config.RoleMapping{Viewer: []string{"staff"}},
+		},
+		Client: srv.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	down.Store(true)
+	svc.Probe(ctx)
+	if p := svc.Providers(); len(p) != 1 || p[0].Available {
+		t.Errorf("providers with the metadata unreachable = %+v, want SAML unavailable", p)
+	}
+	down.Store(false)
+	svc.Probe(ctx)
+	if p := svc.Providers(); !p[0].Available {
+		t.Error("the probe did not bring the provider back once its metadata answered")
 	}
 }

@@ -45,6 +45,9 @@ the OpenAPI one, and served by the same instance, because an automation
 that drives Tobby uses both — see the
 [CLI reference](../../reference/cli/#report-format).
 
+Every release also publishes `openapi.yaml`, signed, byte-identical to what
+the instance serves (see [Supervise an instance](../../passthrough/monitoring/)).
+
 A build-time test cross-checks the document against the registered routes:
 an endpoint cannot ship undocumented, and the document cannot describe an
 endpoint that does not exist. What your instance serves is therefore the
@@ -64,7 +67,9 @@ schemes, against the same accounts and tokens as every other surface:
 
 A valid UI session cookie also works for **read** endpoints — this is what
 makes "copy the URL you are looking at" work from a browser. Mutating calls
-always require Basic or Bearer. Every endpoint sits behind a documented
+require Basic or Bearer, or a session cookie that comes with the session's
+anti-forgery token in the `X-CSRF-Token` header, from the instance's own
+origin (otherwise [`TBY-AUTH-004`](../../reference/errors/#tby-auth-004)). Every endpoint sits behind a documented
 minimum role (viewer, operator or admin); the published matrix and the
 anti-drift test that enforces it are covered in
 [Authentication, accounts and RBAC](../../security/auth-rbac/). An origin that
@@ -89,16 +94,18 @@ The surface today (from the served OpenAPI document):
 | Content | `GET /api/v1/content` (search, filters, pagination), `GET /api/v1/content/{repo}`, `GET /api/v1/content/{repo}/-/tags/{tag}`, `DELETE /api/v1/content/{repo}` |
 | Unit import | `GET /api/v1/import/inspect`, `POST /api/v1/import` |
 | Tasks | `GET /api/v1/tasks`, `GET /api/v1/tasks/{id}`, `GET /api/v1/tasks/{id}/logs` |
-| Recipes and sync | `GET /api/v1/recipes`, `GET /api/v1/recipes/{recipe}/mapping`, `POST /api/v1/recipes/publish`, `POST /api/v1/sync`, `GET /api/v1/sync/prune-preview`, `GET /api/v1/retriever`, `PUT/DELETE /api/v1/retriever/interval` |
+| Recipes and sync | `GET /api/v1/recipes`, `GET /api/v1/recipes/{recipe}/mapping` (`?format=csv`, `json` or `markdown` for the exportable table), `GET /api/v1/mapping`, `GET /api/v1/registries.yaml`, `GET /api/v1/recipes/{recipe}/registries.yaml`, `POST /api/v1/recipes/publish`, `POST /api/v1/sync`, `GET /api/v1/sync/prune-preview`, `GET /api/v1/retriever`, `PUT/DELETE /api/v1/retriever/interval` |
 | Plan (side-effect-free) | `POST /api/v1/plan` |
 | Media journey | `GET /api/v1/media`, `GET /api/v1/media/verification`, `GET /api/v1/media/slip`, `POST /api/v1/media/verify`, `POST /api/v1/media/import` |
 | FileSets | `GET /api/v1/filesets`, `POST /api/v1/filesets/pack` |
 | Interoperability and store | `POST /api/v1/oci-layout/plan`, `POST /api/v1/oci-layout/export`, `POST /api/v1/oci-layout/import`, `POST /api/v1/store/reset` |
 | Store integrity | `POST /api/v1/store/verify`, `POST /api/v1/store/verify/cancel`, `GET /api/v1/store/verification` |
+| Content policy | `GET /api/v1/policy` — the effective scan policy: mode, threshold, every exception with its origin, scope, expiry and state, the OpenVEX documents, the hardening switches ([what it says](../../security/vulnerability-scanning/#the-effective-policy)) |
 | Accounts and tokens | `POST /api/v1/account/password`, `GET/POST /api/v1/accounts`, `PATCH/DELETE /api/v1/accounts/{name}`, `GET/POST /api/v1/tokens`, `POST /api/v1/tokens/{name}/revoke` |
 | Network | `GET /api/v1/network`, `PUT /api/v1/network/certificate` |
+| Operations | `POST /api/v1/diagnostics/bundle`, `GET /api/v1/clock`, `GET /api/v1/state` |
 
-Four of those deserve a note, because their shape is not what a reader
+Six of those deserve a note, because their shape is not what a reader
 would guess from the path.
 
 - **`POST /api/v1/plan` answers `200` whatever the outcome.** A plan is a
@@ -130,14 +137,39 @@ would guess from the path.
 - **Two members of the media request body require the `admin` role**, above
   the endpoint's own operator floor: `allowZoneMismatch` and `allowStale`,
   the two waivable guards. Sending either from a lower role is
-  [`TBY-AUTH-003`](../../reference/errors/#tby-auth-003), and both the
-  attempt and the applied waiver are audit-logged. Nothing waives an
-  integrity or signature verdict, for any role.
+  [`TBY-AUTH-003`](../../reference/errors/#tby-auth-003), and the
+  refused attempt is audit-logged. A waiver applied is audit-logged on
+  both endpoints — `POST /api/v1/media/verify`, whose waived verdict can
+  open the serving gate, as `POST /api/v1/media/import` — one
+  `media.override` record per guard and per call, its detail naming the
+  operation. Nothing waives an integrity or signature verdict, for any
+  role.
+- **`POST /api/v1/diagnostics/bundle` answers with the archive itself**
+  (`application/gzip`, `Content-Disposition: attachment`), for the
+  administrator only. It is built and checked before the first byte is sent:
+  a bundle that would carry a secret is a problem document
+  ([`TBY-DIA-002`](../../reference/errors/#tby-dia-002)), never a partial
+  download; the checked archive is then streamed, without a `Content-Length`.
+  One bundle is built at a time: a concurrent request is answered 409
+  ([`TBY-DIA-003`](../../reference/errors/#tby-dia-003)). The request is
+  audited. See [Collect a diagnostic bundle](../../passthrough/diagnostics/).
+- **`GET /api/v1/clock` and `GET /api/v1/state` are reports.** The first
+  returns the latest [clock verdict](../../air-gap/clock-check/) of each
+  anchor, for any role; the second the state-directory inventory, names, sizes
+  and permissions, for administrators.
 
-On an instance that is not the destination side of a physical transfer, the
-four media endpoints answer
+On an instance that is not the destination side of a physical transfer — no
+`zone:` configured — `POST /api/v1/media/verify` and
+`POST /api/v1/media/import` refuse with
 [`TBY-CFG-001`](../../reference/errors/#tby-cfg-001) naming the missing
-`zone:` setting rather than pretending to have nothing to show.
+setting, before anything is enqueued or audited. The two reads report what
+the instance knows: `GET /api/v1/media` answers `200` with an empty
+`zone`, and `GET /api/v1/media/verification` answers `200` with an
+unguarded gate (`guarded: false`, `serving: true`). `GET /api/v1/media/slip`
+works on both sides of a transfer. A destination with a zone but no
+`destination.registry` verifies normally — verification pushes nothing —
+while `POST /api/v1/media/import` refuses with the same code, naming
+`destination.registry`, before anything is enqueued or audited.
 
 The `/-/` segment is the deterministic separator between a repository path
 — which may itself contain slashes — and its sub-resource (`tags`,
@@ -154,9 +186,9 @@ reserved prefix. The list is part of the product contract (shown on
 | `/v2/` | The embedded OCI registry — standard Distribution API for `docker`, `helm`, `oras`, with the same accounts and tokens. |
 | `/api/` | The REST API described above. |
 | `/metrics` | OpenMetrics endpoint — see [Metrics and logs](../../reference/metrics-logs/). |
-| `/healthz`, `/readyz` | Liveness and readiness probes, the only anonymous surfaces. |
+| `/healthz`, `/readyz` | Liveness and readiness probes, anonymous. `/metrics` and `/static/` are anonymous too, as are the sign-in pages and the FileSets that opt in on `/files/`. |
 | `/files/` | FileSet HTTP serving (OS package repositories) — Basic auth so `apt`/`dnf` URL credentials work; per-FileSet anonymous opt-in. |
-| `/auth/` | Reserved ahead of the milestone-6 OIDC/SAML callbacks. |
+| `/auth/` | The OIDC and SAML round trips of [enterprise identity](../../security/enterprise-identity/) (redirects and callbacks). |
 | `/static/` | Embedded UI assets. |
 
 Anything outside these prefixes is a UI route and may evolve freely; the

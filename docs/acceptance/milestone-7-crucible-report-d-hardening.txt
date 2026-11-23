@@ -1,0 +1,20 @@
+# Acceptance host: Scaleway Elastic Metal EM-L101X-SATA (fr-par-2, hourly), Xeon E5-1410 v2, Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ e9ea100; node created 2026-11-23T14:03Z, destroyed 2026-11-23T15:10Z (verified)
+ok   scenario m7 started 2026-11-23T14:55:39Z
+ok   tooling available (jq, curl, cosign, openssl helm oras skopeo)
+ok   built tobby for linux/amd64
+ok   throw-away PKI: a CA and the instance certificate for IP 10.180.10.221
+ok   fixtures: three signed recipes (hard-a, hard-b, hard-c), each verified by cosign, and a unit-import source image
+ok   OCI client node: dockerd up (vfs, no bridge), podman installed, both trusting the scenario CA
+ok   defaults: TLS listener, authentication on; dump, startup record and metric state both switches off
+ok   controls: unit import, API and CLI packing, and a recipe synchronization succeed with both switches off
+ok   NFR-022: UI pages, API, /v2/, /files/, /help, probes and /metrics carry their class's headers; HSTS behind TLS; authenticated responses no-store
+ok   NFR-012: cookie-only, forged-token, cross-site Origin and Sec-Fetch-Site changes refused (TBY-AUTH-004, API and UI); session token and bearer succeed, and only they took effect
+ok   NFR-023: an oversized body is refused with TBY-SRV-004 on all 23 state-changing API routes, and over the import and pack bounds; the instance stays ready
+ok   FR-041/NFR-022: docker, podman, helm, oras and skopeo push and pull through the TLS listener with the headers in place
+ok   FR-098: hardening.disableUnitImport stated by the dump, the startup record and its warning, and the metric
+ok   FR-098: the import screen (disabled, inspect, submit), the import API, the FileSets screen and API, the OCI layout screen and API, tobby fileset pack and tobby import (exit 3) refuse with TBY-POL-005 naming hardening.disableUnitImport; nothing written or queued; one hardening.refused record each
+ok   FR-098: a recipe synchronization still writes the store under hardening.disableUnitImport (hard-b landed, class recipe)
+ok   FR-098: hardening.disableRegistryPush stated by the dump, the startup record and its warning, the metric and the content screen
+ok   FR-098: docker, helm and oras pushes by the administrator, and raw upload, put and delete, refused with DENIED/TBY-POL-006; nothing landed or vanished; each refusal audited, naming the administrator
+ok   FR-098: docker (pushed and recipe-managed), podman, helm, oras and skopeo pulls, and a recipe synchronization (hard-c landed), still work under hardening.disableRegistryPush
+ok   scenario m7 d-hardening complete — report: crucible-report-m7-d-hardening.txt

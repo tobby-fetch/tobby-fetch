@@ -24,22 +24,27 @@ Two operating modes cover the whole path:
 
 Everything that crosses a boundary is **signed, digest-pinned and
 allow-listed**, and re-verified on the far side against that side's own
-trust roots — vulnerability scanning joins the list at milestone 6. Tobby's
+trust roots, and scanned for known vulnerabilities before it is served. Tobby's
 own releases hold themselves to the same bar:
 SLSA Build L3 provenance, reproducible builds, signed SBOMs, zero-known-CVE
 images, and an OpenVEX statement for anything a scanner flags that does not
 apply.
 
-## Design & documentation
+## Documentation & design
 
-The design is public before the first line of product code — review it, file
-issues, disagree with an ADR:
+**User documentation: <https://tobbyfetch.dev/docs/>** —
+start with [Install and start](https://tobbyfetch.dev/docs/try/install-and-start/)
+and [Your first promotion](https://tobbyfetch.dev/docs/try/first-promotion/).
+The same pages are embedded in the binary and served under `/help`, for zones
+with no route to a website.
+
+The design is public too — review it, file issues, disagree with an ADR:
 
 | Document | What it is |
 |---|---|
 | [Software Requirements Specification](docs/SRS.md) | Every functional and non-functional requirement, numbered and testable |
-| [Architecture Decision Records](docs/adr/) | The 16 structuring decisions — context, decision, consequences, alternatives |
-| [Roadmap (French)](https://tobby-fetch.github.io/tobby-fetch/roadmap.html) | Milestones and features in three readings: technical, plain-language, business value — rendered on the project site ([source](website/public/roadmap.html)) |
+| [Architecture Decision Records](docs/adr/) | The 17 structuring decisions — context, decision, consequences, alternatives |
+| [Roadmap (French)](https://tobbyfetch.dev/roadmap.html) | Milestones and features in three readings: technical, plain-language, business value — rendered on the project site ([source](website/public/roadmap.html)) |
 | [Recipe format specification](https://github.com/tobby-fetch/recipe-spec) | The `Recipe`/`Retriever` format, JSON Schemas, examples, and the Go parsing/validation SDK — separate repository, Apache-2.0, tagged `v1alpha1` (draft) |
 | [Example recipes](examples/) | Harbor, Keycloak, MetalLB, OpenTelemetry Collector, VictoriaMetrics operator — and the four ways a container image escapes `helm template \| grep image:` before it strands a sealed zone |
 
@@ -50,8 +55,10 @@ commit, and every milestone ships its own crucible scenarios — the suite of
 completed milestones stays replayable, in whole or per milestone, at any time
 ([ADR-0014](docs/adr/ADR-0014-crucible-test-infrastructure-incus.md)).
 
-> 🐕 **Released and under active development.** The current release line is
-> **v0.5.x**, with the first five milestones delivered:
+> 🐕 **Released and under active development.** The current release is
+> **v0.7.0**, which closes milestone 7 — all seven milestones are
+> delivered; 1.0.0 will follow the code, maintainability and security
+> audits:
 >
 > 1. **Foundations** — the application skeleton (layered configuration,
 >    structured JSON logging with run correlation, security audit log,
@@ -73,9 +80,17 @@ completed milestones stays replayable, in whole or per milestone, at any time
 >    nothing until the medium it holds has been verified, OCI image layout
 >    export/import, and documentation embedded in the binary for the zone
 >    that has no route to a website.
+> 6. **Hardened controls & enterprise identity** — vulnerability scanning
+>    with a blocking or advisory policy, a vulnerability database kept
+>    fresh across the air gap, OIDC and SAML sign-in with group-to-role
+>    mapping, session and token expiry.
+> 7. **Finishing, documentation & acceptance** — the complete bilingual
+>    documentation, scoped and expiring vulnerability exceptions, the
+>    monitoring kit, the diagnostic bundle, instance backup and rebuild,
+>    and the acceptance campaign that precedes 1.0.0.
 >
-> The design documents above remain the source of truth for what comes
-> next — see the [roadmap](https://tobby-fetch.github.io/tobby-fetch/roadmap.html).
+> The [project status page](https://tobbyfetch.dev/docs/discover/status/)
+> tracks every feature; for what comes next, see the [roadmap](https://tobbyfetch.dev/roadmap.html).
 
 ## Installing
 
@@ -101,7 +116,7 @@ tobby quickstart
 The same setup, non-interactive (the password is one line on stdin):
 
 ```sh
-echo 'choose-a-password' | tobby quickstart --mode mirror --password-stdin
+echo 'choose-a-password' | tobby quickstart --mode passthrough --password-stdin
 tobby serve --config ./tobby.yaml
 ```
 
@@ -112,7 +127,8 @@ created.
 ### Building and running from source
 
 ```sh
-mise install          # toolchain (Go, golangci-lint, hooks)
+mise install          # toolchain (Go, golangci-lint, gitleaks, Node and pnpm)
+mise run setup        # once per clone: activate the git hooks
 mise run build        # → bin/tobby
 bin/tobby quickstart
 ```
@@ -120,7 +136,11 @@ bin/tobby quickstart
 `mise run test`, `mise run lint`, `mise run coverage`, and `mise run vuln`
 run the same gates CI enforces.
 
-Landing page: **https://tobby-fetch.github.io/tobby-fetch/**
+Next step: [Your first promotion](https://tobbyfetch.dev/docs/try/first-promotion/)
+picks up from this instance.
+
+Landing page: **https://tobbyfetch.dev/** ·
+documentation: **https://tobbyfetch.dev/docs/**
 
 ## License
 

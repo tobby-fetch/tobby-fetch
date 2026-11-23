@@ -1,0 +1,12 @@
+# Acceptance host: Scaleway Elastic Metal EM-L101X-SATA (fr-par-2, hourly), Xeon E5-1410 v2, Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ e9ea100; node created 2026-11-23T14:03Z, destroyed 2026-11-23T15:10Z (verified)
+ok   scenario m7 started 2026-11-23T14:38:59Z
+ok   tooling available (jq, curl, openssl, tar)
+ok   built tobby for linux/amd64
+ok   the original instance is exercised: account, token, generated certificate (b49711cbe3d550f285298eb069349d165ce30489d8152c1baf7c73c647bc5e16), interval override 42m, import record, partials and trust cache
+ok   tobby state inspect lists exactly the documented entries; identity entries present, secret entries 0600
+ok   the state directory (identity entries), the configuration and the store were carried to a fresh node; the discardable entries stayed behind
+ok   the rebuilt instance: same account and password, same token, same certificate fingerprint, same import record, same interval override
+ok   a restore that loosened accounts.yaml to 0644 refuses the start: exit 3, TBY-STA-002, the file named
+ok   group access (0640), as a Kubernetes fsGroup grants it, is tolerated
+ok   a missing import record: the instance starts and reports TBY-STA-003 naming media-imports.json
+ok   scenario m7 b-rebuild complete — report: crucible-report-m7-b-rebuild.txt

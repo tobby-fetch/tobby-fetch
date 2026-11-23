@@ -19,6 +19,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/api"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/consume"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 )
@@ -119,6 +120,7 @@ func newRecipesAPI(t *testing.T, source string) (*http.ServeMux, *tasks.Queue) {
 	api.RegisterRecipes(a, &api.RecipeOptions{
 		Store: st, Queue: queue, Source: source,
 		RelaxedScopes: []string{"legacy-zone"}, AnonymousFileSets: []string{"drivers"},
+		Aids: consume.New(st, &consume.Settings{Registry: "reg.zone.example:5000", Version: "v0"}),
 	})
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/", a.Handler())
@@ -415,5 +417,62 @@ func TestRetrieverReportsPruneAndOccupancy(t *testing.T) {
 	}
 	if resp.StoreOccupancy.Exceeded {
 		t.Errorf("an empty store reports itself over its threshold: %+v", resp.StoreOccupancy)
+	}
+}
+
+// TestConsumptionAidsEndpoints covers FR-065 on the API: the table in its
+// three formats for the store and for one recipe, the registries.yaml
+// snippet, the unchanged legacy answer without ?format=, and the refusals.
+func TestConsumptionAidsEndpoints(t *testing.T) {
+	mux, _ := newRecipesAPI(t, testSource)
+	get := func(path string) *httptest.ResponseRecorder {
+		return call(t, mux, http.MethodGet, path, "lecteur", "pw-view", "")
+	}
+
+	w := get("/api/v1/mapping")
+	if w.Code != http.StatusOK || !strings.HasPrefix(w.Header().Get("Content-Type"), "application/json") {
+		t.Fatalf("mapping = %d %s", w.Code, w.Header().Get("Content-Type"))
+	}
+	var doc consume.Table
+	if err := json.Unmarshal(w.Body.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Destination != "reg.zone.example:5000" || len(doc.Entries) != 2 ||
+		doc.Entries[0].Destination != "reg.zone.example:5000/docker.io/bitnami/wordpress:0.9.0" {
+		t.Errorf("table = %+v", doc)
+	}
+
+	csv := get("/api/v1/mapping?format=csv")
+	if csv.Code != http.StatusOK || !strings.HasPrefix(csv.Header().Get("Content-Type"), "text/csv") ||
+		!strings.HasPrefix(csv.Body.String(), "recipe,recipeVersion,") {
+		t.Errorf("csv = %d %q", csv.Code, csv.Body.String())
+	}
+	if md := get("/api/v1/mapping?format=markdown"); md.Code != http.StatusOK || !strings.Contains(md.Body.String(), "| recipe |") {
+		t.Errorf("markdown = %d", md.Code)
+	}
+	if bad := get("/api/v1/mapping?format=xlsx"); bad.Code != http.StatusUnprocessableEntity && bad.Code != http.StatusBadRequest {
+		t.Errorf("unknown format = %d", bad.Code)
+	}
+
+	// Per recipe: legacy answer without the parameter, the table with it.
+	if legacy := get("/api/v1/recipes/wordpress/mapping"); !strings.Contains(legacy.Body.String(), `"versions"`) {
+		t.Errorf("legacy mapping changed: %s", legacy.Body.String())
+	}
+	if one := get("/api/v1/recipes/wordpress/mapping?format=json"); !strings.Contains(one.Body.String(), `"entries"`) {
+		t.Errorf("per-recipe table: %s", one.Body.String())
+	}
+	if ghost := get("/api/v1/recipes/ghost/mapping?format=csv"); ghost.Code != http.StatusNotFound {
+		t.Errorf("unknown recipe table = %d", ghost.Code)
+	}
+
+	for _, path := range []string{"/api/v1/registries.yaml", "/api/v1/recipes/wordpress/registries.yaml"} {
+		y := get(path)
+		if y.Code != http.StatusOK || !strings.HasPrefix(y.Header().Get("Content-Type"), "application/yaml") ||
+			!strings.Contains(y.Body.String(), "https://reg.zone.example:5000") {
+			t.Errorf("%s = %d %s", path, y.Code, y.Body.String())
+		}
+	}
+	if ghost := get("/api/v1/recipes/ghost/registries.yaml"); ghost.Code != http.StatusNotFound {
+		t.Errorf("unknown recipe snippet = %d", ghost.Code)
 	}
 }

@@ -1,0 +1,20 @@
+# DRAFT recipe — cooked by crucible/scenarios/m7/z-crown-rke2.sh at run time.
+#
+# The test application of the FR-065 acceptance: a pod that references it by
+# its NOMINAL path (docker.io/library/busybox:1.37.0, and the short form
+# busybox:1.37.0 that the kubelet normalizes to the same) must run from the
+# zone registry, through the generated registries.yaml and nothing else.
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
+kind: Recipe
+metadata:
+  name: crown-app
+  version: 1.0.0
+  description: >-
+    Test application of the crown scenario, referenced by nominal path.
+spec:
+  ingredients:
+    - name: busybox
+      kind: ContainerImage
+      ref: docker.io/library/busybox
+      version: 1.37.0
+      platforms: ["linux/amd64"]

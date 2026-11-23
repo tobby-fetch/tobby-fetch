@@ -8,8 +8,18 @@ sidebar:
 The destination instance is the same application, in the isolated zone,
 pointed at the transported store. It treats the medium as untrusted until
 proven otherwise, and the order is the guarantee rather than a sequence of
-steps: **nothing is pushed, served or written before the whole medium has
-been re-verified** (FR-054).
+steps: **nothing is pushed, served or written to the store before the whole
+medium has been re-verified**. One exception: an import, and a running
+destination instance, write their operation log (by default under
+`_tobby/logs/`) and, for the instance, its task records (under
+`_tobby/tasks/`) on the medium, outside the manifest's coverage, from the
+start. `tobby media verify` writes nothing at all.
+
+:::tip[In short]
+- On the isolated side, set `zone:` (and `destination.registry` to push), then run `tobby media verify --storage-root <store> --zone <zone>`: it writes nothing, and exits `0` when every delivery is pushable. [Details](#from-the-command-line)
+- `tobby media import --config <file>` re-verifies, then pushes what verified: exit `0` imported, `1` a push failed, `3` refused by policy (zone identity, freshness), `4` a verification failure. [Details](#what-blocks-what)
+- From the screen, the same sequence is Verify, Report, Push, and the instance serves nothing until a verification has cleared the medium. [Details](#the-media-screen) · [Serving gate](#an-unverified-medium-serves-nothing)
+:::
 
 ## What makes an instance a destination
 
@@ -30,13 +40,22 @@ destination:
 A source-side instance reads its zone from the Retriever it resolves and
 sets nothing here. A destination has no Retriever — its content arrives on a
 medium — and without `zone:` it cannot tell whether a medium is addressed to
-it at all. `tobby media verify`, `tobby media import` and the four
-`/api/v1/media` endpoints refuse to run without it, naming the setting
-([`TBY-CFG-001`](../../reference/errors/#tby-cfg-001)).
+it at all. Without it, `tobby media verify`, `tobby media import`, the
+screen's Verify and Push buttons, `POST /api/v1/media/verify` and
+`POST /api/v1/media/import` refuse, naming the setting
+([`TBY-CFG-001`](../../reference/errors/#tby-cfg-001)): nothing is
+enqueued and nothing is audited. The two reads report what the instance
+knows: `GET /api/v1/media` answers `200` with an empty `zone`, and
+`GET /api/v1/media/verification` answers `200` with an unguarded gate
+(`guarded: false`) and no verification session.
 
 Verifying needs nothing else. **Importing additionally needs
 `destination.registry`**: verification reads, the push writes, and the push
-has to have somewhere to go.
+has to have somewhere to go. Without it, verification works on every
+surface, while `tobby media import`, the screen's Push button and
+`POST /api/v1/media/import` refuse with
+[`TBY-CFG-001`](../../reference/errors/#tby-cfg-001) naming the setting,
+before anything is enqueued, audited or written to the medium.
 
 ## The Media screen
 
@@ -74,8 +93,10 @@ same content as a printable, bilingual, **unsigned** page, or as an HTML or
 text file, to hand over with the disk.
 
 Reading the screen is a `viewer` action. Verifying and importing are
-`operator` actions. Waiving one of the two refusals below is an
-administrator's, and the waiver checkboxes are rendered only for one.
+`operator` actions. On the screen and the API, waiving one of the two
+refusals below needs the `admin` role, and the waiver checkboxes are
+rendered only for an administrator. The command line has no roles: see
+[below](#four-refusals-stay-medium-wide).
 
 ## What blocks what
 
@@ -103,10 +124,15 @@ Per-recipe refusals, none of them waivable by anyone:
 | [`TBY-MED-013`](../../reference/errors/#tby-med-013) | a file the recipe reaches that the inventory does not list |
 | [`TBY-MED-014`](../../reference/errors/#tby-med-014) | a reachable manifest or index that cannot be parsed |
 | [`TBY-MED-015`](../../reference/errors/#tby-med-015) | a blob whose bytes do not hash to the digest its own path claims |
+| [`TBY-MED-016`](../../reference/errors/#tby-med-016) | the medium's recipe graph lists an ingredient, digest or location the signed recipe document does not pin |
 
-The last one is what keeps the unsigned inventory from being load-bearing:
-an attacker who corrupts a blob and rewrites the inventory to agree defeats
-the inventory and is still caught by the content address.
+The last two are what keep the unsigned bookkeeping from being
+load-bearing. An attacker who corrupts a blob and rewrites the inventory to
+agree defeats the inventory and is still caught by the content address. An
+attacker who adds an ingredient to the recipe graph, or changes one's
+digest, is caught by the signed recipe document: what a recipe delivers,
+and what an open gate serves, is read from that document and never from the
+medium's own list.
 
 ### Four refusals stay medium-wide
 
@@ -116,8 +142,8 @@ Per-recipe salvage is meaningless for these, so they block everything:
 |---|---|---|
 | Manifest absent, unreadable, or in a format this build does not read | [`TBY-MED-001`](../../reference/errors/#tby-med-001), [`TBY-MED-002`](../../reference/errors/#tby-med-002), [`TBY-MED-003`](../../reference/errors/#tby-med-003), [`TBY-MED-004`](../../reference/errors/#tby-med-004) | **none** |
 | The recipe graph (`meta/recipes.json`) does not match its inventory entry | [`TBY-MED-005`](../../reference/errors/#tby-med-005) | **none** |
-| The medium is addressed to another zone | [`TBY-MED-006`](../../reference/errors/#tby-med-006) | administrator, audited |
-| The medium is older than the last one imported for this zone | [`TBY-MED-007`](../../reference/errors/#tby-med-007) | administrator, audited |
+| The medium is addressed to another zone | [`TBY-MED-006`](../../reference/errors/#tby-med-006) | `admin` on the screen and the API, anyone on the host's command line |
+| The medium is older than the last one imported for this zone | [`TBY-MED-007`](../../reference/errors/#tby-med-007) | `admin` on the screen and the API, anyone on the host's command line |
 
 The first two leave nothing to reason about — without the inventory there is
 no completeness question to ask, and the graph *is* the reachability set, so
@@ -126,11 +152,39 @@ an altered one makes every per-recipe verdict meaningless.
 The last two are addressed to someone else, or to an earlier moment. They
 are **anti-accident guards, not security controls**: the manifest is
 unsigned, so a hostile party can forge either field. That is exactly why
-they are the only two an administrator may waive — `--allow-zone-mismatch`
-and `--allow-stale` on the command line, checkboxes on the screen,
-`allowZoneMismatch` and `allowStale` on the API — and why both the attempt
-and the applied waiver are written to the
-[audit log](../../security/audit-log/) with the actor and the origin.
+they are the only two that may be waived: `--allow-zone-mismatch` and
+`--allow-stale` on the command line, checkboxes on the screen,
+`allowZoneMismatch` and `allowStale` on the API.
+
+Who may waive, and what is recorded, depends on the surface:
+
+- **Screen and API.** A waiver needs the `admin` role. A refused attempt by a
+  lesser role is written to the [audit log](../../security/audit-log/)
+  (`media.override`, outcome `denied`).
+- **Command line.** There is no role check. Whoever can run `tobby media` on
+  the host, against the store, can waive. The waiver is recorded with the
+  actor and origin `local`. Access to the host is the control.
+- **Every waiver applied is audited, Verify included.** Each time a waiver
+  is applied to an operation, one `media.override` record per guard is
+  written, outcome `success`, with the actor, the origin, the guard
+  (`zone` or `freshness`) as target, and a detail naming the operation,
+  the zone and the medium (`operation=verify zone=… media=…`). That holds
+  for the screen's Verify step, `POST /api/v1/media/verify`,
+  `tobby media verify` and `tobby media slip` (`operation=verify`) as for
+  Push, `POST /api/v1/media/import` and `tobby media import`
+  (`operation=import`, followed by `media.import`). It matters at the
+  Verify step: a waived verification can reach a `pushable` verdict and
+  open the [serving gate](#an-unverified-medium-serves-nothing), and the
+  record is written as the verification starts, before any verdict.
+- **Verify then Push: two records.** On the screen the waiver is ticked
+  at the Verify step and carried to Push. The trail then holds two
+  `media.override` records, one per operation the waiver was applied to —
+  the verification that may have opened the gate, then the import that
+  pushed — told apart by their `operation=` detail. They are two
+  applications, not a duplicate. On the command line,
+  `tobby media verify` writes its record to stderr only, since it writes
+  nothing to the medium; `tobby media import` writes it to stderr and to
+  the medium's log.
 
 **No role waives an integrity or a signature verdict.** There is no flag, no
 confirmation dialog and no configuration key for it, for anyone,
@@ -151,8 +205,8 @@ no verified recipe reaches is reported by name and stays where it is.
 
 ## An unverified medium serves nothing
 
-"Verification precedes any push, any **serving**, and any local write" has
-three verbs. A destination instance holding a transported medium withholds
+"Verification precedes any push, any **serving**, and any write to the
+store" has three verbs. A destination instance holding a transported medium withholds
 `/v2/` and `/files/` until a verification it performed has cleared the
 medium.
 
@@ -179,6 +233,26 @@ medium.
 - **No role bypasses it.** A closed gate is not an authorization refusal:
   the role matrix decides who may ask, the gate decides whether this
   instance is willing to hand anything out yet.
+- **An open gate serves the verified set, and only it.** The verification
+  records what the pushable recipes reach — recipe artifacts and their
+  signatures, ingredients and their own signatures, every manifest and blob
+  they name, each file re-hashed — and the gate serves exactly that,
+  read-only. A tag resolves to the digest it was verified at; the catalog
+  and the tag lists show only verified content; a FileSet resolves only
+  among verified versions. An image or a FileSet version added to the medium
+  after its manifest was written, content no pushable recipe reaches, and
+  any write answer `403` with
+  [`TBY-MED-033`](../../reference/errors/#tby-med-033). A medium that lists
+  no recipe clears nothing and opens nothing
+  ([`TBY-MED-034`](../../reference/errors/#tby-med-034)).
+- **A missing manifest does not exempt a medium.** An instance with a
+  `zone:` whose store holds content but no `meta/media.json` is guarded as
+  well, and its verification blocks on
+  [`TBY-MED-001`](../../reference/errors/#tby-med-001).
+- **A carried FileSet cache leaves a trace.** It is never served — it is
+  discarded and rebuilt from the verified blobs — and the report summarizes
+  it ([`TBY-MED-023`](../../reference/errors/#tby-med-023)); anything under
+  `meta/fileserve/` that is not an extraction is reported as uncovered.
 
 A source-side mirror instance is unaffected. Its store carries a manifest
 too — it wrote one — but the medium is its own output rather than something
@@ -205,7 +279,7 @@ the transfer.
 
 | Command | `0` | `1` | `3` | `4` |
 |---|---|---|---|---|
-| `tobby media verify` | every delivery is pushable | — | refused by policy (zone identity, freshness) | a verification failure |
+| `tobby media verify` | every delivery is pushable | the verification could not run (configuration, store unreadable) | refused by policy (zone identity, freshness) | a verification failure |
 | `tobby media import` | imported | a push failed | refused by policy | a verification failure |
 
 These commands run in their own process, against the store directory
@@ -221,6 +295,9 @@ makes re-importing last month's medium a refusal rather than a silent
 rollback — and the zone registry now serves the transferred content.
 Connecting the zone's clusters and hosts to it works identically in both
 modes: see [connect your clients](../../passthrough/connect-clients/).
+
+A medium that stays blocked: [Troubleshooting — a removable medium is
+blocked](../../reference/troubleshooting/#a-removable-medium-is-blocked) lists the causes by symptom.
 
 Media that come back for a second cycle, and the housekeeping that keeps
 them a sane size, are on

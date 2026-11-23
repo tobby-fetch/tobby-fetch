@@ -76,10 +76,19 @@ func (u *UI) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 // request gets 401 + HX-Redirect so the fragment never fills with the
 // login page (ADR-0015 §6). Under the FR-075 override everything passes as
 // the explicit anonymous identity. Mutating requests must then carry the
-// session's CSRF token (NFR-012).
+// session's CSRF token and pass the origin check (NFR-012, amendment
+// 2026-11-16: csrfRefused).
 func (u *UI) RequireSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if u.authn.Disabled {
+			// No session, so no token — but the instance still acts on
+			// whoever reaches it, as the anonymous administrator: an unsafe
+			// request another origin's page made the browser send is the
+			// router-CSRF shape, refused like a forged token.
+			if !auth.SafeMethod(r.Method) && !auth.SameOrigin(r) {
+				u.csrfRefused(w, r, auth.AnonymousIdentity.Name)
+				return
+			}
 			ctx := auth.WithIdentity(r.Context(), auth.AnonymousIdentity)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
@@ -93,16 +102,37 @@ func (u *UI) RequireSession(next http.Handler) http.Handler {
 		ctx = auth.WithIdentity(ctx, auth.Identity{Name: sess.Account, DisplayName: sess.Display, Role: sess.Role, Method: sess.Method})
 		r = r.WithContext(ctx)
 
-		switch r.Method {
-		case http.MethodGet, http.MethodHead:
-		default:
-			if !sess.CheckCSRF(r.PostFormValue("csrf")) {
-				u.render.Error(w, r, taxonomy.New(taxonomy.CodeCSRF, nil))
-				return
-			}
+		if !auth.SafeMethod(r.Method) && (!auth.SameOrigin(r) || !sess.CheckCSRF(csrfToken(r))) {
+			u.csrfRefused(w, r, sess.Account)
+			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// csrfToken is the anti-forgery token a request submitted: the
+// auth.CSRFHeader when a script sent it, the form's "csrf" field
+// otherwise. Either way it is compared with the session's own, in
+// constant time (Session.CheckCSRF).
+func csrfToken(r *http.Request) string {
+	if t := r.Header.Get(auth.CSRFHeader); t != "" {
+		return t
+	}
+	return r.PostFormValue("csrf")
+}
+
+// csrfRefused answers TBY-AUTH-004 and audits the refusal: a forged or
+// cross-origin state change is a security signal, recorded like the
+// role refusals (FR-094), with the same action.
+func (u *UI) csrfRefused(w http.ResponseWriter, r *http.Request, actor string) {
+	audit.Log(r.Context(), u.logger, &audit.Event{
+		Actor:   actor,
+		Action:  "ui.access",
+		Target:  r.URL.Path,
+		Outcome: audit.OutcomeDenied,
+		Origin:  auth.ClientOrigin(r),
+	})
+	u.render.Error(w, r, taxonomy.New(taxonomy.CodeCSRF, nil))
 }
 
 // RequireRole gates a handler behind a minimum role; the refusal names the

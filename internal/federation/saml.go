@@ -449,6 +449,9 @@ func (p *samlProvider) verify(sp *saml.ServiceProvider, raw []byte, requestID st
 	if assertion.Subject == nil || assertion.Subject.NameID == nil || assertion.Subject.NameID.Value == "" {
 		return nil, p.fail("subject", errors.New("the assertion names nobody"))
 	}
+	if !validSubject(assertion.Subject.NameID.Value) {
+		return nil, p.fail("subject", errors.New("the assertion's NameID is not an identifier (over 255 bytes, or control characters)"))
+	}
 	// The key is the NameID — persistent and opaque at a conforming IdP;
 	// the name attribute is display only.
 	key := "saml:" + assertion.Subject.NameID.Value

@@ -29,17 +29,21 @@ links to the workflow or directory that implements it.
 ## The CI gates, as wired
 
 [`ci.yml`](https://github.com/tobby-fetch/tobby-fetch/blob/main/.github/workflows/ci.yml)
-runs nine blocking jobs on every pull request; its header states the
+runs thirteen blocking jobs on every pull request; its header states the
 contract: *every job gates merges*. By name:
 
 | Job | What blocks the merge |
 |---|---|
 | `lint` | golangci-lint v2.15.0, strict profile, zero suppressions |
-| `test` | race + `-count=2` suite on linux/amd64, linux/arm64 **and** macOS, then the per-package coverage floor |
+| `test` | race + `-count=2` suite on linux/amd64, linux/arm64, macOS **and** Windows, then the per-package coverage floor |
 | `cross-compile` | all six release targets (linux, windows, darwin × amd64/arm64) must build |
 | `licenses` | every dependency — test-only tree included — against the GPL-3.0 compatibility allowlist |
-| `e2e-topology` | the milestone-1 to milestone-4 hermetic scenarios, raw check reports published to the job summary |
+| `e2e-topology` | the milestone-1 to milestone-4 hermetic scenarios and the milestone-7 UC2 journey, raw check reports published to the job summary |
 | `e2e-browser` | chromedp scenarios, with `TOBBY_E2E_REQUIRE_CHROME=1` so "no browser" is a failure, not a skip |
+| `coverage-core` | line coverage of the core packages (fetch, resolve, store, push, policy, signatures) at or above 70 % |
+| `i18n` | English and French catalogues complete: no missing or orphaned key, placeholders agree |
+| `fuzz` | every fuzz target runs for 30 seconds; failing inputs are kept as an artifact |
+| `conformance` | the pinned OCI distribution-spec conformance suite, on linux/amd64 and linux/arm64 |
 | `govulncheck` | reachable known vulnerabilities, stdlib included — a finding is a call path, not a manifest match |
 | `secrets` | gitleaks over the full git history, not the checkout tip |
 | `vulnerabilities` | Trivy on dependencies; critical and high fail the job |
@@ -104,7 +108,7 @@ crucible/
 ├── run.sh            # scenario runner: ./run.sh m1 [m2 …] | all
 ├── lib.sh            # shared helpers (checks, raw report)
 └── scenarios/
-    ├── m1/run.sh … m4/run.sh   # one scenario per delivered milestone
+    ├── m1/run.sh … m7/run.sh   # one scenario per milestone
 ```
 
 Scenarios are tagged by milestone and independently invocable — the suite

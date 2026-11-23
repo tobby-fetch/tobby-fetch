@@ -15,16 +15,18 @@ import (
 	"time"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/server"
 )
 
-// TestSecurityHeadersOnEveryUIResponse pins the v0.4.2 hardening: every
-// response of the UI surface — a rendered page, an error page, a static
-// asset, a redirect — carries the browser security headers. Sampled on
-// the three response shapes rather than every route: the wrapper sits in
-// Mount, so one covered route covers them all by construction.
+// TestSecurityHeadersOnEveryUIResponse pins the v0.4.2 hardening, as the
+// listener's middleware now applies it (NFR-022): every response of the
+// UI surface — a rendered page, an error page, a static asset, a
+// redirect — carries the browser security headers, and the HTML ones the
+// UI's policy. Sampled on the response shapes; the walk over every route
+// of the instance is internal/cli's TestSecurityHeadersOnEveryRoute.
 func TestSecurityHeadersOnEveryUIResponse(t *testing.T) {
 	u := newTestUI(t, false)
-	mux := mount(u)
+	mux := server.SecurityHeaders(mount(u), server.HeaderPolicy{HTML: ContentSecurityPolicy()})
 
 	for _, path := range []string{
 		"/login",          // pre-auth page
@@ -44,8 +46,12 @@ func TestSecurityHeadersOnEveryUIResponse(t *testing.T) {
 		if got := h.Get("Referrer-Policy"); got != "same-origin" {
 			t.Errorf("%s: Referrer-Policy = %q, want same-origin", path, got)
 		}
-		if got := h.Get("Content-Security-Policy"); got != cspHeader {
-			t.Errorf("%s: Content-Security-Policy = %q, want the built policy", path, got)
+		want := cspHeader
+		if path == "/static/app.css" {
+			want = server.InertPolicy // not a page: nothing to allow
+		}
+		if got := h.Get("Content-Security-Policy"); got != want {
+			t.Errorf("%s: Content-Security-Policy = %q, want %q", path, got, want)
 		}
 	}
 }
@@ -66,6 +72,12 @@ func TestCSPShape(t *testing.T) {
 	}
 	if !strings.Contains(cspHeader, "form-action 'self'") {
 		t.Error("CSP misses form-action 'self'")
+	}
+	// NFR-022: no template uses <base>, so none may be injected.
+	for _, d := range []string{"base-uri 'none'", "object-src 'none'"} {
+		if !strings.Contains(cspHeader, d) {
+			t.Errorf("CSP misses %s", d)
+		}
 	}
 	hashes := inlineScriptHashes()
 	if len(hashes) == 0 {

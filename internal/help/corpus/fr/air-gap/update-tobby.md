@@ -5,11 +5,11 @@ sidebar:
   order: 8
 ---
 
-Tobby se met à jour par son propre canal (R-25), exactement comme la
+Tobby se met à jour par son propre canal, exactement comme la
 [base de vulnérabilités](../vulnerability-database/) : une nouvelle version
 est une **recipe** que votre site cuisine et signe, portée par le flux
 miroir standard, et déployée par une personne. Rien dans Tobby ne cherche
-une version plus récente, et rien n'en installe une de lui-même (NFR-019).
+une version plus récente, et rien n'en installe une de lui-même.
 
 ## Ce que publie une release
 
@@ -57,10 +57,9 @@ est la recipe qui les emporte, avec des digests à remplacer.
 ## Ne garder que certaines plateformes
 
 `platforms` peut ne garder que les binaires que votre zone exécute.
-L'index traverse alors *partiel* (FR-022) : c'est l'index d'origine, à son
+L'index traverse alors *partiel* : c'est l'index d'origine, à son
 digest épinglé, qui liste des enfants que le support ne porte pas. La
-registry de Tobby l'accepte et sert les plateformes qui ont traversé
-(FR-042). Une registry de zone tierce qui valide les membres d'un index en
+registry de Tobby l'accepte et sert les plateformes qui ont traversé. Une registry de zone tierce qui valide les membres d'un index en
 refuse un partiel, et une zone isolée ne peut pas le compléter en allant
 chercher le reste : si c'est le cas de la vôtre, gardez les quatre
 plateformes, comme le fait l'exemple. Les enfants en plus coûtent quelques

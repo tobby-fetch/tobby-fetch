@@ -5,6 +5,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 )
@@ -61,6 +63,10 @@ format.
 A packed FileSet is UNSIGNED and recorded as a manual import of local origin —
 Tobby holds no signing key (ADR-0007) — and listings say so.
 
+On an instance hardened with hardening.disableUnitImport (read from --config,
+or the default configuration file when it exists) the command refuses with
+TBY-POL-005, writes nothing, and exits with the policy code (3).
+
 Serving it is a separate, explicit step (FR-047): add it to the configuration
 file and restart the instance. The command prints the block to add.
 
@@ -105,10 +111,24 @@ func runFileSetPack(cmd *cobra.Command, cfg *config.Config, source, name, versio
 	// The CLI is unconfined on purpose: whoever runs it already holds the
 	// host's filesystem rights. files.packRoots bounds the API and the UI
 	// (FR-075), which are reached over the network.
-	packer := fileserve.NewPacker(st, cfg.Storage.BasePrefix, slog.New(slog.DiscardHandler))
+	//
+	// It is NOT exempt from hardening.disableUnitImport (FR-098): the
+	// switch is read from the same configuration the instance serves with
+	// — the --config file, or the default path when it exists — so an
+	// operator on the host cannot pack into a store whose instance refuses
+	// unit imports by running the command beside it.
+	packer := fileserve.NewPacker(st, cfg.Storage.BasePrefix, slog.New(slog.DiscardHandler),
+		fileserve.WithUnitImportDisabled(cfg.Hardening.DisableUnitImport))
 	res, err := packer.Pack(cmd.Context(), fileserve.PackRequest{Source: source, Name: name, Version: version})
 	if err != nil {
-		auditPack(cmd.Context(), cmd.ErrOrStderr(), fileserve.PackReference(name)+":"+version, audit.OutcomeFailure)
+		target := fileserve.PackReference(name) + ":" + version
+		var refused fileserve.UnitImportDisabled
+		if errors.As(err, &refused) {
+			hardening.AuditRefused(cmd.Context(), logging.New(cmd.ErrOrStderr(), slog.LevelInfo),
+				audit.ActorLocal, audit.OriginLocal, target, hardening.SettingDisableUnitImport)
+		} else {
+			auditPack(cmd.Context(), cmd.ErrOrStderr(), target, audit.OutcomeFailure)
+		}
 		return fileserve.PackProblem(err)
 	}
 	auditPack(cmd.Context(), cmd.ErrOrStderr(), res.Reference+":"+res.Version, audit.OutcomeSuccess)

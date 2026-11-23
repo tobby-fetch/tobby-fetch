@@ -284,6 +284,9 @@ func (s *Service) CompleteOIDC(ctx context.Context, query url.Values, binding st
 	if idt.Subject == "" {
 		return nil, p.fail("subject", errors.New("the ID token names nobody"))
 	}
+	if !validSubject(idt.Subject) {
+		return nil, p.fail("subject", errors.New("the ID token's subject is not an identifier (over 255 bytes, or control characters)"))
+	}
 	key := "oidc:" + idt.Subject
 	display, _ := claims[p.nameAt].(string)
 	display = displayName(display)

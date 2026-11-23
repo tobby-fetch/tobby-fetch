@@ -1,0 +1,15 @@
+# Acceptance host: Scaleway Elastic Metal EM-L101X-SATA (fr-par-2, hourly), Xeon E5-1410 v2, Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ e9ea100; node created 2026-11-23T14:03Z, destroyed 2026-11-23T15:10Z (verified)
+ok   scenario m7 started 2026-11-23T14:32:44Z
+ok   tooling available (jq, curl, cosign)
+ok   built tobby for linux/amd64
+ok   three recipes promoted from 10.180.10.145:8080 to the zone registry 10.180.10.152:8080 under basePath 'mirror'
+ok   the zone registry holds all three images at the paths ADR-0013 predicts, with the source digests
+ok   FR-065: the JSON table has exactly the expected source, destination and digest for each ingredient
+ok   FR-065: CSV and Markdown carry the same three rows
+ok   the per-recipe table is that recipe's rows; the route without ?format= answers as before
+ok   the command line prints the table the API serves (FR-061)
+ok   FR-065: the API and the command line produce the same snippet, byte for byte, twice
+ok   FR-065: two mirrors (docker.io folded, the port host), endpoints 10.180.10.152:8080 over http, rewrites with the base path, the CA path, no credential, limits stated
+ok   FR-065: applying the generated rewrite rules to each nominal repository reaches the pinned digest at the zone registry; the unrewritten path holds nothing
+ok   FR-065: with neither destination.registry nor consumption.registry both aids refuse with TBY-AID-001
+ok   scenario m7 a-consumption-aids complete — report: crucible-report-m7-a-consumption-aids.txt

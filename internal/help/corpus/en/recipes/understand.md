@@ -17,7 +17,8 @@ there, and this page links to it rather than restating it.
 ## The vocabulary
 
 The metaphor is a kitchen, and it is load-bearing: each word names one
-precise object.
+precise object. The rest of the product's vocabulary is in the
+[glossary](../../discover/glossary/).
 
 | Term | What it is |
 | --- | --- |
@@ -35,7 +36,7 @@ are in the specification's
 and [cookbook](https://github.com/tobby-fetch/recipe-spec/blob/main/RECIPE-SPEC.md#11-the-cookbook)
 sections.
 
-Recipes are Kubernetes-style manifests (`apiVersion: recipe.tobby.dev/v1alpha1`,
+Recipes are Kubernetes-style manifests (`apiVersion: recipe.tobbyfetch.dev/v1alpha1`,
 `kind: Recipe`), deliberately familiar to anyone who operates a cluster —
 and deliberately strict: a misspelled field is rejected, never silently
 ignored, because a typo in `digest:` must not weaken pinning

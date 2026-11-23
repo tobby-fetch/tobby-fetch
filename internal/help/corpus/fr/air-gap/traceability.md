@@ -16,36 +16,43 @@ destination.
 
 Chaque run de synchronisation reçoit un **run ID** unique au démarrage. Il
 est porté par chaque enregistrement de journal du run, à côté des autres
-champs de corrélation : task ID, recipe, ingrédient, digest (SRS FR-090).
+champs de corrélation : task ID, recipe, ingrédient, digest.
 Filtrer les journaux sur un run ID reconstitue ce run intégralement.
 
-Le même run ID traverse ensuite le sas :
+Le run ID de la source traverse ensuite le sas :
 
 1. **À la source** — chaque ligne de journal de la synchronisation miroir le
    porte.
 2. **Sur le média** — le manifeste de média l'enregistre, à côté de
    l'identité de zone et de l'horodatage de résolution.
-3. **À la destination** — l'instance qui ouvre le store transporté réutilise
-   le run ID dans ses propres journaux pendant qu'elle vérifie et pousse.
+3. **À la destination** — l'instance qui ouvre le store transporté journalise
+   sous **son propre** run ID pendant qu'elle vérifie et pousse. Le run ID de
+   la source n'apparaît qu'une fois, comme attribut `source_run_id` de
+   l'enregistrement « media verification complete », à côté du `media_id`.
 
-Un seul identifiant relie donc la préparation, la charge et l'import — à
-travers deux machines qui n'ont jamais partagé un réseau.
+Deux identifiants relient donc la préparation, la charge et l'import, à
+travers deux machines qui n'ont jamais partagé un réseau : le run ID de la
+source, que porte l'enregistrement de vérification, et le `media_id`, que
+les deux côtés journalisent. Filtrer sur un seul `run_id` ne donne qu'un
+côté.
 
 ## Des journaux JSON durables sur le média
 
-En mode miroir, les journaux d'opération ne partent pas sur stdout : ils
-sont écrits **dans un fichier à l'intérieur du store transporté** —
+En mode miroir, les journaux d'opération partent sur stdout comme dans tout
+mode, et sont aussi écrits **dans un fichier à l'intérieur du store transporté** —
 `_tobby/logs/operations.log` par défaut, `logging.media.file` pour en
 changer — pour que la destination puisse auditer ce que contient le média et
-comment il a été produit (SRS FR-053).
+comment il a été produit.
 
-Le chemin doit se situer **hors de la couverture du manifeste de média**,
-sous `_tobby/`, et l'instance refuse de démarrer sinon : un journal écrit
+Le chemin est relatif au store et doit se situer **hors de la couverture du
+manifeste de média**, c'est-à-dire ailleurs que sous `docker/registry/v2/`
+et `meta/` (`_tobby/logs/` par défaut), et l'instance refuse de démarrer
+sinon : un journal écrit
 dans la couverture invaliderait, ligne après ligne, l'inventaire même que la
 destination vérifie.
 
 Parce qu'un média amovible peut être arraché, le fichier de journal est tenu
-par un contrat de durabilité (SRS FR-056) :
+par un contrat de durabilité :
 
 - un **fsync explicite à chaque frontière de tâche** — un média arraché ou
   défaillant perd au plus les entrées de la tâche en cours ;
@@ -87,12 +94,14 @@ Le média est un canal d'audit à double sens :
   — verdicts de vérification, pushes, toute dérogation — sur le média, dans
   un chemin dédié *hors* couverture du manifeste, pour que l'inventaire de
   l'aller reste vérifiable au retour.
-- **Au retour**, le côté connecté relit les journaux de la destination :
-  filtrez sur le run ID et vous tenez l'histoire complète du transfert, les
-  deux côtés inclus, sans qu'aucun lien réseau n'ait existé.
+- **Au retour**, le côté connecté relit les journaux de la destination.
+  Retrouvez le run ID de la destination par l'enregistrement de vérification
+  qui porte le run ID de la source (`source_run_id`) ou le `media_id`,
+  filtrez sur les deux run IDs, et vous tenez l'histoire complète du
+  transfert, les deux côtés inclus, sans qu'aucun lien réseau n'ait existé.
 
 En pratique : archivez le contenu de `_tobby/logs/` du média (les deux sens)
-avec le dossier de transfert, indexé par run ID. Cette archive est votre preuve
+avec le dossier de transfert, indexé par run ID de la source et `media_id`. Cette archive est votre preuve
 rejouable pour une revue de sécurité.
 
 Une limite honnête, dite clairement : comme le manifeste, les journaux ne
@@ -108,10 +117,9 @@ de l'écran Média — synthèse du support, rapport de vérification, résultat
 d'analyse — exportable en HTML ou en texte, et clairement marqué comme
 **aide non signée**.
 
-:::note[À venir — jalon 6]
-Le bordereau de transfert (R-07) arrive avec le jalon 6. L'
-[écran Média](../../air-gap/import-destination/) dont il dérive est livré ;
-d'ici à ce que le bordereau lui-même arrive, le run ID, le rapport de
-vérification (téléchargeable en JSON) et les journaux sur média ci-dessus
-sont l'ossature de traçabilité sur laquelle bâtir une procédure papier.
-:::
+Le bordereau est livré depuis la v0.6.0, à partir de
+l'[écran Média](../../air-gap/import-destination/) dont il dérive : voir
+[le bordereau de transfert](../transfer-slip/). À côté de lui, le run ID, le
+rapport de vérification (téléchargeable en JSON) et les journaux sur média
+ci-dessus restent l'ossature de traçabilité sur laquelle bâtir une procédure
+papier.

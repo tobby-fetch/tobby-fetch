@@ -21,6 +21,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/hardening"
 	"github.com/tobby-fetch/tobby-fetch/internal/importer"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
@@ -33,6 +34,9 @@ type importData struct {
 	// InspectHref triggers the load-time inspection of a deep link
 	// (hx-trigger="load"), carrying the ?platform= pre-selection through.
 	InspectHref string
+	// Disabled is hardening.disableUnitImport (FR-098): the form is shown
+	// disabled, naming the setting, and nothing is inspected.
+	Disabled bool
 }
 
 // importPlatform is one selectable row of step 2.
@@ -66,6 +70,16 @@ type inspectData struct {
 func (u *UI) importScreen(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	ref := strings.TrimSpace(q.Get("ref"))
+	if u.hardening.DisableUnitImport {
+		if ref != "" && isFragment(r) {
+			// An inspection is the first step of an import: refused, and
+			// the refusal is the audit record (FR-098).
+			u.refuseUnitImport(w, r, ref)
+			return
+		}
+		u.render.Page(w, r, "import", importData{Ref: ref, Disabled: true})
+		return
+	}
 	if ref != "" && isFragment(r) {
 		u.importInspect(w, r, ref, q["platform"])
 		return
@@ -137,6 +151,10 @@ func buildInspectData(r *http.Request, ref string, rep *importer.Report, presele
 // HX-Redirect for htmx, 303 otherwise (UI-SPEC §5.6).
 func (u *UI) importSubmit(w http.ResponseWriter, r *http.Request) {
 	ref := strings.TrimSpace(r.PostFormValue("ref"))
+	if u.hardening.DisableUnitImport {
+		u.refuseUnitImport(w, r, ref)
+		return
+	}
 	wanted := map[string]bool{}
 	for _, p := range r.PostForm["platform"] {
 		wanted[p] = true
@@ -209,7 +227,7 @@ func (u *UI) importError(w http.ResponseWriter, r *http.Request, ref string, err
 	if !errors.As(err, &te) {
 		te = taxonomy.New(taxonomy.CodeInternal, nil).WithCause(err)
 	}
-	v := u.render.view(r, importData{Ref: ref})
+	v := u.render.view(r, importData{Ref: ref, Disabled: u.hardening.DisableUnitImport})
 	v.Err = errView(v.Lang, te)
 	if isFragment(r) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -221,4 +239,17 @@ func (u *UI) importError(w http.ResponseWriter, r *http.Request, ref string, err
 		return
 	}
 	u.render.render(w, r, "import", v.Err.Status, v)
+}
+
+// refuseUnitImport answers an import attempt on an instance hardened with
+// hardening.disableUnitImport (FR-098): TBY-POL-005 naming the setting,
+// with its real status, and one hardening.refused audit record.
+func (u *UI) refuseUnitImport(w http.ResponseWriter, r *http.Request, ref string) {
+	id, _ := auth.IdentityFrom(r.Context())
+	target := ref
+	if target == "" {
+		target = "unit-import"
+	}
+	hardening.AuditRefused(r.Context(), u.logger, id.Name, auth.ClientOrigin(r), target, hardening.SettingDisableUnitImport)
+	u.importError(w, r, ref, hardening.UnitImportRefusal())
 }

@@ -13,13 +13,29 @@ ce document — ou publier une nouvelle version de recipe qu'une contrainte
 existante couvre déjà. Le format du document est normatif sur le site
 recipe-spec : voir la
 [spécification du Retriever](https://tobby-fetch.github.io/recipe-spec/)
-(le kind `Retriever`, `recipe.tobby.dev/v1alpha1`). Un exemple complet et
+(le kind `Retriever`, `recipe.tobbyfetch.dev/v1alpha1`). Un exemple complet et
 commenté est livré dans le dépôt, sous
 [`examples/retriever.yaml`](https://github.com/tobby-fetch/tobby-fetch/blob/main/examples/retriever.yaml).
 
+:::tip[En bref]
+- Pointez la zone vers son document avec `retriever.source` : un fichier
+  local, une URL HTTPS ou une référence `oci://` —
+  [trois sources](#trois-sources).
+- Une zone aval récupère depuis son amont avec `registries.substitutions`
+  (hôte d'origine → hôte amont) ; le chemin relocalisé est le même dans
+  toutes les zones — [ce que doit contenir le registre substitué](#ce-que-doit-contenir-le-registre-substitué).
+- Derrière un proxy de tirage, créez un projet par hôte d'origine, nommé
+  d'après lui — [un projet par hôte d'origine](#proxys-de-tirage--un-projet-par-hôte-dorigine).
+- Donnez à l'instance aval des credentials en lecture seule via
+  `registries.credentialsFile` — [credentials entre instances](#credentials-entre-instances).
+- Prévisualisez un changement de Retriever avant de l'adopter :
+  `tobby sync --dry-run --retriever <source>` — voir
+  [exploiter](../operate/#le-voir-venir).
+:::
+
 ## Trois sources
 
-`retriever.source` accepte trois formes (FR-010) :
+`retriever.source` accepte trois formes :
 
 | Forme | Exemple | Quand |
 | --- | --- | --- |
@@ -35,13 +51,13 @@ effectif. La surcharge d'intervalle vit sur le même écran
 (`PUT /api/v1/retriever/interval`, et `DELETE` pour revenir à la valeur
 configurée) ; elle persiste dans le répertoire d'état, survit aux
 redémarrages, l'emporte sur `sync.interval`, et est auditée comme un
-changement de configuration sensible (FR-094).
+changement de configuration sensible.
 
 ![L'écran d'administration Retriever : source configurée, intervalle et sa surcharge à chaud](../../../../../assets/docs/admin-retriever.png)
 
 À chaque cycle, l'instance résout depuis le cookbook chaque recipe
-listée, vérifie sa signature contre les trust roots configurées
-(FR-033), puis réconcilie. Les contraintes de version sont résolues à
+listée, vérifie sa signature contre les trust roots configurées,
+puis réconcilie. Les contraintes de version sont résolues à
 chaque passe ; si aucune version publiée ne satisfait une contrainte,
 cette entrée échoue et le dit — les autres entrées poursuivent. Une seule
 recipe non résolvable ne bloque jamais la zone.
@@ -98,7 +114,7 @@ Les topologies réelles enchaînent les zones. La zone amont promeut dans
 son registre ; le Tobby de la zone aval récupère **depuis ce registre**,
 alors même que les recipes — immuables, signées, au bit près —
 continuent de nommer les hôtes d'origine (`docker.io/...`). Le pont,
-c'est la **substitution de source** (FR-036) :
+c'est la **substitution de source** :
 
 ```yaml
 # Instance aval
@@ -112,14 +128,14 @@ retriever:
 ```
 
 La substitution change **uniquement le point de terminaison réseau
-contacté — jamais le chemin de destination calculé** (FR-035). C'est
+contacté — jamais le chemin de destination calculé**. C'est
 cette invariance qui rend la cascade composable :
 `docker.io/bitnami/wordpress` se relocalise en
 `<registry>/docker.io/bitnami/wordpress` dans *chaque* zone, quel que
 soit le nombre de sauts franchis, et ne dégénère jamais en
 `reg.zone2/reg.zone1/docker.io/...`. Le registre de chaque zone détient
 les mêmes chemins relocalisés sous son propre hôte, et le cookbook de
-chaque zone — alimenté par la propagation des recipes (FR-034) — est ce
+chaque zone — alimenté par la propagation des recipes — est ce
 que désigne le Retriever de la zone suivante. La règle et sa
 justification sont dans [ADR-0013](../../reference/srs-adr/) ; la
 grammaire normative (forme canonique des hôtes, encodage des ports,
@@ -228,11 +244,11 @@ projet, et le chemin demandé au proxy est toujours `<proxy>/` suivi du
 
 Deux politiques lisent délibérément des références différentes :
 
-- La **liste blanche de registries** (FR-030) et la **recherche de
+- La **liste blanche de registries** et la **recherche de
   credentials** portent sur l'hôte *effectif* réellement contacté — le
   substitut. C'est de là que viennent les octets, c'est donc ce que la
   politique réseau doit nommer.
-- Les **périmètres des trust roots** (FR-033) s'appliquent au `ref`
+- Les **périmètres des trust roots** s'appliquent au `ref`
   *nominal* écrit dans la recipe. Une provenance signée ne change pas
   parce que le contenu a été récupéré depuis une copie plus proche.
 
@@ -246,7 +262,7 @@ Une instance aval s'authentifie auprès de son amont comme n'importe quel
 client de registre. Créez sur l'instance amont un compte (ou un jeton)
 dédié — voir [Authentification et RBAC](../../security/auth-rbac/) —
 dont le seul besoin est la lecture, et transmettez-le à l'instance aval
-par son fichier de credentials (FR-004) :
+par son fichier de credentials :
 
 ```yaml
 registries:
@@ -268,6 +284,9 @@ configuration — `destination.registry`, plus `destination.basePath` et
 répond à « où est-ce que je lis », l'autre à « où est-ce que je
 promeus », et appliquer une réécriture côté lecture à une écriture
 publierait dans un registre que personne n'a nommé.
+
+Quand une synchronisation refuse une recipe ou n'atteint pas une source,
+voir le [Dépannage](../../reference/troubleshooting/#une-recipe-est-refusée).
 
 Ensuite : vos clusters et vos hôtes consomment ce qui est arrivé —
 [Brancher vos clients](../../passthrough/connect-clients/).

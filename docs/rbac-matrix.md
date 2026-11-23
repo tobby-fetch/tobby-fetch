@@ -55,6 +55,7 @@ possible at all.
 | `GET /import` | operator | Importing is an operator action (FR-023). |
 | `POST /import` | operator | |
 | `GET /recipes`, `GET /recipes/{recipe}/mapping` | viewer | |
+| `GET /recipes/{recipe}/mapping/-/export`, `GET /recipes/{recipe}/mapping/-/registries.yaml`, `GET /consumption`, `GET /consumption/-/export`, `GET /consumption/-/registries.yaml` | viewer | The consumption aids (FR-065): the mapping table as a download and the K3s/RKE2 snippet, for one recipe or the whole store. Pure projections of recorded recipes and configuration; no credential in them. |
 | `POST /recipes/sync` | operator | Triggering a synchronization is an operator action (FR-014). |
 | `GET /recipes/prune-preview` | operator | The projection of what a prune would remove, shown before the synchronization that would remove it (FR-045). Offered to the role that can trigger one. |
 | `GET /recipes/publish` | operator | The recipe publication form (R-40): only a role that can publish is offered one. |
@@ -63,7 +64,7 @@ possible at all.
 | `POST /recipes/plan` | operator | A plan mutates nothing, but it makes this instance reach out to every registry the submitted Retriever names. |
 | `GET /media` | viewer | The Media screen (FR-062 amendment R-02): the medium's inventory summary, the verification verdicts, and the guided sequence. Reading it is a listing like any other. |
 | `GET /media/slip` | viewer | The transfer slip (R-07): the Media screen's content as a printable, bilingual, unsigned document (HTML or text). A read of records the instance already holds — it hashes nothing and runs no verification — hence a listing like the screen itself. |
-| `POST /media/verify` | operator | Starts the FR-054 verification: it re-reads and re-hashes the whole medium, which is work rather than a read. The two waivers below need admin. |
+| `POST /media/verify` | operator | Starts the FR-054 verification: it re-reads and re-hashes the whole medium, which is work rather than a read. The two waivers below need admin; a waiver applied here is audited (FR-094), since its verdict can open the serving gate. |
 | `GET /integrity` | viewer | The Store integrity screen (FR-057, R-31): the last on-demand verification report of the store, in both modes. Reading it is a listing like any other. |
 | `POST /integrity/verify` | operator | Starts the on-demand verification: it re-reads and re-hashes the whole store, which is work rather than a read — disk I/O for minutes, holding the serial task worker. It repairs and deletes nothing. |
 | `POST /integrity/cancel` | operator | Stops the verification in flight; the task ends failed with `TBY-INT-006`. |
@@ -84,7 +85,11 @@ possible at all.
 | `POST /admin/oci-layout/plan` | admin | The side-effect-free estimate of the export (FR-055): same selection surface, same floor. |
 | `POST /admin/oci-layout/export` | admin | Writes the store's content to a path on the host filesystem — an administrative capability, not an operator one (FR-051). Audited (FR-094). |
 | `POST /admin/oci-layout/import` | admin | Brings outside bytes into the store (FR-051). Audited (FR-094). |
+| `GET /admin/diagnostics` | admin | The page that offers the diagnostic bundle (FR-095, R-30) and states what the archive holds. |
+| `POST /admin/diagnostics/bundle` | admin | Gathers configuration, recent logs and task reports into one archive; redaction fails closed (`TBY-DIA-002`). Audited with the requester (FR-094). |
+| `GET /admin/state` | admin | The state-directory inventory (FR-097, R-27): every entry of the instance's identity, its class and permissions — never contents. |
 | `GET /admin/store` | admin | What the store holds, and the reset that empties it (FR-046). |
+| `GET /admin/policy` | admin | The effective content policy (FR-031 amendment R-15, FR-098): mode, threshold, every exception with its origin, scope, justification, expiry and state, the OpenVEX documents, the hardening switches. Read-only — the policy lives in the configuration file and the Retriever — and placed among the administration screens it describes. |
 | `POST /admin/store/reset` | admin | Full store reset, restricted to the admin role by FR-046, behind a typed confirmation and audited (FR-094). |
 | `GET /help`, `GET /about`, `GET /about/third-party`, `GET /api-docs` | viewer | |
 | `GET /help/{page...}`, `GET /help/-/assets/{name}` | viewer | The operations guides embedded in the binary and their screenshots (NFR-003, amendment 2026-08-11). Readable by whoever operates the instance — and by nobody who has not signed in (R-01). |
@@ -118,15 +123,20 @@ and `HEAD`, so a signed-in page can link to API documents.
 | `POST /api/v1/sync` | operator | `POST /recipes/sync` |
 | `POST /api/v1/plan` | operator | `POST /recipes/plan` |
 | `GET /api/v1/sync/prune-preview` | operator | `GET /recipes/prune-preview` |
+| `GET /api/v1/mapping`, `GET /api/v1/registries.yaml`, `GET /api/v1/recipes/{recipe}/registries.yaml` | viewer | `GET /consumption…`, `GET /recipes/{recipe}/mapping/-/…` |
 | `POST /api/v1/recipes/publish` | operator | `POST /recipes/publish` |
 | `GET /api/v1/media` | viewer | the Media screen's summary (`GET /media`) |
 | `GET /api/v1/media/verification` | viewer | the serving gate and the verification in progress — what `GET /media` polls |
 | `GET /api/v1/media/slip` | viewer | `GET /media/slip` (`format=html\|text\|json`, `lang=en\|fr`, `download=1`) |
 | `POST /api/v1/media/verify` | operator | `POST /media/verify` |
 | `POST /api/v1/media/import` | operator | `POST /media/import` |
+| `GET /api/v1/policy` | admin | the document behind `GET /admin/policy`, at the screen's floor (FR-061): it describes the instance's configuration, the local paths of its OpenVEX documents included. `tobby scan exceptions --instance` reads it with an admin token. The exceptions applied to an item stay visible to a viewer in that item's scan report (FR-031) |
 | `GET /api/v1/store/verification` | viewer | the last store verification report — what `GET /integrity` polls |
 | `POST /api/v1/store/verify` | operator | `POST /integrity/verify` |
 | `POST /api/v1/store/verify/cancel` | operator | `POST /integrity/cancel` |
+| `POST /api/v1/diagnostics/bundle` | admin | `POST /admin/diagnostics/bundle` — the archive is the response (FR-095) |
+| `GET /api/v1/clock` | viewer | the clock verdicts of FR-096 — the fact the persistent banner shows every signed-in user |
+| `GET /api/v1/state` | admin | `GET /admin/state` |
 | `GET /api/v1/network` | admin | `GET /admin/network` |
 | `PUT /api/v1/network/certificate` | admin | `POST /admin/network/certificate` |
 | `GET /api/v1/retriever` | admin | `GET /admin/retriever` |
@@ -151,8 +161,10 @@ operator actions; **waiving** one of the two FR-054 guards — a medium
 addressed to another zone, or older than the last one imported here — is
 an administrator's, and the handler refuses `allowZoneMismatch` or
 `allowStale` from anyone below admin with the same `TBY-AUTH-003` the
-middleware would have produced. Both the attempt and the applied waiver
-are audited (FR-094). No role, admin included, can waive an integrity or
+middleware would have produced. Both the refused attempt and the applied
+waiver are audited (FR-094) — on a verification as on an import, one
+`media.override` record per application, since a waived verification can
+open the serving gate. No role, admin included, can waive an integrity or
 signature verdict: those have no override at all (R-19). The same rule is
 enforced a second time on the UI side, in `POST /media/verify` and
 `POST /media/import`: two doors, one rule, and the waiver checkboxes are

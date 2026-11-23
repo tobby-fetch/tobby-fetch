@@ -1,0 +1,19 @@
+# The FR-065 acceptance pod: two containers, the nominal path written out
+# and the short form the kubelet normalizes to the same docker.io name.
+# imagePullPolicy Always forces the second one through the mirror again
+# rather than letting the image store answer.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: crown-app
+  namespace: default
+spec:
+  containers:
+    - name: nominal
+      image: docker.io/library/busybox:1.37.0
+      imagePullPolicy: Always
+      command: ["sleep", "3600"]
+    - name: short
+      image: busybox:1.37.0
+      imagePullPolicy: Always
+      command: ["sleep", "3600"]

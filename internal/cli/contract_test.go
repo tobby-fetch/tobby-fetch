@@ -35,6 +35,9 @@ var nonReporting = map[string]string{
 		"structured log stream, which has its own schema (FR-090) and its own " +
 		"destination (stderr) — a report is something a command finishes by " +
 		"writing, and this one never finishes",
+	"tobby consumption registries-yaml": "the file it generates IS its output, to be installed on " +
+		"the nodes as it is (FR-065): wrapping a configuration file in a JSON envelope would only " +
+		"make it harder to use. The table beside it, which is data, owes --output json",
 	"tobby quickstart": "an interactive aid (R-34): it asks questions and writes a " +
 		"configuration file. What it produces is that file, and `tobby config dump` " +
 		"is the command that reports it",
@@ -80,6 +83,13 @@ func fixtures() []commandFixture {
 		{path: "tobby store verify", args: func(t *testing.T) []string {
 			return []string{"--storage-root", tmp(t)}
 		}},
+		{path: "tobby diagnostics bundle", args: func(t *testing.T) []string {
+			return []string{"--mode", "passthrough", "--storage-root", tmp(t), "--state-root", tmp(t),
+				"--output-file", filepath.Join(tmp(t), "bundle.tar.gz")}
+		}},
+		{path: "tobby state inspect", args: func(t *testing.T) []string {
+			return []string{"--state-root", tmp(t)}
+		}},
 		{path: "tobby recipe push", args: func(t *testing.T) []string {
 			file := filepath.Join(tmp(t), "recipe.yaml")
 			if err := os.WriteFile(file, []byte("not: a recipe\n"), 0o600); err != nil {
@@ -101,6 +111,15 @@ func fixtures() []commandFixture {
 		// dependency on what happens to run on this host.
 		{path: "tobby sync", args: func(*testing.T) []string {
 			return []string{"--instance", "http://127.0.0.1:1"}
+		}},
+		{path: "tobby consumption table", args: func(t *testing.T) []string {
+			return []string{"--storage-root", tmp(t), "--destination", "reg.zone.example"}
+		}},
+		{path: "tobby consumption registries-yaml", args: func(t *testing.T) []string {
+			return []string{"--storage-root", tmp(t), "--destination", "reg.zone.example"}
+		}},
+		{path: "tobby scan exceptions", args: func(t *testing.T) []string {
+			return []string{"--config", filepath.Join(tmp(t), "absent.yaml")}
 		}},
 		{path: "tobby serve", args: func(*testing.T) []string {
 			return []string{"--mode", "sideways"}

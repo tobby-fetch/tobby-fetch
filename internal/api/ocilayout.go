@@ -14,9 +14,7 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 
@@ -167,6 +165,15 @@ func (l *layoutAPI) importLayout(w http.ResponseWriter, r *http.Request) {
 	if !l.decode(w, r, &body) {
 		return
 	}
+	// A layout import is a unit import (FR-098, B-071): refused under
+	// hardening.disableUnitImport, with one hardening.refused record.
+	target := strings.TrimSpace(body.Input)
+	if target == "" {
+		target = "oci-layout"
+	}
+	if l.api.refuseUnitImport(w, r, target) {
+		return
+	}
 	id, _ := auth.IdentityFrom(r.Context())
 	task, err := l.svc.StartImport(id.Name, &interop.ImportRequest{
 		Input:      strings.TrimSpace(body.Input),
@@ -212,13 +219,7 @@ func (l *layoutAPI) created(w http.ResponseWriter, _ *http.Request, task *tasks.
 // decode reads a bounded JSON body, answering the validation problem on
 // malformed input.
 func (l *layoutAPI) decode(w http.ResponseWriter, r *http.Request, out any) bool {
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxLayoutRequest)).Decode(out); err != nil {
-		l.api.Problem(w, r, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
-			"file": "the request body", "path": "-", "constraint": err.Error(),
-		}))
-		return false
-	}
-	return true
+	return l.api.decodeJSON(w, r, maxLayoutRequest, out, false, bodyInvalid)
 }
 
 // problem renders a service failure; everything it returns is already

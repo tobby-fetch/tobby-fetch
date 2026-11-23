@@ -69,9 +69,10 @@ envFrom: []
 #   storage.root  <- persistence.storage.mountPath
 #   state.root    <- persistence.state.mountPath
 #   server.addr   <- containerPort
-#   registries.credentialsFile <- registryCredentials mount (when enabled)
+#   registries.credentialsFile <- registryCredentials mount (when enabled;
+#                                 left to you while it is off)
 config:
-  # Operating mode. Required, no default: an instance must state what it is
+  # Operating mode. Defaults to "passthrough"; an empty value is refused
   # (FR-001). "passthrough" is a long-lived service between two connected
   # zones; "mirror" drives a transportable store across an air gap.
   mode: passthrough
@@ -294,8 +295,9 @@ persistence:
     accessModes:
       - ReadWriteOnce
     size: 100Gi
-    # Empty uses the cluster's default StorageClass; "-" disables dynamic
-    # provisioning.
+    # Empty uses the cluster's default StorageClass (the field is left
+    # out); "-" renders `storageClassName: ""`, which disables dynamic
+    # provisioning (the claim binds only a pre-created PV without a class).
     storageClassName: ""
     annotations: {}
   state:
@@ -310,6 +312,7 @@ persistence:
     # Lower config.transfer.resumeThreshold (or set it to 0) if this
     # volume has to stay small.
     size: 20Gi
+    # Same convention as persistence.storage.storageClassName.
     storageClassName: ""
     annotations: {}
     # Setting enabled: false falls back to an emptyDir, which loses every
@@ -341,6 +344,11 @@ ingress:
   annotations: {}
   # nginx.ingress.kubernetes.io/proxy-body-size: "0"
   # nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+  # The backend is plain HTTP unless config.server.tls is set. When the pod
+  # serves TLS itself, the controller must speak HTTPS to it, which is
+  # controller-specific and not rendered by the chart, e.g.
+  # nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+  # (Traefik: a ServersTransport / the service's `scheme: https`).
   hosts:
     - host: tobby.example.com
       paths:
@@ -393,6 +401,11 @@ securityContext:
 # ---------------------------------------------------------------------------
 # Probes (FR-092)
 # ---------------------------------------------------------------------------
+# When the pod serves its own TLS (config.server.tls.enabled, or a certFile /
+# keyFile pair), the chart sets `scheme: HTTPS` on all three probes by
+# itself: there is one listener, so plain-HTTP probes would never succeed.
+# The kubelet does not verify the certificate, so a self-signed one is fine.
+#
 # /healthz answers as soon as the HTTP listener is up; /readyz stays 503
 # until the store and the configuration are usable, and flips back to 503
 # during the shutdown drain so the Service stops sending traffic first.
@@ -421,9 +434,8 @@ probes:
 # ---------------------------------------------------------------------------
 # Metrics (FR-091)
 # ---------------------------------------------------------------------------
-# /metrics is always served on the same listener. It sits behind the same
-# authentication as every other surface, so a scraper needs credentials
-# unless authentication is disabled.
+# /metrics is always served on the same listener, unauthenticated like the
+# probes: a scraper needs no credentials.
 metrics:
   # Prometheus scrape annotations on the pod, for annotation-based
   # discovery. Harmless when nothing consumes them.
@@ -435,7 +447,8 @@ metrics:
     interval: 30s
     scrapeTimeout: 10s
     labels: {}
-    # Credentials for the scrape, when authentication is on.
+    # Credentials for the scrape, only when an authenticating proxy sits in
+    # front of the instance: /metrics itself asks for none.
     basicAuth: {}
     # basicAuth:
     #   username:
@@ -444,6 +457,25 @@ metrics:
     #   password:
     #     name: tobby-metrics-scraper
     #     key: password
+    # tlsConfig for the scrape (Prometheus Operator TLSConfig), used only
+    # when the pod serves its own TLS; the endpoint then uses `scheme: https`.
+    # Left empty, the chart picks a default by the kind of certificate:
+    #   - self-signed (config.server.tls.enabled without certFile): there is
+    #     no chain to verify, so `insecureSkipVerify: true`. Traffic is
+    #     encrypted but the peer is not authenticated; acceptable for an
+    #     in-cluster scrape, and replaced by pinning a real CA below if you
+    #     bring your own certificate.
+    #   - certFile/keyFile supplied: nothing is added and Prometheus uses its
+    #     default trust store, so set `ca` (and `serverName` if the
+    #     certificate does not name the Service) for a private CA.
+    # Any value set here replaces the default entirely.
+    tlsConfig: {}
+    # tlsConfig:
+    #   ca:
+    #     configMap:
+    #       name: tobby-ca
+    #       key: ca.crt
+    #   serverName: tobby.example.com
     relabelings: []
     metricRelabelings: []
 
@@ -492,3 +524,67 @@ extraVolumeMounts: []
 # Extra containers, for a log shipper or a sidecar proxy.
 extraContainers: []
 initContainers: []
+
+# ---------------------------------------------------------------------------
+# Alerting and dashboard (R-11, FR-091 amendment)
+# ---------------------------------------------------------------------------
+# Rules and a dashboard written against the metrics reference published with
+# every release (metrics-reference.json): every expression names only
+# families of that reference, and a test holds the chart to it. Both are off
+# by default — an install on a cluster without the Prometheus Operator or
+# Grafana renders nothing it cannot use.
+#
+# The rules go with the instance, so they are not tuned for it: start from
+# the defaults, then read what your instance does for a week. A passthrough
+# instance reconciles on a timer and should have a bound on the age of its
+# last success; a mirror instance synchronizes when an operator says so, and
+# a bound there would page nobody usefully — set thresholds.syncMaxAgeSeconds
+# to 0 to leave out TobbySyncStale only. TobbySyncNeverSucceeded does not
+# depend on that bound and stays.
+alerting:
+  # A PrometheusRule resource. Requires the Prometheus Operator CRDs.
+  prometheusRule:
+    enabled: false
+    # Namespace of the rule, when it is not the release's.
+    namespace: ""
+    # Labels the operator's ruleSelector asks for (e.g. release: prometheus).
+    labels: {}
+  # The same rules as a plain Prometheus rules file, in a ConfigMap
+  # (key tobby-alerts.rules.yaml), for a Prometheus that is not run by the
+  # Operator. The file is also kept beside the chart: files/tobby-alerts.rules.yaml.
+  rulesFile:
+    enabled: false
+  # Labels added to every alert (e.g. team, environment).
+  extraLabels: {}
+  # Bounds. Seconds where the expression compares a number, a Prometheus
+  # duration where it is a "for:".
+  thresholds:
+    # Repeated synchronization failures: at least this many failed runs
+    # within the window.
+    syncFailures: 3
+    syncFailuresWindow: 1h
+    # No successful synchronization for longer than this, in seconds.
+    # 0 leaves the TobbySyncStale rule out (mirror instances);
+    # TobbySyncNeverSucceeded is kept.
+    syncMaxAgeSeconds: 21600
+    # Transfers pinned at sync.parallelism for this long.
+    saturationFor: 15m
+    # The store beyond storage.occupancyThreshold for this long (FR-045).
+    storeOccupancyFor: 15m
+    # The vulnerability database stale or absent, or the scanner degraded,
+    # for this long (FR-031, FR-032).
+    scannerFor: 1h
+    # The listener's certificate expires within this many seconds, for
+    # this long.
+    certificateExpirySeconds: 1209600
+    certificateExpiryFor: 10m
+    # The clock found earlier than the build or a medium (FR-096).
+    clockFor: 5m
+
+# A Grafana dashboard for the same families, as a ConfigMap the Grafana
+# sidecar picks up (label grafana_dashboard). Off by default.
+dashboard:
+  enabled: false
+  namespace: ""
+  labels:
+    grafana_dashboard: "1"

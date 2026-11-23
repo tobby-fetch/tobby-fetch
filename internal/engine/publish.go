@@ -115,8 +115,8 @@ func (p *Publisher) PublishRecipe(ctx context.Context, ref string, doc []byte) (
 		layout, layoutErr := cookbook.VerifyManifest(published.Manifest)
 		if layoutErr != nil {
 			// Whatever holds the tag is not a recipe artifact; §8 forbids
-			// re-pointing it all the same, and the manifest digests are
-			// the only identities the two sides share.
+			// re-pointing it all the same. Manifest digests, as on every
+			// path of this refusal.
 			return nil, taxonomy.New(taxonomy.CodeTagImmutable, taxonomy.Params{
 				"reference": tagRef.String(),
 				"published": existing.Digest.String(),
@@ -129,10 +129,14 @@ func (p *Publisher) PublishRecipe(ctx context.Context, ref string, doc []byte) (
 			// that digest, not ours, is what the tag means.
 			return &PublishResult{Reference: tagRef.String(), Digest: existing.Digest.String(), Unchanged: true}, nil
 		}
+		// The decision is on the document layer, the message is not
+		// (B-089): it says what the tag "points at", and a tag points at
+		// a manifest — the digest `crane digest` shows and `cosign sign`
+		// takes. Both are at hand, and every path quotes the same kind.
 		return nil, taxonomy.New(taxonomy.CodeTagImmutable, taxonomy.Params{
 			"reference": tagRef.String(),
-			"published": layout.Document.Digest,
-			"candidate": art.Document.Digest,
+			"published": existing.Digest.String(),
+			"candidate": art.Manifest.Digest,
 		})
 	case !isNotFound(headErr):
 		// Through the same mapping as the reading side (R-03): an

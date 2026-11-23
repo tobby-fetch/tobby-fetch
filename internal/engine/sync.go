@@ -19,6 +19,7 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
+	"github.com/opencontainers/go-digest"
 
 	spec "github.com/tobby-fetch/recipe-spec/recipe/v1alpha1"
 
@@ -120,6 +121,10 @@ type Engine struct {
 	// zoneThresholdSet remembers whether the last served Retriever posed
 	// a scan threshold, which makes the policy blocking for its zone.
 	zoneThresholdSet atomic.Bool
+	// zoneExceptions holds the exceptions of the last served Retriever,
+	// for the effective policy view and the exception gauge (R-15); nil
+	// until a Retriever has been served.
+	zoneExceptions atomic.Pointer[[]scan.Exception]
 	// verdicts receives every verification report this engine produces,
 	// whichever surface asked for one — the serving gate of FR-054 is
 	// built on it (internal/mediagate). Nil on an instance that serves
@@ -219,6 +224,18 @@ func (e *Engine) run(ctx context.Context, sink *taskSink, logger *slog.Logger) e
 	// exceptions refine the instance's for every recipe of this run.
 	zonePol := zonePolicyOf(retr.Spec.ScanPolicy)
 	e.zoneThresholdSet.Store(zonePol.threshold != nil)
+	zoneExceptions := append([]scan.Exception(nil), zonePol.exceptions...)
+	e.zoneExceptions.Store(&zoneExceptions)
+	// A v1alpha1 Retriever may declare an exception without expiry: it is
+	// applied, and stated as unbounded wherever it shows (R-15).
+	for _, ex := range zoneExceptions {
+		if ex.Unbounded() {
+			logger.LogAttrs(ctx, slog.LevelWarn, "Retriever scan exception without expiry: applied, unbounded",
+				slog.String("id", ex.ID), slog.String("zone", retr.Metadata.Name),
+				slog.String("code", string(taxonomy.CodeScanExceptionUnbounded)),
+				slog.String("requirement", "FR-031/R-15"))
+		}
+	}
 	// The instant this run resolved its Retriever. It dates the DELIVERY,
 	// which is what the destination's freshness guard compares against
 	// (R-28) — not the moment the bookkeeping was written, which would
@@ -467,6 +484,18 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	}
 	wg.Wait()
 
+	// FR-033 (B-062): each ingredient's own signature, read in the local
+	// store where it was just copied (§12.2). Recorded on every surface
+	// and, by default, nothing more: the recipe signature verified above
+	// pins every digest. Under trust.requireIngredientSignatures, an
+	// ingredient without a verifiable one withholds the recipe whole
+	// (R-19) — before it is scanned, stored, recorded or pushed.
+	if refusals := e.checkFetchedSignatures(ctx, sink, logger, recipe, records, rid); len(refusals) > 0 {
+		resolved.failed()
+		e.withholdRecipe(ctx, sink, logger, fetched, rid, refusals, withheldBySignatures)
+		return
+	}
+
 	// FR-031: every image is scanned at retrieval — a declared container
 	// image, and any ingredient whose content is one (ADR-0017) — in
 	// passthrough as in mirror mode, and before anything of the recipe is
@@ -476,7 +505,7 @@ func (e *Engine) syncRecipe(ctx context.Context, sink *taskSink, logger *slog.Lo
 	system := recipe.Metadata.Name == scan.SystemRecipe && verified && scopeName == ""
 	if refusals := e.scanRecipe(ctx, sink, logger, fetched, rid, zonePol, system); len(refusals) > 0 {
 		resolved.failed()
-		e.withholdRecipe(ctx, sink, logger, fetched, rid, refusals)
+		e.withholdRecipe(ctx, sink, logger, fetched, rid, refusals, withheldByScan)
 		return
 	}
 
@@ -575,16 +604,15 @@ func (e *Engine) verifyRecipe(ctx context.Context, f *FetchedRecipe, d Decision)
 		if errors.Is(err, sigverify.ErrNoSignature) && d.AllowUnsigned {
 			return false, d.Scope, nil
 		}
-		return false, d.Scope, withScope(d.Scope, err)
+		return false, d.Scope, refused(ctx, src, f.NominalRepo, f.ManifestDigest, d, err)
 	}
-	if d.AllowUnsigned {
+	// B-068: with no key to try, allowUnsigned admits only a recipe that
+	// carries no signature at all — the verdict a present signature gets
+	// when keys apply and none verifies it.
+	if d.AllowUnsigned && media.Unsigned(ctx, src, f.NominalRepo, f.ManifestDigest) {
 		return false, d.Scope, nil
 	}
-	return false, d.Scope, taxonomy.New(taxonomy.CodeSignature, taxonomy.Params{
-		"recipe":       f.NominalRepo + ":" + f.Tag,
-		"fingerprints": "none — no trust root is configured",
-		"scope":        d.Scope,
-	})
+	return false, d.Scope, noKeyRefusal(ctx, src, f.NominalRepo, f.ManifestDigest, f.NominalRepo+":"+f.Tag, d)
 }
 
 // syncIngredient fetches one ingredient by its pinned digest into its
@@ -617,6 +645,9 @@ func (e *Engine) syncIngredient(ctx context.Context, sink *taskSink, logger *slo
 	default:
 		if d, ok := e.store.ResolveTag(ctx, repo, ing.Version); ok && d == ing.Digest {
 			res.Status = string(importer.StatusUpToDate)
+			// B-081: same rule as the recipe artifact — a signature added
+			// upstream to an unchanged digest still has to reach the store.
+			e.copyAttachedSignature(ctx, logger, ing.Ref, repo, ing.Digest)
 			sink.update(func(t *tasks.Task) bool {
 				itemFor(t, rid+"/"+ing.Name).Status = tasks.StatusSkipped
 				return true
@@ -832,6 +863,15 @@ func (e *Engine) storeRecipeArtifact(ctx context.Context, f *FetchedRecipe) (str
 		return "", err
 	}
 	if d, ok := e.store.ResolveTag(ctx, local, f.Tag); ok && d == f.ManifestDigest {
+		// B-081: the recipe is unchanged, its signatures need not be. A
+		// key rotation re-signs the SAME digest with a new key, and a
+		// store that stopped at "digest present" kept only the old
+		// signature: the fetch-side verification (and --dry-run) accepted
+		// the recipe on the source's new signature, then the push-side
+		// re-verification of the local copy refused it under the new
+		// trust root. The copy is idempotent and writes nothing when the
+		// store already holds what the source carries.
+		e.copyAttachedSignature(ctx, slog.Default(), f.NominalRepo, local, f.ManifestDigest)
 		return string(importer.StatusUpToDate), nil
 	}
 	if err := copyArtifact(ctx, e.store, e.remotes, f.NominalRepo, local, f.Tag, f.ManifestBytes, f.MediaType); err != nil {
@@ -859,8 +899,13 @@ func (e *Engine) copyAttachedSignature(ctx context.Context, logger *slog.Logger,
 
 	// The tag-attached layout of §12.2: one artifact under
 	// "sha256-<hex>.sig".
+	//
+	// cosign appends a new signature to this same artifact, so a re-signed
+	// subject shows up as the tag moving to a new digest: re-pointing the
+	// local tag is what carries a rotated key's signature (B-081). An
+	// unmoved tag is left alone, which keeps the steady state write-free.
 	tag := SignatureTag(manifestDigest)
-	if desc, err := e.remotes.Get(ctx, nominalRepo, tag); err == nil {
+	if desc, err := e.remotes.Get(ctx, nominalRepo, tag); err == nil && !e.storeTagIs(ctx, localRepo, tag, desc.Digest.String()) {
 		if err := copyArtifact(ctx, e.store, e.remotes, nominalRepo, localRepo, tag, desc.Manifest, string(desc.MediaType)); err != nil {
 			warn("tag", err)
 		}
@@ -938,10 +983,14 @@ func (e *Engine) copyReferringSignatures(ctx context.Context, nominalRepo, local
 		// Stored by digest, with NO tag: "sha256:…" is not a legal tag
 		// name, and these artifacts are never reached by name anyway —
 		// the fallback index below points at them by digest, which is
-		// how a referring artifact is meant to be found.
-		if err := copyArtifact(ctx, e.store, e.remotes, nominalRepo, localRepo, "", desc.Manifest, string(desc.MediaType)); err != nil {
-			warn("bundle", err)
-			continue
+		// how a referring artifact is meant to be found. One the store
+		// already holds is not copied again (re-synchronized subjects,
+		// B-081), but it stays listed in the index below.
+		if !e.store.HasManifest(ctx, localRepo, desc.Digest.String()) {
+			if err := copyArtifact(ctx, e.store, e.remotes, nominalRepo, localRepo, "", desc.Manifest, string(desc.MediaType)); err != nil {
+				warn("bundle", err)
+				continue
+			}
 		}
 		copied = append(copied, v1.Descriptor{
 			MediaType:    desc.MediaType,
@@ -964,9 +1013,20 @@ func (e *Engine) copyReferringSignatures(ctx context.Context, nominalRepo, local
 		warn("referrers index", err)
 		return
 	}
+	if e.storeTagIs(ctx, localRepo, fallbackTag, digest.FromBytes(idx).String()) {
+		return
+	}
 	if _, err := e.store.PutManifest(ctx, localRepo, string(types.OCIImageIndex), idx, fallbackTag); err != nil {
 		warn("referrers index", err)
 	}
+}
+
+// storeTagIs reports whether the local store's tag already resolves to
+// want: what keeps a re-synchronization of unchanged signatures from
+// rewriting them every cycle.
+func (e *Engine) storeTagIs(ctx context.Context, repo, tag, want string) bool {
+	d, ok := e.store.ResolveTag(ctx, repo, tag)
+	return ok && d == want
 }
 
 // ingredientRecord derives the graph row of one ingredient.

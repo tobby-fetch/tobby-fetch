@@ -78,6 +78,10 @@ type Registry struct {
 	IntegrityVerifications *prometheus.CounterVec
 	integrityLast          prometheus.Gauge
 	integrityLastOnce      sync.Once
+
+	// Track B of milestone 7: supervision, clock, bundle (ops.go).
+	ops             *ops
+	syncParallelism prometheus.Gauge
 }
 
 // New builds the registry with the standard process and Go collectors and
@@ -147,8 +151,16 @@ func New() *Registry {
 	integrityVerifications := newIntegrityVerifications()
 	reg.MustRegister(integrityVerifications)
 
+	syncParallelism := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: MetricSyncParallelism,
+		Help: "Configured bound on concurrent ingredient transfers (sync.parallelism, NFR-008); compare with tobby_sync_transfers_inflight.",
+	})
+	reg.MustRegister(syncParallelism)
+
 	return &Registry{
 		Registry:          reg,
+		ops:               newOps(reg),
+		syncParallelism:   syncParallelism,
 		SyncInflight:      syncInflight,
 		SyncBytes:         syncBytes,
 		PolicyRejections:  policyRejections,

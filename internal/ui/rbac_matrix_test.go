@@ -118,6 +118,11 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "GET /recipes/plan", Floor: auth.RoleOperator, Why: "the plan form (FR-055/R-04): only a role that can trigger a synchronization is offered a simulation of one", Method: "GET", Path: "/recipes/plan"},
 	{Pattern: "POST /recipes/plan", Floor: auth.RoleOperator, Why: "a plan mutates nothing, but it makes this instance reach out to every registry the submitted Retriever names", Method: "POST", Path: "/recipes/plan", Form: "retriever=&document="},
 	{Pattern: "GET /recipes/{recipe}/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/recipes/no-such-recipe/mapping"},
+	{Pattern: "GET /recipes/{recipe}/mapping/-/export", Floor: auth.RoleViewer, Why: "the table the mapping screen already shows, as a download (FR-065)", Method: "GET", Path: "/recipes/no-such-recipe/mapping/-/export?format=csv"},
+	{Pattern: "GET /recipes/{recipe}/mapping/-/registries.yaml", Floor: auth.RoleViewer, Why: "a pure projection of recorded recipes and configuration; carries no credential (FR-065)", Method: "GET", Path: "/recipes/no-such-recipe/mapping/-/registries.yaml"},
+	{Pattern: "GET /consumption", Floor: auth.RoleViewer, Why: "the consumption aids of the whole store (FR-065): what the recipe screens already list", Method: "GET", Path: "/consumption"},
+	{Pattern: "GET /consumption/-/export", Floor: auth.RoleViewer, Method: "GET", Path: "/consumption/-/export?format=csv"},
+	{Pattern: "GET /consumption/-/registries.yaml", Floor: auth.RoleViewer, Method: "GET", Path: "/consumption/-/registries.yaml"},
 	{Pattern: "GET /media", Floor: auth.RoleViewer, Why: "the medium's inventory summary is a listing like any other (R-02)", Method: "GET", Path: "/media"},
 	{Pattern: "GET /media/slip", Floor: auth.RoleViewer, Why: "the transfer slip (R-07) restates what the Media screen shows as a printable document: a read of records the instance already holds, hashing nothing", Method: "GET", Path: "/media/slip"},
 	{Pattern: "GET /integrity", Floor: auth.RoleViewer, Why: "the last store verification report (FR-057): reading, and pollable while one runs", Method: "GET", Path: "/integrity"},
@@ -141,7 +146,11 @@ var uiMatrix = []rbacRoute{
 	{Pattern: "POST /admin/oci-layout/plan", Floor: auth.RoleAdmin, Why: "same selection surface as the export it estimates (FR-055)", Method: "POST", Path: "/admin/oci-layout/plan", Form: "output="},
 	{Pattern: "POST /admin/oci-layout/export", Floor: auth.RoleAdmin, Why: "writes the store's content to a host path (FR-051); audited (FR-094)", Method: "POST", Path: "/admin/oci-layout/export", Form: "output="},
 	{Pattern: "POST /admin/oci-layout/import", Floor: auth.RoleAdmin, Why: "brings outside bytes into the store (FR-051); audited (FR-094)", Method: "POST", Path: "/admin/oci-layout/import", Form: "input="},
+	{Pattern: "GET /admin/diagnostics", Floor: auth.RoleAdmin, Why: "the page that offers the diagnostic bundle (FR-095, R-30)", Method: "GET", Path: "/admin/diagnostics"},
+	{Pattern: "POST /admin/diagnostics/bundle", Floor: auth.RoleAdmin, Why: "gathers configuration, logs and task reports into one archive (FR-095); audited with the requester (FR-094)", Method: "POST", Path: "/admin/diagnostics/bundle"},
+	{Pattern: "GET /admin/state", Floor: auth.RoleAdmin, Why: "names every file of the instance's identity and its permissions, never contents (FR-097)", Method: "GET", Path: "/admin/state"},
 	{Pattern: "GET /admin/store", Floor: auth.RoleAdmin, Why: "the reset lives here (FR-046)", Method: "GET", Path: "/admin/store"},
+	{Pattern: "GET /admin/policy", Floor: auth.RoleAdmin, Why: "the effective content policy (R-15, FR-098), read-only, among the administration screens", Method: "GET", Path: "/admin/policy"},
 	{Pattern: "POST /admin/store/reset", Floor: auth.RoleAdmin, Why: "full store reset, restricted to admin by FR-046 and audited (FR-094)", Method: "POST", Path: "/admin/store/reset", Form: "confirmation=not-the-phrase"},
 	{Pattern: "GET /help", Floor: auth.RoleViewer, Method: "GET", Path: "/help"},
 	{Pattern: "GET /help/{page...}", Floor: auth.RoleViewer, Why: "the embedded operations guides (NFR-003 amendment): readable by whoever operates the instance, and by nobody who has not signed in (R-01)", Method: "GET", Path: "/help/passthrough/operate"},
@@ -174,6 +183,9 @@ var apiMatrix = []rbacRoute{
 	{Pattern: "POST /api/v1/store/reset", Floor: auth.RoleAdmin, Why: "full store reset, restricted to admin by FR-046", Method: "POST", Path: "/api/v1/store/reset", Body: `{"confirmation":"not-the-phrase"}`},
 	{Pattern: "GET /api/v1/recipes", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/recipes"},
 	{Pattern: "GET /api/v1/recipes/{recipe}/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/recipes/no-such-recipe/mapping"},
+	{Pattern: "GET /api/v1/mapping", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/mapping"},
+	{Pattern: "GET /api/v1/recipes/{recipe}/registries.yaml", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/recipes/no-such-recipe/registries.yaml"},
+	{Pattern: "GET /api/v1/registries.yaml", Floor: auth.RoleViewer, Method: "GET", Path: "/api/v1/registries.yaml"},
 	{Pattern: "POST /api/v1/sync", Floor: auth.RoleOperator, Method: "POST", Path: "/api/v1/sync"},
 	{Pattern: "POST /api/v1/plan", Floor: auth.RoleOperator, Why: "a plan mutates nothing, but it makes the instance open outbound connections to every registry the submitted Retriever names (FR-055/R-04)", Method: "POST", Path: "/api/v1/plan", Body: `{}`},
 	{Pattern: "GET /api/v1/sync/prune-preview", Floor: auth.RoleOperator, Method: "GET", Path: "/api/v1/sync/prune-preview"},
@@ -181,11 +193,15 @@ var apiMatrix = []rbacRoute{
 	{Pattern: "GET /api/v1/media/verification", Floor: auth.RoleViewer, Why: "the serving gate and the verification in progress (FR-054), mirror of what the Media screen polls: reading, and pollable because it hashes nothing", Method: "GET", Path: "/api/v1/media/verification"},
 	{Pattern: "GET /api/v1/media", Floor: auth.RoleViewer, Why: "the medium's identity and the zone's last import (FR-052, R-28): reading, like every other inventory view", Method: "GET", Path: "/api/v1/media"},
 	{Pattern: "GET /api/v1/media/slip", Floor: auth.RoleViewer, Why: "the transfer slip (R-07), mirror of GET /media/slip: reading, and it hashes nothing", Method: "GET", Path: "/api/v1/media/slip"},
+	{Pattern: "GET /api/v1/policy", Floor: auth.RoleAdmin, Why: "the effective content policy (R-15), mirror of /admin/policy: it describes the instance's configuration, local OpenVEX document paths included", Method: "GET", Path: "/api/v1/policy"},
 	{Pattern: "GET /api/v1/store/verification", Floor: auth.RoleViewer, Why: "the last store verification report (FR-057), mirror of what the Store integrity screen polls: reading", Method: "GET", Path: "/api/v1/store/verification"},
 	{Pattern: "POST /api/v1/store/verify", Floor: auth.RoleOperator, Why: "re-hashing the whole store is work, not a read (FR-057), mirror of POST /integrity/verify", Method: "POST", Path: "/api/v1/store/verify"},
 	{Pattern: "POST /api/v1/store/verify/cancel", Floor: auth.RoleOperator, Why: "mirror of POST /integrity/cancel", Method: "POST", Path: "/api/v1/store/verify/cancel"},
 	{Pattern: "POST /api/v1/media/verify", Floor: auth.RoleOperator, Why: "re-hashing a whole medium is work, not a read (FR-054); the FR-054 waivers inside it need admin, enforced in the handler", Method: "POST", Path: "/api/v1/media/verify", Body: `{}`},
 	{Pattern: "POST /api/v1/media/import", Floor: auth.RoleOperator, Why: "pushing a transported medium into the zone registry (FR-052), audited (FR-094); the waivers need admin, enforced in the handler", Method: "POST", Path: "/api/v1/media/import", Body: `{}`},
+	{Pattern: "POST /api/v1/diagnostics/bundle", Floor: auth.RoleAdmin, Why: "mirror of POST /admin/diagnostics/bundle (FR-095): the archive is the response", Method: "POST", Path: "/api/v1/diagnostics/bundle"},
+	{Pattern: "GET /api/v1/clock", Floor: auth.RoleViewer, Why: "the clock verdicts (FR-096): the same fact the banner shows every signed-in user", Method: "GET", Path: "/api/v1/clock"},
+	{Pattern: "GET /api/v1/state", Floor: auth.RoleAdmin, Why: "mirror of GET /admin/state (FR-097)", Method: "GET", Path: "/api/v1/state"},
 	{Pattern: "GET /api/v1/network", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/network"},
 	{Pattern: "PUT /api/v1/network/certificate", Floor: auth.RoleAdmin, Method: "PUT", Path: "/api/v1/network/certificate", Body: `{"certificate":"","key":""}`},
 	{Pattern: "GET /api/v1/retriever", Floor: auth.RoleAdmin, Method: "GET", Path: "/api/v1/retriever"},
@@ -310,6 +326,9 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	api.RegisterMedia(restAPI, &api.MediaOptions{})
 	// FR-057: registered with no service — the gate is what is probed.
 	api.RegisterIntegrity(restAPI, &api.IntegrityOptions{})
+	api.RegisterOperations(restAPI, &api.OperationsOptions{})
+	// R-15: registered with no policy — the gate is what is probed.
+	api.RegisterPolicy(restAPI, nil)
 	api.RegisterOpenAPI(restAPI)
 	rec.mux.Handle("/api/v1/", restAPI.Handler())
 
@@ -535,6 +554,9 @@ func TestRBACMatrixMirrorsUIFloors(t *testing.T) {
 		{"GET /recipes/prune-preview", "GET /api/v1/sync/prune-preview"},
 		{"POST /recipes/publish", "POST /api/v1/recipes/publish"},
 		{"POST /recipes/plan", "POST /api/v1/plan"},
+		{"POST /admin/diagnostics/bundle", "POST /api/v1/diagnostics/bundle"},
+		{"GET /admin/state", "GET /api/v1/state"},
+		{"GET /admin/policy", "GET /api/v1/policy"},
 		{"GET /admin/network", "GET /api/v1/network"},
 		{"POST /admin/network/certificate", "PUT /api/v1/network/certificate"},
 		{"GET /admin/retriever", "GET /api/v1/retriever"},

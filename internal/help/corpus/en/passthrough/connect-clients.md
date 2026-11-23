@@ -20,7 +20,7 @@ Tobby relocates every ingredient under its **nominal source host**:
 
 `docker.io/bitnami/wordpress` is pullable at
 `registry.zone.example/docker.io/bitnami/wordpress`, with an unchanged
-digest. The rule ([ADR-0013](../../reference/srs-adr/), FR-035) buys three
+digest. The rule ([ADR-0013](../../reference/srs-adr/)) buys three
 things at the cost of longer names:
 
 - **No collisions.** A flattened `registry.zone/bitnami/wordpress`
@@ -72,12 +72,16 @@ name fails explicitly, before the push.
 
 You never compute those paths by hand. Each recipe exposes its
 source→destination table — every ingredient's nominal reference, its
-relocated repository, tag, and pinned digest (FR-065):
+relocated repository, tag, and pinned digest:
 
 - **UI**: the recipe's mapping view at `/recipes/{recipe}/mapping`, with
   copyable references.
 - **API**: `GET /api/v1/recipes/{recipe}/mapping` — the same data as
   JSON, one entry per resolved version, ingredients included.
+
+The table is also exportable as CSV, JSON or Markdown, for one recipe or the
+whole store, from the UI, the API and `tobby consumption table` — see
+[consumption aids](../consumption-aids/).
 
 ![The per-recipe mapping table: upstream reference to relocated zone path, with copy buttons](../../../../assets/docs/recipe-mapping.png)
 
@@ -85,8 +89,9 @@ relocated repository, tag, and pinned digest (FR-065):
 
 For **runtime image pulls**, you do not have to touch a single chart
 value: containerd rewrites references at pull time. On each K3s/RKE2
-node, write `/etc/rancher/{k3s,rke2}/registries.yaml` by hand from the
-mapping table:
+node, install `/etc/rancher/{k3s,rke2}/registries.yaml`. Tobby
+[generates it](../consumption-aids/) (`tobby consumption registries-yaml`);
+this is the shape, which you can also write by hand from the mapping table:
 
 ```yaml
 # /etc/rancher/rke2/registries.yaml
@@ -112,12 +117,9 @@ With that in place, a pod referencing `docker.io/bitnami/wordpress`
 pulls from the zone registry, and the chart deploys as published —
 values untouched, digests intact.
 
-:::note[Upcoming]
-Generating this snippet per recipe and destination is the second half of
-FR-065 and is not implemented yet — today the mapping table is exposed
-and the snippet is written by hand. Track it on the
-[project status](../../discover/status/) page.
-:::
+The generated snippet adds the `http` scheme for a destination listed in
+`registries.insecure`, the CA path for `consumption.caFile`, and a header
+that states the limits below.
 
 ## What mirrors do not cover
 
@@ -147,7 +149,7 @@ signatures, the exact thing it exists to preserve.
 ## Logging in
 
 The embedded registry and the zone-facing surfaces use the instance's
-own accounts (FR-076) — the same ones as the UI:
+own accounts — the same ones as the UI:
 
 ```sh
 docker login registry.tobby.zone.example
@@ -162,7 +164,7 @@ Create dedicated read-only accounts or CI tokens for consumers; see
 
 A `FileSet` ingredient can package an apt or rpm repository, and Tobby
 can serve its verified content read-only over HTTP under
-`/files/<name>/…` (FR-047) — making a bare host installable with no
+`/files/<name>/…` — making a bare host installable with no
 other infrastructure. Serving is **off by default** and enabled per
 FileSet:
 
@@ -182,7 +184,7 @@ default. `anonymous: true` exists for the bootstrap case — a bare host
 that cannot authenticate before it has installed anything — and is never
 silent: every anonymously served FileSet is named in a permanent UI
 banner and reported by the API, like every other relaxation of the
-secure default (FR-075).
+secure default.
 
 ```sh
 # /etc/apt/sources.list.d/zone.list on a client host
@@ -223,7 +225,7 @@ Two limits, stated because they are the point:
   instance is restarted. The command prints the exact block to add.
 
 The command reads the host's filesystem with the rights of whoever runs it.
-The same operation on the interface and the API (`POST /filesets/pack`) is
+The same operation on the interface and the API (the `/filesets` form and `POST /api/v1/filesets/pack`) is
 restricted to administrators **and** confined to the directories
 `files.packRoots` names — with no entry configured, the form is not offered
 at all. This is the only way local files enter a store, and it is

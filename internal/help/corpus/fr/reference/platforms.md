@@ -2,7 +2,7 @@
 title: Plateformes supportées
 description: La matrice de fonctionnalités par système d'exploitation — ce qui est validé sous Linux, sous Windows et sous macOS, comment chacun est vérifié, et les comportements propres à chaque plateforme qu'un exploitant doit connaître.
 sidebar:
-  order: 7
+  order: 8
 ---
 
 Tobby est livré sous forme d'un binaire unique lié statiquement pour Linux

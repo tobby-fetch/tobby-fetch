@@ -42,8 +42,23 @@ func TestTokenExpiryAPI(t *testing.T) {
 
 	w = adminDo(t, mux, http.MethodPost, "/api/v1/tokens",
 		`{"name":"late","role":"viewer","expires":"2001-01-01T00:00:00Z"}`)
-	if w.Code < 400 {
-		t.Errorf("expiry in the past: %d, want a refusal", w.Code)
+	// A validation answer, never the instance's fault (B-085).
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "TBY-VAL-001") ||
+		!strings.Contains(w.Body.String(), "expires") {
+		t.Errorf("expiry in the past: %d %s, want 422 TBY-VAL-001 naming expires", w.Code, w.Body.String())
+	}
+
+	// A name an active token already carries is a conflict, as on the
+	// screen; once revoked, the name is free again.
+	w = adminDo(t, mux, http.MethodPost, "/api/v1/tokens", `{"name":"ci","role":"viewer"}`)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "TBY-AUTH-009") {
+		t.Errorf("duplicate token name: %d %s, want 409 TBY-AUTH-009", w.Code, w.Body.String())
+	}
+	if w = adminDo(t, mux, http.MethodPost, "/api/v1/tokens/ci/revoke", ""); w.Code != http.StatusOK {
+		t.Fatalf("revoke: %d %s", w.Code, w.Body.String())
+	}
+	if w = adminDo(t, mux, http.MethodPost, "/api/v1/tokens", `{"name":"ci","role":"viewer"}`); w.Code != http.StatusCreated {
+		t.Errorf("reusing a revoked token's name: %d %s, want 201", w.Code, w.Body.String())
 	}
 
 	w = adminDo(t, mux, http.MethodPost, "/api/v1/tokens", `{"name":"forever","role":"viewer"}`)

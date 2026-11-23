@@ -29,7 +29,7 @@ section: utils
 priority: optional
 maintainer: infraBuilder SASU <contact@infrabuilder.com>
 vendor: infraBuilder SASU
-homepage: https://tobby-fetch.github.io/tobby-fetch/
+homepage: https://tobbyfetch.dev/
 license: GPL-3.0-only
 description: |
   Secure artifact fetch-and-relocate tool with an embedded OCI registry.

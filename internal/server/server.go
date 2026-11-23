@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -48,6 +49,14 @@ type Server struct {
 	// addr holds the bound listener address once Run has started listening;
 	// tests bind ":0" and read the effective address from Addr.
 	addr atomic.Value
+
+	// headers configures the NFR-022 security-header middleware that
+	// wraps the whole mux (headers.go). Set before Run.
+	headers HeaderPolicy
+
+	// routesMu guards routes, the recorded route table (Routes).
+	routesMu sync.Mutex
+	routes   []string
 }
 
 // New builds a server listening on addr, serving /healthz, /readyz, and
@@ -59,11 +68,11 @@ func New(addr string, gracePeriod time.Duration, reg *metrics.Registry, logger *
 		gracePeriod: gracePeriod,
 	}
 
-	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+	s.Handle("GET /healthz", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
-	})
-	s.mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+	}))
+	s.Handle("GET /readyz", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if !s.ready.Load() {
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
@@ -81,16 +90,21 @@ func New(addr string, gracePeriod time.Duration, reg *metrics.Registry, logger *
 			return
 		}
 		_, _ = w.Write([]byte("ok\n"))
-	})
-	s.mux.Handle("GET /metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{
+	}))
+	s.Handle("GET /metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{
 		// OpenMetrics negotiation on top of the classic exposition format
 		// (FR-091: the endpoint serves OpenMetrics).
 		EnableOpenMetrics: true,
 	}))
 
 	s.httpSrv = &http.Server{
-		Addr:    addr,
-		Handler: s.mux,
+		Addr: addr,
+		// Every response of the listener goes through the one
+		// security-header middleware (NFR-022). Through a closure so the
+		// policy installed after New (SetHeaderPolicy) is the one used.
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			SecurityHeaders(s.mux, s.headers).ServeHTTP(w, r)
+		}),
 		// ReadHeaderTimeout bounds the slow-header (slowloris) window;
 		// IdleTimeout reclaims kept-alive connections that stopped
 		// talking, so an exhausted-but-idle client population cannot pin
@@ -113,14 +127,42 @@ func New(addr string, gracePeriod time.Duration, reg *metrics.Registry, logger *
 
 // Handle mounts a feature handler on the shared listener. Call before Run.
 func (s *Server) Handle(pattern string, h http.Handler) {
+	s.routesMu.Lock()
+	s.routes = append(s.routes, pattern)
+	s.routesMu.Unlock()
 	s.mux.Handle(pattern, h)
 }
 
-// Mux exposes the shared mux so the web UI can register its route tree
-// (the UI owns the root; machine surfaces keep the reserved prefixes —
-// ADR-0015).
-func (s *Server) Mux() *http.ServeMux {
-	return s.mux
+// Router is the registration side of the shared mux, as the web UI mounts
+// its route tree on it (the UI owns the root; machine surfaces keep the
+// reserved prefixes — ADR-0015). It records what it registers, like
+// Handle: Go's ServeMux is write-only, and the NFR-022 header walk needs
+// the listener's complete route table.
+type Router struct{ s *Server }
+
+// Handle registers a handler on the shared mux.
+func (r Router) Handle(pattern string, h http.Handler) { r.s.Handle(pattern, h) }
+
+// HandleFunc registers a handler function on the shared mux.
+func (r Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Request)) {
+	r.s.Handle(pattern, http.HandlerFunc(h))
+}
+
+// Mux exposes the shared mux for registration (see Router).
+func (s *Server) Mux() Router {
+	return Router{s: s}
+}
+
+// Routes returns every pattern registered on the listener, in
+// registration order: the probes and /metrics, then whatever the instance
+// mounted. Surfaces with their own router (the API under /api/v1/)
+// appear by their mount prefix.
+func (s *Server) Routes() []string {
+	s.routesMu.Lock()
+	defer s.routesMu.Unlock()
+	out := make([]string, len(s.routes))
+	copy(out, s.routes)
+	return out
 }
 
 // SetReady flips the readiness gate (FR-092: false until storage and
@@ -143,6 +185,16 @@ func (s *Server) readyDetail() string {
 	return f()
 }
 
+// SetHeaderPolicy installs the security-header policy (NFR-022): the UI's
+// Content-Security-Policy and whether TLS is terminated in front of the
+// listener. Call before Run.
+func (s *Server) SetHeaderPolicy(p HeaderPolicy) { s.headers = p }
+
+// Handler returns the listener's complete handler — the mux behind the
+// security-header middleware — for tests that drive the instance without
+// a socket.
+func (s *Server) Handler() http.Handler { return s.httpSrv.Handler }
+
 // SetTLS makes the listener serve TLS with cfg (FR-082). Call before Run.
 // Nil leaves the listener in the clear — the shape an instance behind a
 // terminating reverse proxy keeps.
@@ -159,7 +211,8 @@ func (s *Server) Addr() string {
 
 // Run serves until ctx is canceled, then drains gracefully: readiness flips
 // to 503 first, in-flight requests get the grace period to finish, then the
-// listener closes (FR-093). Run returns nil after a clean drain.
+// listener closes (FR-093). Run returns nil once drained: connections still
+// open when the grace period expires are closed, not waited on.
 func (s *Server) Run(ctx context.Context) error {
 	ln, err := net.Listen("tcp", s.httpSrv.Addr)
 	if err != nil {
@@ -200,8 +253,32 @@ func (s *Server) Run(ctx context.Context) error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), s.gracePeriod)
 	defer cancel()
-	if err := s.httpSrv.Shutdown(shutdownCtx); err != nil {
+	err = s.httpSrv.Shutdown(shutdownCtx)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
 		return fmt.Errorf("draining http server: %w", err)
+	}
+	// The grace period is over: what is still open is cut, and the stop
+	// is still a clean one (FR-093: exit 0 once the grace period is
+	// spent; an interrupted transfer is safe by construction, ADR-0012).
+	// Shutdown alone never closes a connection it is waiting on: without
+	// Close those connections stayed open while serve went on to release
+	// the store, and the stop was reported as a failure (a non-zero exit
+	// and an instance.stop audit event with outcome failure).
+	//
+	// Not every connection left here is a request in flight. net/http
+	// only counts a connection that has not sent its first request as
+	// idle after five seconds, and Go's transport routinely leaves such
+	// a connection behind: a spare it dialed while a request waited for
+	// a pooled one. A grace period shorter than that is enough to land
+	// here with nothing in flight at all.
+	s.logger.LogAttrs(context.Background(), slog.LevelWarn,
+		"grace period expired: closing the connections still open",
+		slog.String("grace_period", s.gracePeriod.String()))
+	if err := s.httpSrv.Close(); err != nil {
+		return fmt.Errorf("closing http server: %w", err)
 	}
 	return nil
 }

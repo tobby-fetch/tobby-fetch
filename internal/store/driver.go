@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
@@ -120,12 +121,51 @@ func (d *storeDriver) PutContent(ctx context.Context, subPath string, contents [
 		_ = d.StorageDriver.Delete(ctx, tempPath) //nolint:staticcheck // QF1008: see the Writer call above
 		return err
 	}
-	//nolint:staticcheck // QF1008: see the Writer call above
+	// The library's rename, not this driver's Move: a link is not
+	// content-addressed, so a refused rename is always a failure here.
 	if err := d.StorageDriver.Move(ctx, tempPath, subPath); err != nil {
 		_ = d.StorageDriver.Delete(ctx, tempPath) //nolint:staticcheck // QF1008: same
 		return err
 	}
 	return syncDir(filepath.Dir(filepath.Join(d.root, filepath.FromSlash(subPath))))
+}
+
+// Move is the library's rename, except that a blob commit whose
+// destination already holds the blob is a success.
+//
+// The library's blob writer checks that the destination is absent, then
+// renames the upload onto it: two writers committing the same blob at
+// once — two ingredients of one sync sharing a config or a base layer,
+// two pushes through /v2/ — both pass the check. Unix lets the second
+// rename replace the first file; Windows refuses to replace a file that
+// another handle has open (a reader, the first writer's rename still in
+// flight, an antivirus scanner) and answers ERROR_ACCESS_DENIED, so the
+// second write fails although the store already holds its content.
+//
+// The data path of a blob is named by the digest the writer has just
+// verified its upload against, and renames land whole, so a blob present
+// at that path IS the blob being committed — the same reasoning by which
+// the library itself skips the rename when its existence check sees the
+// blob. Only that one kind of key is relaxed: links and tags are not
+// content-addressed and still fail on a refused rename.
+func (d *storeDriver) Move(ctx context.Context, sourcePath, destPath string) error {
+	err := d.StorageDriver.Move(ctx, sourcePath, destPath)
+	if err == nil || !isBlobDataKey(destPath) {
+		return err
+	}
+	if fi, statErr := d.Stat(ctx, destPath); statErr != nil || fi.IsDir() {
+		return err
+	}
+	return nil
+}
+
+// isBlobDataKey reports whether a key is the data object of a blob,
+// /docker/registry/v2/blobs/<algorithm>/<2 hex>/<hex>/data.
+func isBlobDataKey(key string) bool {
+	parts := strings.Split(strings.TrimPrefix(key, "/docker/registry/v2/blobs/"), "/")
+	return strings.HasPrefix(key, "/docker/registry/v2/blobs/") &&
+		len(parts) == 4 && parts[3] == "data" && len(parts[1]) == 2 &&
+		strings.HasPrefix(parts[2], parts[1])
 }
 
 // List returns the direct descendants of a key as KEYS — slash-separated,

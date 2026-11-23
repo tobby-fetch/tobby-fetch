@@ -12,7 +12,7 @@ hangs until its deadline. Tobby is built for that environment. It has
 process — the recipe engine, one-off imports, Helm chart repositories,
 the Retriever document, trust roots fetched by URL, and pushes to the
 destination. Configure it once and every path uses it; a test in the
-suite proves no outbound path bypasses it (FR-080).
+suite proves no outbound path bypasses it.
 
 ## Authenticated proxy
 
@@ -37,7 +37,7 @@ network:
 
 **The password never goes on a command line.** There is deliberately no
 flag for it — a flag value is readable in the process table and in shell
-history (NFR-015). It arrives through the configuration file
+history. It arrives through the configuration file
 (`network.proxy.password`) or the environment:
 
 ```yaml
@@ -55,7 +55,7 @@ the type that holds the secret, not of the code that prints it.
 ## Private certificate authorities — without disabling TLS
 
 A registry or proxy behind an internal PKI becomes reachable by adding
-its authority to the outbound trust store (FR-081):
+its authority to the outbound trust store:
 
 ```yaml
 network:
@@ -71,7 +71,7 @@ network:
   leaving only your authorities. It only ever narrows trust.
 
 There is **no setting anywhere in Tobby that disables certificate
-verification**. FR-081 asks for private authorities to be trusted, not
+verification**. The goal is for private authorities to be trusted, not
 for the check to be dropped — a private CA still authenticates the peer;
 a disabled check authenticates nothing. The neighbouring
 `registries.insecure` answers a different question ("this named host
@@ -86,7 +86,7 @@ the proxy itself.
 
 One listener carries the UI, the API, and the embedded registry, so one
 certificate covers all three — no surface can be left in the clear by
-accident (FR-082). Behind an ingress or reverse proxy that terminates
+accident. Behind an ingress or reverse proxy that terminates
 TLS you can leave this off; set `server.secureCookies: true` there so
 session cookies are marked `Secure` even though the listener sees plain
 HTTP. When nothing terminates in front, the instance serves TLS itself.
@@ -140,9 +140,15 @@ destination inside the state directory — the only place a private key
 may live — beside the generated pair rather than over it, and adoption
 is an explicit step separate from writing the files. Every replacement,
 and every refused attempt, is audited with the certificate fingerprint
-as its target (FR-094).
+as its target. The adopted pair is served again after a restart, as long
+as it loads and has not expired; an expired one gives way to the
+self-signed fallback, and the start log says why (see
+[Server TLS certificate](../../security/key-rotation/#server-tls-certificate)).
 
 ![The network administration screen: TLS posture with certificate fingerprint and the replacement form](../../../../assets/docs/admin-network.png)
+
+A source that still does not answer after this page:
+[Troubleshooting — a source registry does not answer](../../reference/troubleshooting/#a-source-registry-does-not-answer).
 
 Next: give the instance something to promote —
 [the zone Retriever and the cascade](../../passthrough/retriever-cascade/).

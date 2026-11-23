@@ -7,8 +7,8 @@ sidebar:
 
 import StatusTable from "../../../../components/StatusTable.astro";
 
-Tobby is released and under active development. Milestones 1–6 are delivered;
-the current release line is **v0.6.x**. The table below is rendered from a
+Tobby is released and under active development. Milestones 1–7 are delivered;
+the current release is **v0.7.0**, a regular release that closes milestone 7. The table below is rendered from a
 single data file (`status.yaml`) and feeds every status badge on this site —
 including the filtered security view on the
 [security one-pager](../../security/one-pager/). If a page and this table ever
@@ -20,7 +20,8 @@ disagree, this table is right and the page has a bug.
 
 ## Version trains
 
-Each milestone maps to a minor release line: milestone N ships as **v0.N.x**.
+Each milestone maps to a minor release line: milestone N ships as **v0.N.x** —
+and milestone 7 ships as v0.7.x, ahead of 1.0.0.
 Patch releases within a train carry fixes and hardening only, never new
 features.
 
@@ -32,7 +33,7 @@ features.
 | 4 — Passthrough | v0.4.x | Delivered (v0.4.0 → v0.4.2) |
 | 5 — Mirror & air-gap | v0.5.x | Delivered (v0.5.0 → v0.5.2) |
 | 6 — Hardened controls & enterprise identity | v0.6.x | Delivered (v0.6.0, 2026-11-12) |
-| 7 — Finishing, documentation & acceptance | v0.7.x → 1.0.0 | Upcoming |
+| 7 — Finishing, documentation & acceptance | v0.7.x | Delivered in v0.7.0; 1.0.0 follows the audits |
 
 **Observed cadence.** The first five milestones shipped between 2026-08-11
 (v0.1.0) and 2026-08-27 (v0.5.0), with two hardening patches along the way
@@ -43,9 +44,11 @@ initial development phase, not a commitment: each milestone ships when its
 acceptance scenarios pass on the [crucible](../../project/tests-and-proofs/),
 not on a date.
 
-**Path to 1.0.** One milestone remains: milestone 7 closes with finishing
-work, complete bilingual documentation, and an adversarial acceptance run
-on the release candidate. Version 1.0.0 freezes the four
+**Path to 1.0.** Every milestone is delivered: milestone 7 brought the
+finishing work, the complete bilingual documentation and the hardening
+proven by tests, in v0.7.0. What remains is the audits (code,
+maintainability, security) and the fixes to their main findings, then the
+adversarial acceptance. Version 1.0.0 freezes the four
 public surfaces (CLI, API, configuration, storage layout) under SemVer —
 the [release and compatibility policy](../../project/release-compatibility/)
 is the canonical home for what is stable already and what freezes at 1.0.

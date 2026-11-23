@@ -60,3 +60,50 @@ func TestRecordCarriesFullSchema(t *testing.T) {
 		t.Errorf("got %d records, %d audit; want 2 records, 1 audit", total, auditRecords)
 	}
 }
+
+// TestOptionalFieldsOnlyWhenSet checks that actor_name and detail are
+// additive: emitted when set, absent otherwise (FR-096 detail).
+func TestOptionalFieldsOnlyWhenSet(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logging.New(&buf, slog.LevelInfo)
+	Log(context.Background(), logger, &Event{
+		Actor: "u", Action: "clock.implausible", Target: "clock", Outcome: OutcomeSuccess, Origin: "local",
+		ActorName: "Operator", Detail: "gap 3h",
+	})
+	Log(context.Background(), logger, &Event{Actor: "u", Action: "a", Target: "t", Outcome: OutcomeSuccess, Origin: "o"})
+
+	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n"))
+	if len(lines) != 2 {
+		t.Fatalf("got %d records, want 2", len(lines))
+	}
+	var full, bare map[string]any
+	if err := json.Unmarshal(lines[0], &full); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(lines[1], &bare); err != nil {
+		t.Fatal(err)
+	}
+	if full["actor_name"] != "Operator" || full["detail"] != "gap 3h" {
+		t.Errorf("optional fields missing when set: %v", full)
+	}
+	if _, ok := bare["actor_name"]; ok {
+		t.Error("actor_name emitted while unset")
+	}
+	if _, ok := bare["detail"]; ok {
+		t.Error("detail emitted while unset")
+	}
+}
+
+// TestMediaOverrideDetail: the detail of an applied media waiver names the
+// operation, the zone and the medium, and leaves out what is unknown
+// rather than writing an empty value (B-073).
+func TestMediaOverrideDetail(t *testing.T) {
+	for _, c := range []struct{ op, zone, id, want string }{
+		{MediaOperationVerify, "zone-alpha", "20260826T000000Z-abcdef", "operation=verify zone=zone-alpha media=20260826T000000Z-abcdef"},
+		{MediaOperationImport, "zone-alpha", "", "operation=import zone=zone-alpha"},
+	} {
+		if got := MediaOverrideDetail(c.op, c.zone, c.id); got != c.want {
+			t.Errorf("MediaOverrideDetail(%q, %q, %q) = %q, want %q", c.op, c.zone, c.id, got, c.want)
+		}
+	}
+}

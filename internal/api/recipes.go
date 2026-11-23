@@ -13,9 +13,7 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -23,6 +21,7 @@ import (
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/auth"
+	"github.com/tobby-fetch/tobby-fetch/internal/consume"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/schedule"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
@@ -68,6 +67,9 @@ type RecipeOptions struct {
 	// Occupancy is the latest store-footprint sample against the
 	// configured threshold (R-33); nil on an instance with no threshold.
 	Occupancy *store.OccupancyMonitor
+	// Aids computes the consumption aids (FR-065): the mapping table
+	// exports and the registries.yaml snippet.
+	Aids *consume.Service
 	// Now injects the clock for the override's recorded timestamp.
 	Now func() time.Time
 }
@@ -82,8 +84,16 @@ func RegisterRecipes(a *API, o *RecipeOptions) {
 	if rc.opts.Now == nil {
 		rc.opts.Now = time.Now
 	}
+	if rc.opts.Aids == nil {
+		// An instance wired without the aids answers TBY-AID-001, not a
+		// nil dereference.
+		rc.opts.Aids = consume.New(rc.opts.Store, &consume.Settings{})
+	}
 	a.Handle("GET /api/v1/recipes", a.RequireRole(auth.RoleViewer, rc.list))
 	a.Handle("GET /api/v1/recipes/{recipe}/mapping", a.RequireRole(auth.RoleViewer, rc.mapping))
+	a.Handle(RouteMappingAll, a.RequireRole(auth.RoleViewer, rc.mappingAll))
+	a.Handle(RouteRegistriesRecipe, a.RequireRole(auth.RoleViewer, rc.registriesRecipe))
+	a.Handle(RouteRegistriesAll, a.RequireRole(auth.RoleViewer, rc.registriesAll))
 	a.Handle("POST /api/v1/sync", a.RequireRole(auth.RoleOperator, rc.sync))
 	a.Handle("GET /api/v1/sync/prune-preview", a.RequireRole(auth.RoleOperator, rc.prunePreview))
 	a.Handle("DELETE /api/v1/content/{repo...}", a.RequireRole(auth.RoleAdmin, rc.deleteRepo))
@@ -132,6 +142,16 @@ func (rc *recipesAPI) list(w http.ResponseWriter, r *http.Request) {
 // included (FR-035, FR-065). Unknown recipes answer the shared 404.
 func (rc *recipesAPI) mapping(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("recipe")
+	// ?format= turns the answer into the exportable table (FR-065); without
+	// it the recorded versions are served as they always were.
+	if r.URL.Query().Has("format") {
+		f, ok := rc.parseFormat(w, r, "json")
+		if !ok {
+			return
+		}
+		rc.writeTable(w, r, []consume.Selector{{Name: name}}, f)
+		return
+	}
 	records, err := rc.opts.Store.RecipeRecords()
 	if err != nil {
 		rc.storeProblem(w, r, err)
@@ -163,18 +183,17 @@ func (rc *recipesAPI) sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prune := rc.opts.Prune
-	if body, rerr := io.ReadAll(io.LimitReader(r.Body, maxSyncBody)); rerr == nil && len(body) > 0 {
-		var req syncRequest
-		if uerr := json.Unmarshal(body, &req); uerr != nil {
-			rc.api.Problem(w, r, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
-				"file": "request body", "path": "prune",
-				"constraint": "the body must be a JSON object with an optional boolean \"prune\"",
-			}))
-			return
-		}
-		if req.Prune != nil {
-			prune = *req.Prune
-		}
+	var req syncRequest
+	if !rc.api.decodeJSON(w, r, maxSyncBody, &req, true, func(error) *taxonomy.Error {
+		return taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
+			"file": "request body", "path": "prune",
+			"constraint": "the body must be a JSON object with an optional boolean \"prune\"",
+		})
+	}) {
+		return
+	}
+	if req.Prune != nil {
+		prune = *req.Prune
 	}
 	id, _ := auth.IdentityFrom(r.Context())
 	task, err := rc.opts.Queue.Create(tasks.TypeSync, rc.opts.Source, id.Name, nil, tasks.WithPrune(prune))
@@ -266,18 +285,13 @@ func (rc *recipesAPI) deleteRepo(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// provenance resolves the effective provenance of one repository: the
-// live recipe graph wins, then the recorded ledger class, then seed —
-// the same resolution as the screen (FR-061).
+// provenance resolves the effective provenance of one repository through
+// the store's one classification rule (FR-098, store/provenance.go): the
+// live recipe graph wins, then the recorded ledger class, then seed — the
+// same resolution as the screen (FR-061).
 func (rc *recipesAPI) provenance(repo string) (class store.ProvenanceClass, managedBy []string) {
-	managed := rc.opts.Store.ManagingRecipes(repo)
-	if len(managed) > 0 {
-		return store.ProvenanceRecipe, managed
-	}
-	if p, ok := rc.opts.Store.ProvenanceOf(repo); ok {
-		return p.Class, nil
-	}
-	return store.ProvenanceSeed, nil
+	c := rc.opts.Store.Classify(repo)
+	return c.Class, c.Recipes
 }
 
 // maxSyncBody bounds the optional trigger body: it carries one boolean,
@@ -481,8 +495,9 @@ func (rc *recipesAPI) setInterval(w http.ResponseWriter, r *http.Request) {
 	// sent, not a statement about how this instance is configured: the
 	// two answer different codes, and therefore different HTTP statuses,
 	// so a client can tell "fix your request" from "fix the instance".
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
-		rc.api.Problem(w, r, intervalInvalid("the body must be a JSON object with an \"interval\" duration string (\"30m\"): "+err.Error()))
+	if !rc.api.decodeJSON(w, r, 4<<10, &body, false, func(err error) *taxonomy.Error {
+		return intervalInvalid("the body must be a JSON object with an \"interval\" duration string (\"30m\"): " + err.Error())
+	}) {
 		return
 	}
 	d, err := time.ParseDuration(strings.TrimSpace(body.Interval))

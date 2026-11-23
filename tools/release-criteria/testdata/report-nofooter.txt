@@ -1,0 +1,2 @@
+ok   scenario m1 started 2026-08-22T11:56:54Z
+ok   scenario m1 complete — report: crucible-report-m1.txt

@@ -109,20 +109,27 @@ func TestPaginate(t *testing.T) {
 func TestKindDetection(t *testing.T) {
 	cases := []struct {
 		artifactType, configType string
+		annotations              map[string]string
 		want                     Kind
 	}{
-		{"", "application/vnd.oci.image.config.v1+json", KindContainerImage},
-		{"", "application/vnd.docker.container.image.v1+json", KindContainerImage},
-		{"", "application/vnd.cncf.helm.config.v1+json", KindHelmChart},
-		{"application/vnd.tobby.recipe.v1+yaml", "application/vnd.oci.empty.v1+json", KindRecipe},
-		{"", "application/vnd.tobby.recipe.v1+yaml", KindRecipe},
-		{"application/vnd.example.thing.v1", "application/vnd.oci.empty.v1+json", KindOCIArtifact},
-		{"", "application/vnd.example.custom.config.v1+json", KindOCIArtifact},
-		// TODO(FileSet): reads as OCIArtifact until RECIPE-SPEC defines its
-		// artifact media type.
+		{"", "application/vnd.oci.image.config.v1+json", nil, KindContainerImage},
+		{"", "application/vnd.docker.container.image.v1+json", nil, KindContainerImage},
+		{"", "application/vnd.cncf.helm.config.v1+json", nil, KindHelmChart},
+		{"application/vnd.tobby.recipe.v1+yaml", "application/vnd.oci.empty.v1+json", nil, KindRecipe},
+		{"", "application/vnd.tobby.recipe.v1+yaml", nil, KindRecipe},
+		{"application/vnd.example.thing.v1", "application/vnd.oci.empty.v1+json", nil, KindOCIArtifact},
+		{"", "application/vnd.example.custom.config.v1+json", nil, KindOCIArtifact},
+		// RECIPE-SPEC §7.4: a FileSet is an image, told apart by its marker.
+		{"", "application/vnd.oci.image.config.v1+json", map[string]string{AnnotationKind: "FileSet"}, KindFileSet},
+		{"", "application/vnd.oci.image.config.v1+json", map[string]string{AnnotationFileSetPacked: "true"}, KindFileSet},
+		// An unknown marker value, or a marker on a chart or a recipe,
+		// changes nothing: the formats outrank it.
+		{"", "application/vnd.oci.image.config.v1+json", map[string]string{AnnotationKind: "Model"}, KindContainerImage},
+		{"", "application/vnd.cncf.helm.config.v1+json", map[string]string{AnnotationKind: "FileSet"}, KindHelmChart},
+		{"application/vnd.tobby.recipe.v1+yaml", "application/vnd.oci.empty.v1+json", map[string]string{AnnotationKind: "FileSet"}, KindRecipe},
 	}
 	for _, c := range cases {
-		p := &manifestProbe{ArtifactType: c.artifactType}
+		p := &manifestProbe{ArtifactType: c.artifactType, Annotations: c.annotations}
 		p.Config.MediaType = c.configType
 		if got := p.kind(); got != c.want {
 			t.Errorf("kind(artifactType=%q, config=%q) = %s, want %s",

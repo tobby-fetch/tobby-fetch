@@ -5,9 +5,8 @@ sidebar:
   order: 1
 ---
 
-Une instance passthrough est le cas d'usage livré de Tobby (jalon 4,
-train v0.4.x) : un service permanent placé entre deux zones réseau
-connectées. D'un côté, elle lit depuis les registres sources —
+Une instance passthrough est le cas d'usage livré de Tobby (disponible depuis la v0.4.0) : un service permanent placé entre deux
+zones réseau connectées. D'un côté, elle lit depuis les registres sources —
 directement, ou à travers le proxy d'entreprise. De l'autre, elle pousse
 dans le registre de la zone, celui dont vos clusters et vos hôtes tirent
 réellement leur contenu. Entre les deux vivent son propre store et un
@@ -61,7 +60,7 @@ La boucle est volontairement simple, et chaque étape est une exigence
 que vous pouvez auditer :
 
 1. **Relire le Retriever.** À chaque cycle, l'instance re-télécharge le
-   document d'état désiré depuis `retriever.source` (FR-010) et résout
+   document d'état désiré depuis `retriever.source` et résout
    chaque recipe listée depuis le cookbook, en respectant les
    contraintes de version (`~`, `^`, `12.x`) à chaque passage — une
    version corrective arrive par simple publication, sans aucun fichier
@@ -69,23 +68,23 @@ que vous pouvez auditer :
 2. **Réconcilier.** Le registre de destination est comparé à ce que les
    recipes épinglent. Seul ce qui manque est déplacé.
 3. **Pousser en différentiel.** Les blobs et manifestes déjà présents à
-   la destination ne sont jamais renvoyés (FR-028). Un second cycle sur
+   la destination ne sont jamais renvoyés. Un second cycle sur
    un contenu inchangé transfère zéro octet — le crucible joue
    exactement ce scénario.
 4. **Re-vérifier avant chaque push.** Les signatures sont contrôlées
    contre la copie locale avant chaque push, et non une seule fois à
-   l'import (FR-033). Un store altéré entre deux cycles ne se propage
+   l'import. Un store altéré entre deux cycles ne se propage
    pas.
 5. **Propager les recipes.** Les artefacts de recipe signés eux-mêmes
-   sont poussés vers le cookbook de la zone, à côté de leurs ingrédients
-   (FR-034), si bien que le cookbook de la zone reflète toujours ce que
+   sont poussés vers le cookbook de la zone, à côté de leurs ingrédients,
+   si bien que le cookbook de la zone reflète toujours ce que
    la zone détient réellement — et qu'une zone plus en aval peut s'y
    enchaîner.
 
 Le cycle s'exécute tous les `sync.interval` (15m par défaut).
 L'intervalle se change à chaud depuis l'écran d'administration et depuis
-l'API, sans redéployer (FR-013), et cette modification est auditée comme
-configuration sensible (FR-094). Une synchronisation peut aussi être
+l'API, sans redéployer, et cette modification est auditée comme
+configuration sensible. Une synchronisation peut aussi être
 déclenchée à la main, depuis l'écran des recipes ou avec
 `POST /api/v1/sync`.
 
@@ -108,7 +107,7 @@ règle de nommage et ses conséquences pour vos clients font l'objet de
   proxy sortant, et au registre de destination.
 - Un registre de destination qui accepte les chemins de dépôt imbriqués
   — Tobby le teste avant de pousser et échoue explicitement quand ce
-  n'est pas le cas (FR-035).
+  n'est pas le cas.
 - Un document Retriever et des recipes signées dans un cookbook. Pour
   comprendre ces notions d'abord, lisez
   [recipes, cookbook, retriever](../../recipes/understand/).
@@ -129,12 +128,38 @@ Les pages sont ordonnées comme se déroule un déploiement réel :
 4. **[Brancher vos clients](../../passthrough/connect-clients/)** —
    pourquoi les chemins ont cette forme, les mirrors containerd, les
    pièges GitOps, et l'endpoint pour les paquets d'OS.
-5. **[Imports ponctuels](../../passthrough/one-off-import/)** — faire
+5. **[Aides à la consommation](../../passthrough/consumption-aids/)** — la
+   table source-destination et le `registries.yaml` K3s/RKE2 générés à
+   partir du contenu du store.
+6. **[Imports ponctuels](../../passthrough/one-off-import/)** — faire
    entrer une image ou un chart isolé par référence, hors de toute
    recipe.
-6. **[Exploiter dans la durée](../../passthrough/operate/)** — probes,
+7. **[Exploiter dans la durée](../../passthrough/operate/)** — probes,
    suivi des tâches et reprise, sauvegarde, croissance, montées de
    version.
+8. **[Vérifier l'intégrité du store](../../passthrough/verify-store/)** —
+   re-hasher les blobs, contrôler manifests et signatures de recipes à la
+   demande.
+9. **[Sauvegarder et reconstruire une instance](../../passthrough/backup-rebuild/)**
+   — le répertoire d'état, le contrôle au démarrage, et une
+   reconstruction testée.
+10. **[Collecter un bundle de diagnostic](../../passthrough/diagnostics/)** —
+    une archive locale expurgée à remettre au support.
+11. **[Superviser une instance](../../passthrough/monitoring/)** — le
+    référentiel des métriques, les règles d'alerte et le tableau de bord
+    livrés avec le chart.
+12. **[Mettre à niveau et revenir en arrière](../../passthrough/upgrade-rollback/)** —
+    les étapes par mode d'installation, ce que le code contrôle d'une
+    version à l'autre, et ce qu'un retour arrière peut promettre.
+13. **[Ajouter une zone à une cascade](../../passthrough/add-a-zone/)** — une
+    instance de plus sous une instance existante, de son Retriever à sa
+    première synchronisation.
+14. **[Automatiser avec l'API et la CI](../../passthrough/automate/)** — un
+    jeton, une synchronisation suivie jusqu'au bout, la porte de plan dans
+    un pipeline.
+15. **[Valeurs du chart Helm](../../passthrough/chart-values/)** — chaque
+    valeur du chart, les clés qu'il possède, et ce que l'on sait du
+    dimensionnement.
 
 Si vous n'avez encore jamais fait tourner Tobby, le parcours en dix
 minutes [installer et démarrer](../../try/install-and-start/) et le pas à

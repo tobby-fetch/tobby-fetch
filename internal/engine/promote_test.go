@@ -319,7 +319,14 @@ func TestPromotionPropagatesRecipeAndSignature(t *testing.T) {
 // imported and promoted normally; between two cycles its signature in the
 // local store stops matching. A service that trusted its import-time
 // verdict would keep promoting it every interval; this one refuses on the
-// very next cycle, before a single byte leaves.
+// very next promotion, before a single byte leaves.
+//
+// The promotion is driven directly rather than through a second sync
+// cycle: since B-081 a sync re-copies the source's signatures onto an
+// up-to-date recipe, so a full cycle against a reachable, honest source
+// heals the tampered copy before the push reads it. What FR-033 guards
+// is the push reading the store as it is — the same read a media import
+// or a cycle with the source gone performs.
 func TestPromotionRefusesAfterLocalSignatureTampering(t *testing.T) {
 	env := newHappyEnv(t)
 	dest := newDestRegistry(t)
@@ -327,6 +334,14 @@ func TestPromotionRefusesAfterLocalSignatureTampering(t *testing.T) {
 
 	if _, err := runSync(t, env.eng); err != nil {
 		t.Fatalf("first cycle: %v", err)
+	}
+	recs, err := env.dst.RecipeRecords()
+	if err != nil || len(recs) != 1 {
+		t.Fatalf("recipe records = %+v, %v", recs, err)
+	}
+	f, err := env.eng.recipeOnMedium(context.Background(), &recs[0])
+	if err != nil {
+		t.Fatalf("reading the stored recipe: %v", err)
 	}
 
 	// Replace the locally stored signature with one made by a key nobody
@@ -338,9 +353,9 @@ func TestPromotionRefusesAfterLocalSignatureTampering(t *testing.T) {
 	dest.reset()
 	var meters pushMeters
 	meters.install(env.eng)
-	task, err := runSync(t, env.eng)
-	if err != nil {
-		t.Fatalf("second cycle: %v", err)
+	task := &tasks.Task{ID: "tsk_push", RunID: "run_push", Type: tasks.TypeSync, Status: tasks.StatusRunning}
+	if env.eng.promoteRecipe(context.Background(), newTaskSink(task, func() {}), discardLogger(), f, wordpressRID, env.eng.ownContent()) {
+		t.Fatal("a recipe whose local signature no longer verifies was promoted")
 	}
 	if writes := dest.writes(); len(writes) != 0 {
 		t.Errorf("a recipe that no longer verifies still wrote to the destination: %v", writes)
@@ -348,14 +363,31 @@ func TestPromotionRefusesAfterLocalSignatureTampering(t *testing.T) {
 	if meters.refused.Load() == 0 {
 		t.Error("the refusal was not counted (FR-091)")
 	}
-	it := itemByName(t, task, pushItemPrefix+"wordpress@6.8.2/recipe")
+	it := itemByName(t, task, pushItemPrefix+wordpressRID+"/recipe")
 	if it.Status != tasks.StatusFailed || it.Error == nil || it.Error.Code != taxonomy.CodeSignature {
 		t.Fatalf("push item = %s / %+v, want failed with %s", it.Status, it.Error, taxonomy.CodeSignature)
 	}
-	// The fetch side is untouched: the content is still local and valid,
-	// only its onward journey is blocked (fail closed, per item).
-	if fetched := itemByName(t, task, "wordpress@6.8.2/app"); fetched.Status == tasks.StatusFailed {
-		t.Error("a pre-push refusal must not fail the fetch item")
+}
+
+// TestSyncRestoresATamperedLocalSignatureFromTheSource is the other side
+// of B-081's fix: the store mirrors its source's signatures, so a cycle
+// against an honest source replaces a locally altered one and the
+// promotion — still re-verified — goes through.
+func TestSyncRestoresATamperedLocalSignatureFromTheSource(t *testing.T) {
+	env := newHappyEnv(t)
+	dest := newDestRegistry(t)
+	withDestination(t, env.eng, dest, config.Destination{}, nil)
+	if _, err := runSync(t, env.eng); err != nil {
+		t.Fatalf("first cycle: %v", err)
+	}
+	signManifest(t, env.dst, env.hostRepo+"/cookbook/wordpress", env.manDig, newKeyPair(t))
+
+	task, err := runSync(t, env.eng)
+	if err != nil {
+		t.Fatalf("second cycle: %v", err)
+	}
+	if it := itemByName(t, task, pushItemPrefix+wordpressRID+"/recipe"); it.Status == tasks.StatusFailed {
+		t.Fatalf("push item failed (%+v): the source's signature was not restored", it.Error)
 	}
 }
 

@@ -44,7 +44,7 @@
 
 /* External links inside docs get a visible marker — the embedded/offline
  * build relies on it (readers copy the URL on a connected machine). */
-.sl-markdown-content a[href^="http"]:not([href*="tobby-fetch.github.io"])::after {
+.sl-markdown-content a[href^="http"]:not([href*="tobby-fetch.github.io"]):not([href*="tobbyfetch.dev"])::after {
   content: " ↗";
   font-size: 0.75em;
   opacity: 0.7;

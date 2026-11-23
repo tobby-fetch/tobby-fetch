@@ -30,8 +30,8 @@ Three properties of that guard are worth stating:
   medium would be rewritten by whoever holds the medium.
 - It advances on **completed imports only**. A verification that ran and a
   push that did not happen move nothing.
-- The high-water mark **never moves backwards**, including when an
-  administrator waives the refusal to restore an older delivery on purpose.
+- The high-water mark **never moves backwards**, including when the
+  refusal is waived to restore an older delivery on purpose.
 
 It is not a security control. The manifest is unsigned, so the timestamp can
 be forged; the guard prevents an accident, and that is why it is waivable at
@@ -162,7 +162,7 @@ estimate first.
 ## Starting a medium over
 
 `/admin/store` shows what the store holds and offers the reset that empties
-it (FR-046). It is restricted to administrators, requires the exact typed
+it. It is restricted to administrators, requires the exact typed
 confirmation `RESET`, and is audit-logged — including the refused attempt,
 because somebody typing the wrong word into that field is the trail's early
 warning. On an instance running with the authentication override, the typed
@@ -185,19 +185,17 @@ The reset is also available as `POST /api/v1/store/reset`. There is no
 
 <!-- TODO: screenshot: the store administration screen — what the store holds, and the typed confirmation the reset requires -->
 
-## Two things that are not here yet
+## Clocks, and Tobby itself
 
-**Clock coherence.** Freshness comparisons assume plausible clocks. Detecting
-an implausible clock at startup and at medium opening — warn and audit, never
-silently correct — is planned for milestone 7 (R-32). Until then, a
-destination whose clock is wrong can refuse a fresh medium or accept a stale
-one, and the audit trail will faithfully record the wrong time.
+**Clock coherence.** Freshness comparisons assume plausible clocks. Since
+v0.7.0, an implausible clock — behind the build of the binary at
+startup, or behind the production of a medium when it is opened — is
+warned about and audited, and never silently corrected: a banner, a log
+record, the command line's error output, a metric and an audit event name
+the gap. See [detect a wrong clock](../clock-check/).
 
-**Updating Tobby itself inside the zone.** At milestone 6, each release is
-published as recipe-ready OCI artifacts, so Tobby updates travel through the
-standard mirror flow like any other content, signed by your site's own
-qualification chain. There is no auto-update, ever (R-25). Today, updating
-an isolated instance means carrying the new binary the way you carry
-anything else.
-
-Both are tracked on the [project status](../../discover/status/) page.
+**Updating Tobby itself inside the zone.** Since v0.6.0, each release
+is published as recipe-ready OCI artifacts, so Tobby updates travel through
+the standard mirror flow like any other content, signed by your site's own
+qualification chain. There is no auto-update, ever. See
+[updating Tobby in an isolated zone](../update-tobby/).

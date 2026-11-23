@@ -14,7 +14,9 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -24,7 +26,10 @@ import (
 	"testing"
 	"time"
 
+	godigest "github.com/opencontainers/go-digest"
+
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
+	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/fileserve"
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
 	"github.com/tobby-fetch/tobby-fetch/internal/mediagate"
@@ -89,6 +94,23 @@ func seedTransportStore(t *testing.T, cfg *config.Config, manifest bool) (repo, 
 		t.Fatalf("packing the fixture FileSet: %v", err)
 	}
 	if manifest {
+		// One delivery reaching the FileSet: its artifact and its only
+		// ingredient are the packed image, unsigned, admitted below by an
+		// allowUnsigned trust scope. The fixture used to carry an EMPTY
+		// recipe graph, which a verification called pushable — zero
+		// blocked out of zero — and the gate then served the whole store
+		// (B-063). A medium clears only what its pushable recipes reach.
+		artifact := publishFixtureRecipe(t, st, res)
+		if err := st.PutRecipeRecord(&store.RecipeRecord{
+			Name: "site", Version: "1.0.0",
+			CookbookRepo: fixtureCookbook, ArtifactRepo: fixtureCookbook, ArtifactTag: "1.0.0",
+			Digest: artifact, Zone: mediumZone, ResolvedAt: time.Now().UTC(),
+			Ingredients: []store.IngredientRecord{{
+				Name: mediumFileSet, Kind: "FileSet", Repo: res.Repository, Tag: "1.0.0", Digest: res.Digest,
+			}},
+		}); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := media.Write(ctx, st, media.WriteOptions{
 			Zone: mediumZone, RunID: "run_fixture", ResolvedAt: time.Now().UTC(),
 		}); err != nil {
@@ -100,10 +122,51 @@ func seedTransportStore(t *testing.T, cfg *config.Config, manifest bool) (repo, 
 	}
 
 	cfg.Zone = mediumZone
+	cfg.Trust.Scopes = []config.TrustScope{{
+		Name: "lab", Repositories: []string{fixtureCookbook}, AllowUnsigned: true,
+	}}
 	cfg.Files.FileSets = []config.FileSetServe{{
 		Name: mediumFileSet, Ref: res.Reference, Version: "1.0.0", Anonymous: true,
 	}}
 	return res.Repository, res.Digest
+}
+
+// fixtureCookbook is where the fixture's recipe artifact is published.
+const fixtureCookbook = "localhost/cookbook/site"
+
+// publishFixtureRecipe publishes, as the RECIPE-SPEC §11.2 artifact, a
+// recipe delivering the packed FileSet pinned by digest, and returns the
+// artifact's manifest digest.
+func publishFixtureRecipe(t *testing.T, st *store.Store, res *fileserve.PackResult) string {
+	t.Helper()
+	ctx := context.Background()
+	ref, _, _ := strings.Cut(res.Reference, "@")
+	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+		ref = ref[:i]
+	}
+	doc := []byte("apiVersion: recipe.tobbyfetch.dev/v1alpha1\nkind: Recipe\nmetadata:\n  name: site\n  version: 1.0.0\n" +
+		"spec:\n  ingredients:\n    - name: " + mediumFileSet + "\n      kind: FileSet\n      ref: " + ref +
+		"\n      version: 1.0.0\n      digest: " + res.Digest + "\n")
+	cfg := []byte("{}")
+	for _, b := range [][]byte{cfg, doc} {
+		if err := st.WriteBlob(ctx, fixtureCookbook, godigest.FromBytes(b), bytes.NewReader(b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	raw, err := json.Marshal(map[string]any{
+		"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json",
+		"artifactType": engine.MediaTypeRecipe,
+		"config":       map[string]any{"mediaType": "application/vnd.oci.empty.v1+json", "digest": godigest.FromBytes(cfg), "size": len(cfg)},
+		"layers":       []any{map[string]any{"mediaType": engine.MediaTypeRecipe, "digest": godigest.FromBytes(doc), "size": len(doc)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := st.PutManifest(ctx, fixtureCookbook, "application/vnd.oci.image.manifest.v1+json", raw, "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d.String()
 }
 
 // startServe runs the real serve path and returns its base URL.
@@ -120,9 +183,13 @@ func startServe(t *testing.T, cfg *config.Config) string {
 	done := make(chan error, 1)
 	go func() { done <- runServe(ctx, cfg) }()
 	t.Cleanup(func() {
-		// Hang up before asking for a clean drain: a spare connection the
-		// client transport dialed would otherwise outlive the two-second
-		// grace period (see TestRunServeServesRegistry).
+		// Hang up before asking for a clean drain, so the drain usually
+		// ends at once. Not every client can be reached from here (the
+		// registry pushes go through go-containerregistry's own
+		// transport), and a spare connection one of them dialed is only
+		// counted idle by net/http after five seconds: the server then
+		// closes it when the two-second grace period expires, and the
+		// drain must still return nil (FR-093, TestDrainClosesASilentConnection).
 		http.DefaultClient.CloseIdleConnections()
 		cancel()
 		if err := <-done; err != nil {
@@ -290,9 +357,10 @@ func TestServeDoesNotWithholdASourceSideMirror(t *testing.T) {
 // zone identity alone would break that scenario — and the break would
 // only surface on a paid crucible node.
 //
-// So the two rows below are the whole condition, checked both ways: the
-// gate arms on the PRESENCE OF THE MANIFEST, and on a destination
-// instance. Neither half alone withholds anything.
+// The gate arms on a DESTINATION instance (one told its zone) whose store
+// holds content: with no zone, nothing is withheld, manifest or not. The
+// destination half without a manifest is TestServeWithholdsADestination
+// StoreWithoutManifest: since R9 of the milestone-7 review it is guarded.
 func TestServeDoesNotWithholdAStoreThatIsNotAMedium(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -301,11 +369,6 @@ func TestServeDoesNotWithholdAStoreThatIsNotAMedium(t *testing.T) {
 		// The m1 shape exactly: mirror mode on a transported store, no
 		// zone identity, no media manifest.
 		{name: "m1: mirror mode, no zone, no manifest", zone: ""},
-		// And the half that proves the manifest is what decides: a fully
-		// configured destination instance whose store simply is not a
-		// medium withholds nothing either — there is nothing unverified
-		// to withhold.
-		{name: "destination instance, no manifest", zone: mediumZone},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := serveConfig(t)
@@ -334,5 +397,189 @@ func TestServeDoesNotWithholdAStoreThatIsNotAMedium(t *testing.T) {
 				t.Errorf("/readyz advertises a media caveat this instance does not have: %q", body)
 			}
 		})
+	}
+}
+
+// TestServeWithholdsADestinationStoreWithoutManifest (R9 of the milestone-7
+// review): a destination instance — configured with its zone — whose store
+// holds content but no meta/media.json is a medium whose manifest went
+// missing, and FR-054 (R-19) makes an absent manifest a global block. It
+// used to be served whole, carried FileSet cache included.
+//
+// Proved fallible: before the fix both surfaces answered 200 here.
+func TestServeWithholdsADestinationStoreWithoutManifest(t *testing.T) {
+	cfg := serveConfig(t)
+	cfg.Mode = config.ModeMirror
+	repo, digest := seedTransportStore(t, &cfg, false)
+	base := startServe(t, &cfg)
+
+	status, body := fetch(t, base+"/v2/"+repo+"/manifests/"+digest)
+	if status != http.StatusForbidden || !strings.Contains(body, string(taxonomy.CodeMediaUnverified)) {
+		t.Errorf("/v2/…/manifests/… = %d (%s), want 403 %s", status, body, taxonomy.CodeMediaUnverified)
+	}
+	status, body = fetch(t, base+fileserve.RoutePrefix+mediumFileSet+"/"+mediumFilePath)
+	if status != http.StatusForbidden || strings.Contains(body, mediumFileBytes) {
+		t.Errorf("/files/… = %d (%s), want 403 and none of the content", status, body)
+	}
+
+	// Verifying does not open it: the manifest is missing (TBY-MED-001).
+	if status, raw := call(t, http.MethodPost, base+"/api/v1/media/verify", map[string]any{}); status != http.StatusAccepted && status != http.StatusOK {
+		t.Fatalf("verify = %d: %s", status, raw)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		_, raw := call(t, http.MethodGet, base+"/api/v1/media/verification", nil)
+		if strings.Contains(string(raw), string(taxonomy.CodeMediaManifestMissing)) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the verification never reported %s: %s", taxonomy.CodeMediaManifestMissing, raw)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if status, _ := fetch(t, base+"/v2/"+repo+"/manifests/"+digest); status != http.StatusForbidden {
+		t.Errorf("/v2/ = %d after a verification that blocked, want 403", status)
+	}
+}
+
+// TestServeDoesNotServeAVersionAddedAfterTheManifest (B-063, milestone-7
+// review proof F1): a FileSet version stored on the medium after its media
+// manifest was written is uninventoried, reached by no recipe and never
+// hashed. Once a verification opens the gate, the "highest local tag"
+// resolution must not pick it, and /v2/ must not hand it out.
+//
+// Proved fallible: before the fix /files/ answered 200 "SMUGGLED".
+func TestServeDoesNotServeAVersionAddedAfterTheManifest(t *testing.T) {
+	cfg := serveConfig(t)
+	cfg.Mode = config.ModeMirror
+	repo, _ := seedMedium(t, &cfg)
+	cfg.Files.FileSets[0].Version = "" // highest local semver tag
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, cfg.Storage.Root, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(src, filepath.Dir(mediumFilePath)), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, filepath.FromSlash(mediumFilePath)), []byte("SMUGGLED\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	smuggled, err := fileserve.NewPacker(st, cfg.Storage.BasePrefix, slog.New(slog.DiscardHandler),
+		fileserve.WithPackRoots([]string{src})).
+		Pack(ctx, fileserve.PackRequest{Source: src, Name: mediumFileSet, Version: "9.9.9"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	base := startServe(t, &cfg)
+	if status, raw := call(t, http.MethodPost, base+"/api/v1/media/verify", map[string]any{}); status != http.StatusAccepted && status != http.StatusOK {
+		t.Fatalf("verify = %d: %s", status, raw)
+	}
+	waitServing(t, base)
+
+	filesURL := base + fileserve.RoutePrefix + mediumFileSet + "/" + mediumFilePath
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		status, body := fetch(t, filesURL)
+		if body == "SMUGGLED\n" {
+			t.Fatalf("/files/ serves the version added after the manifest (status %d)", status)
+		}
+		if status == http.StatusOK && body == mediumFileBytes {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("/files/ never served the verified version: %d %q", status, body)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	for _, ref := range []string{smuggled.Digest, "9.9.9"} {
+		status, body := fetch(t, base+"/v2/"+repo+"/manifests/"+ref)
+		if status != http.StatusForbidden || !strings.Contains(body, string(taxonomy.CodeMediaOutsideVerified)) {
+			t.Errorf("/v2/…/manifests/%s = %d (%s), want 403 %s", ref, status, body, taxonomy.CodeMediaOutsideVerified)
+		}
+	}
+}
+
+// anonymousGet performs one request without credentials.
+func anonymousGet(t *testing.T, url string) (status int, body string) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // read side
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, string(raw)
+}
+
+// TestServeGateSitsInsideAuthentication (B-067, second adversarial review
+// of milestone 7): the media gate answers /v2/_catalog and tags/list
+// itself, from the verified set. Mounted outside authentication, an open
+// gate listed every verified repository and tag to an anonymous client,
+// although registry reads need viewer (ADR-0009), and its closed-gate
+// refusals reached clients nobody had authenticated.
+//
+// Proved fallible: with the gate outside authn.Registry, the anonymous
+// catalog and tag list answer 200.
+func TestServeGateSitsInsideAuthentication(t *testing.T) {
+	cfg := serveConfig(t)
+	cfg.Mode = config.ModeMirror
+	repo, digest := seedMedium(t, &cfg)
+	base := startServe(t, &cfg)
+
+	// Closed: an anonymous client is asked to authenticate, not told
+	// about the medium.
+	if status, body := anonymousGet(t, base+"/v2/"+repo+"/manifests/"+digest); status != http.StatusUnauthorized {
+		t.Errorf("anonymous GET /v2/…/manifests/… on a closed gate = %d (%s), want 401", status, body)
+	}
+
+	if status, raw := call(t, http.MethodPost, base+"/api/v1/media/verify", map[string]any{}); status != http.StatusAccepted && status != http.StatusOK {
+		t.Fatalf("verify = %d: %s", status, raw)
+	}
+	waitServing(t, base)
+
+	for _, p := range []string{"/v2/_catalog", "/v2/" + repo + "/tags/list", "/v2/" + repo + "/manifests/" + digest} {
+		if status, body := anonymousGet(t, base+p); status != http.StatusUnauthorized {
+			t.Errorf("anonymous GET %s on an open gate = %d (%s), want 401", p, status, strings.TrimSpace(body))
+		}
+		if status, body := fetch(t, base+p); status != http.StatusOK {
+			t.Errorf("authenticated GET %s on an open gate = %d (%s), want 200", p, status, strings.TrimSpace(body))
+		}
+	}
+	// The anonymous FileSet stays anonymous (FR-047).
+	if status, body := anonymousGet(t, base+fileserve.RoutePrefix+mediumFileSet+"/"+mediumFilePath); status != http.StatusOK || body != mediumFileBytes {
+		t.Errorf("anonymous GET of the anonymous FileSet = %d (%q), want 200 with its bytes", status, body)
+	}
+}
+
+// TestServeGateRefusalDoesNotNameTheStore (B-067): a FileSet declared
+// anonymous reaches the gate without credentials, so the gate's refusal
+// reaches an anonymous client. On a medium whose manifest gives no media
+// ID it used to name the medium by the store's path on the host.
+func TestServeGateRefusalDoesNotNameTheStore(t *testing.T) {
+	cfg := serveConfig(t)
+	cfg.Mode = config.ModeMirror
+	seedTransportStore(t, &cfg, false) // no manifest: no media ID
+	base := startServe(t, &cfg)
+
+	status, body := anonymousGet(t, base+fileserve.RoutePrefix+mediumFileSet+"/"+mediumFilePath)
+	if status != http.StatusForbidden || !strings.Contains(body, string(taxonomy.CodeMediaUnverified)) {
+		t.Fatalf("anonymous GET of the anonymous FileSet = %d (%s), want 403 %s", status, body, taxonomy.CodeMediaUnverified)
+	}
+	if strings.Contains(body, cfg.Storage.Root) {
+		t.Errorf("the refusal names the store's path %s to an anonymous client: %s", cfg.Storage.Root, body)
 	}
 }

@@ -2,7 +2,7 @@
 title: Audit log
 description: The versioned six-field audit schema, the event catalogue dated by delivered version, durability guarantees, and how to ingest the trail into a SIEM.
 sidebar:
-  order: 5
+  order: 6
 ---
 
 Tobby emits a dedicated category of security audit events with a stable,
@@ -26,7 +26,7 @@ Six fields on every record, plus the marker and the schema version:
   "action": "token.create",
   "target": "ci-deploy",
   "outcome": "success",
-  "origin": "10.20.30.40:52114"
+  "origin": "10.20.30.40"
 }
 ```
 
@@ -41,6 +41,14 @@ Six fields on every record, plus the marker and the schema version:
 - **timestamp** (`ts`) and **origin** — the client network address, or
   `local`. Forwarding headers are deliberately not trusted for the
   origin: they are client-supplied.
+
+Optional fields join them when they apply: `actor_name`, the readable
+name of a federated identity; `detail`, free context that is not the
+target (the gap of a `clock.implausible` event, the operation, zone and
+medium of a `media.override` waiver); `setting`, the configuration key that
+decided the outcome of a `hardening.refused` event; and `exception`,
+`exception_source` and `exception_expires`, the scan exception a
+`scan.exception_expired` event is about.
 
 The schema is versioned through `audit_schema` and evolves additively
 only, with the same compatibility discipline as the REST API
@@ -60,7 +68,7 @@ only, with the same compatibility discipline as the REST API
 | `import.create`, `sync.create`, `recipe.publish`, `content.delete` | content-affecting actions with their actor | v0.4.x |
 | `config.promotion_interval`, `config.server_certificate` | sensitive configuration changes on a running instance (FR-013, FR-082) | v0.4.x |
 | `media.import` | a transported medium pushed into the zone (FR-052) | v0.5.x |
-| `media.override` | one of the two waivable media guards, attempted or applied (FR-054) | v0.5.x |
+| `media.override` | one of the two waivable media guards (FR-054): an attempt refused for lack of the `admin` role (outcome `denied`), or a waiver applied (outcome `success`) — at a verification as at an import, one record per guard and per application. The target is the guard (`zone` or `freshness`); the detail names the operation, the zone and the medium (`operation=verify` or `operation=import`, `zone=…`, `media=…`) | v0.5.x |
 | `store.reset` | the confirmed store reset, including a refused confirmation (FR-046) | v0.5.x |
 | `layout.export`, `layout.import` | OCI image layout leaving or entering the store (FR-051) | v0.5.x |
 | `fileset.pack` | a host directory packed into the store as a FileSet (FR-048) | v0.5.x |
@@ -69,14 +77,34 @@ only, with the same compatibility discipline as the REST API
 | `session.expire` | a UI session ended by expiry; the target is the reason, `idle` (`auth.session.idleTimeout`) or `lifetime` (`auth.sessionTTL`) (R-14) | v0.6.x |
 | `token.expire` | each refusal of a token past its expiry, under the token's name (R-14); a revoked token's refusal is an `auth.authenticate` failure under its name | v0.6.x |
 | `auth.local_under_federation` | a local-account sign-in while OIDC or SAML is enabled — break-glass use, kept filterable on its own; target `ui` or the machine surface (FR-078, R-20) | v0.6.x |
+| `diagnostics.bundle` | a [diagnostic bundle](../../passthrough/diagnostics/) produced or refused (FR-095): the requester, `local` for the command line on the host; the outcome is `failure` when it was not written, and the detail carries the code (`TBY-DIA-001`, or `TBY-DIA-002` with the member that still held a secret — never the secret) | v0.7.0 |
+| `clock.implausible` | the local clock found earlier than the build time of the binary or the resolution time of a medium beyond `clock.skewTolerance` (FR-096); the target is `build` or the medium, the detail the gap, the tolerance and the code (`TBY-CLK-001`/`002`) — the [clock check](../../air-gap/clock-check/) records and warns, it corrects nothing | v0.7.0 |
 | `scan.block` | an item refused by the vulnerability policy — violation, not scanned under a blocking policy, or stale database under the block action (FR-031); the target is the item's `reference@digest`, the outcome `denied` | v0.6.x |
+| `scan.exception_expired` | an item refused again because a scan exception that matched one of its violating findings has expired (FR-031 amendment, R-15) — one record per refused item and expired exception, beside the `scan.block` record of the same refusal. The target is the item's `reference@digest`, the outcome `denied`; `exception` names the vulnerability, `exception_source` where the exception was written (`instance`, `retriever`, or `vex:<document path>`), `exception_expires` its expiry (RFC 3339) | v1.0.x |
+| `hardening.refused` | a write refused by a hardening switch (FR-098): a unit import or its inspection, a FileSet packing (screen, API or `tobby fileset pack`), or a `/v2/` write — blob upload, mount, manifest put, deletion — by any client and role. The target is the reference, the packed FileSet or the repository; the outcome `denied`; the additional `setting` field names the switch (`hardening.disableUnitImport` or `hardening.disableRegistryPush`). One refusal, one record: no second denial is written beside it | v1.0.x |
 | `scan.scanner.repaired` | a scanner binary delivered by tobby-system, found changed on disk since it was verified and unpacked again from the verified delivery, without being run (FR-031); the target is the binary's path, the outcome `success`, or `failure` when the delivery could not be unpacked again (the scanner is then unavailable). A WARN record beside it names the expected and the found digests | v0.6.x |
 
-The media events joined the catalogue with v0.5.0: the two audited waivers
-of a media import — a medium addressed to another zone and a medium older
-than the last one imported here — and the confirmed store reset (FR-046).
-Both the attempt and the applied waiver are recorded, with the actor and
-the network origin they came from.
+The media events joined the catalogue with v0.5.0: the two waivers of a
+media import — a medium addressed to another zone and a medium older than
+the last one imported here — and the confirmed store reset (FR-046). On the
+screen and the API, a refused attempt and a waiver applied are recorded
+with the actor and the network origin. On the command line,
+`tobby media verify`, `tobby media slip` and `tobby media import` record
+the waiver with the actor and origin `local`: there is no role check
+there, host access is the control.
+
+A waiver is recorded each time it is applied, **at the Verify step as at
+the import** — the screen's Verify step, `POST /api/v1/media/verify`,
+`tobby media verify` with `operation=verify`; Push,
+`POST /api/v1/media/import`, `tobby media import` with
+`operation=import`. A waived verification can open the serving gate, and
+its record is written as the verification starts, before any verdict. On
+the screen, where the waiver is ticked at the Verify step and carried to
+Push, a waived import therefore leaves two `media.override` records: the
+verification that may have opened the gate, then the import that pushed.
+They are two applications, told apart by their detail, not a duplicate.
+`tobby media verify` writes nothing to the medium, so its record goes to
+stderr only.
 
 ## Durability — and the trail that crosses the air gap
 
@@ -85,15 +113,17 @@ In passthrough mode audit records go to stdout with everything else
 for a long-lived service.
 
 In mirror mode the log file lives **on the transport media**, under
-`_tobby/logs/` and therefore outside the media manifest's coverage — a log
+`_tobby/logs/` by default and in any case outside the media manifest's coverage — a log
 written inside coverage would invalidate, line by line, the inventory the
 destination verifies. It has size-based rotation and an explicit fsync at
 task boundaries: yanked media lose at most the task in progress (FR-053,
 FR-056), which a test proves by killing the process outright. That file is
 not a convenience: it is the audit trail that
-physically crosses the air gap with the content, carrying the run ID that
-the destination instance reuses, so one synchronization is traceable from
-the connected side to the isolated side through the media (FR-090). See
+physically crosses the air gap with the content. The destination logs
+under its own run ID; its "media verification complete" record carries the
+source run ID as `source_run_id`, with the `media_id`, so one
+synchronization is traceable from the connected side to the isolated side
+through the media (FR-090). See
 [tracing a transfer](../../air-gap/traceability/).
 
 ## The unsigned-log position

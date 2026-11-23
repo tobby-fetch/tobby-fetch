@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"path/filepath"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -20,6 +19,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/policy"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 	"github.com/tobby-fetch/tobby-fetch/internal/ui/format"
@@ -195,9 +195,9 @@ func runPlan(cmd *cobra.Command, cfg *config.Config, f planFlags) error {
 	remotes.SetResumer(blobfetch.New(egress, remotes.Keychain(), cfg.State.Root, cfg.Transfer.ResumeThreshold))
 	trustCache := ""
 	if cfg.State.Root != "" {
-		trustCache = filepath.Join(cfg.State.Root, "trust-cache")
+		trustCache = statedir.Path(cfg.State.Root, statedir.TrustCache)
 	}
-	trust, err := engine.LoadTrust(cfg.Trust, trustCache, egress)
+	trust, err := engine.LoadTrustLogging(logger, cfg.Trust, trustCache, egress)
 	if err != nil {
 		return err
 	}
@@ -304,7 +304,7 @@ func writePlanText(w io.Writer, plan *engine.Plan) {
 
 	t := &plan.Totals
 	out("\ntotals\n")
-	out("  recipes:     %d\n", t.Recipes)
+	out("  recipes:     %d (%d new, %d outdated)\n", t.Recipes, t.RecipesNew, t.RecipesOutdated)
 	out("  ingredients: %d (%d new, %d outdated, %d up-to-date)\n", t.Ingredients, t.New, t.Outdated, t.UpToDate)
 	out("  to transfer: %s (%d bytes, deduplicated by digest, net of the local store)\n",
 		format.Bytes("en", t.TransferBytes), t.TransferBytes)
@@ -316,14 +316,28 @@ func writePlanText(w io.Writer, plan *engine.Plan) {
 	if len(plan.Recipes) > 0 {
 		out("\nrecipes\n")
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		_, _ = fmt.Fprintln(tw, "  NAME\tREQUESTED\tRESOLVED\tSIGNATURE\tTRANSFER")
+		// SCOPE is the declared trust scope that decided the signature
+		// verdict (FR-033): a recipe admitted through a narrower door, an
+		// emergency scope say, says so here too, not only in --output json.
+		_, _ = fmt.Fprintln(tw, "  NAME\tREQUESTED\tRESOLVED\tSTATUS\tSIGNATURE\tSCOPE\tTRANSFER")
 		for i := range plan.Recipes {
 			r := &plan.Recipes[i]
 			resolved := r.Resolved
 			if resolved == "" {
 				resolved = "-"
 			}
-			_, _ = fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\n", r.Name, r.Requested, resolved, r.Signature, format.Bytes("en", r.TransferBytes))
+			scope := r.TrustScope
+			if scope == "" {
+				scope = "-"
+			}
+			// STATUS is the recipe artifact's own verdict against the local
+			// store (B-092): a new recipe version is work to do even when
+			// its ingredients move nothing.
+			status := string(r.Status)
+			if status == "" {
+				status = "-"
+			}
+			_, _ = fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, r.Requested, resolved, status, r.Signature, scope, format.Bytes("en", r.TransferBytes))
 		}
 		_ = tw.Flush()
 	}

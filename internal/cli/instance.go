@@ -68,6 +68,13 @@ type instanceFlags struct {
 	plaintext bool
 }
 
+// instanceRequested reports whether the command is to drive a running
+// instance: --instance given, or EnvInstanceURL set. One rule for every
+// command that has both a local and a remote form (B-074).
+func instanceRequested(cmd *cobra.Command) bool {
+	return cmd.Flags().Changed("instance") || os.Getenv(EnvInstanceURL) != ""
+}
+
 func (f *instanceFlags) register(cmd *cobra.Command) {
 	fs := cmd.Flags()
 	fs.StringVar(&f.url, "instance", "",

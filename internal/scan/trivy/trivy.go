@@ -304,7 +304,7 @@ func (s *Scanner) Scan(ctx context.Context, t scan.Target) (*scan.Result, error)
 			version = v
 		}
 		for _, f := range fs {
-			k := f.ID + "\x00" + f.Package + "\x00" + f.InstalledVersion
+			k := f.ID + "\x00" + f.Package + "\x00" + f.InstalledVersion + "\x00" + f.PURL
 			if !seen[k] {
 				seen[k] = true
 				findings = append(findings, f)

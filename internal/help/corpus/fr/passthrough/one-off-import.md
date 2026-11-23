@@ -2,15 +2,14 @@
 title: Imports unitaires
 description: Importer une image, un chart ou un artefact OCI par référence — inspecter d'abord, choisir les plateformes, ne transférer que ce qui manque.
 sidebar:
-  order: 6
+  order: 7
 ---
 
 Tout ne mérite pas une recipe. Une image de base à essayer, un chart en
 cours d'évaluation, l'artefact qu'un développeur demande aujourd'hui —
 Tobby importe un artefact OCI unique, de n'importe quel media type, par
 référence, hors de tout run de recipe et sans runtime de conteneurs sur
-l'instance (FR-023). C'est arrivé au jalon 2 et cela fait partie de
-chaque release depuis.
+l'instance. Cela fait partie de chaque release depuis le jalon 2.
 
 ## Depuis l'interface
 
@@ -38,11 +37,11 @@ déclenche l'inspection au chargement, ce qui fait aussi fonctionner le
 « réessayer » d'une tâche d'import en échec et les liens profonds depuis
 le détail d'un manifeste. Le POST ne fait jamais confiance à ce que le
 navigateur a affiché : le serveur ré-inspecte et épingle les digests que
-la registry sert *au moment de l'import* (FR-026).
+la registry sert *au moment de l'import*.
 
 ## Depuis l'API
 
-L'interface est un miroir strict de l'API (FR-061) :
+L'interface est un miroir strict de l'API :
 
 ```sh
 # Inspect: platforms, digests, sizes, local status
@@ -67,7 +66,7 @@ digest, sous le même chemin relocalisé qu'une recipe aurait employé.
 ## Différentiel par digest
 
 Les imports sont différentiels, à deux grains. Les blobs et manifestes
-déjà présents dans le store ne sont jamais re-téléchargés (FR-028) —
+déjà présents dans le store ne sont jamais re-téléchargés —
 réimporter un tag qui a bougé ne transfère que ce qui a réellement
 changé. Et l'inspection rapporte le statut de chaque plateforme
 vis-à-vis du store : importer le `linux/arm64` d'une image dont vous
@@ -87,8 +86,8 @@ s'appuie sur les recipes, pas sur les imports :
 | Réconcilié à chaque cycle | non — importé une fois | oui |
 | Contraintes de version (`~`, `^`, `12.x`) | non — une seule référence | oui |
 | Poussé vers la registry de destination | non — store seulement | oui |
-| Listé dans le cookbook de la zone | non | oui (FR-034) |
-| Signature exigée par défaut | non — voir ci-dessous | oui (FR-033) |
+| Listé dans le cookbook de la zone | non | oui |
+| Signature exigée par défaut | non — voir ci-dessous | oui |
 
 Si la même référence revient sans cesse par l'écran d'import, c'est une
 recipe qui demande à être écrite —
@@ -103,18 +102,45 @@ contenu, à ces digests, a sa place dans cette zone*. Un import unitaire
 ne porte aucune déclaration de ce genre. Ce que vous obtenez, c'est de
 l'intégrité, pas un aval : les digests sont épinglés à l'inspection et
 vérifiés de bout en bout, la liste blanche de registries s'applique
-toujours (FR-030), et l'action est attribuée à l'opérateur qui l'a
-déclenchée dans la piste d'audit (FR-094). Personne n'a signé le *choix*.
+toujours, et l'action est attribuée à l'opérateur qui l'a
+déclenchée dans la piste d'audit. Personne n'a signé le *choix*.
 
 Tobby garde les deux provenances distinctes dans ses enregistrements. Le
 contenu importé unitairement ne participe pas à la promotion, et c'est le
 seul contenu qu'un administrateur peut retirer dépôt par dépôt — depuis
 la page du dépôt ou avec `DELETE /api/v1/content/{repo}` — la suppression
-étant auditée (FR-044) ; sur le contenu géré par une recipe, l'action est
+étant auditée ; sur le contenu géré par une recipe, l'action est
 désactivée et nomme la recipe qui le gère. En mode miroir, les imports
 unitaires sont exclus du prune par défaut, qui ne touche que le contenu
-géré par des recipes (FR-045). Le modèle complet est décrit dans
+géré par des recipes. Le modèle complet est décrit dans
 [confiance dans le contenu](../../security/content-trust/).
 
-Dernière étape de la section :
+Le navigateur de contenu et l'API le disent aussi : un dépôt importé porte
+la classe de provenance `unit-import` — une FileSet empaquetée sur cette
+instance apparaît comme *Empaqueté sur cette instance*, classe
+`unit-import` d'origine `local-pack`, et le contenu restauré depuis un OCI
+image layout (`tobby import`, `/admin/oci-layout`) comme *Importé depuis un
+OCI image layout*, d'origine `oci-layout` — et il compte dans la métrique
+`tobby_store_unmanaged_repositories{class="unit-import"}`.
+Importer dans un dépôt qui détient déjà du contenu poussé par `/v2/` le
+laisse en classe `seed` : la classe ne devient jamais plus facile à
+retirer que ce que le dépôt détenait déjà.
+
+## Quand l'instance refuse les imports
+
+Une instance durcie par `hardening.disableUnitImport` n'accepte de contenu
+que par des recipes vérifiées. L'écran d'import affiche alors son
+formulaire désactivé, en nommant le réglage ; `POST /api/v1/import`, son
+inspection, l'empaquetage de FileSets — le formulaire de `/filesets`,
+`POST /api/v1/filesets/pack` et `tobby fileset pack`, qui lit le même
+fichier de configuration — et l'import d'OCI image layout — le formulaire
+de `/admin/oci-layout`, `POST /api/v1/oci-layout/import` et
+`tobby import` — répondent
+[TBY-POL-005](../../reference/errors/#tby-pol-005), et chaque refus est un
+événement d'audit `hardening.refused`. C'est une décision de
+l'administrateur de l'instance, pas une panne : livrez le contenu par une
+recipe signée, ou demandez le retrait du réglage. Voir la
+[référence de configuration](../../reference/configuration/#durcissement).
+
+Suite : une fois le contenu entré, gardez l'instance en bonne santé —
 [exploiter dans la durée](../../passthrough/operate/).

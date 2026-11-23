@@ -195,9 +195,11 @@ FR-078) :
   démarrage ne le contacte.
 - Une sonde en arrière-plan surveille le fournisseur (découverte OIDC ;
   l'URL de métadonnées en SAML quand elle est configurée). Tant qu'il ne
-  répond pas, la page de connexion l'annonce avec **TBY-AUTH-016** en
-  nommant le fournisseur, et garde le formulaire local. Le bouton reste :
-  il réessaie.
+  répond pas, la page de connexion l'annonce en clair — *« \<fournisseur\>
+  est injoignable : la connexion fédérée est indisponible. La connexion
+  locale fonctionne toujours. »* — avec **TBY-AUTH-016**, et garde le
+  formulaire local. Le bouton reste utilisable, décrit par ce message : il
+  réessaie.
 - Les **sessions existantes** continuent ; les **jetons statiques**
   continuent d'autoriser `/api/v1`, `/v2/` et `/files/` ; les **comptes
   locaux** se connectent.

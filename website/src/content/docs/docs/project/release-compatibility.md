@@ -20,6 +20,12 @@ so far, from the
 | v0.2.x | UX preview | v0.2.0 — 2026-08-12 | UI, auth by default, error taxonomy, tasks, `/api/v1` |
 | v0.3.x | Recipe engine | v0.3.0 — 2026-08-16 | signed recipes, verification at entry, cascade |
 | v0.4.x | Passthrough | v0.4.0 — 2026-08-18 | continuous promotion, allowlist, RBAC, enterprise network |
+| v0.5.x | Mirror and air-gap | v0.5.0 — 2026-08-27 | mirror onto a transportable store, media journey, plan mode, FileSets |
+| v0.6.x | Hardened controls and enterprise identity | v0.6.0 — 2026-11-12 | vulnerability scanning with policy, OIDC and SAML, store verification |
+
+Milestone 7 (finishing, documentation and acceptance) ships as
+`v0.7.0`, an ordinary minor release. 1.0.0 follows once the code,
+maintainability and security audits are done and their main findings fixed.
 
 The current state and the path to 1.0 are on the
 [project status](../../discover/status/) page — the single source of truth
@@ -49,6 +55,9 @@ train. The policy is best read through its precedents:
   and the release was re-accepted by replaying the **entire** crucible
   suite, m1 through m4, on a fresh disposable host.
 
+The 0.5 train followed the same pattern: **v0.5.1** (2026-11-07) and
+**v0.5.2** (2026-11-09) were patch releases on the current minor line.
+
 Security fixes follow
 [SECURITY.md](https://github.com/tobby-fetch/tobby-fetch/blob/main/SECURITY.md):
 patch of the current minor line, coordinated disclosure, only the latest
@@ -60,7 +69,7 @@ Some surfaces were declared stable long before 1.0, because operators
 script against them from day one:
 
 - **CLI exit codes** — 0 success, 1 failure, 2 usage, 3 policy refusal,
-  4 verification failure, following the error-taxonomy classes since
+  4 verification failure, 5 changes planned (`sync --dry-run`), following the error-taxonomy classes since
   v0.2.0. See the [CLI reference](../../reference/cli/).
 - **`TBY-*` error codes** — short stable identifiers; a code never changes
   meaning. See [errors and troubleshooting](../../reference/errors/).

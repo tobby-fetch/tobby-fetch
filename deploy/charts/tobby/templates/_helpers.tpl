@@ -95,7 +95,11 @@ The rendered /etc/tobby/config.yaml.
 
 Four settings are owned by the chart because the pod spec depends on them
 too, and a configuration that disagrees with its own volume mounts is a
-failure mode worth refusing outright rather than debugging at 3am.
+failure mode worth refusing outright rather than debugging at 3am. Three
+are owned always (storage.root, state.root, server.addr); the fourth,
+registries.credentialsFile, only while the chart mounts the credentials
+Secret. With registryCredentials off the chart manages no such file, so a
+value there is the operator's own (a file brought through extraVolumes).
 */}}
 {{- define "tobby.config" -}}
 {{- $c := deepCopy (default (dict) .Values.config) -}}
@@ -107,6 +111,9 @@ failure mode worth refusing outright rather than debugging at 3am.
 {{- end -}}
 {{- if dig "server" "addr" "" $c -}}
 {{- fail "config.server.addr is set by the chart: change containerPort instead" -}}
+{{- end -}}
+{{- if and (include "tobby.registryCredentialsEnabled" .) (dig "registries" "credentialsFile" "" $c) -}}
+{{- fail "config.registries.credentialsFile is set by the chart while registryCredentials is enabled: configure registryCredentials.existingSecret or registryCredentials.dockerconfigjson instead" -}}
 {{- end -}}
 {{- if eq (dig "mode" "" $c) "" -}}
 {{- fail "config.mode is required: set \"passthrough\" or \"mirror\"" -}}
@@ -122,4 +129,47 @@ failure mode worth refusing outright rather than debugging at 3am.
 {{- $_ := set $base "registries" (dict "credentialsFile" (printf "%s/.dockerconfigjson" (include "tobby.registryCredentialsMountPath" .))) -}}
 {{- end -}}
 {{- toYaml (mergeOverwrite $base $c) -}}
+{{- end -}}
+
+{{/*
+Whether the pod's own listener serves TLS: config.server.tls.enabled, or a
+certFile/keyFile pair, which implies it (ServerTLS.Serves in internal/config).
+The listener is single (UI, API, registry, probes, /metrics), so every
+in-pod HTTP client — kubelet probes, the ServiceMonitor — must follow.
+Renders "true" or nothing.
+*/}}
+{{- define "tobby.serverTLS" -}}
+{{- $c := default (dict) .Values.config -}}
+{{- if or (dig "server" "tls" "enabled" false $c) (dig "server" "tls" "certFile" "" $c) (dig "server" "tls" "keyFile" "" $c) -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+Whether that certificate is the self-signed fallback Tobby generates (TLS on
+without a certFile/keyFile pair). Nothing can verify it, so a scraper has to
+skip verification or be handed the fingerprint out of band. Renders "true"
+or nothing.
+*/}}
+{{- define "tobby.serverTLSSelfSigned" -}}
+{{- $c := default (dict) .Values.config -}}
+{{- if and (include "tobby.serverTLS" .) (not (dig "server" "tls" "certFile" "" $c)) (not (dig "server" "tls" "keyFile" "" $c)) -}}true{{- end -}}
+{{- end -}}
+
+{{/* URL scheme of the pod's listener, for text shown to the operator. */}}
+{{- define "tobby.scheme" -}}
+{{- if include "tobby.serverTLS" . -}}https{{- else -}}http{{- end -}}
+{{- end -}}
+
+{{/*
+storageClassName line of a claim, following the Helm convention: unset or
+empty leaves the field out (cluster default class), "-" writes
+`storageClassName: ""` (no class, no dynamic provisioning), anything else is
+the class name. Takes the persistence.<claim> map.
+*/}}
+{{- define "tobby.storageClassName" -}}
+{{- $sc := default "" .storageClassName -}}
+{{- if eq (toString $sc) "-" -}}
+storageClassName: ""
+{{- else if $sc -}}
+storageClassName: {{ $sc | quote }}
+{{- end -}}
 {{- end -}}

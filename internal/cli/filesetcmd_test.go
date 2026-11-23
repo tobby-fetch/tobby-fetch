@@ -9,6 +9,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -173,5 +174,47 @@ func TestFileSetPackNeedsOnlyTheStoreRoot(t *testing.T) {
 	_, _, err := runSplit(t, "fileset", "pack", packTree(t), "docs:1.0.0", "--config", empty)
 	if err == nil || !strings.Contains(err.Error(), "storage.root") {
 		t.Fatalf("error = %v, want it to name storage.root", err)
+	}
+}
+
+// TestFileSetPackRefusedUnderHardening locks the command-line half of
+// hardening.disableUnitImport (FR-098): the switch read from the
+// configuration file refuses the packing with TBY-POL-005, the policy
+// exit code and the setting named, audits it as hardening.refused, and
+// leaves the store without a trace of the FileSet.
+func TestFileSetPackRefusedUnderHardening(t *testing.T) {
+	store := t.TempDir()
+	cfgFile := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfgFile, []byte("hardening:\n  disableUnitImport: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err := runSplit(t, "fileset", "pack", packTree(t), "docs:1.0.0",
+		"--storage-root", store, "--config", cfgFile)
+	if err == nil {
+		t.Fatalf("pack succeeded under hardening.disableUnitImport (stdout %q)", stdout)
+	}
+	var te *taxonomy.Error
+	if !errors.As(err, &te) || te.Code() != taxonomy.CodeUnitImportDisabled {
+		t.Fatalf("error = %v, want TBY-POL-005", err)
+	}
+	if !strings.Contains(err.Error(), "hardening.disableUnitImport") && te.ParamsMap()["setting"] != "hardening.disableUnitImport" {
+		t.Errorf("the refusal does not name the setting: %v", err)
+	}
+	if got := exitCodeFor(classifyUsage(err)); got != taxonomy.ExitPolicy {
+		t.Errorf("exit code = %d, want the policy class", got)
+	}
+	for _, want := range []string{`"action":"hardening.refused"`, `"outcome":"denied"`, `"setting":"hardening.disableUnitImport"`} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr misses %s:\n%s", want, stderr)
+		}
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Errorf("stdout = %q, want nothing", stdout)
+	}
+	if _, err := os.Stat(filepath.Join(store, "meta", "provenance.json")); err == nil {
+		t.Error("a refused packing recorded a provenance entry")
+	}
+	if _, err := os.Stat(filepath.Join(store, "docker", "registry", "v2", "repositories", "localhost")); err == nil {
+		t.Error("a refused packing wrote content")
 	}
 }

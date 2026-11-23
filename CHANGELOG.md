@@ -8,6 +8,664 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-23
+
+Milestone 7: finishing, documentation and acceptance. 0.7.0 is a regular
+minor release; 1.0.0 will follow once the code, maintainability and
+security audits are done and their main findings fixed. It brings the
+consumption aids (mapping table exports, a generated K3s/RKE2
+`registries.yaml`), a redacted diagnostic bundle, the supervision kit (signed OpenAPI document and
+metrics reference, alert rules and a dashboard in the chart), a clock
+plausibility check, a normative state directory with a tested rebuild,
+scoped and bounded vulnerability exceptions with OpenVEX input, provenance
+shown per repository with two hardening switches, the 7.3 hardening, and
+the complete bilingual documentation.
+
+**Breaking changes in this release:**
+
+- **The recipe API group is `recipe.tobbyfetch.dev`, no longer
+  `recipe.tobby.dev`.** The project owns `tobbyfetch.dev` and does not own
+  `tobby.dev`. Every identifier derived from the old domain moves with
+  it: the `apiVersion` of Recipe and Retriever documents
+  (`recipe.tobbyfetch.dev/v1alpha1`), the reserved annotations
+  (`recipe.tobbyfetch.dev/…`), the OCI annotation keys Tobby writes and
+  reads (`dev.tobbyfetch.…`) and the `$id` of the published schemas. The
+  version stays `v1alpha1` and nothing else in the format changes. There
+  is no compatibility window: a document that still says
+  `recipe.tobby.dev` is refused as an unknown `apiVersion`, and a file set
+  or a vendored chart stored by an earlier build no longer carries the
+  annotations this one looks for. To upgrade, replace `recipe.tobby.dev`
+  with `recipe.tobbyfetch.dev` in every recipe, cookbook and Retriever,
+  re-sign the recipes, and promote file sets and vendored charts again on
+  an instance populated by v0.6.0 or earlier.
+- **Scan exceptions are bounded** (R-15): every `scan.exceptions[]` entry
+  of the instance configuration needs an `expires` timestamp and a
+  `justification`; an instance whose configuration lists an exception
+  without them refuses to start, naming the entry
+  (`scan.exceptions[i] (CVE-…): expires is required …`). To upgrade, give
+  every exception both fields — v0.6.0 already reads them. Exceptions
+  carried by a Retriever (`v1alpha1`) may still omit `expires`: they apply
+  and are reported as unbounded (`TBY-SCN-028`).
+- **A trust root listed by a scope is reserved to it** (B-057): a root
+  that at least one `trust.scopes[].roots` lists verifies only inside the
+  scopes listing it. Outside every scope, and in a scope without `roots`,
+  recipes verify against the default set — the roots no scope lists. A
+  recipe outside every scope signed only by a key a scope lists is now
+  refused with `TBY-SIG-001`, which names that root and its scope: add a
+  root no scope lists for that content, or extend the scope's
+  `repositories`. The former workaround, a catch-all `**` scope listing
+  only the normal keys, is no longer needed.
+- **API request bodies are decoded strictly** (NFR-023): unknown members
+  and data after the JSON document are refused, and a body over its bound
+  answers 413 `TBY-SRV-004` before it is parsed.
+- **API request bodies must be declared `Content-Type: application/json`**
+  (B-069): any other type, or none, answers 415 `TBY-SRV-005`. The CLI and
+  the interface already send it; a script that posts JSON with `curl -d`
+  needs `-H 'Content-Type: application/json'`.
+- **`GET /api/v1/policy` requires the admin role**, like the
+  `/admin/policy` screen it mirrors: `tobby scan exceptions --instance`
+  needs an admin token.
+- **The Helm chart refuses `config.registries.credentialsFile` while
+  `registryCredentials` is enabled** (B-072), like `config.storage.root`,
+  `config.state.root` and `config.server.addr`; it used to override the
+  mounted credentials file silently. Use
+  `registryCredentials.existingSecret` or
+  `registryCredentials.dockerconfigjson`. With `registryCredentials` off
+  the key is left to the operator.
+- **One instance per state directory** (B-082, B-093): `tobby serve`
+  holds an operating-system lock on its state directory for its whole
+  life. A second `serve` on the same directory waits five seconds, then
+  refuses with `TBY-CFG-001`; `tobby user add` and `tobby user passwd`
+  refuse the same way while an instance runs, naming what to use instead.
+  They used to write `accounts.yaml` under a running instance, which
+  silently reverted the change at its next write — a password rotated
+  from the host stayed valid. The lock falls with the process, so a crash
+  leaves nothing to clean up.
+- **A store follows its source's signatures** (B-081): signatures are
+  copied on every synchronization and pushed on every promotion, for
+  content already held too. A signature altered in a store is replaced by
+  the source's at the next synchronization; the verification before each
+  push is unchanged.
+- **A media import is refused at the door on an instance that cannot run
+  it** (B-077, B-079): without a `zone:`, or without a
+  `destination.registry`, `POST /api/v1/media/import` and the Media
+  screen's Push answer `TBY-CFG-001` before enqueuing or auditing
+  anything; they used to answer 201 with a task bound to fail.
+
+### Added
+
+- **The embedded registry serves the OCI 1.1 Referrers API.**
+  `GET /v2/<name>/referrers/<digest>` (with the `artifactType` filter and
+  `OCI-Filters-Applied`) and the `OCI-Subject` header on a manifest PUT with
+  a `subject`. Referrers stay as long as their subject is reachable and
+  follow the garbage collector's existing rule otherwise. The upstream
+  `distribution-spec` conformance suite, pinned, now passes unfiltered in CI
+  on linux/amd64 and linux/arm64.
+- **A FileSet reads as a FileSet** in the content browser and the API.
+  RECIPE-SPEC §7.4 now reserves a manifest marker,
+  `dev.tobby.recipe/kind: FileSet`, which the browser reads — on a
+  manifest, or on the index of a multi-platform FileSet — as well as the
+  marker of FileSets packed by `tobby fileset pack`. Display only: what is
+  scanned is still decided by content (ADR-0017), what is trusted by
+  signatures and pinned digests. An unmarked FileSet still reads as the
+  image it is.
+- **Consumption aids** (FR-065, 7.1): the source→destination mapping table
+  of the recipes the store holds — FileSets included — exportable as CSV,
+  JSON and Markdown, and a K3s/RKE2 `registries.yaml` generated from it (one
+  mirror per source registry host, a `rewrite` onto the relocated path, `http`
+  for a destination in `registries.insecure`, never a credential, byte-for-byte
+  deterministic). Available on the recipe mapping screen, the new
+  `/consumption` screen, `GET /api/v1/mapping`, `GET /api/v1/registries.yaml`
+  (plus per-recipe forms and `?format=` on the existing mapping route) and
+  `tobby consumption table|registries-yaml`. `consumption.registry` and
+  `consumption.caFile` are live; without a registry the aids answer
+  `TBY-AID-001`.
+- **Scoped and bounded vulnerability exceptions** (R-15):
+  `scan.exceptions[].scope` narrows an exception to a digest, a source
+  repository (trust-scope globs, canonical form) and a recipe (`name` or
+  `name@version`), criteria AND-combined; an exception whose scope
+  excludes an item does not apply, and the report says so beside the
+  finding (`TBY-SCN-026`). An expired exception re-blocks visibly: the
+  report names it (`TBY-SCN-021`), a `scan.exception_expired` audit record
+  names the item and the exception, and `tobby_scan_reblocked_items_total`
+  counts it; `tobby_scan_exceptions{state,source}` counts active and
+  expired exceptions at every scrape.
+- **OpenVEX input** (R-15): `scan.vex[]` declares local OpenVEX v0.2.0
+  documents with a mandatory `expires`; justified `not_affected`
+  statements become exceptions scoped by their products (a product that
+  cannot be bounded is skipped, never widened); an impact statement alone
+  adds nothing; a document that cannot be read or validated refuses the
+  start (`TBY-SCN-027`). The parser is strict, bounded and fuzzed
+  (`FuzzParse`, run in CI with the other fuzz targets). Tobby reads VEX,
+  it never produces or signs any.
+- **The effective policy** (R-15): `GET /api/v1/policy`, the read-only
+  `/admin/policy` screen and `tobby scan exceptions` (offline from the
+  configuration, or `--instance` for a running instance's view, the
+  Retriever's exceptions included) state the mode, the threshold, every
+  exception with its origin, scope, justification, expiry and state
+  (`active`, `expired`, `unbounded`), the VEX documents and the hardening
+  switches.
+- **Provenance per repository** (R-17, FR-098): every repository shows its
+  class — `recipe` (with the managing recipes and the reduced-assurance
+  marker), `unit-import` (a packed FileSet shown as packed on this
+  instance) or `seed` (pushed through `/v2/`) — in the content browser and
+  the API, and each tag its last vulnerability scan with the database age.
+  `tobby_store_unmanaged_repositories{class}` counts the repositories no
+  recipe manages; log records about a repository carry a `provenance`
+  field.
+- **Two hardening switches**, off by default (R-17):
+  `hardening.disableUnitImport` refuses unit imports and FileSet packing on
+  every surface, `tobby fileset pack` included (`TBY-POL-005`);
+  `hardening.disableRegistryPush` makes the embedded registry read-only
+  for every client and role, answering `DENIED` with `TBY-POL-006`. Both
+  are stated at startup, in `tobby config dump`, on the screens they
+  disable and in `tobby_hardening_enabled{setting}`; each refusal is a
+  `hardening.refused` audit event naming the setting.
+- **Input-validation reference** (NFR-023): every trust-boundary entry
+  point with its bound, its decoder and its grammar check, in English and
+  French; `TBY-SRV-004` refuses a body over its bound with 413.
+- **Mutating API calls from a signed-in page** are accepted with the
+  session cookie when they carry the session's anti-forgery token in
+  `X-CSRF-Token` from the instance's own origin (NFR-012).
+- **`trust.requireIngredientSignatures`** (FR-033, opt-in, off by default):
+  every ingredient must carry a signature the applicable trust roots
+  verify — the same scope resolution as a recipe, on the ingredient's
+  canonical nominal repository; an ingredient inside an `allowUnsigned`
+  scope is exempt — or its recipe is blocked whole with `TBY-SIG-001`,
+  naming the ingredient and the fingerprints tried. Applied identically
+  at synchronization, before every push, by `media verify` and by the
+  media import. Shown in `tobby config dump`; the posture is logged at
+  startup.
+
+- **Diagnostic bundle** (R-30, FR-095): `tobby diagnostics bundle`, the
+  administration screen **Diagnostics** and `POST /api/v1/diagnostics/bundle`
+  produce one local archive — version and build, the configuration redacted as
+  `tobby config dump` redacts it, a bounded window of recent log records
+  (`diagnostics.logRecords`), the reports of the latest tasks
+  (`diagnostics.tasks`), a metrics snapshot, the last integrity report, the
+  state inventory, and a manifest with every digest. **Redaction fails
+  closed**: every file is searched for the secrets the instance knows
+  (configuration, secret files, state keys, credential-like environment
+  variables, in clear and encoded) before anything is written, and a match
+  aborts the bundle with `TBY-DIA-002`. Administrator only, audited
+  (`diagnostics.bundle`), counted (`tobby_diagnostics_bundles_total`), and
+  never sent anywhere.
+- **Normative state directory** (R-27, FR-097): every writer of instance
+  state takes its path from one documented, versioned layout, and
+  `layout.json` records its version. At startup an unknown layout
+  (`TBY-STA-001`) or a secret entry readable by every user of the host
+  (`TBY-STA-002`; group access is tolerated for a Kubernetes `fsGroup`; on
+  Windows, an access list granting Everyone, Users or Authenticated Users)
+  refuses the start, and an identity entry missing after a restore is
+  reported (`TBY-STA-003`). `tobby state inspect`, the **State** screen and
+  `GET /api/v1/state` list the entries without their contents. The backup and
+  rebuild procedure is documented and tested end to end (accounts, token,
+  certificate fingerprint, import record, interval override).
+- **Clock plausibility** (R-32, FR-096): at start and each time a medium is
+  verified, the local clock is compared with the build time of the binary and
+  with the medium's resolution time (`clock.skewTolerance`). An implausible
+  clock is shown on a persistent banner, in the log, on the error output of
+  `tobby media verify|import`, in `tobby_clock_implausible` and in the audit
+  log (`clock.implausible`, `TBY-CLK-001`/`002`), and is available at
+  `GET /api/v1/clock`. It warns and records; it corrects nothing and changes
+  no verdict.
+- **Supervision kit** (R-11): the metrics `tobby_sync_runs_total`,
+  `tobby_sync_duration_seconds`, `tobby_sync_last_success_timestamp_seconds`,
+  `tobby_sync_ingredients`, `tobby_sync_parallelism` and
+  `tobby_server_certificate_expiry_timestamp_seconds`; the metrics reference,
+  generated from the registry (`go run ./tools/metricsref`,
+  `docs/metrics-reference.json`) with a freshness test; `openapi.yaml` and
+  `metrics-reference.json` as signed release artifacts; and, in the reference
+  chart and off by default, a `PrometheusRule`, the same rules as a plain
+  rules file and an example Grafana dashboard (`alerting.*` and `dashboard.*`
+  values), with `promtool` tests of every alert.
+
+### Changed
+
+- **`tobby sync --dry-run` names the trust scope of each recipe** in a new
+  `SCOPE` column of its text output (`-` for the default set), as the JSON
+  output already did; the emergency-path procedure relies on it.
+- **`tobby fileset pack` marks what it packs** with
+  `dev.tobby.recipe/kind: FileSet` beside `dev.tobby.fileset/packed`.
+  Packing stays deterministic, but the same tree packed by this version
+  gets a new digest; FileSets already pinned are unaffected.
+- **The `diagnostics.*` and `clock.*` keys are now honoured**: they were
+  accepted with their defaults and ignored.
+- **`audit` records can carry a `detail`** (additive): the gap of an
+  implausible clock, the code and member of a refused bundle.
+
+- **Accessibility pass on the interface** (NFR-017, 7.1): audited in a real
+  browser on the core screens, in English and French, in both themes. It
+  fixed the search box, which showed no focus ring; the focus ring of the
+  light theme (2.97:1, now 3.7:1 with a slightly darker light `--tobby-accent`);
+  the accent-coloured text on tinted washes (`--tobby-accent-text` and the
+  light `--tobby-success-text` darkened to 5:1); and low-contrast separators
+  and decorations. **If you override these tokens with `ui.themeOverride`,
+  your override still wins**; check it against the new
+  [Theming](website/src/content/docs/docs/reference/theming.md) page.
+- **The kind a recipe declares prevails in the content browser**: a
+  FileSet or OCI artifact a recipe declares reads as such in the listing, the
+  filter and the detail screens, whatever the manifest looks like.
+- **`TBY-SIG-001` explains a reserved key**: it names the configured root
+  the signature does verify against, with its fingerprint, and the scope
+  it is reserved to (optional parameters `reserved` and `reservedto`);
+  with every root reserved it says so instead of "no trust root is
+  configured".
+- **Adversarial review of milestone 7, second pass: the effective policy
+  is an administration document.** `GET /api/v1/policy` now requires the
+  admin role, the floor of the `/admin/policy` screen it mirrors (FR-061):
+  it describes the instance's configuration, the local paths of its
+  OpenVEX documents included. The exceptions applied to an item stay
+  visible to a viewer in that item's scan report. `tobby scan exceptions
+  --instance` needs an admin token.
+- **The sign-in page states an unreachable identity provider** in plain
+  words beside `TBY-AUTH-016`; local sign-in still works and the provider
+  button stays a link that retries (R-20).
+- `Referrer-Policy` is now `same-origin` and the UI's CSP uses
+  `base-uri 'none'`. A mutating API call with only a session cookie
+  answers 403 `TBY-AUTH-004` instead of 401. Invalid token-creation and
+  password-change bodies answer 422 `TBY-VAL-001` instead of 500. The task
+  log follow returns at most 1 MiB per call.
+
+### Fixed
+
+- **A plan counts a recipe whose version alone moved** (B-092): a new
+  version of a recipe naming the very same pinned ingredients moves no
+  content, and a synchronization still stores the new recipe and its
+  signature for the zone below. `tobby sync --dry-run` answered
+  `up-to-date`, exit `0`, over that run, so a pipeline gating on exit `5`
+  never triggered it. The plan now reports the recipe's own status
+  against the local store (`status` on each recipe: `new`, `outdated`,
+  `up-to-date`), counts them in the totals (`recipes_new`,
+  `recipes_outdated`) and answers `changes-planned`. The text report gains
+  a `STATUS` column in the recipes table, between `RESOLVED` and
+  `SIGNATURE`: a script reading that table by column position must be
+  adjusted — `--output json` is the stable form.
+- **Windows: two writers committing the same blob both succeed**
+  (B-095): two ingredients of one synchronization sharing a layer, or two
+  pushes of the same content, could fail with `Access is denied` — the
+  second rename onto a blob another handle held open was refused. A blob
+  already present at its content-addressed path is now the commit.
+- **A re-signed recipe or ingredient reaches every zone** (B-081): a
+  signature added upstream to a digest a store already held was never
+  copied, nor pushed to a destination already holding the content, in
+  either cosign layout. After a key rotation the plan said `verified`
+  and the push refused with `TBY-SIG-001`; re-signing needed a new
+  version. Re-signing in place now crosses stores, registries and media,
+  air gap included, and a cycle with nothing new still writes nothing.
+- **A certificate adopted from the Network screen survives a restart**
+  (B-083): an instance that started self-signed went back to its
+  self-signed certificate at the next start, while the screen said the
+  replacement was in effect. An adopted pair is now preferred while it
+  loads and has not expired; the start log names the source used.
+- **`tobby serve` exits 0 when the grace period expires** (B-094): a
+  connection still open at the deadline made it return `draining http
+  server: context deadline exceeded`, exit non-zero and audit the stop as
+  a failure, without closing anything. It now logs a warning, closes what
+  is left and stops cleanly (FR-093).
+- **The running-instance guard holds under self-signed TLS** (B-093): it
+  probed a URL the default client refused, so `tobby store verify` ran
+  against a live self-signed instance. It now reads the state lock.
+- **`POST /api/v1/tokens` answers 409 and 422, not 500** (B-085): a name
+  already taken answers 409 `TBY-AUTH-009`, an expiry in the past 422
+  `TBY-VAL-001`. `TBY-AUTH-009` now reads "The name … is already taken",
+  for accounts and tokens alike.
+- **Helm chart under in-pod TLS** (B-084): with `config.server.tls` on,
+  the probes stayed in HTTP and the pod restarted forever. The chart now
+  sets `scheme: HTTPS` on the three probes and `https` on the
+  ServiceMonitor; new value `metrics.serviceMonitor.tlsConfig`
+  (certificate verification is skipped by default only for the
+  self-signed case).
+- **Helm chart: `storageClassName: "-"` follows the Helm convention**
+  (B-086) and renders `storageClassName: ""`; it used to name a class
+  called `-`, leaving the claim pending.
+- **Helm chart: `syncMaxAgeSeconds: 0` removes only `TobbySyncStale`**
+  (B-091); it also dropped `TobbySyncNeverSucceeded`.
+- **The raw manifests deploy the current image** (B-087): they pinned
+  `v0.3.0`. The chart version check now covers them.
+- **A Retriever artifact with more than one layer is refused with
+  `TBY-VAL-001`** naming the constraint (B-088), not a bare
+  `TBY-SRV-001`.
+- **`TBY-POL-004` quotes manifest digests** (B-089), the ones `crane
+  digest` shows; it quoted the digest of the document layer.
+- **A trust root whose `keyURL` does not answer is logged** (B-090): the
+  cached key still stands in, with a warning naming the URL, the failure
+  and the age of the cache.
+- **`TBY-REG-003` names the configuration key that exists** (B-080): its
+  action said to set `registries.credentials`; the key is
+  `registries.credentialsFile`.
+- **Media waivers are audited at every operation they are applied to,
+  verification included** (B-073): the Media screen's Verify step,
+  `POST /api/v1/media/verify`, `tobby media verify` and `tobby media slip`
+  write a `media.override` success record (actor, origin, guard), like the
+  import paths. A waived verification can open the serving gate, and it
+  used to leave no audit record. Every such record carries
+  `detail: operation=verify|import zone=… media=…`, so a Verify followed by
+  a Push under the same waiver leaves two records, one per application.
+- `tobby media import` refuses an instance with no `destination.registry`
+  before it writes its operation log onto the medium (B-079); verification
+  still needs no destination registry.
+- `tobby media verify|import --help` states that the command line checks
+  no role (audit actor `local`), lists exit code 1, and says the medium's
+  operation log is written before verification (B-078).
+- `tobby diagnostics bundle` and `tobby store verify` drive the running
+  instance when `TOBBY_INSTANCE_URL` is set, without `--instance`, as
+  `tobby scan exceptions` already did (B-074).
+- OpenAPI: `trustScope` is described as the matching declared scope,
+  verified or not (B-076); `GET /api/v1/media` and
+  `GET /api/v1/media/verification` are documented as answering 200 on an
+  instance with no zone (B-077).
+- The chart comment on `config.mode` says what the chart does: it defaults
+  to `passthrough` and refuses an empty value (B-075).
+- **An image signed by its publisher with a key the zone does not know
+  blocked its whole recipe at import** (B-062). An ingredient whose own
+  signature did not verify against the zone's trust roots was refused
+  before the push (`TBY-SIG-001`) — every image signed upstream
+  (`registry.rancher.com/rancher/mirrored-pause`, `registry.k8s.io`,
+  Chainguard…) as soon as a trust root was configured — while
+  `media verify` had called the same delivery pushable. An ingredient's own
+  signature is a consumer policy decision (RECIPE-SPEC §12.2): the recipe
+  signature pins every ingredient digest. It is now copied along,
+  verified for information and recorded — verified by a named root,
+  present but not verifiable by this zone's trust roots, or none — on the
+  task item, the resolution row, the `media verify` report (`ingredients`)
+  and the log, and it never blocks, unless `trust.requireIngredientSignatures`
+  asks for it, in which case every path applies the same rule.
+- **Adversarial review of milestone 7: the diagnostic bundle, the state
+  directory, the clock check and the release identities** (B-065, part).
+  - The bundle scrubs and searches each member **whole, before** cutting it
+    to its size bound; the log window, which must cut an oversized record
+    before any bundle knows the secrets, marks the cut, and what precedes a
+    mark is judged — the beginning of a known secret is redacted in the
+    logs, and refuses the bundle (`TBY-DIA-002`) in a structured member from
+    8 bytes on. A secret is also found base64-encoded inside a longer string
+    at any of its three alignments (`base64("user:"+password)`), and bare
+    JSON Web Tokens, `jwt=`, Azure `sig=` and `SAMLResponse=` are scrubbed.
+    Find and scrub run one automaton over all the known values instead of
+    one copy of the member per value form. One bundle is built at a time: a
+    concurrent request is refused with the new `TBY-DIA-003` (HTTP 409),
+    audited; the checked archive is streamed rather than assembled twice in
+    memory. `tobby diagnostics bundle --instance` bounds the download and
+    verifies the archive against its manifest, removing an answer that is
+    not one.
+  - The start refuses (`TBY-STA-002`) a state root, `tls/` or a directory
+    under it holding a key that every user of the host can write to — or
+    that is sticky and owned by another account — judged before the root is
+    narrowed. On Windows the access list is read in full (object and
+    callback allow entries, inherit-only entries skipped), against the
+    rights that read or replace the file or change a directory's entries,
+    for every principal that stands for the whole host (INTERACTIVE,
+    ANONYMOUS LOGON, Guests, Domain Users, ALL APPLICATION PACKAGES… beside
+    Everyone, Users and Authenticated Users); an access list that cannot be
+    read refuses the start instead of passing. Keys under `tls/` are judged
+    by the file a symbolic link points to, and whatever their extension
+    (`.pem`, `.p12`…). A directory that lost `layout.json` but holds other
+    entries is no longer adopted silently: its missing identity entries
+    are reported (`TBY-STA-003`), and the layout record is created with
+    `O_EXCL`, never written through a planted link.
+  - The clock check keeps the latest medium resolution time seen since the
+    start: an older or undated medium opened next no longer clears a gap
+    already found, and a medium whose verification blocked is no anchor.
+    Both anchors are judged again every five minutes, so a clock set back
+    while the instance runs is caught and a clock put right clears the
+    banner.
+  - The published commands that verify the SBOMs and the integration kit
+    pin the identity `release.yml@refs/tags/<version>` instead of any
+    workflow of the repository, and a rehearsal of the release workflow is
+    refused on a tag ref, so no rehearsal can sign a blob those commands
+    accept.
+- **A FileSet that arrived other than by a synchronization was only
+  served after a restart** (B-058). `/files/` re-resolved its FileSets at
+  startup and after a sync task, and never otherwise: a FileSet brought
+  in by a unit import, a media or layout import, packed from the screen
+  or the API, or pushed through `/v2/` answered 404 until the instance
+  restarted. The served FileSets are now re-resolved after each of those
+  tasks, before a pack returns, after a manifest is written to the
+  repository of a declared FileSet through `/v2/` (a newer version pushed
+  over a served one included), and — as a backstop, at most once per ten
+  seconds per name — when a declared FileSet that is not served is asked
+  for.
+- **On the destination side, the FileSet cache was written before the
+  medium was verified** (B-058, FR-054). The startup extraction wrote
+  under `<storage.root>/meta/fileserve` from blobs no verification had
+  checked, and a cache carried on the medium was served as found — the
+  verification hashes blobs, not that tree. A destination instance
+  holding a medium now writes nothing there while its media gate is
+  closed, discards whatever cache the medium carries, and extracts from
+  the verified blobs when the verdict opens the gate.
+- **A store reset left its FileSets served** (B-059). The reset (FR-046)
+  keeps `meta/`, where the extracted FileSet cache lives, so `/files/`
+  kept serving FileSets whose blobs it had just removed. The cache is now
+  discarded and the served FileSets re-resolved after every reset.
+- **Rebuilding the FileSet cache was reported as altered bookkeeping**
+  (B-060). `meta/fileserve` sat inside the media manifest's coverage, so
+  a destination re-extracting it, or merely extracting into it, drew
+  `metadata altered` and `uncovered` findings on the next verification.
+  New manifests leave it out; a manifest written by v0.6.0 that lists it
+  is still accepted, and those entries are ignored by the verification.
+- **Requests arriving together for a FileSet about to be served could
+  get a 404** (B-061). Only the first request for a declared FileSet not
+  yet extracted waited for the resolution; the others answered 404 until
+  it finished. Every concurrent request now waits for the same resolution
+  (at most 30 seconds), including one already running in the background
+  after a push or the opening of the media gate.
+- **A miss on one failing FileSet re-extracted every failing FileSet**
+  (milestone-7 review, A6). The lazy resolution of a request for a declared
+  FileSet that is not served ran a full refresh, so N FileSets whose
+  extraction fails cost N² extractions every ten seconds. A miss now
+  resolves only the FileSet asked for, a digest whose extraction failed is
+  retried after a backoff (10 s doubling up to 10 min) rather than on every
+  miss — new content arriving by a task, a pack or a push still retries at
+  once — and at most 64 requests wait on a resolution at a time.
+- **B-057**: a trust root reserved to a scope verified recipes outside
+  that scope too — `TrustPolicy.Decide` used the union of every root for a
+  repository no scope covers.
+- **A unit import records its provenance**: it was classed as seeded
+  content, so its repository page and `DELETE /api/v1/content/{repo}`
+  refused to remove it. Repositories imported by an earlier version stay
+  classed `seed`.
+
+- **Adversarial review of milestone 7, second pass: trust decisions
+  without a key** (B-068).
+  - Inside an `allowUnsigned` scope to which no trust root applies — every
+    configured root reserved to other scopes, or none configured — a recipe
+    carrying a signature was admitted as unsigned, while the same recipe in
+    a scope with keys was refused. A present signature that no applicable
+    root verifies is now refused with `TBY-SIG-001` everywhere —
+    synchronization, plan, re-verification before a push, `media verify`,
+    `store verify` — naming the reserved root that verifies it, if any;
+    only a recipe that carries no signature at all is admitted unsigned.
+    **Visible change:** such a recipe now needs a root that applies to its
+    scope, or no signature.
+  - An ingredient refused under `trust.requireIngredientSignatures`
+    because every root is reserved elsewhere said "no trust root is
+    configured" (the B-057 message, lost for ingredients). It now says
+    every configured root is reserved, and names the reserved root its
+    signature verifies against, as for a recipe.
+
+### Security
+
+- **An open media gate served the whole store, not what was verified**
+  (B-063, FR-054). The verdict that opens the gate depended on the recipes
+  only, so content no verified recipe reaches — an image or a FileSet
+  version stored on the medium after its manifest was written, an
+  inventoried file nothing reaches — was handed out by `/v2/` and
+  `/files/`, never hashed; a FileSet with no pinned version resolved to the
+  highest local tag, whoever had added it; and a medium listing no recipe
+  read *pushable* and opened the gate on everything. The verification now
+  computes the **served set** — what the pushable recipes reach, recipe and
+  ingredient signatures included, every file re-hashed — and records its
+  digest in the report; the gate serves that set and nothing else,
+  read-only: tags resolve to the digest they were verified at, catalog and
+  tag lists come from the set, FileSets resolve inside it, and anything
+  else, writes included, answers `403` `TBY-MED-033`. A verification that
+  clears nothing keeps the gate closed (`TBY-MED-034`). **Visible change:**
+  on a destination instance, pushing to `/v2/` of the medium and pulling
+  content no pushable recipe delivers are now refused.
+- **A destination store without media manifest was served whole** (B-063,
+  R9). The gate armed only when `meta/media.json` was present, so removing
+  it served everything, carried FileSet cache included. An instance with a
+  `zone:` whose store holds content is now guarded whether or not the
+  manifest is there, and its verification blocks on `TBY-MED-001`.
+  **Visible change:** a `zone:`-configured instance over a populated store
+  without manifest no longer serves until a medium with a manifest is in
+  place.
+- **The Referrers API served forged indexes, and a read wrote to the
+  medium** (B-064). The listing trusted `meta/referrers/`, bookkeeping whose
+  alteration is only a finding: an invented subject, artifact type or
+  annotations — a fake VEX document attached to a verified image, say —
+  were served as is; and a GET with no index rebuilt and persisted one
+  under `meta/` (on a read-only medium: a `500` and a full re-enumeration
+  on every call). Every candidate is now re-read and kept only if its own
+  payload hashes to its digest and names the subject, described from that
+  payload; a read derives a missing index in memory and writes nothing; on
+  a guarded instance the candidates are the verified manifests themselves.
+  The index no longer stores annotations, and a subject is capped at 4096
+  referrers (the PUT past the cap is refused before it is stored).
+- **The FileSet extraction did not check what it read** (milestone-7
+  review, A1). The manifest and the layers were applied as read from the
+  store, so a blob replaced between the verification and the extraction —
+  or before a re-extraction — was extracted as found. The manifest bytes
+  are now checked against their digest and every layer stream against its
+  descriptor's digest and size, and the extraction is discarded before it
+  is committed when one disagrees.
+- **A FileSet cache carried on a medium crossed the gap without a trace**
+  (milestone-7 review, A9). `meta/fileserve/` is outside coverage (B-060)
+  and produced no finding at all, so anything under it — and it stays on
+  the medium after `tobby media import` — travelled unreported in both
+  directions. The verification now summarizes it (`TBY-MED-023`: files and
+  bytes, ignored and rebuilt) and reports as uncovered (`TBY-MED-020`)
+  every entry that does not have the shape of an extraction.
+- **Trust-scope partitioning holds both ways** (B-057): a key declared
+  for a scope, such as an emergency key, no longer admits recipes outside
+  that scope — on synchronization, plan, pre-push re-verification,
+  destination media verification or the store integrity check. The
+  reservation follows the key: the same public key configured again under
+  a name no scope lists stays reserved.
+- **One listener-wide security-header middleware** (NFR-022): nosniff,
+  a same-origin referrer policy, frame denial, HSTS under TLS or `server.secureCookies`, a
+  CSP on every response and `Cache-Control: no-store` on authenticated
+  ones; `/api/v1`, `/v2/`, `/files/` and the probes carried none before.
+- **FileSet files served from `/files/` are sandboxed** by their CSP: an
+  HTML or SVG file in a FileSet could run script on the UI's origin.
+- **CSRF and origin check on every cookie-authenticated change**, UI and
+  API (NFR-012): refused cross-origin even with a valid token; sign-in and
+  the FR-075 override refuse cross-origin changes too; a forged request
+  never renews the victim's session.
+- **Adversarial review of milestone 7, second pass: forgery under the
+  authentication override, VEX subcomponents, OCI layout import.**
+  - **`Origin: null` no longer passes the origin check** (B-069). Under the
+    FR-075 override the origin check is the only protection against forged
+    requests, and it treated `null` as no origin: a page served with
+    `Referrer-Policy: no-referrer`, or a sandboxed frame, makes the browser
+    send it on a cross-origin POST, without `Sec-Fetch-Site` over plain
+    HTTP — so another site could change the instance as its anonymous
+    administrator. The instance now answers `Referrer-Policy: same-origin`,
+    under which browsers send the real `Origin` on its own posts, and
+    refuses `null` (`TBY-AUTH-004`), with or without a session. The API
+    also decoded JSON whatever the `Content-Type`, so a `text/plain` fetch
+    needed no CORS preflight: a body must now be declared
+    `application/json` (415 `TBY-SRV-005`). The `Host` header is not
+    validated — the instance has no configured public name — so DNS
+    rebinding stays possible under the override; the authentication page
+    says how to deploy against it.
+  - **A VEX subcomponent covered packages beyond its purl** (B-070). The
+    translation kept only package names: the type and the version were
+    dropped, and a namespaced purl added its bare last segment, so
+    `pkg:golang/github.com/good/yaml` covered any `yaml` (Debian, PyPI…) and
+    `pkg:deb/debian/openssl@3.0.11` covered openssl 1.1.1 in every later
+    image of a repository-scoped product. A subcomponent now covers a
+    finding only when the package URL the scanner gives it (Trivy's
+    `PkgIdentifier.PURL`, now kept on every finding as `purl`) matches
+    exactly: type, namespace, name, the declared version and epoch, the
+    declared qualifiers. A finding without a package URL is not covered by
+    any subcomponent; a subcomponent with a subpath makes its product
+    unbounded.
+  - **The OCI layout import escaped `hardening.disableUnitImport` and read
+    as seeded content** (B-071). `POST /api/v1/oci-layout/import`,
+    `/admin/oci-layout` and `tobby import` brought in content no recipe
+    manages on an instance hardened against it, and recorded no provenance,
+    so it showed as `seed` — not removable, counted as seed by
+    `tobby_store_unmanaged_repositories`. All of them, and a queued task
+    resumed after a restart, now refuse with `TBY-POL-005`, audited as
+    `hardening.refused`; what lands otherwise is a `unit-import` of origin
+    `oci-layout`. A media import stays open under the switch: it is the
+    destination's normal path, delivering only what the medium's verified
+    recipes deliver, and its content is class `recipe`.
+- **Bounded inputs** (NFR-023): claimed user names are bounded before
+  verification and audit, identity-provider responses to 2 MiB, OIDC
+  subjects and SAML NameIDs grammar-checked; a task record whose
+  identifier does not match its file name and a media manifest with
+  trailing data are refused.
+
+- **Adversarial review of milestone 7, second pass: a medium's own
+  ingredient list decided what was served** (B-066, B-063 reopened). The
+  ingredients of a delivery were read from the medium's bookkeeping
+  (`meta/recipes.json`, copied into `meta/media.json`), which is unsigned
+  by design, and never compared with the signed recipe document. Whoever
+  held the medium could add an "ingredient" of their choice to a properly
+  signed recipe, or change an ingredient's digest, then re-inventory: every
+  hash agreed, the recipe verified, and the foreign image entered the
+  served set that an open gate hands out on `/v2/` and `/files/`. The
+  verification now reads the recipe document out of the artifact it has
+  just re-hashed (layout, cooked profile and §11.3 name and version
+  checked, every byte hashed again), and the walk, the ingredient signature
+  checks and the served set follow that document's list only. A recipe
+  whose bookkeeping lists an ingredient, digest, tag or location the
+  document does not pin is blocked whole with the new `TBY-MED-016`, no
+  override; an artifact that carries no recipe document is blocked with
+  `TBY-MED-014`.
+- **Adversarial review of milestone 7, second pass: the media gate
+  answered before authentication** (B-067). The gate was mounted outside
+  the registry's authentication, and an open gate answers `/v2/_catalog`
+  and `tags/list` itself, from the verified set: an anonymous client
+  listed every verified repository and tag of a guarded destination,
+  although registry reads need the viewer role (ADR-0009). Authentication
+  now runs first on `/v2/` and on `/files/`; a FileSet declared anonymous
+  still reaches the gate without credentials. The gate's refusals no
+  longer name a medium without media ID by the store's path on the host:
+  they read `(no media ID)`, and the path goes to the instance log.
+
+### Documentation
+
+- **The documentation was checked statement by statement against the
+  code**, then reviewed independently: about seventy statements corrected
+  in English and French, among them how media waivers, the unsigned
+  Retriever and a stale vulnerability database really behave. The
+  newcomer path is rebuilt: two tutorials that state their prerequisites
+  and show each expected result (a first promotion into a zone registry,
+  then the same image across an air gap on one machine), a glossary, and
+  a home page with a door for operators. The project site is
+  `https://tobbyfetch.dev`.
+- **The error reference is generated from the catalog** (`mise run
+  errors-ref`): cause and action of every `TBY-*` code are the binary's
+  own sentences, in both languages, with an index by domain and the
+  exit-code table; every existing anchor is kept, and CI fails when a
+  page drifts from the catalog.
+- **Five advanced pages**, in English and French, replayed against real
+  instances where the page says so: upgrade and rollback, adding a zone
+  to a cascade, automating through the API and CI, the chart values with
+  sizing, and rotating keys and secrets.
+- The diagnostic bundle page says the archive holds personal data — the
+  actors and client addresses of the audit records, the zone, host paths —
+  to be handled as such; the backup and rebuild page states that POSIX ACLs
+  are not read by the start check (a named entry counts as group access).
+- **Theming**: the design tokens are documented as the surface of
+  `ui.themeOverride`, with the accessibility contract an override takes
+  over, in English and French. A test keeps the page and the stylesheet in
+  step.
+- **Consumption aids** page (EN/FR): the mapping table, the generated
+  `registries.yaml`, and the limits of both.
+
+- **French parity** (7.2): every English page of the documentation now has
+  its French counterpart, and three pages are new in both languages: the
+  security model, troubleshooting by symptom (with the `TBY-*` codes and
+  their corrective actions), and the emergency path (R-21), the end-to-end
+  procedure for a locally written recipe signed with the organization's
+  emergency key and admitted under a declared `emergency` trust scope.
+  Pages describing the stale "upcoming" state of the milestone 6 controls
+  (scanning, OIDC, SAML) were brought up to date.
+
 ## [0.6.0] - 2026-11-12
 
 Milestone 6: hardened controls and enterprise identity. Every container
@@ -1474,7 +2132,8 @@ import, track, browse, pull) behind authentication that is on by default.
 - Release chain groundwork for SLSA Build L3 provenance and signed
   artifacts.
 
-[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/tobby-fetch/tobby-fetch/compare/v0.5.0...v0.5.1

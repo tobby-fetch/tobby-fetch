@@ -70,9 +70,12 @@ for apt/rpm repositories and bare-host bootstrap.
 and its entire verification chain.
 The one way local files enter a store is
 [`tobby fileset pack`](../../reference/cli/#tobby-fileset-pack), which reads
-a directory **of the instance host** — never a request body — is restricted
-to administrators, is confined to the directories `files.packRoots` names,
-and records what it produced as an unsigned manual import of local origin.
+a directory **of the instance host** — never a request body — and records
+what it produced as an unsigned manual import of local origin. On the
+command line it packs any directory the host user can read: whoever runs it
+already holds the host's filesystem rights. The web interface and the API
+reach the same operation only for administrators, and only inside the
+directories `files.packRoots` names.
 
 ### One mode per instance, fixed at startup
 
@@ -96,7 +99,7 @@ risk, not a convenience.
 
 ### OS support matrix
 
-Production scope is deliberately narrow (NFR-018):
+Production scope is deliberately narrow:
 
 | OS | Support |
 |---|---|
@@ -117,10 +120,12 @@ install with `scoop install tobby` (the
 itself) or from the release archive, verified as described in
 [verify a release](../../project/verify-a-release/).
 
-### FAT32 media are refused
+### Media that cannot hold the largest file are refused
 
-The pre-flight check refuses a transport medium with an incompatible
-filesystem, FAT32 explicitly among them, naming the limit in the error.
+The pre-flight check refuses a transport medium whose filesystem cannot hold
+the largest single file to be written, naming the limit in the error. On
+FAT32 that means any file of 4 GiB or more; a FAT32 medium whose files are
+all smaller passes.
 **Consequence:** format transport media with a filesystem that can hold
 large files (exFAT, ext4, NTFS).
 **Justification:** FAT32's 4 GiB file-size ceiling would truncate large
@@ -140,24 +145,25 @@ collection, task queue, consistent state). Tobby is a promotion path, not
 your zone's serving registry of record — and if it temporarily is (the
 stand-in use case), schedule upgrades accordingly.
 
-## Not yet — known operational gaps
+## Operational defaults to know
 
 - **Transit-store cleanup is off by default in passthrough.** Retriever-aligned
-  pruning exists (R-33) but `sync.prune` is `false` unless you set it: a
+  pruning exists but `sync.prune` is `false` unless you set it: a
   transit store is not a delivery unit, and refreshing it does not imply
   shrinking it. Set `storage.occupancyThreshold` so the instance tells you
   when the store outgrows its volume — unset means unmonitored, not "within
   limits".
-- **No on-demand integrity check.** Full store verification with a
-  timestamped report arrives with R-31 (milestone 6).
-- **No vulnerability scanning yet.** Scanning with a blocking or advisory
-  policy is milestone 6 (6.1); until then, scanning belongs to your
-  upstream qualification pipeline.
-- **Backup procedure not yet formalized.** The state directory is the
-  backup target, but the tested end-to-end rebuild procedure is R-27
-  (milestone 7). See [operating in the long run](../../passthrough/operate/).
 
-Each of these is tracked, with its milestone, on the
+Three gaps this page used to list are closed: on-demand store integrity
+verification with a timestamped report (v0.6.0 —
+[verify the store's integrity](../../passthrough/verify-store/)),
+vulnerability scanning with a blocking or advisory policy (v0.6.0 —
+[vulnerability scanning](../../security/vulnerability-scanning/)), and the
+backup of the state directory with a rebuild procedure tested end to end
+(v0.7.0 —
+[back up and rebuild an instance](../../passthrough/backup-rebuild/)).
+
+Every feature is tracked, with its status and milestone, on the
 [project status](../../discover/status/) page — and the
 [threat model](../../security/threat-model/) states which security controls
 exist today versus which are scheduled.

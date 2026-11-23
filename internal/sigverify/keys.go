@@ -118,6 +118,37 @@ func Union(sets ...*Keys) *Keys {
 	return merged
 }
 
+// Without returns the keys of k whose fingerprint is not in exclude — the
+// trust policy uses it to keep a reserved key out of the default set even
+// when the same key is also configured under another, unreserved name. A
+// nil k gives nil; a nil exclude gives k's keys unchanged.
+func (k *Keys) Without(exclude *Keys) *Keys {
+	if k == nil {
+		return nil
+	}
+	drop := make(map[string]struct{})
+	if exclude != nil {
+		for _, key := range exclude.keys {
+			drop[key.fingerprint] = struct{}{}
+		}
+	}
+	kept := &Keys{}
+	for _, key := range k.keys {
+		if _, ok := drop[key.fingerprint]; !ok {
+			kept.keys = append(kept.keys, key)
+		}
+	}
+	return kept
+}
+
+// Len is the number of keys in the set; a nil set has none.
+func (k *Keys) Len() int {
+	if k == nil {
+		return 0
+	}
+	return len(k.keys)
+}
+
 // newTrustedKey parses one PKIX DER public key and builds its verifier.
 func newTrustedKey(der []byte) (trustedKey, error) {
 	pub, err := x509.ParsePKIXPublicKey(der)

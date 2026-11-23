@@ -1,0 +1,456 @@
+{
+  "format": 1,
+  "scope": "tobby_",
+  "note": "Covers the tobby_* families. The go_* and process_* families are the standard Go runtime and process collectors of the Prometheus client library; their set depends on the Go version and the platform and is not versioned here.",
+  "families": [
+    {
+      "name": "tobby_assurance_reduced_recipes",
+      "type": "gauge",
+      "help": "Recipes currently held under reduced assurance (FR-037), by the declared trust scope that admitted them.",
+      "labels": [
+        {
+          "name": "scope",
+          "open": "the names of the trust scopes declared in the configuration"
+        }
+      ],
+      "requirement": "FR-037, R-22",
+      "presence": "per trust scope that relaxes verification (none declared: absent)"
+    },
+    {
+      "name": "tobby_auth_attempts_total",
+      "type": "counter",
+      "help": "Credential checks and sign-ins by method (basic, token, oidc, saml) and outcome (success, failure, expired) (R-14).",
+      "labels": [
+        {
+          "name": "method",
+          "values": [
+            "basic",
+            "oidc",
+            "saml",
+            "token"
+          ]
+        },
+        {
+          "name": "outcome",
+          "values": [
+            "expired",
+            "failure",
+            "success"
+          ]
+        }
+      ],
+      "requirement": "R-14, FR-072",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_auth_idp_reachable",
+      "type": "gauge",
+      "help": "1 while the configured identity provider answers, 0 while it does not, by federated method; absent until first probed (R-20).",
+      "labels": [
+        {
+          "name": "method",
+          "values": [
+            "oidc",
+            "saml"
+          ]
+        }
+      ],
+      "requirement": "R-20, FR-078",
+      "presence": "per federated method, once probed"
+    },
+    {
+      "name": "tobby_auth_local_logins_under_federation_total",
+      "type": "counter",
+      "help": "Local-account sign-ins while a federated method is enabled — break-glass use (FR-078).",
+      "requirement": "FR-078",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_auth_sessions_expired_total",
+      "type": "counter",
+      "help": "UI sessions ended by expiry, by reason: idle (auth.session.idleTimeout) or lifetime (auth.sessionTTL) (R-14).",
+      "labels": [
+        {
+          "name": "reason",
+          "values": [
+            "idle",
+            "lifetime"
+          ]
+        }
+      ],
+      "requirement": "R-14",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_build_info",
+      "type": "gauge",
+      "help": "Build metadata of the running binary; the value is always 1.",
+      "labels": [
+        {
+          "name": "version",
+          "open": "one value per running binary: its version"
+        },
+        {
+          "name": "commit",
+          "open": "one value per running binary: its commit"
+        }
+      ],
+      "requirement": "FR-091",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_clock_implausible",
+      "type": "gauge",
+      "help": "1 while the local clock was found earlier than an anchor beyond clock.skewTolerance, 0 otherwise, by anchor: build (checked at start, then periodically) or medium (the latest resolution time among the media opened since the start) (FR-096).",
+      "labels": [
+        {
+          "name": "anchor",
+          "values": [
+            "build",
+            "medium"
+          ]
+        }
+      ],
+      "requirement": "FR-096, R-32",
+      "presence": "per anchor, once checked (build at start, medium once one is opened)"
+    },
+    {
+      "name": "tobby_diagnostics_bundles_total",
+      "type": "counter",
+      "help": "Diagnostic bundles by outcome: written, refused (redaction failed closed, TBY-DIA-002) or failed (TBY-DIA-001) (FR-095).",
+      "labels": [
+        {
+          "name": "outcome",
+          "values": [
+            "failed",
+            "refused",
+            "written"
+          ]
+        }
+      ],
+      "requirement": "FR-095, R-30",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_hardening_enabled",
+      "type": "gauge",
+      "help": "1 for each hardening switch set (FR-098: hardening.disableUnitImport, hardening.disableRegistryPush), 0 otherwise.",
+      "labels": [
+        {
+          "name": "setting",
+          "values": [
+            "disableRegistryPush",
+            "disableUnitImport"
+          ]
+        }
+      ],
+      "requirement": "FR-098, R-17",
+      "presence": "on a serving instance (tobby serve), both settings from the first scrape"
+    },
+    {
+      "name": "tobby_integrity_last_verification_timestamp_seconds",
+      "type": "gauge",
+      "help": "End time of the last completed on-demand store verification, in Unix seconds; absent until one has completed.",
+      "unit": "timestamp_seconds",
+      "requirement": "FR-057, R-31",
+      "presence": "after the first completed verification"
+    },
+    {
+      "name": "tobby_integrity_verifications_total",
+      "type": "counter",
+      "help": "On-demand store verifications completed (FR-057), by verdict: clean, or defects found.",
+      "labels": [
+        {
+          "name": "verdict",
+          "values": [
+            "clean",
+            "defects"
+          ]
+        }
+      ],
+      "requirement": "FR-057, R-31",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_policy_rejections_total",
+      "type": "counter",
+      "help": "Transfers refused by policy, by taxonomy code (FR-030 allowlist today).",
+      "labels": [
+        {
+          "name": "code",
+          "open": "taxonomy codes (TBY-xxx-nnn): a closed catalog, never a host or a user-supplied string"
+        }
+      ],
+      "requirement": "FR-030, FR-091",
+      "presence": "after the first refusal"
+    },
+    {
+      "name": "tobby_promotion_pushed_bytes_total",
+      "type": "counter",
+      "help": "Bytes pushed to the destination registry; an already-synchronized recipe adds nothing (FR-028).",
+      "unit": "bytes",
+      "requirement": "FR-028",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_promotion_pushes_total",
+      "type": "counter",
+      "help": "Promotion outcomes by result: pushed, or skipped because the destination already held the digest (FR-026, FR-028).",
+      "labels": [
+        {
+          "name": "result",
+          "values": [
+            "pushed",
+            "skipped"
+          ]
+        }
+      ],
+      "requirement": "FR-013, FR-028",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_promotion_refusals_total",
+      "type": "counter",
+      "help": "Pushes refused before transfer, by taxonomy code (FR-030 allowlist, FR-033 signatures, FR-035 destination limits).",
+      "labels": [
+        {
+          "name": "code",
+          "open": "taxonomy codes (TBY-xxx-nnn): a closed catalog, never a host or a user-supplied string"
+        }
+      ],
+      "requirement": "FR-030, FR-033, FR-035",
+      "presence": "after the first refusal"
+    },
+    {
+      "name": "tobby_scan_db_age_seconds",
+      "type": "gauge",
+      "help": "Age of the vulnerability database, from the build timestamp it records (R-13); exposed while a database is present.",
+      "unit": "seconds",
+      "requirement": "FR-032, R-13",
+      "presence": "while a vulnerability database is present"
+    },
+    {
+      "name": "tobby_scan_db_present",
+      "type": "gauge",
+      "help": "1 when a vulnerability database is present, 0 in the absent-database degraded mode (FR-032).",
+      "requirement": "FR-032",
+      "presence": "once the scanner state is known"
+    },
+    {
+      "name": "tobby_scan_db_stale",
+      "type": "gauge",
+      "help": "1 while the vulnerability database is older than scan.maxDbAge (R-13); exposed while a database is present.",
+      "requirement": "FR-032, R-13",
+      "presence": "while a vulnerability database is present"
+    },
+    {
+      "name": "tobby_scan_exceptions",
+      "type": "gauge",
+      "help": "Vulnerability exceptions in configuration (FR-031, R-15) — the instance's scan.exceptions, those born of the scan.vex documents and those of the last served Retriever — by state (active, expired) and source (instance, retriever, vex).",
+      "labels": [
+        {
+          "name": "state",
+          "values": [
+            "active",
+            "expired"
+          ]
+        },
+        {
+          "name": "source",
+          "values": [
+            "instance",
+            "retriever",
+            "vex"
+          ]
+        }
+      ],
+      "requirement": "FR-031, R-15",
+      "presence": "on a serving instance (tobby serve), every state and source from the first scrape"
+    },
+    {
+      "name": "tobby_scan_findings_total",
+      "type": "counter",
+      "help": "Vulnerability findings reported by item scans, by scanner severity (FR-031).",
+      "labels": [
+        {
+          "name": "severity",
+          "values": [
+            "CRITICAL",
+            "HIGH",
+            "LOW",
+            "MEDIUM",
+            "UNKNOWN"
+          ]
+        }
+      ],
+      "requirement": "FR-031",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_scan_items_total",
+      "type": "counter",
+      "help": "Items scanned at retrieval, by verdict (FR-031): pass, warn (advisory violation), block (refused), not-scanned (degraded mode or failed scan).",
+      "labels": [
+        {
+          "name": "verdict",
+          "values": [
+            "block",
+            "not-scanned",
+            "pass",
+            "warn"
+          ]
+        }
+      ],
+      "requirement": "FR-031",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_scan_policy_blocking",
+      "type": "gauge",
+      "help": "1 when the vulnerability policy blocks (scan.mode: block, or a threshold posed by the served Retriever), 0 when it is advisory (FR-031).",
+      "requirement": "FR-031",
+      "presence": "once the scanner state is known"
+    },
+    {
+      "name": "tobby_scan_reblocked_items_total",
+      "type": "counter",
+      "help": "Items refused by a blocking vulnerability policy because an exception that matched one of their violating findings has expired (FR-031, R-15).",
+      "requirement": "FR-031, R-15",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_scan_scanner_available",
+      "type": "gauge",
+      "help": "1 when a verified scanner binary is usable, 0 in the degraded mode (FR-031).",
+      "requirement": "FR-031",
+      "presence": "once the scanner state is known"
+    },
+    {
+      "name": "tobby_server_certificate_expiry_timestamp_seconds",
+      "type": "gauge",
+      "help": "NotAfter of the certificate the listener presents, in Unix seconds, self-signed fallback included; absent while the listener serves plain HTTP (FR-082).",
+      "unit": "timestamp_seconds",
+      "requirement": "FR-082, R-11",
+      "presence": "while the listener serves TLS"
+    },
+    {
+      "name": "tobby_store_occupancy_bytes",
+      "type": "gauge",
+      "help": "On-disk size of the store's deduplicated blob tree at the last sample (R-33); 0 while no storage.occupancyThreshold is configured.",
+      "unit": "bytes",
+      "requirement": "FR-045, R-33",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_store_occupancy_exceeded",
+      "type": "gauge",
+      "help": "1 while the store exceeds the configured occupancy threshold, 0 otherwise (R-33); a gauge, so clearing the threshold is as visible as crossing it.",
+      "requirement": "FR-045, R-33",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_store_occupancy_threshold_bytes",
+      "type": "gauge",
+      "help": "Configured store-occupancy threshold (storage.occupancyThreshold); 0 means no threshold is set and the store is not monitored.",
+      "unit": "bytes",
+      "requirement": "FR-045, R-33",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_store_unmanaged_repositories",
+      "type": "gauge",
+      "help": "Repositories of the store not managed by a recipe (FR-098), by provenance class: unit-import (unit imports and packed FileSets) and seed (pushed through /v2/).",
+      "labels": [
+        {
+          "name": "class",
+          "values": [
+            "seed",
+            "unit-import"
+          ]
+        }
+      ],
+      "requirement": "FR-098, R-17",
+      "presence": "on a serving instance (tobby serve), both classes; a scrape whose store walk fails leaves it out"
+    },
+    {
+      "name": "tobby_sync_duration_seconds",
+      "type": "histogram",
+      "help": "Duration of synchronization runs, in seconds, by outcome (R-11).",
+      "unit": "seconds",
+      "labels": [
+        {
+          "name": "outcome",
+          "values": [
+            "failure",
+            "success"
+          ]
+        }
+      ],
+      "requirement": "FR-091, R-11",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_sync_ingredients",
+      "type": "gauge",
+      "help": "Ingredients of the last synchronization run by status (FR-026): new, outdated, up_to_date; absent until a run has completed.",
+      "labels": [
+        {
+          "name": "status",
+          "values": [
+            "new",
+            "outdated",
+            "up_to_date"
+          ]
+        }
+      ],
+      "requirement": "FR-026, FR-091",
+      "presence": "after the first completed run"
+    },
+    {
+      "name": "tobby_sync_last_success_timestamp_seconds",
+      "type": "gauge",
+      "help": "End time of the last successful synchronization, in Unix seconds; absent until one has succeeded since this process started (R-11).",
+      "unit": "timestamp_seconds",
+      "requirement": "FR-091, R-11",
+      "presence": "after the first successful run since the process started"
+    },
+    {
+      "name": "tobby_sync_parallelism",
+      "type": "gauge",
+      "help": "Configured bound on concurrent ingredient transfers (sync.parallelism, NFR-008); compare with tobby_sync_transfers_inflight.",
+      "requirement": "NFR-008, R-11",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_sync_runs_total",
+      "type": "counter",
+      "help": "Synchronization runs (mirror trigger or passthrough cycle) by outcome: success, or failure (the run failed or left an item failed) (R-11).",
+      "labels": [
+        {
+          "name": "outcome",
+          "values": [
+            "failure",
+            "success"
+          ]
+        }
+      ],
+      "requirement": "FR-091, R-11",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_sync_transferred_bytes_total",
+      "type": "counter",
+      "help": "Bytes transferred by recipe synchronizations (skipped up-to-date content moves nothing).",
+      "unit": "bytes",
+      "requirement": "FR-091",
+      "presence": "always"
+    },
+    {
+      "name": "tobby_sync_transfers_inflight",
+      "type": "gauge",
+      "help": "Ingredient transfers currently in flight, bounded by sync.parallelism (NFR-008).",
+      "requirement": "NFR-008, FR-091",
+      "presence": "always"
+    }
+  ]
+}

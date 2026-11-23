@@ -21,11 +21,12 @@ const (
 
 // publishedExitTables maps each page that carries the table to the
 // language it carries it in. English lives on the CLI reference, which is
-// also the page the binary embeds for offline reading; French lives on the
-// error reference, the only French reference page there is until the
-// documentation's own milestone (website/README-docs.md).
+// also the page the binary embeds for offline reading. French carries it
+// twice: on the French CLI reference, and on the French error reference,
+// where it was first published before the CLI page was translated.
 var publishedExitTables = map[string]string{
 	"website/src/content/docs/docs/reference/cli.md":       "en",
+	"website/src/content/docs/fr/docs/reference/cli.md":    "fr",
 	"website/src/content/docs/fr/docs/reference/errors.md": "fr",
 }
 

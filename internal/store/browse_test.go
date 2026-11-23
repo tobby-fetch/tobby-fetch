@@ -455,6 +455,47 @@ func TestBrowseAccessors(t *testing.T) {
 	})
 }
 
+// TestDeclaredKindPrevails: the kind a recorded recipe declares for a
+// repository is the one every browsing accessor reports, over the one the
+// manifest suggests; two recipes declaring it differently leave the
+// detected kind alone, and a kind the format does not know declares nothing.
+func TestDeclaredKindPrevails(t *testing.T) {
+	s := seedBrowseStore(t)
+	ctx := context.Background()
+	const image = "registry.example.com_5000/team/app" // detected: ContainerImage
+	const chart = "docker.io/bitnamicharts/wordpress"  // detected: HelmChart
+	const sboms = "quay.io/acme/sboms"                 // detected: OCIArtifact
+	put := func(name string, ings ...store.IngredientRecord) {
+		t.Helper()
+		if err := s.st.PutRecipeRecord(&store.RecipeRecord{Name: name, Version: "1", Ingredients: ings}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("a", store.IngredientRecord{Name: "x", Kind: "FileSet", Repo: image},
+		store.IngredientRecord{Name: "y", Kind: "ContainerImage", Repo: chart},
+		store.IngredientRecord{Name: "z", Kind: "Image", Repo: sboms})
+	put("b", store.IngredientRecord{Name: "y", Kind: "OCIArtifact", Repo: chart})
+
+	info, err := s.st.RepoInfo(ctx, image)
+	if err != nil || info.Kind != store.KindFileSet {
+		t.Errorf("declared FileSet: kind = %v, err = %v", info.Kind, err)
+	}
+	mi, err := s.st.ManifestInfo(ctx, image, info.Tags[0].Tag)
+	if err != nil || mi.Kind != store.KindFileSet {
+		t.Errorf("manifest of a declared FileSet: kind = %v, err = %v", mi.Kind, err)
+	}
+	if info, _ := s.st.RepoInfo(ctx, chart); info.Kind != store.KindHelmChart {
+		t.Errorf("conflicting declarations: kind = %s, want the detected HelmChart", info.Kind)
+	}
+	if info, _ := s.st.RepoInfo(ctx, sboms); info.Kind != store.KindOCIArtifact {
+		t.Errorf("unknown declared kind: kind = %s, want the detected OCIArtifact", info.Kind)
+	}
+	page, err := s.st.Browse(ctx, store.BrowseQuery{Kinds: []store.Kind{store.KindFileSet}, Page: 1})
+	if err != nil || len(page.Repos) != 1 || page.Repos[0].Name != image {
+		t.Errorf("the FileSet filter finds %+v, err = %v", page, err)
+	}
+}
+
 // TestParseBrowseQuery pins the shared UI/API parameter contract (FR-061).
 func TestParseBrowseQuery(t *testing.T) {
 	v, err := url.ParseQuery("q=word&kind=HelmChart&kind=Recipe&prefix=docker.io&page=3")

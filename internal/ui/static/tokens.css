@@ -106,16 +106,19 @@
   --tobby-muted: #5f6472;
 
   /* ---- Accent --------------------------------------------------------- */
-  --tobby-accent: #c97e12;
+  /* #c97e12 drew a focus ring of 2.97:1 on the light surfaces (WCAG 1.4.11
+     asks 3:1); this shade reaches 3.7:1 there and keeps 5:1 with the badge
+     ink (verified by contrast_test.go and the browser pass). */
+  --tobby-accent: #b8710d;
   --tobby-accent-soft: #a9660b; /* light theme darkens on hover */
-  --tobby-accent-text: #9a6206;
+  --tobby-accent-text: #8c5a05; /* 5:1 on the tinted washes it also sits on (chips, partial badges): #9a6206 gave 4.4:1 */
 
   /* ---- Status --------------------------------------------------------- */
   /* Adjusted from the site palette's #1c7d43: with the #0b0d12 badge ink
      that green only reached 3.76:1; #259254 reaches 4.92:1 while staying
      in the same hue (verified by contrast_test.go). */
   --tobby-success: #259254;
-  --tobby-success-text: #2e7d4f;
+  --tobby-success-text: #27704a; /* 5:1 on its own wash, which #2e7d4f missed (4.4:1) */
   --tobby-danger: #b3323e;
   --tobby-danger-text: #b3323e;
 

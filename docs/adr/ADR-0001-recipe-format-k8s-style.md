@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — 2026-07-11
+Accepted — 2026-07-11 · Amended 2026-11-22 (the API group is built on `tobbyfetch.dev`, the domain the project owns, not on `tobby.dev`)
 
 ## Context
 
@@ -38,10 +38,9 @@ Recipes and Retrievers are **Kubernetes-style YAML manifests**: typed documents
 with `apiVersion`, `kind`, `metadata`, and `spec` top-level fields, under a
 dedicated, versioned API group.
 
-- **API group:** `recipe.tobby.dev` (the `tobby.dev` domain is designated for
-  the project — registration is tracked for milestone 0.1;
-  `tobby-fetch.github.io` is the documented fallback group if the domain
-  cannot be secured).
+- **API group:** `recipe.tobbyfetch.dev` (built on `tobbyfetch.dev`, the domain
+  the project owns; amended 2026-11-22 — the group was first drafted on
+  `tobby.dev`, a domain the project does not own).
 - **Version lifecycle:** `v1alpha1` → `v1beta1` → `v1`, with `v1` frozen at
   Tobby 1.0.0. Alpha and beta versions may change between minor releases; `v1`
   is stable for the life of the major version.
@@ -62,7 +61,7 @@ specification, not in this ADR):
 
 ```yaml
 # A Recipe describes one application ecosystem to be transported as a unit.
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: wordpress
@@ -92,9 +91,9 @@ spec:
   between them, following a graduation model operators already understand.
 - The envelope is more verbose than a flat format; for the small documents
   recipes are, this is an accepted cost of self-description.
-- The project must actually secure the `tobby.dev` domain early (action
-  tracked for milestone 0.1); the API group string is hard to change once
-  recipes exist in the wild.
+- The API group string is hard to change once recipes exist in the wild, so it
+  is built on `tobbyfetch.dev`, a domain the project owns, and was fixed
+  before any recipe was published (amended 2026-11-22).
 - The Go SDK in `recipe-spec` becomes the single source of truth for parsing
   and validation, used by Tobby itself and offered to third-party tools
   (see ADR-0003).

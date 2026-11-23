@@ -12,8 +12,7 @@ relecteur sécurité qui doit approuver une procédure de transfert par média.
 Le modèle est acté et spécifié
 ([ADR-0006](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0006-removable-media-transport.md),
 [ADR-0007](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0007-signing-cosign-key-based.md),
-[ADR-0016](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0016-media-manifest.md),
-SRS FR-054), et implémenté tel qu'il est décrit ici. Le travail
+[ADR-0016](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0016-media-manifest.md)), et implémenté tel qu'il est décrit ici. Le travail
 d'homologation peut s'appuyer sur cette page.
 
 ## Ce qui voyage sur le média
@@ -78,8 +77,9 @@ Ce que l'inventaire non signé vous apporte réellement :
   faire là ;
 - deux **gardes anti-accident** : l'identité de zone et l'horodatage de
   résolution permettent à la destination de refuser un média préparé pour
-  une autre zone, ou plus ancien que le dernier qu'elle a importé, avant
-  toute autre chose.
+  une autre zone, ou plus ancien que le dernier qu'elle a importé, juste
+  après le contrôle du manifeste et du graphe de recipes, avant la lecture
+  du moindre contenu de recipe.
 
 ### La couverture s'arrête là où le média est écrit après coup
 
@@ -104,7 +104,7 @@ alternatives — est ignoré. Un média ne peut donc jamais apporter sa propre
 autorité avec lui : compromettre le canal de transport ne compromet pas la
 décision de confiance.
 
-Conséquences, toutes normatives (SRS FR-054) :
+Conséquences, toutes normatives :
 
 - Le contenu signé pour l'environnement cible est accepté ; tout le reste ne
   l'est pas.
@@ -121,7 +121,11 @@ couverts dans
 ## L'ordre des vérifications
 
 À l'arrivée, la vérification suit un ordre fixe, et **tout précède le
-moindre push, le moindre service, la moindre écriture locale** :
+moindre push, le moindre service, la moindre écriture dans le store**. Le
+journal d'opération (par défaut sous `_tobby/logs/`) et les enregistrements
+de tâches (sous `_tobby/tasks/`), hors de la couverture du manifeste, sont les seules écritures qui peuvent venir
+avant, lors d'un import ou sur une instance de destination en service ;
+`tobby media verify` n'écrit rien :
 
 1. **Le manifeste** — il se parse, son propre format et la version du format
    de store sont lisibles par ce build, ses chemins sont bien formés, et les
@@ -139,7 +143,7 @@ signatures s'exécute ensuite sur un store réputé intact au bit près.
 
 Le blocage est tout aussi fixe :
 
-- La vérification et la décision se font **par recipe** (R-19) : une recipe
+- La vérification et la décision se font **par recipe** : une recipe
   dont la signature vérifie et dont chaque fichier atteint correspond à son
   digest épinglé est poussable ; une recipe qui échoue à l'un des deux est
   bloquée **entière**, sans dérogation, et nommée dans le rapport avec le
@@ -153,9 +157,16 @@ Le blocage est tout aussi fixe :
   aucun sens : un manifeste absent, illisible ou dans un format non
   supporté, et un graphe de recipes altéré, bloquent tout sans dérogation ;
   un support adressé à une autre zone, et un support plus ancien que le
-  dernier importé ici, bloquent tout et sont les **deux seuls** qu'un
-  administrateur peut lever, chaque levée étant écrite au
-  [journal d'audit](../../security/audit-log/) avec l'acteur et l'origine.
+  dernier importé ici, bloquent tout et sont les **deux seuls** que l'on
+  peut lever. Sur l'écran et l'API, une dérogation exige le rôle `admin` ;
+  en ligne de commande il n'y a aucun contrôle de rôle, et quiconque peut
+  lancer `tobby media` sur l'hôte peut lever. Toute dérogation appliquée est
+  écrite au [journal d'audit](../../security/audit-log/) (acteur et origine
+  sur l'écran et l'API, acteur et origine `local` en ligne de commande), à
+  l'étape Vérifier — où une vérification avec dérogation peut ouvrir le
+  verrou de service — comme à l'import, un enregistrement par application :
+  voir
+  [importer côté zone isolée](../../air-gap/import-destination/#quatre-refus-restent-globaux).
 
 Les deux refus levables sont des gardes anti-accident sur une affirmation
 *non signée*, pas des contrôles de sécurité — c'est exactement pour cela que
@@ -165,15 +176,20 @@ cryptographie ne le peut. La table code par code complète est sur
 
 ### Servir fait partie de l'ordre
 
-« Précède tout push, tout **service** et toute écriture locale » compte trois
-verbes. Une instance de destination qui détient un support transporté retient
+« Précède tout push, tout **service** et toute écriture dans le store »
+compte trois verbes. Une instance de destination qui détient un support transporté retient
 `/v2/` et `/files/` — en entier, pour tous les rôles, administrateurs
 compris — tant qu'une vérification *qu'elle a menée* n'a pas validé le
 support, et répond `403` avec
 [`TBY-MED-030`](../../reference/errors/#tby-med-030) et la marche à suivre.
 Le verrou ne s'ouvre que sur un support intégralement validé, ne conserve
 aucune trace persistante, se referme à chaque redémarrage, et n'a aucun
-réglage de contournement.
+réglage de contournement. Une fois ouvert, il sert l'**ensemble vérifié** et
+rien d'autre : ce qu'atteignent les recipes poussables, chaque fichier
+recalculé par cette vérification, en lecture seule — le contenu du support
+qu'aucune recipe poussable n'atteint est signalé et jamais distribué
+([`TBY-MED-033`](../../reference/errors/#tby-med-033)). Un store de
+destination dont le manifeste manque est verrouillé de même.
 
 ## Les secrets ne voyagent jamais
 
@@ -184,7 +200,7 @@ le store transportable. Le répertoire transporté contient du contenu, des
 signatures, des journaux et le manifeste ; rien dedans n'authentifie
 personne.
 
-La règle est un contrôle appliqué, pas une consigne (NFR-020, R-16) : une
+La règle est un contrôle appliqué, pas une consigne : une
 instance **refuse de démarrer**
 ([`TBY-CFG-002`](../../reference/errors/#tby-cfg-002)) quand `state.root`,
 `registries.credentialsFile` ou `server.tls.keyFile` se résout dans le
@@ -236,8 +252,10 @@ lieu de la combattre :
 - L'authenticité est ancrée dans les clés de votre organisation, vérifiée
   côté isolé, hors-ligne, contre une configuration qui ne voyage jamais.
 - L'intégrité est contrôlée fichier par fichier avant tout push ou service.
-- Exactement deux refus peuvent être levés, par un administrateur, audités,
-  et tous deux portent sur des affirmations non signées ; les échecs
+- Exactement deux refus peuvent être levés, tous deux sur des affirmations
+  non signées : par un `admin` sur l'écran et l'API, par quiconque a accès
+  à l'hôte en ligne de commande. Toute dérogation appliquée est auditée, à
+  l'étape Vérifier comme à l'import. Les échecs
   d'intégrité et de signature n'admettent aucune dérogation, pour personne.
 - Rien n'a été servi depuis le support avant sa vérification — la registry
   et la surface de fichiers restent fermées jusque-là, et aucun réglage ne

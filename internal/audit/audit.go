@@ -18,6 +18,7 @@ package audit
 import (
 	"context"
 	"log/slog"
+	"strings"
 )
 
 // SchemaVersion is stamped on every record as "audit_schema". Bump only on
@@ -168,10 +169,15 @@ const (
 	ActionMediaImport = "media.import"
 
 	// ActionMediaOverride is an administrator waiving one FR-054 guard on
-	// a media import — the zone-identity refusal or the R-28 freshness
-	// refusal. Both requirements name the audit record explicitly, and it
-	// carries the guard as its target so the trail says WHICH barrier was
-	// lowered and not merely that one was.
+	// a media verification or a media import — the zone-identity refusal
+	// or the R-28 freshness refusal. Both requirements name the audit
+	// record explicitly, and it carries the guard as its target so the
+	// trail says WHICH barrier was lowered and not merely that one was.
+	// A success record is written each time a waiver is applied to an
+	// operation — a waived verification can open the serving gate as
+	// surely as a waived import pushes — and its detail names that
+	// operation (MediaOverrideDetail), so a Verify followed by an import
+	// under the same waiver reads as the two applications it is.
 	ActionMediaOverride = "media.override"
 
 	// ActionServerCertReplace is a replacement of the listener's own
@@ -220,6 +226,33 @@ const (
 	ActionIntegrityVerify = "store.verify"
 )
 
+// Actions reserved at the opening of milestone 7. No surface emits them
+// yet; each track wires its own and documents it on the audit-log page
+// (website security/audit-log) when it does.
+const (
+	// ActionDiagnosticsBundle is a diagnostic bundle produced or refused
+	// (FR-095, R-30): the requester is the actor, the outcome failure when
+	// the redaction check aborted it. Track B.
+	ActionDiagnosticsBundle = "diagnostics.bundle"
+	// ActionClockImplausible is a local clock found earlier than an anchor
+	// beyond the tolerance (FR-096, R-32); the target names the anchor
+	// ("build" or the medium identifier), the gap is in the details.
+	// Track B.
+	ActionClockImplausible = "clock.implausible"
+	// ActionScanExceptionExpired is an item refused again because the
+	// exception that admitted it expired (FR-031 amendment, R-15): the
+	// target is the item ("repository@digest"), the outcome denied, and
+	// the exception is named in the exception, exception_source and
+	// exception_expires fields — one record per expired exception that
+	// matched the refused item. Emitted by the engine beside the
+	// scan.block record of the same refusal.
+	ActionScanExceptionExpired = "scan.exception_expired"
+	// ActionHardeningRefused is a write refused by a hardening switch
+	// (FR-098, R-17): a unit import, a packing or a registry push, with
+	// the setting that refused it. Track C.
+	ActionHardeningRefused = "hardening.refused"
+)
+
 // Event is one security audit event (FR-094 schema).
 type Event struct {
 	// Actor is the authenticated identity, ActorLocal for local invocation,
@@ -240,6 +273,25 @@ type Event struct {
 	// Actor. Emitted as "actor_name" only when set (additive to the
 	// schema).
 	ActorName string
+	// Detail is optional free context that is not the target — the gap of
+	// a clock found implausible, for one (FR-096). Emitted as "detail"
+	// only when set (additive to the schema). Never a secret: the same
+	// rule as every field of the trail.
+	Detail string
+	// Setting names the configuration key that decided the outcome, on
+	// the events a setting causes rather than an identity — the hardening
+	// refusals of FR-098 (ActionHardeningRefused). Emitted as "setting"
+	// only when set (additive to the schema, like actor_name).
+	Setting string
+	// Exception, ExceptionSource and ExceptionExpires name the scan
+	// exception an event is about (ActionScanExceptionExpired, R-15): its
+	// identifier, where it was written ("instance", "retriever", or
+	// "vex:<document path>"), and its expiry, RFC 3339. Emitted as
+	// "exception", "exception_source" and "exception_expires" only when
+	// set (additive to the schema).
+	Exception        string
+	ExceptionSource  string
+	ExceptionExpires string
 }
 
 // Log emits e on logger at INFO level. The timestamp is supplied by the
@@ -258,5 +310,42 @@ func Log(ctx context.Context, logger *slog.Logger, e *Event) {
 	if e.ActorName != "" {
 		attrs = append(attrs, slog.String("actor_name", e.ActorName))
 	}
+	if e.Detail != "" {
+		attrs = append(attrs, slog.String("detail", e.Detail))
+	}
+	if e.Setting != "" {
+		attrs = append(attrs, slog.String("setting", e.Setting))
+	}
+	if e.Exception != "" {
+		attrs = append(attrs, slog.String("exception", e.Exception),
+			slog.String("exception_source", e.ExceptionSource),
+			slog.String("exception_expires", e.ExceptionExpires))
+	}
 	logger.LogAttrs(ctx, slog.LevelInfo, e.Action, attrs...)
+}
+
+// The operations a media waiver is applied to, as MediaOverrideDetail
+// names them.
+const (
+	// MediaOperationVerify is a verification of the medium on its own —
+	// the screen's Verify step, POST /api/v1/media/verify, `tobby media
+	// verify`. Its verdict reaches the serving gate (FR-054).
+	MediaOperationVerify = "verify"
+	// MediaOperationImport is a media import, which re-verifies under the
+	// same waiver before it pushes anything (FR-052).
+	MediaOperationImport = "import"
+)
+
+// MediaOverrideDetail is the detail of an applied media.override record:
+// the operation the waiver was applied to, the zone this instance serves
+// and the medium's identity, space-separated key=value pairs. An empty
+// value is left out rather than written as "zone=".
+func MediaOverrideDetail(operation, zone, mediaID string) string {
+	parts := make([]string, 0, 3)
+	for _, kv := range [][2]string{{"operation", operation}, {"zone", zone}, {"media", mediaID}} {
+		if kv[1] != "" {
+			parts = append(parts, kv[0]+"="+kv[1])
+		}
+	}
+	return strings.Join(parts, " ")
 }

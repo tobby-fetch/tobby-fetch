@@ -7,7 +7,24 @@ sidebar:
 
 **Step 1 of 2** — install Tobby, start a first instance, look around.
 [Step 2](../first-promotion/) promotes signed content end to end. The two
-steps together fit in ten minutes.
+steps together take about ten minutes once Docker and cosign are
+installed; count half an hour if you install them along the way.
+
+:::note[Before you start]
+- **This page** needs a terminal, a browser, and TCP port `8080` free on
+  your machine.
+- The commands assume a POSIX shell (bash, zsh); on Windows, use WSL or
+  Git Bash.
+- **Step 2** also needs Docker with the `buildx` plugin, `cosign` 3.x and
+  `curl`. Check them now with `docker buildx version` and
+  `cosign version`; the
+  [cosign installation page](https://docs.sigstore.dev/cosign/system_config/installation/)
+  covers every platform.
+- The instance you start here keeps its terminal busy. Step 2 runs in a
+  **second terminal**, opened in the same `tobby-demo` directory.
+- Words you do not know yet — recipe, cookbook, Retriever, promotion —
+  are in the [glossary](../../discover/glossary/).
+:::
 
 ## Install
 
@@ -19,6 +36,8 @@ curl -LO https://github.com/tobby-fetch/tobby-fetch/releases/latest/download/tob
 chmod +x tobby-linux-amd64
 sudo mv tobby-linux-amd64 /usr/local/bin/tobby
 ```
+
+On an ARM machine the asset is `tobby-linux-arm64`.
 
 On macOS, Homebrew is one line:
 
@@ -37,8 +56,10 @@ scoop install tobby
 ```
 
 or download `tobby-windows-amd64.exe` (or `-arm64`) from the release and
-put it on your `PATH`. What Tobby supports on Windows, and the handful of things
-that behave differently there, are in
+put it on your `PATH`. winget can lag a few days behind a release — the
+reason is on the [limits page](../../discover/limits/); Scoop and the
+direct download are current the day a version ships. What Tobby supports
+on Windows, and the handful of things that behave differently there, are in
 [Supported platforms](../../reference/platforms/).
 
 Check that the binary answers:
@@ -47,9 +68,16 @@ Check that the binary answers:
 tobby version
 ```
 
+It prints one line — the version, the commit, the build date, the Go
+version and your platform:
+
+```
+tobby v0.7.0 (commit …, built …, go1.27.4, linux/amd64)
+```
+
 Every release asset carries SLSA Build L3 provenance, a signed SBOM and a
-reproducible build. Checking takes a minute and is worth doing once even
-for a try-out: [verify a release](../../project/verify-a-release/).
+reproducible build. A try-out does not need the check; before anything
+that matters, [verify a release](../../project/verify-a-release/).
 
 :::note[Installing for production?]
 Offline `.deb`/`.rpm`/`.apk` packages, the signed container image, the
@@ -81,9 +109,36 @@ matters:
    that carries content across an air gap — see
    [the media journey](../../air-gap/media-workflow/).
 4. **Admin account name** `[admin]`, then its password (asked twice, echo
-   off). The tool computes the hash; the password is stored nowhere.
+   off). Only its hash is stored, never the password itself.
 5. **Configuration file** `[./tobby.yaml]`.
 6. **Start the instance now** — answer `y`.
+
+Quickstart ends with a summary, then hands over to the instance:
+
+```
+Setup complete:
+  mode:          passthrough
+  storage root:  ./storage
+  state root:    ./state
+  configuration: ./tobby.yaml
+starting: tobby serve --config ./tobby.yaml
+```
+
+From here the terminal shows the instance's JSON log and stays busy:
+leave it open. `Ctrl-C` stops the instance, gracefully;
+`tobby serve --config ./tobby.yaml` starts it again.
+
+:::note[If it does not start]
+`listen tcp :8080: bind: address already in use` means another program
+holds port 8080. Move the instance to another port: add
+`server:` and, indented under it, `addr: 127.0.0.1:8090` to `tobby.yaml`,
+start again with `tobby serve --config ./tobby.yaml`, and replace `8080`
+with `8090` in everything that follows. The setting lives in the file
+because an environment variable would not survive the restart of
+[step 2](../first-promotion/). Any other refusal
+names a `TBY-…` code:
+[Troubleshooting — the instance does not start](../../reference/troubleshooting/#the-instance-does-not-start).
+:::
 
 Quickstart is an interactive aid, never a requirement. In a script or a
 container it refuses to guess and prints the flag-driven equivalent; the
@@ -102,6 +157,12 @@ just created.
 
 ## A first tour
 
+:::tip[Short on time?]
+The store is empty, so most of these screens have nothing to show yet.
+Go straight to [step 2](../first-promotion/) and come back here once
+content has landed.
+:::
+
 The interface is server-rendered, bilingual (English/French), and needs no
 connectivity beyond the instance itself.
 
@@ -118,7 +179,7 @@ step 2 fills it.
 
 The search box filters repositories by substring on their full path, and
 the kind filter narrows by content type. Both combine, and an empty result
-under a filter is reported as "no match for these filters" — distinctly
+under a filter is reported as "No repository matches these filters." — distinctly
 from an empty store.
 
 ### Content types at a glance

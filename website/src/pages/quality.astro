@@ -78,7 +78,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
         <ul class="checks" style="margin-top: 1.4rem;">
           <li>Strict lint (<code>golangci-lint</code>) with zero tolerated findings — style debates are settled by the machine</li>
           <li>Trivy scans Tobby's own builds and blocks releases on critical/high findings — the same class of gate Tobby applies to user artifacts: the gate gates itself</li>
-          <li>Fuzzing on the manifest parsers; CSRF and input-validation review before the release candidates</li>
+          <li>Fuzzing on the manifest parsers; CSRF and input-validation review before 1.0.0</li>
         </ul>
       </div>
     </section>

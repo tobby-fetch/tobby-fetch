@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tobby-fetch/tobby-fetch/internal/audit"
 	"github.com/tobby-fetch/tobby-fetch/internal/buildinfo"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
@@ -109,6 +110,9 @@ func runMediaSlip(cmd *cobra.Command, flags *mediaFlags, lang string) error {
 				return err
 			}
 			defer op.close()
+			// The slip's verification is a verification: a waiver applied
+			// to it is recorded as on 'tobby media verify' (FR-094, B-073).
+			op.auditWaivers(cmd.Context(), &cfg, flags, audit.MediaOperationVerify)
 			rep, err := op.eng.VerifyMedia(cmd.Context(), op.logger, engine.MediaOptions{
 				AllowZoneMismatch: flags.allowZoneMismatch,
 				AllowStale:        flags.allowStale,

@@ -37,7 +37,10 @@
 package medialog
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -269,4 +272,56 @@ func (w *Writer) rotate() error {
 // generation is the path of the nth rotated file ("operations.log.1").
 func (w *Writer) generation(n int) string {
 	return fmt.Sprintf("%s.%d", w.path, n)
+}
+
+// tailMaxBytes bounds what Tail reads from the end of the file.
+const tailMaxBytes = 4 << 20
+
+// Tail returns the last lines of the operation log of the store at
+// storeRoot, read-only: it opens nothing for writing and creates nothing,
+// so it can be used on a medium that is being served or inspected
+// (FR-095 reads it for the diagnostic bundle). A missing log is
+// os.ErrNotExist. At most the last tailMaxBytes of the file are read.
+func Tail(storeRoot string, opts Options, lines int) ([]byte, error) {
+	rel := opts.Path
+	if rel == "" {
+		rel = DefaultPath
+	}
+	if err := checkPath(rel); err != nil {
+		return nil, err
+	}
+	f, err := os.Open(filepath.Join(storeRoot, filepath.FromSlash(rel))) //nolint:gosec // G304: a path checkPath has confined to the store
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	start := int64(0)
+	if info.Size() > tailMaxBytes {
+		start = info.Size() - tailMaxBytes
+	}
+	buf := make([]byte, info.Size()-start)
+	if _, err := f.ReadAt(buf, start); err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	if start > 0 {
+		// Drop the partial first line.
+		if i := bytes.IndexByte(buf, '\n'); i >= 0 {
+			buf = buf[i+1:]
+		}
+	}
+	buf = bytes.TrimRight(buf, "\n")
+	for n, i := 0, len(buf)-1; i >= 0; i-- {
+		if buf[i] == '\n' {
+			n++
+			if n == lines {
+				buf = buf[i+1:]
+				break
+			}
+		}
+	}
+	return append(buf, '\n'), nil
 }

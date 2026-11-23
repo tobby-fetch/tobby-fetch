@@ -41,10 +41,14 @@ load-bearing. See [media security](../../air-gap/media-security/).
 
 **4 — Secure by default.**
 Authentication is on by default in both modes (FR-075 — delivered
-v0.4.0). Every security-reducing setting is an explicit opt-in, visible
-in the configuration report, logged, audit-logged, and — where it changes
-what a user faces — announced by a permanent UI banner. No default or
-omitted setting weakens the instance.
+v0.4.0). Security-reducing settings are explicit opt-ins, visible where
+they apply and, where they change what a user faces, announced by a
+permanent UI banner. Three exceptions are stated rather than hidden:
+vulnerability scanning is advisory by default (`scan.mode: warn`), an
+absent `registries.allowlist` restricts nothing (reported as undeclared),
+and the Retriever's `spec.scanPolicy`, which is not signed, can raise the
+threshold and add exceptions with no audit record. See the
+[security model](../model/).
 
 **5 — No undeclared outbound connection.**
 Tobby makes no network connection the operator did not configure: no
@@ -72,12 +76,13 @@ Covered today, with the detail pages that substantiate each line:
 - Secrets leaking through logs, errors, or configuration dumps (NFR-015): [secrets](../../security/secrets/).
 - Hidden network behavior (NFR-019): [threat model](../../security/threat-model/).
 - Untraceable security actions (FR-094): [audit log](../../security/audit-log/).
-- Tampered, stale or misaddressed removable media — re-verified before any push, any serving and any local write (FR-054, R-19, R-28): [media security](../../air-gap/media-security/).
+- Tampered, stale or misaddressed removable media — re-verified before any push, any serving and any write to the store (FR-054, R-19, R-28): [media security](../../air-gap/media-security/).
 - Secrets travelling on a medium — the instance refuses to start when a configured secret path resolves under the store root (NFR-020, R-16): [secrets](../../security/secrets/).
 
-Covered at milestone 6: known CVEs in transported content (FR-031),
-authentication brute-force hardening beyond the per-origin throttling
-shipped in v0.4.2 (R-14).
+Covered since v0.6.0: known CVEs in transported content (FR-031) —
+[vulnerability scanning](../../security/vulnerability-scanning/) — and
+authentication hardening beyond the per-origin throttling shipped in
+v0.4.2: idle session expiry and token expiry (R-14).
 
 Not covered by design, stated plainly: Tobby does not qualify upstream
 content, does not purge destination registries, and its audit log is
@@ -88,9 +93,11 @@ operational evidence rather than a signed trust anchor
 
 Policy-driven Trivy scanning — severity thresholds, blocking or advisory,
 with an offline vulnerability database transported by Tobby itself —
-arrives at milestone 6 (FR-031, FR-032, ADR-0008). Until it ships there
-is deliberately no scanning page in this documentation; track the line on
-the [project status](../../discover/status/) page.
+is delivered since v0.6.0 (FR-031, FR-032, ADR-0008). See
+[vulnerability scanning](../../security/vulnerability-scanning/).
+
+For how these commitments fit together and where each one is enforced,
+read [the security model](../../security/model/).
 
 ## Verify these claims
 

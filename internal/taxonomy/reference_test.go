@@ -13,7 +13,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
-// The published error reference is hand-written prose, in two languages,
+// The published error reference was hand-written prose, in two languages,
 // beside a catalog that is code. /help renders the catalog live, so the
 // binary never drifts — but the website pages are what an operator reads
 // while deciding whether to buy the medium a refusal is asking for, and
@@ -21,7 +21,10 @@ import (
 //
 // Milestone 5 added seven codes across three lots and none of them
 // reached those pages: three lots, three scopes, one page nobody owned.
-// This test gives it an owner.
+// This test gave it an owner. The pages are now generated from the
+// catalog (tools/errorsref, whose -check fails on any drift); this test
+// stays as the independent guard that every code has its heading, should
+// the generator ever skip one.
 func TestPublishedReferenceCoversEveryCode(t *testing.T) {
 	root := repoRoot(t)
 	for _, page := range []string{

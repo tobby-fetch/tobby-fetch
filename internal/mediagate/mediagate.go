@@ -26,13 +26,32 @@
 //     too — it wrote it — but the medium is its own output, not something
 //     that changed hands. It has no zone configured, which is precisely
 //     how the requirement distinguishes the two sides;
-//   - a destination instance whose store is not a medium at all: nothing
+//   - a destination instance whose store holds nothing at all: nothing
 //     arrived, so there is nothing unverified to withhold.
+//
+// A destination instance whose store holds content but no media manifest
+// IS guarded (R9 of the milestone-7 review): a medium whose manifest was
+// removed is still a medium that changed hands, and FR-054 (R-19) makes an
+// absent manifest a global block, not a pass. It used to be served whole —
+// carried FileSet cache included.
 //
 // # What opens it
 //
 // One thing: a verification, in this process, whose verdict is
 // VerdictPushable. Not "partial".
+//
+// # What an open gate serves
+//
+// The verified set and nothing else (B-063): what the pushable recipes
+// reach, every file of it re-hashed by the verification that opened the
+// gate (media.Served). /v2/ answers reads for those manifests, blobs and
+// tags only — a tag resolves to the digest it was verified at, the
+// catalog and the tag lists are answered from the set, the referrers of a
+// subject are chosen among the set's manifests — and refuses every write:
+// FR-054 sends destination-side writes outside manifest coverage. /files/
+// resolves its FileSets inside the same set. Content on the medium that no
+// pushable recipe reaches is reported by the verification and never
+// handed out, whatever the findings say about it.
 //
 // R-19 made the PUSH decision per recipe, so a partially damaged medium
 // still delivers its intact recipes into the zone registry — that is the
@@ -73,12 +92,20 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
 	"sync"
 	"time"
 
 	"golang.org/x/text/language"
 
+	"github.com/opencontainers/go-digest"
+
 	"github.com/tobby-fetch/tobby-fetch/internal/media"
+	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
 
@@ -116,6 +143,8 @@ type Gate struct {
 	zone   string
 	verify Verify
 	logger *slog.Logger
+	// transition hears every change of the serving state (SetTransition).
+	transition func(serving bool)
 
 	// guarded is fixed at startup: this instance is a destination side and
 	// its store is a medium. False means every method below is inert and
@@ -174,7 +203,7 @@ func (f *Failure) Error() *taxonomy.Error {
 // correct posture in both halves.
 func Open(ctx context.Context, root, zone string, logger *slog.Logger) *Gate {
 	g := &Gate{base: ctx, root: root, zone: zone, logger: logger}
-	g.guarded = zone != "" && media.IsMedium(root)
+	g.guarded = zone != "" && (media.IsMedium(root) || holdsContent(root))
 	if !g.guarded {
 		return g
 	}
@@ -186,9 +215,38 @@ func Open(ctx context.Context, root, zone string, logger *slog.Logger) *Gate {
 	return g
 }
 
+// holdsContent reports whether a store directory carries anything a
+// content surface could serve: a registry tree or a FileSet cache. It is
+// what makes a destination store without a media manifest guarded (R9): an
+// empty store has nothing to withhold, a populated one is a medium whose
+// manifest is missing — and a verification of it blocks (TBY-MED-001).
+func holdsContent(root string) bool {
+	for _, sub := range []string{
+		filepath.Join("docker", "registry", "v2"),
+		filepath.FromSlash(media.FileSetCache),
+	} {
+		entries, err := os.ReadDir(filepath.Join(root, sub))
+		if err == nil && len(entries) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // SetVerify installs the verification the gate runs — engine.VerifyMedia,
 // which exists later in the startup sequence than the gate does.
 func (g *Gate) SetVerify(verify Verify) { g.verify = verify }
+
+// SetTransition installs a callback told every time the gate opens or
+// closes on a guarded instance — wired once at startup, before anything
+// can reach a verdict.
+//
+// It is how the file surface learns that it may now write: nothing may
+// be extracted from a medium before a verification cleared it (FR-054),
+// so the FileSet cache is built on the transition to open, not at
+// startup (B-058). The callback runs on the goroutine that reached the
+// verdict and must not block on a verification.
+func (g *Gate) SetTransition(f func(serving bool)) { g.transition = f }
 
 // Guarded reports whether this instance withholds its content surfaces
 // until the medium is verified.
@@ -206,8 +264,27 @@ func (g *Gate) Serving() bool {
 }
 
 // cleared says the last verdict opened the gate. Callers hold the lock.
+//
+// A pushable verdict with an empty served set does not open it: a
+// verification that vouches for nothing opens nothing (B-063).
 func (g *Gate) cleared() bool {
-	return g.report != nil && g.report.Verdict == media.VerdictPushable
+	return g.report != nil && g.report.Verdict == media.VerdictPushable && !g.report.Served.Empty()
+}
+
+// Scope is what the content surfaces may serve. restricted is false on an
+// instance that guards nothing — everything in its store is its own. On a
+// guarded instance, served is the verified set while the gate is open and
+// nil while it is closed.
+func (g *Gate) Scope() (served *media.Served, restricted bool) {
+	if !g.guarded {
+		return nil, false
+	}
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	if !g.cleared() {
+		return nil, true
+	}
+	return g.report.Served, true
 }
 
 // Observe records the verdict of a verification — whichever surface ran
@@ -236,14 +313,22 @@ func (g *Gate) Observe(rep *media.Report) {
 	if !g.guarded || was == now {
 		return
 	}
-	msg := "medium verified: the registry and the file surfaces are open"
+	msg := "medium verified: the registry and the file surfaces are open, on the verified set only"
 	if !now {
 		msg = "medium no longer cleared: the registry and the file surfaces are closed"
+	}
+	served := ""
+	if now {
+		served = rep.Served.Digest
 	}
 	g.logger.LogAttrs(g.base, slog.LevelInfo, msg,
 		slog.String("media_id", g.mediaID), slog.String("zone", g.zone),
 		slog.String("verdict", string(rep.Verdict)),
+		slog.String("served_set", served),
 		slog.String("requirement", "FR-054"))
+	if g.transition != nil {
+		g.transition(now)
+	}
 }
 
 // Start launches a verification in the background and returns immediately.
@@ -409,9 +494,13 @@ func (g *Gate) Refusal(surface string) *taxonomy.Error {
 	if g.cleared() {
 		return nil
 	}
-	id := g.mediaID
-	if id == "" {
-		id = g.root
+	id := g.mediaLabel()
+	if g.report != nil && g.report.Verdict == media.VerdictPushable {
+		// Pushable, and yet not cleared: the verification vouched for
+		// nothing (a medium listing no recipe, B-063).
+		return taxonomy.New(taxonomy.CodeMediaNothingCleared, taxonomy.Params{
+			"surface": surface, "media": id, "screen": Screen,
+		})
 	}
 	if g.report != nil {
 		return taxonomy.New(taxonomy.CodeMediaNotCleared, taxonomy.Params{
@@ -458,12 +547,21 @@ func (g *Gate) Guard(surface string, render func(http.ResponseWriter, *http.Requ
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		refusal := g.Refusal(surface)
 		if refusal == nil {
+			if surface == registrySurface {
+				// Open: the registry answers for the verified set only.
+				// /files/ needs no such filter here — its FileSets are
+				// resolved inside the same set (see Scope).
+				served, _ := g.Scope()
+				g.registry(w, r, h, served)
+				return
+			}
 			h.ServeHTTP(w, r)
 			return
 		}
 		g.logger.LogAttrs(r.Context(), slog.LevelWarn, "refused: the medium is not verified",
 			slog.String("surface", surface), slog.String("path", r.URL.Path),
-			slog.String("media_id", g.mediaID), slog.String("code", string(refusal.Code())),
+			slog.String("media_id", g.mediaID), slog.String("store", g.root),
+			slog.String("code", string(refusal.Code())),
 			slog.String("requirement", "FR-054"))
 		render(w, r, refusal)
 	})
@@ -518,4 +616,167 @@ func langOf(r *http.Request) string {
 		return "fr"
 	}
 	return "en"
+}
+
+// registrySurface is the prefix the registry is guarded under.
+const registrySurface = "/v2/"
+
+// The OCI Distribution routes the verified-set filter recognizes. Names
+// are nested (ADR-0013), so each pattern anchors on its final segment.
+var (
+	routeManifest  = regexp.MustCompile(`^/v2/(.+)/manifests/([^/]+)$`)
+	routeBlob      = regexp.MustCompile(`^/v2/(.+)/blobs/([^/]+)$`)
+	routeReferrers = regexp.MustCompile(`^/v2/(.+)/referrers/([^/]+)$`)
+	routeTags      = regexp.MustCompile(`^/v2/(.+)/tags/list$`)
+)
+
+// registry answers one /v2/ request on an open gate, inside the verified
+// set (B-063). Anything the set does not name — and every write — is
+// refused with TBY-MED-033, in the OCI error shape: a client pulling an
+// image the medium carries but no recipe reaches reads why, instead of a
+// 404 that looks like a typo.
+func (g *Gate) registry(w http.ResponseWriter, r *http.Request, h http.Handler, served *media.Served) {
+	p := r.URL.Path
+	outside := func() {
+		e := taxonomy.New(taxonomy.CodeMediaOutsideVerified, taxonomy.Params{
+			"surface": registrySurface, "media": g.mediaLabel(), "path": r.Method + " " + p, "screen": Screen,
+		})
+		g.logger.LogAttrs(r.Context(), slog.LevelWarn, "refused: outside the verified set",
+			slog.String("surface", registrySurface), slog.String("method", r.Method), slog.String("path", p),
+			slog.String("media_id", g.mediaID), slog.String("code", string(e.Code())),
+			slog.String("requirement", "FR-054"))
+		RegistryRefusal(w, r, e)
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		// FR-054: destination-side writes go outside manifest coverage,
+		// and the registry tree is inside it.
+		outside()
+		return
+	}
+	if p == "/v2/" || p == "/v2" {
+		h.ServeHTTP(w, r)
+		return
+	}
+	if p == "/v2/_catalog" {
+		serveList(w, r, "repositories", "", served.Repositories())
+		return
+	}
+	if m := routeTags.FindStringSubmatch(p); m != nil {
+		if !served.HasRepository(m[1]) {
+			outside()
+			return
+		}
+		serveList(w, r, "tags", m[1], served.Tags(m[1]))
+		return
+	}
+	if m := routeManifest.FindStringSubmatch(p); m != nil {
+		repo, ref := m[1], m[2]
+		if _, err := digest.Parse(ref); err == nil {
+			if !served.Manifest(repo, ref) {
+				outside()
+				return
+			}
+			h.ServeHTTP(w, r)
+			return
+		}
+		d, ok := served.Tag(repo, ref)
+		if !ok {
+			outside()
+			return
+		}
+		// A tag is answered with the digest it was verified at, whatever
+		// the medium's tag file says now.
+		r2 := r.Clone(r.Context())
+		r2.URL.Path, r2.URL.RawPath = "/v2/"+repo+"/manifests/"+d, ""
+		h.ServeHTTP(w, r2)
+		return
+	}
+	if m := routeBlob.FindStringSubmatch(p); m != nil {
+		if !served.Blob(m[1], m[2]) {
+			outside()
+			return
+		}
+		h.ServeHTTP(w, r)
+		return
+	}
+	if m := routeReferrers.FindStringSubmatch(p); m != nil {
+		repo := m[1]
+		if !served.Manifest(repo, m[2]) {
+			outside()
+			return
+		}
+		// The referrers of a verified subject are chosen among the
+		// verified manifests, each re-read (store.Referrers, B-064).
+		scope := func(name string) []digest.Digest {
+			if name != repo {
+				return nil
+			}
+			list := served.Manifests(name)
+			out := make([]digest.Digest, 0, len(list))
+			for _, d := range list {
+				out = append(out, digest.Digest(d))
+			}
+			return out
+		}
+		h.ServeHTTP(w, r.WithContext(store.WithReferrerScope(r.Context(), scope)))
+		return
+	}
+	outside()
+}
+
+// unidentifiedMedium names, in a refusal, a medium whose manifest gives
+// no identity.
+const unidentifiedMedium = "(no media ID)"
+
+// mediaLabel names the medium in a refusal: its media ID, never the
+// store's path. A refusal can reach a client that has not authenticated —
+// an anonymous FileSet on /files/ (FR-047) is refused by the gate itself —
+// and the host's directory layout is no business of such a client (B-067).
+// The instance log, which an operator reads, carries the path.
+func (g *Gate) mediaLabel() string {
+	if g.mediaID != "" {
+		return g.mediaID
+	}
+	return unidentifiedMedium
+}
+
+// serveList answers a catalog or a tag list from the verified set, with
+// the distribution-spec pagination (n, last, Link).
+func serveList(w http.ResponseWriter, r *http.Request, key, name string, all []string) {
+	sort.Strings(all)
+	q := r.URL.Query()
+	if last := q.Get("last"); last != "" {
+		i := sort.SearchStrings(all, last)
+		if i < len(all) && all[i] == last {
+			i++
+		}
+		all = all[i:]
+	}
+	page := all
+	if n, err := strconv.Atoi(q.Get("n")); err == nil && n >= 0 && n < len(all) {
+		page = all[:n]
+		if n > 0 {
+			next := *r.URL
+			v := next.Query()
+			v.Set("last", page[len(page)-1])
+			next.RawQuery = v.Encode()
+			w.Header().Set("Link", "<"+next.RequestURI()+">; rel=\"next\"")
+		}
+	}
+	body := map[string]any{key: page}
+	if name != "" {
+		body["name"] = name
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		http.Error(w, "encoding the listing failed", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Docker-Distribution-Api-Version", "registry/2.0")
+	w.Header().Set("Content-Length", strconv.Itoa(len(raw)))
+	w.WriteHeader(http.StatusOK)
+	if r.Method != http.MethodHead {
+		_, _ = w.Write(raw)
+	}
 }

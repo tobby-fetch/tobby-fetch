@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
+	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 )
 
 // The two corrections of B-023, locked.
@@ -176,5 +177,66 @@ func TestListReturnsSlashSeparatedKeys(t *testing.T) {
 		if !errors.As(err, &notFound) {
 			t.Errorf("listing a missing key = %v, want a PathNotFoundError", err)
 		}
+	}
+}
+
+// deniedMoveDriver is the real filesystem driver whose rename is refused
+// the way Windows refuses to replace a file another handle holds open.
+type deniedMoveDriver struct{ storagedriver.StorageDriver }
+
+func (deniedMoveDriver) Move(context.Context, string, string) error {
+	return errors.New("rename: access is denied")
+}
+
+// TestMoveOntoAnExistingBlobIsACommit locks the concurrent-commit case:
+// two writers of one blob both see it absent, both rename, and Windows
+// refuses the second rename. The blob is content-addressed, so the
+// second writer's commit has nothing left to do. The refusal is
+// simulated, so the test has teeth on every platform.
+func TestMoveOntoAnExistingBlobIsACommit(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	base, err := factory.Create(ctx, "filesystem", map[string]any{"rootdirectory": root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &storeDriver{StorageDriver: deniedMoveDriver{base}, root: root}
+	const blob = "/docker/registry/v2/blobs/sha256/44/44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a/data"
+	const upload = "/docker/registry/v2/repositories/w3/app/_uploads/u/data"
+	const link = "/docker/registry/v2/repositories/w3/app/_manifests/tags/1.0/current/link"
+
+	// Destination absent: the refusal is a real failure.
+	if err := d.Move(ctx, upload, blob); err == nil {
+		t.Error("a refused rename onto an absent blob reported success")
+	}
+	// Destination present: the blob is already committed.
+	// Written through this package's own driver, as the store does: the
+	// library's PutContent renames its temporary file while still holding
+	// it open, which Windows refuses.
+	seed := &storeDriver{StorageDriver: base, root: root}
+	for _, k := range []string{blob, link} {
+		if err := seed.PutContent(ctx, k, []byte("{}")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := d.Move(ctx, upload, blob); err != nil {
+		t.Errorf("a refused rename onto the blob already stored failed: %v", err)
+	}
+	// A link is not content-addressed: an existing one may differ.
+	if err := d.Move(ctx, upload, link); err == nil {
+		t.Error("a refused rename onto an existing link reported success")
+	}
+	// A directory or a malformed key is never mistaken for a blob.
+	for _, k := range []string{
+		"/docker/registry/v2/blobs/sha256/44",
+		"/docker/registry/v2/blobs/sha256/45/44136f/data",
+		"/docker/registry/v2/blobs/sha256/44/44136f/data/x",
+	} {
+		if isBlobDataKey(k) {
+			t.Errorf("isBlobDataKey(%q) = true", k)
+		}
+	}
+	if !isBlobDataKey(blob) {
+		t.Errorf("isBlobDataKey(%q) = false", blob)
 	}
 }

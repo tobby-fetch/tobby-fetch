@@ -240,6 +240,7 @@ func TestPasswordChangeEndpoint(t *testing.T) {
 	}
 	r = httptest.NewRequest(http.MethodPost, "/api/v1/account/password",
 		strings.NewReader(`{"current":"whatever","new":"pw-3"}`))
+	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Authorization", "Bearer "+secret)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
@@ -372,5 +373,40 @@ func TestLocalNamesCannotPoseAsFederatedIdentities(t *testing.T) {
 		if strings.Contains(tok.Name, ":") {
 			t.Errorf("token %q was created", tok.Name)
 		}
+	}
+}
+
+// TestJSONBodyRequiresContentType (B-069): a body is decoded only when it
+// is declared application/json. text/plain, a form encoding or no type at
+// all — what a page of another origin can send without a CORS preflight —
+// are refused with TBY-SRV-005 (415) before the endpoint acts; a charset
+// parameter and the media type's case are accepted.
+func TestJSONBodyRequiresContentType(t *testing.T) {
+	mux, store, _ := newAccountsAPI(t)
+	const body = `{"name":"nouveau","role":"viewer","password":"pw-nouveau-1"}`
+	for _, ct := range []string{"", "text/plain;charset=UTF-8", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x", "application/jsonx"} {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(body))
+		if ct != "" {
+			r.Header.Set("Content-Type", ct)
+		}
+		r.SetBasicAuth("alexis", "pw-admin")
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		if w.Code != http.StatusUnsupportedMediaType || !strings.Contains(w.Body.String(), "TBY-SRV-005") {
+			t.Errorf("Content-Type %q = %d %s, want 415 TBY-SRV-005", ct, w.Code, w.Body.String())
+		}
+	}
+	for _, a := range store.Accounts() {
+		if a.Name == "nouveau" {
+			t.Fatal("a body without the JSON media type created an account")
+		}
+	}
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(body))
+	r.Header.Set("Content-Type", "Application/JSON; charset=utf-8")
+	r.SetBasicAuth("alexis", "pw-admin")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusCreated {
+		t.Errorf("application/json with charset = %d %s, want 201", w.Code, w.Body.String())
 	}
 }

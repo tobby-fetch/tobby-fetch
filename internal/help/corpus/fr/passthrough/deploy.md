@@ -44,7 +44,7 @@ accueille aussi les spools de téléchargements reprenables, voir
 ### Avec Helm
 
 ```sh
-helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.7.0 \
   --namespace tobby --create-namespace \
   --set config.mode=passthrough
 ```
@@ -56,7 +56,7 @@ vous n'avez pas choisie. Chaque chart publié est signé sans clé par le
 workflow de release, comme l'image :
 
 ```sh
-cosign verify ghcr.io/tobby-fetch/charts/tobby:0.6.0 \
+cosign verify ghcr.io/tobby-fetch/charts/tobby:0.7.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
 ```
@@ -67,18 +67,25 @@ recette, transportés par Tobby et tirés depuis le registre de la zone
 (`oci://registry.zone.example/…`). Depuis un clone du dépôt,
 `./deploy/charts/tobby` est le même chart, pour le développement.
 
-`config.mode` est la seule valeur sans défaut utilisable : une instance
-doit dire ce qu'elle est (FR-001). La valeur `config` du chart devient
-`/etc/tobby/config.yaml` et reprend exactement les clés de configuration
-de Tobby — la sortie de `tobby config dump` se colle telle quelle. `env`
+Le chart fixe `config.mode` à `passthrough` par défaut et refuse une
+valeur vide ; mettez `mirror` pour une instance en air-gap. La valeur
+`config` du chart devient `/etc/tobby/config.yaml` et reprend les clés de
+configuration de Tobby — la sortie de `tobby config dump` se colle une
+fois retirées `storage.root`, `state.root`, `server.addr` et
+`registries.credentialsFile`. `env`
 positionne les variables `TOBBY_*` et `extraArgs` ajoute des drapeaux ;
-la précédence est drapeaux > environnement > fichier (FR-003). Quatre
-clés (`storage.root`, `state.root`, `server.addr`,
-`registries.credentialsFile`) appartiennent au chart et sont rejetées si
-elles sont posées directement, parce que la spec du pod en dépend.
+la précédence est drapeaux > environnement > fichier. Trois
+clés (`storage.root`, `state.root`, `server.addr`) appartiennent au chart
+et sont rejetées si elles sont posées directement, parce que la spec du
+pod en dépend. Une quatrième, `registries.credentialsFile`, lui appartient
+tant que le Secret de credentials est activé : le chart la rejette alors, et
+vous configurez les credentials par `registryCredentials.*` à la place. Quand
+cette fonction est désactivée, le chart ne gère aucun fichier de ce genre et
+une valeur de votre cru dans `config` (un fichier monté par `extraVolumes`)
+est conservée.
 
 Les credentials de registre sont un Secret
-`kubernetes.io/dockerconfigjson` distinct (FR-004), monté en lecture
+`kubernetes.io/dockerconfigjson` distinct, monté en lecture
 seule — jamais dans le fichier de configuration, jamais dans le store :
 
 ```sh
@@ -87,7 +94,7 @@ kubectl -n tobby create secret docker-registry tobby-registry-credentials \
   --docker-username=tobby \
   --docker-password="$(cat ./token)"
 
-helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
+helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.7.0 \
   --namespace tobby --reuse-values \
   --set registryCredentials.enabled=true \
   --set registryCredentials.existingSecret=tobby-registry-credentials
@@ -111,7 +118,11 @@ kubectl apply -f ./deploy/manifests/
 
 Modifiez `20-secret-config.yaml` (posez `mode`, et `retriever.source` si
 vous en avez un) et `21-secret-registry-credentials.yaml` (la charge
-livrée est un `{"auths":{}}` vide et valide) avant d'appliquer.
+livrée est un `{"auths":{}}` vide et valide) avant d'appliquer. La ligne
+d'image de `40-deployment.yaml` épingle `v0.7.0`. Si vous activez
+`server.tls` dans la configuration, ajoutez à la main `scheme: HTTPS` aux
+trois sondes `httpGet` de `40-deployment.yaml` : le pod n'a qu'un listener,
+et ces manifestes ne suivent pas le réglage comme le fait le chart.
 
 ### Vérifier l'image avant de déployer
 
@@ -207,11 +218,12 @@ docker run -d --name tobby --read-only \
 | Plateforme | Palier |
 | --- | --- |
 | Linux amd64 / arm64 | Périmètre de production validé : service passthrough, paquets, image de conteneur. |
-| Windows amd64 / arm64 | Binaire statique unique publié, et le parcours du poste miroir y est validé (NFR-018). Le mode passthrough sous Windows est hors du périmètre validé. Voir [plateformes supportées](../../reference/platforms/). |
-| macOS amd64 / arm64 | Palier de confort (NFR-001) : même chaîne reproductible, distribution via `brew install tobby-fetch/tap/tobby`, suite de tests complète en CI — mais aucun support de production impliqué. |
+| Windows amd64 / arm64 | Binaire statique unique publié, et le parcours du poste miroir y est validé. Le mode passthrough sous Windows est hors du périmètre validé. Voir [plateformes supportées](../../reference/platforms/). |
+| macOS amd64 / arm64 | Palier de confort : même chaîne reproductible, distribution via `brew install tobby-fetch/tap/tobby`, suite de tests complète en CI — mais aucun support de production impliqué. |
 
-Le store refuse les systèmes de fichiers qui ne peuvent pas contenir sa
-disposition — FAT32 en fait partie ; voir
+Le store refuse un système de fichiers dont la limite de taille par fichier
+serait dépassée par un fichier à écrire — FAT32 et son plafond de 4 Gio en
+font partie ; voir
 [limites](../../discover/limits/).
 
 ## Le premier compte, sans interaction
@@ -237,15 +249,17 @@ printf '%s\n' "$ADMIN_PASSWORD" | tobby quickstart \
 Les commandes primitives équivalentes sont `tobby user add admin
 --state-root /var/lib/tobby/state --password-stdin` suivie de `tobby
 serve --config /etc/tobby/config.yaml`. Le premier compte d'une instance
-est toujours `admin`, et l'outil calcule lui-même le hash du mot de
+reçoit toujours le rôle `admin` (`quickstart` et les exemples le nomment
+`admin`, mais le nom est libre), et l'outil calcule lui-même le hash du mot de
 passe. Sur Kubernetes, où l'image n'a pas de shell, exécutez l'étape
-`user add` dans un pod éphémère montant le claim d'état — la recette
-exacte est dans
+`user add` dans un pod éphémère montant le claim d'état, après avoir
+ramené l'instance à zéro réplique (`user add` refuse tant qu'une
+instance tient le répertoire d'état) — la recette exacte est dans
 [`deploy/README.md`](https://github.com/tobby-fetch/tobby-fetch/blob/main/deploy/README.md).
 
 S'il vous faut absolument tourner ouvert, `auth.disabled: true` est un
 opt-in explicite qui pose un bandeau d'avertissement permanent dans
-l'interface (FR-075). Ne le laissez jamais actif.
+l'interface. Ne le laissez jamais actif.
 
 ## Se connecter par l'annuaire de l'entreprise
 
@@ -282,9 +296,12 @@ bannière du mode dégradé. Pour refuser ce qui dépasse un seuil, posez
 `scan.mode: block` (ou `TOBBY_SCAN_MODE=block` ; le seuil est
 `scan.threshold`, `7.0` par défaut), ou posez un seuil pour un périmètre
 précis : le `spec.scanPolicy.threshold` d'un Retriever ou l'annotation
-`recipe.tobby.dev/scan-threshold` d'une recipe, chacun bloquant pour ce qu'il
+`recipe.tobbyfetch.dev/scan-threshold` d'une recipe, chacun bloquant pour ce qu'il
 couvre. Un refus retient la recipe entière. Voir
 [l'analyse de vulnérabilités](../../security/vulnerability-scanning/).
+
+Une instance qui refuse de démarrer donne sa raison en une ligne `TBY-…` :
+voir [Dépannage — l'instance ne démarre pas](../../reference/troubleshooting/#linstance-ne-démarre-pas).
 
 Suite : pointez l'instance vers le monde extérieur à travers
 [le réseau d'entreprise](../../passthrough/network/).

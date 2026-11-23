@@ -21,7 +21,7 @@ Tobby relocalise chaque ingrédient sous son **hôte source nominal** :
 
 `docker.io/bitnami/wordpress` se tire depuis
 `registry.zone.example/docker.io/bitnami/wordpress`, avec un digest
-inchangé. La règle ([ADR-0013](../../reference/srs-adr/), FR-035) apporte
+inchangé. La règle ([ADR-0013](../../reference/srs-adr/)) apporte
 trois choses, au prix de noms plus longs :
 
 - **Aucune collision.** Un chemin aplati
@@ -76,12 +76,16 @@ tronqués : une destination qui ne peut pas accueillir un nom relocalisé
 
 Vous ne calculez jamais ces chemins à la main. Chaque recipe expose son
 tableau source→destination — pour chaque ingrédient, la référence
-nominale, le dépôt relocalisé, le tag et le digest épinglé (FR-065) :
+nominale, le dépôt relocalisé, le tag et le digest épinglé :
 
 - **Interface** : la vue de correspondance de la recipe, à
   `/recipes/{recipe}/mapping`, avec des références copiables.
 - **API** : `GET /api/v1/recipes/{recipe}/mapping` — les mêmes données en
   JSON, une entrée par version résolue, ingrédients compris.
+
+La table s'exporte aussi en CSV, JSON ou Markdown, pour une recipe ou pour
+tout le store, depuis l'interface, l'API et `tobby consumption table` — voir
+les [aides à la consommation](../consumption-aids/).
 
 ![Le tableau de correspondance par recipe : de la référence amont au chemin relocalisé dans la zone, avec boutons de copie](../../../../../assets/docs/recipe-mapping.png)
 
@@ -89,9 +93,11 @@ nominale, le dépôt relocalisé, le tag et le digest épinglé (FR-065) :
 
 Pour les **tirages d'images à l'exécution**, vous n'avez aucune valeur de
 chart à modifier : containerd réécrit les références au moment du pull.
-Sur chaque nœud K3s/RKE2, écrivez
-`/etc/rancher/{k3s,rke2}/registries.yaml` à la main, à partir du tableau
-de correspondance :
+Sur chaque nœud K3s/RKE2, installez
+`/etc/rancher/{k3s,rke2}/registries.yaml`. Tobby
+[le génère](../consumption-aids/) (`tobby consumption registries-yaml`) ;
+en voici la forme, que vous pouvez aussi écrire à la main à partir du
+tableau de correspondance :
 
 ```yaml
 # /etc/rancher/rke2/registries.yaml
@@ -118,12 +124,9 @@ Une fois cela en place, un pod qui référence
 chart se déploie tel qu'il a été publié — valeurs inchangées, digests
 intacts.
 
-:::note[À venir]
-Générer ce fragment par recipe et par destination est la seconde moitié
-de FR-065 et n'est pas encore implémenté — aujourd'hui, le tableau de
-correspondance est exposé et le fragment s'écrit à la main. À suivre sur
-la page [État du projet](../../discover/status/).
-:::
+Le fragment généré ajoute le schéma `http` pour une destination listée dans
+`registries.insecure`, le chemin de l'autorité pour `consumption.caFile`, et
+un en-tête qui énonce les limites ci-dessous.
 
 ## Ce que les mirrors ne couvrent pas
 
@@ -156,7 +159,7 @@ et signatures, précisément ce qu'il existe pour préserver.
 ## S'authentifier
 
 Le registre embarqué et les surfaces exposées à la zone utilisent les
-comptes de l'instance (FR-076) — les mêmes que ceux de l'interface :
+comptes de l'instance — les mêmes que ceux de l'interface :
 
 ```sh
 docker login registry.tobby.zone.example
@@ -172,7 +175,7 @@ consommateurs ; voir
 
 Un ingrédient `FileSet` peut empaqueter un dépôt apt ou rpm, et Tobby
 sait servir son contenu vérifié en lecture seule sur HTTP sous
-`/files/<name>/…` (FR-047) — de quoi rendre un hôte nu installable sans
+`/files/<name>/…` — de quoi rendre un hôte nu installable sans
 aucune autre infrastructure. Le service est **désactivé par défaut** et
 s'active FileSet par FileSet :
 
@@ -192,8 +195,7 @@ exigent le rôle `viewer` par défaut. `anonymous: true` existe pour le cas
 d'amorçage — un hôte nu qui ne peut pas s'authentifier tant qu'il n'a
 rien installé — et n'est jamais silencieux : chaque FileSet servi
 anonymement est nommé dans un bandeau permanent de l'interface et
-rapporté par l'API, comme tout autre relâchement du défaut sécurisé
-(FR-075).
+rapporté par l'API, comme tout autre relâchement du défaut sécurisé.
 
 ```sh
 # /etc/apt/sources.list.d/zone.list sur un hôte client
@@ -239,7 +241,7 @@ Deux limites, énoncées parce qu'elles sont le sujet :
 
 La commande lit le système de fichiers de l'hôte avec les droits de qui la
 lance. La même opération depuis l'interface et l'API
-(`POST /filesets/pack`) est réservée aux administrateurs **et** confinée
+(le formulaire `/filesets` et `POST /api/v1/filesets/pack`) est réservée aux administrateurs **et** confinée
 aux répertoires que nomme `files.packRoots` — sans aucune entrée
 configurée, le formulaire n'est même pas proposé. C'est la seule façon dont
 des fichiers locaux entrent dans un store, et ce n'est délibérément pas un

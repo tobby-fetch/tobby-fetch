@@ -1,0 +1,110 @@
+---
+title: Le modèle de sécurité en une page
+description: Les cinq engagements de Tobby, l'état de chaque fonction de sécurité, et ce que le modèle de menaces couvre ou non — imprimable, transmissible tel quel.
+sidebar:
+  order: 1
+---
+
+import StatusTable from "../../../../../components/StatusTable.astro";
+
+Cette page est écrite pour être transmise telle quelle à un RSSI ou à un
+auditeur sécurité. Chaque affirmation porte son numéro d'exigence
+([SRS](../../reference/srs-adr/)) et son état de livraison. Rien ici n'est
+prospectif, sauf mention explicite « à venir ».
+
+## Les cinq engagements
+
+**1 — Tobby ne signe rien.**
+Tobby transporte du contenu ; il ne crée jamais d'authenticité. Il ne détient
+aucune clé de signature, dans aucun mode, jamais. Les signatures sont produites
+en amont par la chaîne de qualification de l'organisation et seulement
+*vérifiées* par Tobby (FR-033, ADR-0007 — livré en v0.3.0). Le vérificateur
+est volontairement un code de vérification uniquement.
+
+**2 — Les trust roots de la destination sont la seule autorité.**
+La vérification s'effectue toujours contre les clés publiques configurées sur
+l'instance *réceptrice*. Les trust roots trouvés sur les supports de transport
+sont ignorés par exigence (FR-054) : compromettre un support ne compromet
+jamais l'ancre de confiance de la destination. Livré pour le moteur de
+vérification (v0.3.0) et pour le chemin média (v0.5.0), où un fichier de trust
+root déposé sur un support est ignoré — un test en dépose un pour le
+prouver.
+
+**3 — Le manifeste du média relève de l'intégrité, pas de la confiance.**
+L'inventaire écrit sur le support amovible (chemins, tailles, digests,
+identité de la zone) détecte la corruption et l'incomplétude. Il n'est
+volontairement pas signé — voir l'engagement 1 — et ce n'est jamais lui qui
+rend un contenu digne de confiance : seules les signatures de recipe vérifiées
+contre les trust roots de la destination le font (FR-054, ADR-0006, ADR-0016 —
+livré en v0.5.0). Chaque fichier couvert est contrôlé contre sa propre adresse
+de contenu autant que contre l'inventaire, ce qui évite que l'inventaire non
+signé soit porteur de confiance. Voir la [sécurité des supports](../../air-gap/media-security/).
+
+**4 — Sécurisé par défaut.**
+L'authentification est active par défaut dans les deux modes (FR-075 — livré
+en v0.4.0). Les réglages qui réduisent la sécurité sont des opt-in
+explicites, visibles là où ils s'appliquent et, lorsqu'ils changent ce que
+voit l'utilisateur, signalés par un bandeau permanent de l'interface. Trois
+exceptions sont dites plutôt que tues : l'analyse de vulnérabilités est
+consultative par défaut (`scan.mode: warn`), un `registries.allowlist`
+absent ne restreint rien (signalé comme non déclaré), et le
+`spec.scanPolicy` du Retriever, qui n'est pas signé, peut relever le seuil
+et ajouter des dérogations sans enregistrement d'audit. Voir le
+[modèle de sécurité](../model/).
+
+**5 — Aucune connexion sortante non déclarée.**
+Tobby n'établit aucune connexion réseau que l'opérateur n'a pas configurée :
+ni télémétrie, ni rapport de plantage, ni vérification de mise à jour
+(NFR-019 — livré en v0.1.x). C'est démontré, pas promis : chaque exécution
+d'acceptation commence par un canari de sortie qui doit échouer depuis la zone
+isolée, et les e2e passent derrière un proxy qui capture la sortie et ne
+consigne que des connexions vers des points d'accès configurés. Voir les
+[tests et preuves](../../project/tests-and-proofs/).
+
+## État des fonctions de sécurité
+
+Le tableau ci-dessous est généré à partir du même fichier de données que la
+page [état du projet](../../discover/status/) — une source unique de vérité,
+jamais un second tableau tenu à la main.
+
+<StatusTable lang="fr" securityOnly />
+
+## Menaces couvertes et non couvertes
+
+Couvertes aujourd'hui, avec les pages de détail qui étayent chaque ligne :
+
+- Contenu non signé ou altéré — bloqué à l'import et avant le push (FR-033) : [confiance dans le contenu](../../security/content-trust/).
+- Contenu tiré d'un registry non approuvé ou poussé vers lui — refusé avant tout transfert (FR-030) : [confiance dans le contenu](../../security/content-trust/).
+- Accès non authentifié ou insuffisamment privilégié à toute surface (FR-074, FR-075) : [authentification et RBAC](../../security/auth-rbac/).
+- Secrets qui fuient par les journaux, les erreurs ou les exports de configuration (NFR-015) : [secrets](../../security/secrets/).
+- Comportement réseau caché (NFR-019) : [modèle de menaces](../../security/threat-model/).
+- Actions de sécurité non traçables (FR-094) : [journal d'audit](../../security/audit-log/).
+- Supports amovibles altérés, périmés ou mal adressés — revérifiés avant tout push, tout service et toute écriture dans le store (FR-054, R-19, R-28) : [sécurité des supports](../../air-gap/media-security/).
+- Secrets qui voyagent sur un support — l'instance refuse de démarrer quand un chemin de secret configuré se résout sous la racine du store (NFR-020, R-16) : [secrets](../../security/secrets/).
+
+Couvert depuis la v0.6.0 : les CVE connues dans le contenu transporté
+(FR-031) — [analyse de vulnérabilités](../../security/vulnerability-scanning/) —
+et le durcissement de l'authentification au-delà de la limitation par origine
+livrée en v0.4.2 : expiration des sessions inactives et des jetons (R-14).
+
+Non couvert par construction, dit sans détour : Tobby ne qualifie pas le
+contenu amont, ne purge pas les registries de destination, et son journal
+d'audit est une preuve opérationnelle, non une ancre de confiance signée
+([limites](../../discover/limits/), [modèle de menaces](../../security/threat-model/)).
+
+## Analyse de vulnérabilités
+
+L'analyse Trivy pilotée par politique — seuils de sévérité, bloquante ou
+consultative, avec une base de vulnérabilités hors ligne transportée par Tobby
+lui-même — est livrée depuis la v0.6.0 (FR-031, FR-032, ADR-0008). Voir
+[analyse de vulnérabilités](../../security/vulnerability-scanning/).
+
+Pour voir comment ces engagements s'articulent et où chacun est appliqué,
+lisez [le modèle de sécurité](../../security/model/).
+
+## Vérifier ces affirmations
+
+La chaîne de build derrière le binaire que vous exécutez — provenance SLSA
+Build L3, builds reproductibles bit à bit, SBOM signés (NFR-004, NFR-005,
+NFR-006, ADR-0011) — se vérifie de façon indépendante :
+[vérifier une release](../../project/verify-a-release/).

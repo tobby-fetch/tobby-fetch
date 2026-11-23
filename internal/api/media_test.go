@@ -37,9 +37,18 @@ type stubVerifier struct {
 	err     error
 	lastOpt engine.MediaOptions
 	calls   int
+	// noDest is an instance without destination.registry (B-079).
+	noDest bool
 }
 
 func (s *stubVerifier) Zone() string { return s.zone }
+
+func (s *stubVerifier) Destination() *engine.Destination {
+	if s.noDest {
+		return nil
+	}
+	return &engine.Destination{}
+}
 
 func (s *stubVerifier) MediaSummary() engine.MediaSummary {
 	return engine.MediaSummary{
@@ -58,6 +67,15 @@ func (s *stubVerifier) VerifyMedia(_ context.Context, _ *slog.Logger, opts engin
 // one account per role (FR-076).
 func newMediaAPI(t *testing.T, v *stubVerifier) (*http.ServeMux, *tasks.Queue, *mediagate.Gate) {
 	t.Helper()
+	mux, q, gate, _ := newMediaAPIWithLogs(t, v)
+	return mux, q, gate
+}
+
+// newMediaAPIWithLogs is newMediaAPI with the API's log stream kept, for
+// the tests that read the FR-094 audit trail it carries.
+func newMediaAPIWithLogs(t *testing.T, v *stubVerifier) (*http.ServeMux, *tasks.Queue, *mediagate.Gate, *lockedBuffer) {
+	t.Helper()
+	logs := &lockedBuffer{}
 	root := t.TempDir()
 	q, err := tasks.Open(root, slog.New(slog.DiscardHandler))
 	if err != nil {
@@ -85,7 +103,7 @@ func newMediaAPI(t *testing.T, v *stubVerifier) (*http.ServeMux, *tasks.Queue, *
 		Store: accounts, Sessions: auth.NewSessions(time.Hour),
 		Logger: slog.New(slog.DiscardHandler),
 	}
-	a := api.New(authn, slog.New(slog.DiscardHandler))
+	a := api.New(authn, slog.New(slog.NewJSONHandler(logs, nil)))
 	opts := &api.MediaOptions{Queue: q, StorageRoot: "/mnt/medium"}
 	var gate *mediagate.Gate
 	if v != nil {
@@ -100,7 +118,7 @@ func newMediaAPI(t *testing.T, v *stubVerifier) (*http.ServeMux, *tasks.Queue, *
 	api.RegisterMedia(a, opts)
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/", a.Handler())
-	return mux, q, gate
+	return mux, q, gate, logs
 }
 
 // TestMediaVerificationMirrorsWhatTheScreenPolls (FR-061): the state the
@@ -399,5 +417,165 @@ func TestMediaVerifyPropagatesAnInfrastructureFailure(t *testing.T) {
 	// NFR-015: the wrapped cause is for logs, never for the response.
 	if strings.Contains(w.Body.String(), "input/output error") {
 		t.Error("the problem document leaks the wrapped technical cause")
+	}
+}
+
+// auditRecords returns the media.override records of a JSON log stream,
+// decoded.
+func auditRecords(t *testing.T, logs, action string) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(logs), "\n") {
+		if line == "" {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("log line is not JSON: %v\n%s", err, line)
+		}
+		if rec["log_type"] == "audit" && rec["action"] == action {
+			out = append(out, rec)
+		}
+	}
+	return out
+}
+
+// TestMediaVerifyAuditsAnAppliedWaiver (B-073, FR-094): a waived
+// verification can end pushable and open the serving gate, so the waiver
+// is recorded when it is applied — at the verification, not only at an
+// import — with the actor, the origin and the guard. A Verify followed by
+// an import under the same waiver leaves one record per application,
+// each naming its operation; a plain verification and a refused one
+// leave no success record.
+//
+// Proved fallible: removing the auditOverrides call from the verify
+// handler leaves the first assertion with no record.
+func TestMediaVerifyAuditsAnAppliedWaiver(t *testing.T) {
+	v := &stubVerifier{zone: "zone-alpha", report: blockedReport()}
+	mux, _, _, logs := newMediaAPIWithLogs(t, v)
+
+	w := mediaCall(t, mux, http.MethodPost, "/api/v1/media/verify", "chef", "pw-admin",
+		`{"allowZoneMismatch":true}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("admin verify = %d: %s", w.Code, w.Body)
+	}
+	recs := auditRecords(t, logs.String(), "media.override")
+	if len(recs) != 1 {
+		t.Fatalf("media.override records after a waived verification = %d, want 1:\n%s", len(recs), logs)
+	}
+	r := recs[0]
+	if r["outcome"] != "success" || r["actor"] != "chef" || r["target"] != tasks.OverrideZone ||
+		r["origin"] == "" || r["origin"] == nil {
+		t.Errorf("record = %v, want success by chef on %q with an origin", r, tasks.OverrideZone)
+	}
+	if d, _ := r["detail"].(string); !strings.Contains(d, "operation=verify") ||
+		!strings.Contains(d, "zone=zone-alpha") || !strings.Contains(d, "media=20260826T000000Z-abcdef") {
+		t.Errorf("detail = %q, want the operation, the zone and the medium named", d)
+	}
+
+	// The import under the same waiver is a second application: a second
+	// record, naming the import.
+	w = mediaCall(t, mux, http.MethodPost, "/api/v1/media/import", "chef", "pw-admin",
+		`{"allowZoneMismatch":true}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("admin import = %d: %s", w.Code, w.Body)
+	}
+	recs = auditRecords(t, logs.String(), "media.override")
+	if len(recs) != 2 {
+		t.Fatalf("media.override records after verify then import = %d, want 2", len(recs))
+	}
+	if d, _ := recs[1]["detail"].(string); !strings.Contains(d, "operation=import") {
+		t.Errorf("second record detail = %q, want operation=import", d)
+	}
+
+	// No waiver, no record; a refused waiver, a denied record only.
+	mediaCall(t, mux, http.MethodPost, "/api/v1/media/verify", "op", "pw-op", "{}")
+	mediaCall(t, mux, http.MethodPost, "/api/v1/media/verify", "op", "pw-op", `{"allowStale":true}`)
+	recs = auditRecords(t, logs.String(), "media.override")
+	if len(recs) != 3 || recs[2]["outcome"] != "denied" {
+		t.Errorf("after a plain and a refused verification: %d records, last %v; want one more, denied",
+			len(recs), recs[len(recs)-1])
+	}
+}
+
+// TestMediaImportRefusesAnInstanceWithNoZone (B-077): an instance whose
+// engine serves no zone cannot run the import, so the endpoint refuses at
+// the door with TBY-CFG-001 — no task, no media.import success record, no
+// waiver recorded — instead of answering 201 for a task bound to fail.
+// The two reads answer what they know, 200 with an empty zone.
+func TestMediaImportRefusesAnInstanceWithNoZone(t *testing.T) {
+	v := &stubVerifier{zone: "", report: blockedReport()}
+	mux, q, _, logs := newMediaAPIWithLogs(t, v)
+
+	for _, path := range []string{"/api/v1/media/import", "/api/v1/media/verify"} {
+		w := mediaCall(t, mux, http.MethodPost, path, "chef", "pw-admin", `{"allowStale":true}`)
+		if w.Code < 400 {
+			t.Errorf("POST %s with no zone = %d, want a refusal", path, w.Code)
+		}
+		if !strings.Contains(w.Body.String(), "TBY-CFG-001") {
+			t.Errorf("POST %s with no zone = %s, want TBY-CFG-001", path, w.Body)
+		}
+	}
+	if n := len(q.List("", tasks.TypeMediaImport, "")); n != 0 {
+		t.Errorf("%d import tasks were enqueued on an instance with no zone", n)
+	}
+	if recs := auditRecords(t, logs.String(), "media.import"); len(recs) != 0 {
+		t.Errorf("media.import audited on a refused import: %v", recs)
+	}
+	if recs := auditRecords(t, logs.String(), "media.override"); len(recs) != 0 {
+		t.Errorf("a waiver was recorded on a refused operation: %v", recs)
+	}
+	if v.calls != 0 {
+		t.Errorf("the engine was asked to verify %d times on an instance with no zone", v.calls)
+	}
+
+	for _, path := range []string{"/api/v1/media", "/api/v1/media/verification"} {
+		w := mediaCall(t, mux, http.MethodGet, path, "lecteur", "pw-view", "")
+		if w.Code != http.StatusOK {
+			t.Errorf("GET %s with no zone = %d, want 200 (a read reports what it knows): %s", path, w.Code, w.Body)
+		}
+	}
+	var sum engine.MediaSummary
+	w := mediaCall(t, mux, http.MethodGet, "/api/v1/media", "lecteur", "pw-view", "")
+	if err := json.Unmarshal(w.Body.Bytes(), &sum); err != nil || sum.Zone != "" {
+		t.Errorf("summary = %+v (%v), want an empty zone", sum, err)
+	}
+	var st mediagate.Status
+	w = mediaCall(t, mux, http.MethodGet, "/api/v1/media/verification", "lecteur", "pw-view", "")
+	if err := json.Unmarshal(w.Body.Bytes(), &st); err != nil || st.Guarded || !st.Serving {
+		t.Errorf("verification = %+v (%v), want an unguarded, serving gate", st, err)
+	}
+}
+
+// TestMediaImportRefusesAnInstanceWithNoDestination (B-079): a destination
+// instance with a zone but no destination.registry can verify a medium —
+// verification pushes nothing — but not import it, so the import endpoint
+// refuses at the door with TBY-CFG-001: no task, no waiver record, no
+// media.import success.
+func TestMediaImportRefusesAnInstanceWithNoDestination(t *testing.T) {
+	v := &stubVerifier{zone: "zone-alpha", report: blockedReport(), noDest: true}
+	mux, q, _, logs := newMediaAPIWithLogs(t, v)
+
+	w := mediaCall(t, mux, http.MethodPost, "/api/v1/media/import", "chef", "pw-admin", `{"allowStale":true}`)
+	if w.Code < 400 || !strings.Contains(w.Body.String(), "TBY-CFG-001") {
+		t.Fatalf("import with no destination = %d %s, want a TBY-CFG-001 refusal", w.Code, w.Body)
+	}
+	if !strings.Contains(w.Body.String(), "destination.registry") {
+		t.Errorf("the refusal does not name the setting: %s", w.Body)
+	}
+	if n := len(q.List("", tasks.TypeMediaImport, "")); n != 0 {
+		t.Errorf("%d import tasks were enqueued with nowhere to push", n)
+	}
+	if recs := auditRecords(t, logs.String(), "media.import"); len(recs) != 0 {
+		t.Errorf("media.import audited on a refused import: %v", recs)
+	}
+	if recs := auditRecords(t, logs.String(), "media.override"); len(recs) != 0 {
+		t.Errorf("a waiver was recorded on a refused import: %v", recs)
+	}
+
+	// Verification still works: it pushes nothing.
+	w = mediaCall(t, mux, http.MethodPost, "/api/v1/media/verify", "op", "pw-op", "{}")
+	if w.Code != http.StatusOK {
+		t.Errorf("verify with no destination = %d, want 200: %s", w.Code, w.Body)
 	}
 }

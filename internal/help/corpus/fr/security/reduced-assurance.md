@@ -2,7 +2,7 @@
 title: Le marqueur d'assurance réduite
 description: Comment le contenu admis sous un périmètre de confiance assoupli reste visible — rapports de tâche, API, interface, journaux, métriques et manifeste du média — et pourquoi la destination relit le marqueur comme une déclaration, jamais comme un verdict.
 sidebar:
-  order: 7
+  order: 8
 ---
 
 Un [périmètre d'assouplissement](../content-trust/) est visible comme un

@@ -16,9 +16,7 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"time"
 
@@ -88,10 +86,7 @@ func (p *publishAPI) publish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req publishRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxPublishRequest)).Decode(&req); err != nil {
-		p.api.Problem(w, r, taxonomy.New(taxonomy.CodeValidation, taxonomy.Params{
-			"file": "the request body", "path": "-", "constraint": err.Error(),
-		}))
+	if !p.api.decodeJSON(w, r, maxPublishRequest, &req, false, bodyInvalid) {
 		return
 	}
 	if req.Reference == "" || req.Document == "" {

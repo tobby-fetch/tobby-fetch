@@ -22,7 +22,7 @@ PackageVersion: "0.0.0" # rendered by the release workflow
 PackageLocale: en-US
 Publisher: infraBuilder SASU
 PackageName: tobby
-PackageUrl: https://tobby-fetch.github.io/tobby-fetch/
+PackageUrl: https://tobbyfetch.dev/
 License: GPL-3.0-only
 Copyright: Copyright © 2026 infraBuilder SASU and contributors
 ShortDescription: Secure artifact fetch-and-relocate tool with an embedded OCI registry.

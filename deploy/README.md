@@ -57,7 +57,7 @@ Every release publishes this chart as an OCI artifact, signed with cosign
 like the image:
 
 ```sh
-helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
+helm install tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.7.0 \
   --namespace tobby --create-namespace \
   --set config.mode=passthrough
 ```
@@ -66,7 +66,7 @@ The chart version is the Tobby version — chart `0.6.0` deploys image
 `v0.6.0` — so pin `--version`. Verify before installing:
 
 ```sh
-cosign verify ghcr.io/tobby-fetch/charts/tobby:0.6.0 \
+cosign verify ghcr.io/tobby-fetch/charts/tobby:0.7.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/tobby-fetch/tobby-fetch/'
 ```
@@ -102,7 +102,7 @@ kubectl -n tobby create secret docker-registry tobby-registry-credentials \
   --docker-username=tobby \
   --docker-password="$(cat ./token)"
 
-helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 \
+helm upgrade tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.7.0 \
   --namespace tobby --reuse-values \
   --set registryCredentials.enabled=true \
   --set registryCredentials.existingSecret=tobby-registry-credentials
@@ -128,18 +128,24 @@ The chart drives all three layers Tobby reads, lowest precedence first
 
 Use `config` for everything that is not a per-environment override. The
 keys mirror Tobby's own configuration structure exactly, so the output of
-`tobby config dump` can be pasted in as-is.
+`tobby config dump` can be pasted in once `storage.root`, `state.root`,
+`server.addr` and `registries.credentialsFile` are removed.
 
 Four keys are owned by the chart, because the pod spec depends on them
-too. Setting them yourself makes the chart fail with a message naming the
-value to change instead:
+too. Setting one yourself makes the chart fail with a message naming the
+value to use instead. `registries.credentialsFile` is owned only while the
+registry-credentials Secret is wired (`registryCredentials.existingSecret`,
+or `registryCredentials.enabled` with `dockerconfigjson`): set it then and
+the chart refuses, so use `registryCredentials.*`. While that feature is off
+the chart manages no such file, and a value of yours (a file you mount
+through `extraVolumes`) is kept.
 
 | Chart-owned key | Derived from |
 | --- | --- |
 | `storage.root` | `persistence.storage.mountPath` |
 | `state.root` | `persistence.state.mountPath` |
 | `server.addr` | `containerPort` |
-| `registries.credentialsFile` | the registry-credentials mount |
+| `registries.credentialsFile` | the registry-credentials mount (while enabled) |
 
 ### Optional pieces
 
@@ -153,7 +159,7 @@ value to change instead:
 Reviewing what you are about to install:
 
 ```sh
-helm template tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.6.0 --set config.mode=passthrough
+helm template tobby oci://ghcr.io/tobby-fetch/charts/tobby --version 0.7.0 --set config.mode=passthrough
 ```
 
 ---
@@ -206,7 +212,7 @@ claim:
 kubectl -n tobby scale deploy/tobby --replicas=0
 
 kubectl -n tobby run tobby-bootstrap --rm -it --restart=Never \
-  --image=ghcr.io/tobby-fetch/tobby-fetch:v0.6.0 \
+  --image=ghcr.io/tobby-fetch/tobby-fetch:v0.7.0 \
   --overrides='{
     "spec": {
       "securityContext": {
@@ -215,7 +221,7 @@ kubectl -n tobby run tobby-bootstrap --rm -it --restart=Never \
       },
       "containers": [{
         "name": "tobby-bootstrap",
-        "image": "ghcr.io/tobby-fetch/tobby-fetch:v0.6.0",
+        "image": "ghcr.io/tobby-fetch/tobby-fetch:v0.7.0",
         "stdin": true, "tty": true,
         "args": ["user", "add", "admin", "--state-root", "/var/lib/tobby/state"],
         "securityContext": {
@@ -300,8 +306,10 @@ config:
 
 Mount the pair through `extraVolumes`. The files are re-read when they
 change, so cert-manager rotating a Secret in place is picked up on the
-next handshake without a restart. Remember to switch the probes to
-`scheme: HTTPS` in the same change — one listener carries the probes too.
+next handshake without a restart. With the Helm chart the
+probes switch to `scheme: HTTPS` by themselves (and the ServiceMonitor to
+`https`); with the raw manifests, add `scheme: HTTPS` to the three probes in
+`40-deployment.yaml` in the same change — one listener carries the probes too.
 
 With `enabled: true` and no pair, Tobby generates a self-signed
 certificate and logs its SHA-256 fingerprint at startup:
@@ -370,7 +378,7 @@ once the authority is configured.
 | --- | --- |
 | `/healthz` | Liveness. Answers as soon as the listener is up: the process is alive, not necessarily useful. |
 | `/readyz` | Readiness. 503 until the store and the configuration are usable, and 503 again during the shutdown drain. |
-| `/metrics` | OpenMetrics. Behind the same authentication as every other surface. |
+| `/metrics` | OpenMetrics. Unauthenticated, like the probes. |
 
 Opening a large store takes time, so the deployment uses a startup probe
 (30 × 5s) rather than a lax liveness threshold: the instance gets time to
@@ -381,6 +389,26 @@ On `SIGTERM`, Tobby stops accepting new work and gives in-flight transfers
 `terminationGracePeriodSeconds` must stay above it — the defaults are 30s
 and 60s. Raise both together, or the kubelet kills the process
 mid-checkpoint.
+
+### Alert rules and a dashboard
+
+The chart can ship the supervision kit (R-11), both **off by default**:
+
+| Value | Renders |
+| --- | --- |
+| `alerting.prometheusRule.enabled` | A `PrometheusRule` (needs the Prometheus Operator CRDs). Put the labels your `ruleSelector` asks for under `alerting.prometheusRule.labels`. |
+| `alerting.rulesFile.enabled` | The same rules as a plain Prometheus rules file in a ConfigMap, key `tobby-alerts.rules.yaml`. At default thresholds the file is also kept here: [`charts/tobby/files/tobby-alerts.rules.yaml`](charts/tobby/files/tobby-alerts.rules.yaml), generated from the chart by `tools/chart-alert-rules.sh`. |
+| `dashboard.enabled` | A ConfigMap carrying an example Grafana dashboard, with the label the Grafana sidecar watches. |
+
+The bounds are `alerting.thresholds.*` (repeated sync failures, the age of the
+last success, saturation, store occupancy, the vulnerability database and
+scanner, certificate expiry, the clock). A mirror instance synchronizes when an
+operator says so: set `alerting.thresholds.syncMaxAgeSeconds` to `0` there.
+Every expression names only families of `metrics-reference.json`, the metrics
+reference each release publishes signed beside `openapi.yaml`, and a test holds
+the chart to it; the rules have `promtool` unit tests
+(`charts/tobby/tests/tobby-alerts_test.yaml`). More in the
+[documentation](https://tobbyfetch.dev/docs/passthrough/monitoring/).
 
 ---
 

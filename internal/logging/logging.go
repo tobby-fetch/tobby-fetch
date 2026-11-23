@@ -39,6 +39,10 @@ const (
 	// KeyAssuranceScope names the declared trust scope behind
 	// KeyAssurance, on the same records and only there (FR-037).
 	KeyAssuranceScope = "assurance_scope"
+	// KeyProvenance carries the provenance class of the repository a record
+	// concerns (FR-098, R-17): "recipe", "unit-import" or "seed". Reserved
+	// at the opening of milestone 7, set by the provenance work (track C).
+	KeyProvenance = "provenance"
 )
 
 // New returns a JSON logger writing to w at the given level.

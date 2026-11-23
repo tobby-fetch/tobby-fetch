@@ -109,6 +109,89 @@ func TestPlanAfterASyncReportsNothingToDo(t *testing.T) {
 	}
 }
 
+// TestPlanCountsARecipeWhoseVersionAloneMoved is B-092. A new version of a
+// recipe that names the very same pinned ingredients moves no content,
+// and a run still stores the new recipe artifact and its signature under
+// the cookbook path the zone below reads. A plan that looked at the
+// ingredients alone answered "up-to-date", exit 0, over a run that would
+// write — and a pipeline gating on exit 5 never triggered it.
+//
+// FALLIBILITY (proved 2026-11-23): with the recipe counters taken out of
+// HasChanges the test fails on "outcome = up-to-date".
+func TestPlanCountsARecipeWhoseVersionAloneMoved(t *testing.T) {
+	env := newPlanEnv(t)
+	ctx := context.Background()
+	if _, err := runSync(t, env.eng); err != nil {
+		t.Fatal(err)
+	}
+	before, err := env.planner.Plan(ctx, PlanOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Outcome != OutcomeUpToDate || before.Recipes[0].Status != StatusUpToDate {
+		t.Fatalf("after a sync: outcome %q, recipe %q, want both up-to-date", before.Outcome, before.Recipes[0].Status)
+	}
+	held := before.Recipes[0].Ingredients[0]
+
+	// The same ingredient, at the same digest, under a new recipe version.
+	republish := func(ingredientName string) {
+		t.Helper()
+		yaml := cookedRecipeYAML(t, planRecipe, "1.1.0", []spec.Ingredient{{
+			Name: ingredientName, Kind: spec.IngredientContainerImage,
+			Ref: held.Ref, Version: held.Version, Digest: held.Digest,
+		}})
+		d := publishRecipe(t, env.src.st, "cookbook/"+planRecipe, "1.1.0", yaml)
+		signManifest(t, env.src.st, "cookbook/"+planRecipe, d, env.key)
+	}
+	republish("app")
+	writeRetriever(t, env.retrieverPath, env.cookbook, "1.1.0")
+
+	expect := func(when string, wantNew, wantOutdated int, want ItemStatus) {
+		t.Helper()
+		plan, err := env.planner.Plan(ctx, PlanOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if plan.Outcome != OutcomeChangesPlanned || plan.ExitCode() != taxonomy.ExitChangesPlanned {
+			t.Fatalf("%s: outcome = %q (exit %d), want %q: a run would store the recipe (problems %+v)",
+				when, plan.Outcome, plan.ExitCode(), OutcomeChangesPlanned, plan.Problems)
+		}
+		if got := plan.Recipes[0].Status; got != want {
+			t.Errorf("%s: recipe status = %q, want %q", when, got, want)
+		}
+		if plan.Totals.RecipesNew != wantNew || plan.Totals.RecipesOutdated != wantOutdated {
+			t.Errorf("%s: recipes new/outdated = %d/%d, want %d/%d", when,
+				plan.Totals.RecipesNew, plan.Totals.RecipesOutdated, wantNew, wantOutdated)
+		}
+		// The ingredients are untouched, and the plan keeps saying so.
+		if plan.Totals.UpToDate != 1 || plan.Totals.New != 0 || plan.Totals.Outdated != 0 || plan.Totals.TransferBytes != 0 {
+			t.Errorf("%s: ingredient totals = %+v, want one up-to-date ingredient and nothing to transfer", when, plan.Totals)
+		}
+	}
+	settle := func(when string) {
+		t.Helper()
+		if _, err := runSync(t, env.eng); err != nil {
+			t.Fatal(err)
+		}
+		plan, err := env.planner.Plan(ctx, PlanOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if plan.Outcome != OutcomeUpToDate || plan.Recipes[0].Status != StatusUpToDate {
+			t.Fatalf("%s: outcome %q, recipe %q, want both up-to-date once the run has stored it",
+				when, plan.Outcome, plan.Recipes[0].Status)
+		}
+	}
+
+	expect("a new recipe version", 1, 0, StatusNew)
+	settle("after the run that stored it")
+
+	// The tag republished at another digest: same version, another document.
+	republish("app-renamed")
+	expect("a republished recipe version", 0, 1, StatusOutdated)
+	settle("after the run that replaced it")
+}
+
 // TestPlanRefusedByPolicyDoesNotContactTheDestination is the FR-055
 // acceptance criterion, word for word: "a plan run whose recipes violate
 // the allow-list exits with the policy code without contacting the

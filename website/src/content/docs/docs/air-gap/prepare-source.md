@@ -87,7 +87,8 @@ workstation changes its behaviour and is not a harmless extra.
 ### Synchronization is manual, always
 
 A mirror instance has no scheduler. `sync.interval` and `sync.prune` are
-passthrough-only settings and are refused in mirror mode. Preparing a medium
+passthrough-only settings: in mirror mode `sync.interval` is ignored, and
+`sync.prune` is refused at startup. Preparing a medium
 is triggered from the interface, from `POST /api/v1/sync`, or from
 [`tobby sync`](../../reference/cli/#tobby-sync) against the running instance
 — always by a person.
@@ -99,8 +100,7 @@ nobody is watching is a medium nobody can vouch for.
 ## Pre-flight: does it fit, and will it pass?
 
 Before any transfer starts, Tobby computes what would travel and compares it
-with what the target can hold. Two refusals and two warnings come out of it
-(FR-055).
+with what the target can hold. Two refusals and two warnings come out of it.
 
 **Volume against space.** The bytes to transfer are computed per recipe from
 the source manifests, deduplicated by digest and net of what the store
@@ -166,7 +166,7 @@ Exit codes make it a gate rather than a report to read by eye:
 | `5` | changes planned |
 | `3` | refused by policy (a registry outside the allow-list) |
 | `4` | verification failed (a recipe signature no trust root validates) |
-| `1` | the plan could not complete |
+| `1` | the plan could not complete, or the pre-flight refused the target (space, filesystem: `TBY-STO-004`, `TBY-STO-005`) |
 
 The same report is on `POST /api/v1/plan` and on the `/recipes/plan` screen,
 where a **candidate** Retriever can be planned instead of the configured one
@@ -236,5 +236,8 @@ moment: which zone the medium is addressed to, when it was resolved, what it
 delivers, what it weighs.
 
 <!-- TODO: screenshot: the Media screen on the source side — the handover card read before the medium is unmounted -->
+
+A preparation that is refused before it starts, or a source that does not
+answer: see [Troubleshooting](../../reference/troubleshooting/#a-transfer-is-refused-before-it-starts).
 
 Next: [import on the isolated side](../../air-gap/import-destination/).

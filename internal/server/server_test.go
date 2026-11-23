@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -220,5 +221,58 @@ func TestFeatureHandlerMounts(t *testing.T) {
 	}
 	if code, _ := get(t, "http://"+srv.Addr()+"/v2/"); code != http.StatusOK {
 		t.Errorf("mounted handler = %d, want 200", code)
+	}
+}
+
+// TestDrainClosesASilentConnection: a client that opened a connection
+// and never sent a request — what Go's HTTP transport leaves behind when
+// it dials a spare connection a pooled one then made unnecessary — must
+// neither delay the drain past the grace period nor turn it into an
+// error. net/http's Shutdown waits on such a connection for five seconds
+// before counting it idle; past the grace period the server closes what
+// remains and Run returns nil (FR-093: the process exits 0).
+//
+// Proved fallible: before the fix Run returned "draining http server:
+// context deadline exceeded" and left the connection open.
+func TestDrainClosesASilentConnection(t *testing.T) {
+	srv := New("127.0.0.1:0", 200*time.Millisecond, metrics.New(), logging.New(io.Discard, slog.LevelError))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- srv.Run(ctx) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for srv.Addr() == "" {
+		if time.Now().After(deadline) {
+			t.Fatal("server did not start listening")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	var d net.Dialer
+	conn, err := d.DialContext(context.Background(), "tcp", srv.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run returned %v, want nil", err)
+		}
+	case <-time.After(4 * time.Second):
+		t.Fatal("the drain waited on a connection that never sent a request")
+	}
+	// The server hung up on it rather than leaving it open.
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	// A close can reach the client as a clean end of stream or as a reset,
+	// depending on the platform; a deadline expiry is the one answer that
+	// would mean the connection was left open.
+	var netErr net.Error
+	if _, err := conn.Read(make([]byte, 1)); err == nil || (errors.As(err, &netErr) && netErr.Timeout()) {
+		t.Errorf("reading the silent connection after the drain = %v, want it closed", err)
 	}
 }

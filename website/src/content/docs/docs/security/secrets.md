@@ -2,12 +2,12 @@
 title: Secrets
 description: Every secret a Tobby instance holds, where it lives, how it is stored, and why it cannot leak through logs, errors, or configuration dumps.
 sidebar:
-  order: 6
+  order: 7
 ---
 
 An auditor should be able to enumerate every secret an instance holds and
-verify where each one lives. This page is that inventory — exhaustive as
-of v0.5.x — followed by the mechanisms that keep secrets out of every
+verify where each one lives. This page is that inventory — exhaustive for
+the release this documentation comes with — followed by the mechanisms that keep secrets out of every
 output channel.
 
 ## Inventory
@@ -21,7 +21,7 @@ output channel.
 | TLS private key | the `server.tls.keyFile` path (FR-082) | PEM file; never returned by any surface, in any form |
 | OIDC client secret | the `auth.oidc.clientSecretFile` path (FR-070) | as provided; never in the configuration file itself |
 | SAML service-provider key | the `auth.saml.keyFile` path (FR-071) | PEM file; only its certificate is published, in the SP descriptor |
-| UI session material | memory only | a restart signs everyone out; cookies carry `Secure`, `HttpOnly`, `SameSite` (NFR-015) |
+| UI session material | memory only | a restart signs everyone out; cookies carry `HttpOnly` and `SameSite=Lax`, and `Secure` when the listener serves TLS or `server.secureCookies` declares TLS terminated in front; over plain HTTP without that setting they are not `Secure` (NFR-015) |
 
 Two things are deliberately *absent* from this inventory. Trust roots are
 public keys — configuration, not secrets
@@ -55,6 +55,7 @@ anywhere.
 | File | Unix | Windows |
 |---|---|---|
 | `accounts.yaml` (accounts, token digests) | `0600`, in a `0700` directory | access list granting the owning account only |
+| The state root itself | `0700` | access list granting the owning account only (inherited by what is created inside) |
 | Generated self-signed TLS key | `0600` | access list granting the owning account only |
 | Replaced TLS private key | `0600` | access list granting the owning account only |
 | Replaced TLS **certificate** | keeps the mode it had (public by construction) | inherited |
@@ -114,9 +115,21 @@ hashes and the instance identity, and it is the single backup target.
 The store holds verified public content and operation logs — valuable,
 but not secret.
 
-:::note[Upcoming — milestone 7]
-A one-command **diagnostic bundle** — version, redacted configuration,
-logs, reports, integrity results, with the redaction itself tested —
-arrives at milestone 7 (R-30). Until then, `tobby config dump` plus your
-log excerpts are the safe equivalents.
-:::
+The state root has a documented, versioned layout and is checked at every
+start: a secret entry readable by every user of the host **refuses the
+start** ([`TBY-STA-002`](../../reference/errors/#tby-sta-002)), group access
+granted by the volume (Kubernetes `fsGroup`) is tolerated, and an identity
+entry missing after a restore is reported. `tobby state inspect` lists the
+entries with their class and permissions, never their content. See
+[Back up and rebuild an instance](../../passthrough/backup-rebuild/).
+
+**Encryption at rest is the volume's job.** Tobby keeps its secret entries
+owner-only and stores the credentials it verifies hashed, but it does not
+encrypt files: use an encrypted disk, an encrypted persistent volume or
+BitLocker, and give the backups of the state root the same protection. An
+encrypted backup bundle produced by Tobby is outside version 1.
+
+To hand a problem to someone else, use the
+[diagnostic bundle](../../passthrough/diagnostics/): one archive, with the
+configuration redacted and every file searched for the secrets the instance
+knows before it is written — and not written at all if one is found.

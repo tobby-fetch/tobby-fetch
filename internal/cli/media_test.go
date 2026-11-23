@@ -221,9 +221,18 @@ func TestMediaImportNeedsADestination(t *testing.T) {
 	if _, err := run(t, "media", "verify", "--storage-root", root, "--zone", "zone-alpha"); err != nil {
 		t.Fatalf("verify without a destination must work: %v", err)
 	}
-	_, err := run(t, "media", "import", "--storage-root", root, "--zone", "zone-alpha")
+	_, errOut, err := runSplit(t, "media", "import", "--storage-root", root, "--zone", "zone-alpha", "--allow-stale")
 	if !isTaxonomy(err, taxonomy.CodeConfigInvalid) {
 		t.Fatalf("import without a destination = %v, want %s", err, taxonomy.CodeConfigInvalid)
+	}
+	// B-079: refused before anything is written or audited — no operation
+	// log on the medium, no media.import or media.override record.
+	logDir := filepath.Dir(filepath.Join(root, filepath.FromSlash(medialog.DefaultPath)))
+	if _, serr := os.Stat(logDir); serr == nil {
+		t.Errorf("a refused import left %s on the medium", logDir)
+	}
+	if strings.Contains(errOut, `"log_type":"audit"`) {
+		t.Errorf("a refused import wrote audit records:\n%s", errOut)
 	}
 }
 
@@ -299,5 +308,49 @@ func TestMediaReportNamesReducedAssurance(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("note %q lacks %q", got, want)
 		}
+	}
+}
+
+// TestMediaVerifyAuditsAnAppliedWaiver (B-073, FR-094): a waiver applied
+// to `tobby media verify` is recorded like one applied to an import — the
+// guard, the actor and origin "local" (the command line checks no role),
+// and a detail naming the operation — on the instance stream, since the
+// command writes nothing onto the medium. A plain verification records
+// none.
+//
+// Proved fallible: removing the auditWaivers call from runMediaVerify
+// leaves stderr with no media.override record.
+func TestMediaVerifyAuditsAnAppliedWaiver(t *testing.T) {
+	root := emptyMedium(t)
+	_, errOut, err := runSplit(t, "media", "verify", "--storage-root", root, "--zone", "zone-beta", "--allow-zone-mismatch")
+	if err != nil {
+		t.Fatalf("waived verify = %v", err)
+	}
+	var found map[string]any
+	for _, line := range strings.Split(errOut, "\n") {
+		var rec map[string]any
+		if json.Unmarshal([]byte(line), &rec) != nil {
+			continue
+		}
+		if rec["log_type"] == "audit" && rec["action"] == "media.override" {
+			found = rec
+		}
+	}
+	if found == nil {
+		t.Fatalf("no media.override audit record on stderr after a waived verify:\n%s", errOut)
+	}
+	if found["outcome"] != "success" || found["actor"] != "local" || found["origin"] != "local" || found["target"] != "zone" {
+		t.Errorf("record = %v, want success, actor and origin local, target zone", found)
+	}
+	if d, _ := found["detail"].(string); !strings.Contains(d, "operation=verify") || !strings.Contains(d, "zone=zone-beta") {
+		t.Errorf("detail = %q, want the operation and the zone named", d)
+	}
+
+	_, errOut, err = runSplit(t, "media", "verify", "--storage-root", root, "--zone", "zone-alpha")
+	if err != nil {
+		t.Fatalf("plain verify = %v", err)
+	}
+	if strings.Contains(errOut, `"media.override"`) {
+		t.Errorf("a verification with no waiver wrote a media.override record:\n%s", errOut)
 	}
 }

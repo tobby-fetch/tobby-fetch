@@ -11,6 +11,11 @@ removable medium across the air gap, and a Tobby instance on the isolated
 side verifies it and pushes it into the zone registry. Moving the directory
 *is* the transfer — there is no bespoke packing or unpacking step.
 
+To watch the whole journey happen before reading about it, replay it on
+one machine in about ten minutes once Docker and cosign are installed:
+[air-gap on one machine](../../try/air-gap-on-one-machine/). Unfamiliar
+words are in the [glossary](../../discover/glossary/).
+
 This page is the map. The operational detail lives on three pages beside it:
 [prepare the source workstation](../../air-gap/prepare-source/),
 [import on the isolated side](../../air-gap/import-destination/), and
@@ -18,8 +23,13 @@ This page is the map. The operational detail lives on three pages beside it:
 all of it is
 [ADR-0006](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0006-removable-media-transport.md)
 and
-[ADR-0016](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0016-media-manifest.md),
-SRS FR-050 to FR-056.
+[ADR-0016](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/adr/ADR-0016-media-manifest.md).
+
+:::tip[In short]
+- Five steps, in this order: prepare (mirror mode, the zone's Retriever, trust roots), pre-flight (`tobby sync --dry-run`, which refuses impossible transfers), export (a manual `tobby sync --wait`, manifest written last), transport (outside Tobby), import. [Steps](#the-five-steps)
+- On the isolated side, `tobby media verify` then `tobby media import` verify the whole medium before anything is pushed; exit `0` means success. [Import](#5--import)
+- Only two refusals can be waived: by an `admin` on the screen and the API, by anyone with access to the host on the command line. Every waiver applied is audited, at the Verify step as at the import; integrity and signature failures have no override. [The Media screen](#the-media-screen)
+:::
 
 ## Two instances, one directory
 
@@ -91,7 +101,7 @@ renaming later.
 | 2 | **Pre-flight** | Tobby computes what would travel and refuses impossible transfers before they start. | operator |
 | 3 | **Export** | A manually triggered synchronization fills the transportable store; the media manifest is written last. | operator |
 | 4 | **Transport** | The medium physically crosses the gap, through the site's media handling controls. | site media procedure (outside Tobby) |
-| 5 | **Import** | The destination instance verifies the medium, then pushes verified content to the zone registry. | operator (admin for the two audited waivers) |
+| 5 | **Import** | The destination instance verifies the medium, then pushes verified content to the zone registry. | operator (admin for the two waivers on the screen and the API) |
 
 ### 1 — Prepare
 
@@ -176,9 +186,12 @@ This step is purely organizational: you can write and rehearse it today.
 ### 5 — Import
 
 The destination instance treats the medium as untrusted until proven
-otherwise. Verification runs before any push, any serving, any local write:
-manifest completeness and checksums first, then recipe signatures against
-the destination's own trust roots, then every ingredient digest. Recipes
+otherwise. Verification runs before any push, any serving, any write to the
+store: manifest completeness and checksums first, then every file and
+ingredient digest a recipe reaches, then the recipe's signature against the
+destination's own trust roots. Only the operation log and the task records
+under `_tobby/`, outside the manifest's coverage, are written before it.
+Recipes
 that verify are pushed differentially to the zone registry; everything else
 is blocked and named. The destination's logs are written back onto the
 medium for the return trip.
@@ -188,10 +201,11 @@ Checklist:
 - The medium's zone identity matches this instance's zone.
 - Verification verdicts were reviewed per step and per recipe.
 - Blocked recipes, if any, are listed in the report and handled per your
-  site procedure. Only two refusals can be waived, both by an administrator
-  and both audited: a medium addressed to another zone, and a medium older
-  than the last one imported here. Integrity and signature failures have no
-  override, for anyone.
+  site procedure. Only two refusals can be waived: a medium addressed to
+  another zone, and a medium older than the last one imported here. On the
+  screen and the API this needs the `admin` role; on the command line,
+  anyone who can run `tobby media` on the host can do it. Integrity and
+  signature failures have no override, for anyone.
 - The push completed; the returning medium carries the destination logs.
 
 #### The Media screen
@@ -215,8 +229,11 @@ guided sequence:
    delivery. Not greyed out: absent.
 
 A zone mismatch and a medium older than the last one imported here are the
-only two refusals an administrator may waive, from the Verify step, audited.
-Integrity and signature verdicts have no override, for anyone. Step by step:
+only two refusals an administrator may waive on the screen. They are ticked
+at the Verify step and carried to Push, and the waiver is audited at each
+application: once when the waived verification starts — it can open the
+serving gate — and once more when Push is clicked. Integrity and signature
+verdicts have no override, for anyone. Step by step:
 [import on the isolated side](../../air-gap/import-destination/).
 
 <!-- TODO: screenshot: the Media screen mid-verification — the three steps, the live progress bar, and the Push control absent -->
@@ -248,6 +265,10 @@ apart by the zone identity, which only a destination instance configures.
 The zone registry now serves the content. Connecting the zone's clusters and
 hosts to it works exactly as in passthrough mode — see
 [Connect your clients](../../passthrough/connect-clients/).
+
+A step that refuses to go further names a `TBY-…` code:
+[Troubleshooting — a removable medium is blocked](../../reference/troubleshooting/#a-removable-medium-is-blocked)
+starts from what you see.
 
 Media that come back for another cycle — identity, freshness, pruning,
 sizing, and starting a medium over — are on

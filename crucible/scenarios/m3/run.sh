@@ -94,7 +94,7 @@ FS_DIGEST=$( cd "$DIR/../../.." && go run ./test/topology/seed push-fileset "$SO
 check "fixtures seeded (image $IMG_DIGEST, fileset $FS_DIGEST), key pairs generated"
 
 cat > "$WORK/sample-app.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Recipe
 metadata:
   name: sample-app
@@ -170,7 +170,7 @@ files:
       anonymous: true
 EOF
 cat > "$WORK/retriever.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: crucible-zone
@@ -308,7 +308,7 @@ trust:
 $PUB_KEY_INDENTED
 EOF
 cat > "$WORK/down-retriever.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: crucible-zone-2

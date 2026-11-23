@@ -18,6 +18,8 @@ import (
 	"github.com/opencontainers/go-digest"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/blobfetch"
+	"github.com/tobby-fetch/tobby-fetch/internal/logging"
+	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
 )
@@ -45,6 +47,9 @@ func NewRunner(dst Destination, opts ...Option) tasks.Runner {
 
 func runImport(ctx context.Context, t *tasks.Task, dst Destination, logger *slog.Logger, save func(), opts []Option) error {
 	o := buildOptions(opts)
+	if err := o.refusal(); err != nil {
+		return err
+	}
 	if isChartRepoURL(t.Reference) {
 		return runChartRepoImport(ctx, t, dst, logger, save, o)
 	}
@@ -129,7 +134,44 @@ func runImport(ctx context.Context, t *tasks.Task, dst Destination, logger *slog
 			slog.String("repository", repo), slog.String("tag", tag),
 			slog.String("digest", desc.Digest.String()))
 	}
+	recordUnitImport(ctx, dst, t, repo, logger)
 	return nil
+}
+
+// ProvenanceRecorder is the optional ledger side of a Destination: the
+// embedded store implements it, so a unit import is recorded as one
+// (FR-023, FR-098) — content a recipe does not manage, never pruned
+// (FR-045), individually removable (FR-044 amendment). A test double
+// without it simply records nothing.
+type ProvenanceRecorder interface {
+	RecordUnitImport(repo string) (bool, error)
+	Classify(repo string) store.Classification
+}
+
+// recordUnitImport records the repository once anything of the task
+// landed — a task whose every item failed brought nothing in — and logs
+// the import with the class the repository now has.
+func recordUnitImport(ctx context.Context, dst Destination, t *tasks.Task, repo string, logger *slog.Logger) {
+	if agg := t.Aggregate(); agg.Done == 0 && agg.Skipped == 0 {
+		return
+	}
+	class := "unit-import"
+	if rec, ok := dst.(ProvenanceRecorder); ok {
+		wrote, err := rec.RecordUnitImport(repo)
+		if err != nil {
+			logger.LogAttrs(ctx, slog.LevelWarn, "the provenance of the imported repository could not be recorded",
+				slog.String("repository", repo), slog.String("error", err.Error()),
+				slog.String("requirement", "FR-098"))
+		}
+		if !wrote {
+			// The ledger already knew better (never-downgrade rule): log
+			// what the repository is, not what this task would have made it.
+			class = string(rec.Classify(repo).Class)
+		}
+	}
+	logger.LogAttrs(ctx, slog.LevelInfo, "unit import recorded",
+		slog.String("repository", repo), slog.String("reference", t.Reference),
+		slog.String(logging.KeyProvenance, class), slog.String("requirement", "FR-023/FR-098"))
 }
 
 // imageForItem resolves the platform image behind one task item.

@@ -129,7 +129,7 @@ c_verifies a "$SOURCE_IP:8080/cookbook/signed-app@$D_SIGNED" || fail "signed-app
 check "lab-app is unsigned (no signature tag, cosign agrees); signed-app verifies under key A"
 
 cat >"$WORK/retriever.yaml" <<EOF
-apiVersion: recipe.tobby.dev/v1alpha1
+apiVersion: recipe.tobbyfetch.dev/v1alpha1
 kind: Retriever
 metadata:
   name: $ZONE

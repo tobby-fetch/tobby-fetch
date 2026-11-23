@@ -4,7 +4,6 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tobby-fetch/tobby-fetch/internal/audit"
+	"github.com/tobby-fetch/tobby-fetch/internal/auth"
 	"github.com/tobby-fetch/tobby-fetch/internal/config"
 	"github.com/tobby-fetch/tobby-fetch/internal/engine"
 	"github.com/tobby-fetch/tobby-fetch/internal/integrity"
@@ -24,6 +24,7 @@ import (
 	"github.com/tobby-fetch/tobby-fetch/internal/logging"
 	"github.com/tobby-fetch/tobby-fetch/internal/netx"
 	"github.com/tobby-fetch/tobby-fetch/internal/runid"
+	"github.com/tobby-fetch/tobby-fetch/internal/statedir"
 	"github.com/tobby-fetch/tobby-fetch/internal/store"
 	"github.com/tobby-fetch/tobby-fetch/internal/tasks"
 	"github.com/tobby-fetch/tobby-fetch/internal/taxonomy"
@@ -73,11 +74,14 @@ the report is timestamped: start and end, run identifier, verdict, and
 every defect as a taxonomy code naming the file or object concerned.
 Orphaned content is listed as a note and never makes the verdict "defects".
 
-Without --instance it runs in this process, against the directory, and
+Without --instance (and with ` + EnvInstanceURL + ` unset) it runs in this process, against the directory, and
 works on a host where no instance is running. When an instance IS serving
 the store, this form refuses (it cannot see the instance's content lock, so
 a removal in progress would read as a defect) and tells you to use
---instance: the verification then runs on that instance as a tracked task,
+--instance. A serving instance is recognised by the operating-system lock it
+holds on its state directory, whatever its listener (plain HTTP, TLS,
+self-signed included); one that crashed holds nothing and does not block
+this form. With --instance: the verification then runs on that instance as a tracked task,
 under its content lock, on a lane of its own — it never holds up a
 synchronization — and --wait follows it to its end and exits on its outcome.
 Trust roots come from the configuration (trust.roots, trust.scopes), never
@@ -93,7 +97,7 @@ that no longer verifies).`,
 			if err := report.validate(cmd); err != nil {
 				return err
 			}
-			if cmd.Flags().Changed("instance") {
+			if instanceRequested(cmd) {
 				return runStoreVerifyRemote(cmd, &common, &instance, &wait, report)
 			}
 			if cmd.Flags().Changed("wait") || cmd.Flags().Changed("wait-timeout") {
@@ -123,7 +127,7 @@ that no longer verifies).`,
 // the verdict into the exit class.
 func runStoreVerify(cmd *cobra.Command, cfg *config.Config, report *reportFlag) error {
 	root := cfg.Storage.Root
-	if url := servedAt(cmd.Context(), cfg); url != "" {
+	if url := servedAt(cfg); url != "" {
 		return taxonomy.New(taxonomy.CodeConfigInvalid, taxonomy.Params{
 			"detail": root + " is being served by a running instance (" + url + "): verifying it from a second process " +
 				"cannot see that instance's content lock, so a removal in progress would read as a defect. " +
@@ -168,9 +172,9 @@ func runStoreVerify(cmd *cobra.Command, cfg *config.Config, report *reportFlag) 
 	defer egress.CloseIdleConnections()
 	trustCache := ""
 	if cfg.State.Root != "" {
-		trustCache = filepath.Join(cfg.State.Root, "trust-cache")
+		trustCache = statedir.Path(cfg.State.Root, statedir.TrustCache)
 	}
-	trust, err := engine.LoadTrust(cfg.Trust, trustCache, egress)
+	trust, err := engine.LoadTrustLogging(logger, cfg.Trust, trustCache, egress)
 	if err != nil {
 		return err
 	}
@@ -248,8 +252,12 @@ func writeIntegrityReport(cmd *cobra.Command, report *reportFlag, rep *integrity
 
 // servingFile is the marker a running instance keeps in its STATE directory
 // — never in the store, which is transportable and whose every byte a
-// verification must leave alone.
-const servingFile = "serving.json"
+// verification must leave alone. Its content (store, URL, PID) is for the
+// messages; whether an instance is alive is the operating-system lock the
+// instance holds on it for its lifetime (auth.StateLock), never a probe of
+// its URL — a probe fails on a self-signed listener and on any address the
+// host cannot reach, and a guard that fails open is no guard (B-093).
+const servingFile = statedir.Serving
 
 type servingMarker struct {
 	StorageRoot string `json:"storage_root"`
@@ -257,80 +265,161 @@ type servingMarker struct {
 	PID         int    `json:"pid"`
 }
 
-// markServing records that this instance serves cfg's store, and returns
-// the function that removes the record. addr reports the address the
-// listener actually bound (the configured one may say port 0); the marker
-// is written as soon as it is known. Without a state directory there is
-// nowhere to keep it, and `store verify` cannot tell.
-func markServing(cfg *config.Config, addr func() string) func() {
+// holdServingWait bounds how long a starting instance waits for a host
+// command (`tobby user add`, `tobby user passwd`) that holds the state
+// directory while it writes it.
+const holdServingWait = 5 * time.Second
+
+// servingHold is this instance's hold on its state directory. The zero
+// value (no state directory) holds nothing and every method is a no-op.
+type servingHold struct {
+	lock     *auth.StateLock
+	mu       sync.Mutex
+	marker   servingMarker
+	released bool
+}
+
+// holdServing takes cfg's state directory for this instance's lifetime
+// (B-082, B-093). It is taken before the accounts are loaded: from then
+// on the instance's in-memory copy is the truth, and the host commands
+// that would write accounts.yaml behind its back refuse. A second
+// instance on the same state directory is refused for the same reason —
+// each would revert the other's account changes. The hold is released by
+// the operating system if the process dies, so a crash leaves no stale
+// guard behind.
+func holdServing(cfg *config.Config) (*servingHold, error) {
+	h := &servingHold{}
 	if cfg.State.Root == "" {
-		return func() {}
+		return h, nil
 	}
 	root, err := filepath.Abs(cfg.Storage.Root)
 	if err != nil {
-		return func() {}
+		root = cfg.Storage.Root
 	}
-	path := filepath.Join(cfg.State.Root, servingFile)
-	var mu sync.Mutex
-	removed := false
+	h.marker = servingMarker{StorageRoot: root, PID: os.Getpid()}
+	deadline := time.Now().Add(holdServingWait)
+	for {
+		lock, lerr := auth.LockState(cfg.State.Root)
+		if lerr == nil {
+			h.lock = lock
+			break
+		}
+		if !errors.Is(lerr, auth.ErrStateHeld) {
+			return nil, lerr
+		}
+		if time.Now().After(deadline) {
+			holder := ""
+			if m, ok := readServingMarker(cfg.State.Root); ok && m.PID != 0 {
+				holder = fmt.Sprintf(" (process %d per %s)", m.PID, servingFile)
+			}
+			return nil, taxonomy.New(taxonomy.CodeConfigInvalid, taxonomy.Params{
+				"detail": "state.root " + cfg.State.Root + " is held by another process" + holder +
+					": a running instance, or a `tobby user` command writing the accounts. Two instances must never share a state directory — " +
+					"each keeps the accounts in memory and would revert the other's changes. Stop the other instance, or wait for the command to finish, " +
+					"or give this instance a state directory of its own",
+			}).WithCause(lerr)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	h.writeLocked()
+	return h, nil
+}
+
+// writeLocked writes the marker through the held lock. Callers hold h.mu
+// or have not shared h yet.
+func (h *servingHold) writeLocked() {
+	if h.lock == nil || h.released {
+		return
+	}
+	if raw, err := json.Marshal(h.marker); err == nil {
+		_ = h.lock.Write(raw)
+	}
+}
+
+// publish records the address the listener bound (the configured one may
+// say port 0) as soon as it is known, so the refusals can name the URL
+// to use instead. The scheme follows whether the listener serves TLS at
+// all — a supplied pair, an adopted one or the self-signed fallback.
+func (h *servingHold) publish(cfg *config.Config, addr func() string) {
+	if h.lock == nil {
+		return
+	}
+	scheme := "http://"
+	if cfg.Server.TLS.Serves() {
+		scheme = "https://"
+	}
 	go func() {
 		for range 250 {
 			if a := addr(); a != "" {
-				url := "http://" + a
-				if cfg.Server.TLS.CertFile != "" {
-					url = "https://" + a
-				}
-				raw, merr := json.Marshal(servingMarker{StorageRoot: root, URL: url, PID: os.Getpid()})
-				mu.Lock()
-				if merr == nil && !removed {
-					_ = os.WriteFile(path, raw, 0o600)
-				}
-				mu.Unlock()
+				h.mu.Lock()
+				h.marker.URL = scheme + a
+				h.writeLocked()
+				h.mu.Unlock()
 				return
 			}
 			time.Sleep(20 * time.Millisecond)
 		}
 	}()
-	return func() {
-		mu.Lock()
-		removed = true
-		mu.Unlock()
-		_ = os.Remove(path)
+}
+
+// release empties the marker and gives the state directory back.
+func (h *servingHold) release() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.lock == nil || h.released {
+		return
 	}
+	h.released = true
+	_ = h.lock.Release()
+}
+
+// readServingMarker reads the marker's content, which may be empty or
+// stale: it describes the holder, it does not prove there is one.
+func readServingMarker(stateRoot string) (servingMarker, bool) {
+	var m servingMarker
+	raw, err := os.ReadFile(statedir.Path(stateRoot, servingFile))
+	if err != nil || json.Unmarshal(raw, &m) != nil {
+		return servingMarker{}, false
+	}
+	return m, true
+}
+
+// servingInstance reports whether a running instance (or a host command
+// writing the accounts) holds cfg's state directory, with the marker it
+// published. A state directory that does not exist is held by nobody, and
+// is not created by asking.
+func servingInstance(cfg *config.Config) (bool, servingMarker, error) {
+	if cfg.State.Root == "" {
+		return false, servingMarker{}, nil
+	}
+	if _, err := os.Stat(cfg.State.Root); errors.Is(err, os.ErrNotExist) {
+		return false, servingMarker{}, nil
+	}
+	held, err := auth.StateHeld(cfg.State.Root)
+	if err != nil || !held {
+		return false, servingMarker{}, err
+	}
+	m, _ := readServingMarker(cfg.State.Root)
+	return true, m, nil
 }
 
 // servedAt returns the URL of a running instance serving cfg's store, or
-// "". The marker alone is not believed — a crashed instance leaves one
-// behind — the instance has to answer its liveness probe.
-func servedAt(ctx context.Context, cfg *config.Config) string {
-	if cfg.State.Root == "" {
+// "". An instance that holds the state directory for another store does
+// not count; one whose address is not published yet answers a placeholder
+// rather than "" — the guard must not fail open while it starts.
+func servedAt(cfg *config.Config) string {
+	held, m, err := servingInstance(cfg)
+	if err != nil || !held {
 		return ""
 	}
-	raw, err := os.ReadFile(filepath.Join(cfg.State.Root, servingFile))
-	if err != nil {
-		return ""
+	if m.StorageRoot != "" {
+		root, aerr := filepath.Abs(cfg.Storage.Root)
+		if aerr != nil || filepath.Clean(m.StorageRoot) != filepath.Clean(root) {
+			return ""
+		}
 	}
-	var m servingMarker
-	if json.Unmarshal(raw, &m) != nil || m.URL == "" {
-		return ""
-	}
-	root, err := filepath.Abs(cfg.Storage.Root)
-	if err != nil || filepath.Clean(m.StorageRoot) != filepath.Clean(root) {
-		return ""
-	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.URL+"/healthz", http.NoBody)
-	if err != nil {
-		return ""
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return ""
-	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return ""
+	if m.URL == "" {
+		return "<the instance's URL>"
 	}
 	return m.URL
 }

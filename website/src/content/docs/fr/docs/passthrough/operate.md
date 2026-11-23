@@ -2,18 +2,29 @@
 title: Exploiter dans la durée
 description: Sondes, suivi et reprise des tâches, ce sur quoi alerter, sauvegarde, croissance du store, montées de version et arrêt propre.
 sidebar:
-  order: 7
-  badge:
-    text: Partiel
-    variant: caution
+  order: 8
 ---
 
 Une instance passthrough est conçue pour tourner sans surveillance
 pendant des mois. Cette page dit ce que cela vous coûte : ce qu'il faut
 surveiller, ce qu'il faut sauvegarder, ce qui grossit, et comment monter
-de version. Une partie de l'outillage qui rendra tout cela plus simple
-est encore devant — ces parties portent un badge ci-dessous plutôt que
-d'être passées sous silence.
+de version.
+
+:::tip[En bref]
+- Sondes : `/healthz` (vivante), `/readyz` (503 tant que l'instance n'est
+  pas utilisable), `/metrics` (sans authentification) —
+  [détails](#sondes-et-métriques).
+- Alertez sur un `/readyz` non-200, les tâches en échec et l'âge de la
+  dernière synchronisation réussie — [ce sur quoi alerter](#ce-sur-quoi-alerter).
+- Sauvegardez `state.root` (avec le fichier de configuration), jamais le
+  store ; `tobby state inspect` le liste —
+  [sauvegarde](#sauvegarde--le-répertoire-détat).
+- Rien ne nettoie le store par défaut : `sync.prune: true` retire ce que
+  le Retriever ne référence plus, et `storage.occupancyThreshold` vous
+  avertit sur le volume — [croissance du store](#la-croissance-du-store-dite-sans-détour).
+- `tobby sync --dry-run` prévisualise la prochaine synchronisation (code
+  de sortie `5` : des changements sont prévus) — [le voir venir](#le-voir-venir).
+:::
 
 ## Sondes et métriques
 
@@ -21,7 +32,7 @@ d'être passées sous silence.
 | --- | --- |
 | `/healthz` | Vivacité. Répond dès que le listener est en place : le processus est vivant, pas forcément utile. |
 | `/readyz` | Disponibilité. 503 tant que le store et la configuration ne sont pas exploitables, et 503 de nouveau pendant le drainage d'arrêt. |
-| `/metrics` | OpenMetrics (FR-091). Derrière la même authentification que toutes les autres surfaces — donnez un compte ou un jeton viewer à votre collecteur ; le ServiceMonitor du chart gère le basic auth. |
+| `/metrics` | OpenMetrics. Sans authentification, comme les deux sondes : il expose des compteurs et des jauges, aucun contenu de l'instance. Le collecteur n'a besoin d'aucun compte ; si cela compte sur votre réseau, filtrez qui atteint l'écouteur (politique réseau ou proxy). |
 
 Ouvrir un gros store prend du temps : le déploiement de référence emploie
 une startup probe (30 × 5s) plutôt qu'un seuil de liveness relâché, de
@@ -31,13 +42,13 @@ survive plusieurs minutes ensuite.
 ## La tâche est l'unité d'observation
 
 Chaque synchronisation et chaque import unitaire s'exécute comme une
-tâche suivie (FR-062) : état, progression par ingrédient, et un journal
+tâche suivie : état, progression par ingrédient, et un journal
 téléchargeable brut. La liste des tâches est `/tasks` dans l'interface et
 `GET /api/v1/tasks` dans l'API (les deux paginées) ; le détail d'une
 tâche et son journal sont `GET /api/v1/tasks/{id}` et
 `GET /api/v1/tasks/{id}/logs`. Les journaux sont en JSON structuré, avec
 des clés de corrélation stables — run ID, task ID, recipe, ingrédient,
-digest (FR-090) — si bien qu'une synchronisation se reconstitue
+digest — si bien qu'une synchronisation se reconstitue
 entièrement en filtrant sur son task ID. Le schéma est décrit dans
 [métriques et journaux](../../reference/metrics-logs/).
 
@@ -50,8 +61,8 @@ attente et en cours ne sont jamais purgées.
 
 Un processus tué ou une connexion coupée ne fait pas repartir un run de
 zéro. Une synchronisation reprend depuis un état persisté, et les blobs
-déjà stockés ne sont jamais re-téléchargés (FR-029). Depuis la v0.4.0, la
-reprise est aussi fine à l'intérieur des gros blobs (R-29) : au-delà de
+déjà stockés ne sont jamais re-téléchargés. Depuis la v0.4.0, la
+reprise est aussi fine à l'intérieur des gros blobs : au-delà de
 `transfer.resumeThreshold` (64MiB par défaut), les octets sont écrits
 dans le répertoire d'état avec leur offset, et la tentative suivante
 demande le reste par une requête HTTP `Range` — un téléchargement
@@ -74,46 +85,48 @@ streaming pur.
 - `/readyz` non-200 hors des fenêtres de déploiement.
 - Les tâches en échec — interrogez `GET /api/v1/tasks` ou alertez sur les
   métriques d'échec de tâche.
-- Les refus de politique : les rejets par la liste blanche (FR-030) et
-  les échecs de vérification de signature (FR-033) sont journalisés,
+- Les refus de politique : les rejets par la liste blanche et
+  les échecs de vérification de signature sont journalisés,
   audités et comptés dans les métriques. Dans une zone saine ils sont à
   zéro ; toute marche d'escalier est soit une attaque, soit une dérive de
   configuration, et les deux méritent d'être remontées.
 - Un âge de dernière synchronisation réussie qui dépasse quelques
   multiples de `sync.interval` — un proxy ou un credential cassé en
-  silence se voit d'abord ici.
+  silence se voit d'abord ici (`tobby_sync_last_success_timestamp_seconds`).
+- Un certificat du listener proche de sa fin (`tobby_server_certificate_expiry_timestamp_seconds`).
 - L'occupation du volume d'état, puisque les fichiers de reprise y
   vivent.
 
-Les familles de métriques sont listées dans
-[métriques et journaux](../../reference/metrics-logs/) — avec cette
-réserve honnête : leurs noms ne sont pas encore contractuels.
+Le chart de référence livre des règles d'alerte pour ces conditions et un
+tableau de bord d'exemple, et chaque release publie le référentiel des métriques
+auquel elles sont tenues : voir [Superviser une instance](../monitoring/). Quand
+une alerte demande d'autres yeux, collectez un
+[bundle de diagnostic](../diagnostics/) — une archive locale et expurgée. Les
+familles sont listées dans [métriques et journaux](../../reference/metrics-logs/).
 
 ## Sauvegarde : le répertoire d'état
 
 La racine d'état est **la** cible de sauvegarde. Elle détient ce que rien
-ne recrée : les comptes, les jetons, la paire TLS servie, la dérogation
-d'intervalle. Elle est petite : sauvegardez-la comme tout répertoire
-précieux — snapshots ou copies de fichiers de `state.root`, pris pendant
-que l'instance est arrêtée ou depuis un snapshot du système de fichiers.
-Le store n'a besoin d'aucune sauvegarde : tout ce qu'il contient peut
+ne recrée : les comptes, les jetons, la paire TLS servie, le registre
+d'imports, la dérogation d'intervalle. Elle est petite : sauvegardez-la comme
+tout répertoire précieux — snapshots ou copies de fichiers de `state.root`, pris
+pendant que l'instance est arrêtée ou depuis un snapshot du système de
+fichiers — avec le fichier de configuration et les fichiers secrets qu'il
+référence. Le store n'a besoin d'aucune sauvegarde : tout ce qu'il contient peut
 être récupéré de nouveau, et le perdre coûte de la bande passante, pas de
 l'identité. Ne placez jamais l'état sur le volume du store ; Tobby refuse
 l'imbrication sans discuter.
 
-:::note[À venir — jalon 7]
-Une procédure documentée de restauration et de reconstruction
-(reconstituer une instance complète à partir d'une sauvegarde d'état plus
-une re-synchronisation, R-27) est prévue pour le jalon 7. À suivre sur la
-page [État du projet](../../discover/status/).
-:::
+Le layout du répertoire d'état est documenté et contrôlé à chaque démarrage,
+`tobby state inspect` le liste, et la procédure de reconstruction est testée de
+bout en bout : [Sauvegarder et reconstruire une instance](../backup-rebuild/).
 
 ## La croissance du store, dite sans détour
 
 **Par défaut, rien ne nettoie automatiquement le store en mode
 passthrough.** Chaque version synchronisée et chaque import unitaire reste
 jusqu'à ce qu'un administrateur retire à la main les dépôts importés
-unitairement (FR-044) — le contenu géré par des recipes n'est pas
+unitairement — le contenu géré par des recipes n'est pas
 supprimable individuellement. Une zone dont les recipes suivent des
 contraintes mouvantes accumule toutes les versions qu'elles ont un jour
 résolues.
@@ -131,9 +144,9 @@ réconciliation retire le contenu géré par recipe que le Retriever résolu ne
 référence plus. Trois sortes de contenu ne sont **jamais** éligibles, parce
 qu'aucune n'est gérée par une recipe :
 
-- les imports unitaires (FR-023),
-- la base de vulnérabilités hors-ligne (FR-032),
-- tout ce qui est poussé par `/v2/` hors des espaces gérés (amorçage, UC3).
+- les imports unitaires,
+- la base de vulnérabilités hors-ligne,
+- tout ce qui est poussé par `/v2/` hors des espaces gérés (amorçage).
 
 Deux garde-fous méritent d'être connus. Un cycle où **une** recipe n'a pas
 pu être résolue ne prune rien et le dit dans le journal de la course : le
@@ -170,10 +183,43 @@ Le code de sortie `5` signifie « des changements sont prévus », distinct de
 voir un plan chargé comme une compilation cassée. Voir la
 [référence CLI](../../reference/cli/).
 
-:::note[À venir — jalon 6]
-La vérification d'intégrité du store à la demande, depuis l'interface et
-l'API (R-31), arrive avec le jalon 6.
+:::tip[Vérifier le store à la demande]
+Un plan lit des métadonnées ; pour contrôler les octets, vérifiez le store :
+chaque blob re-hashé contre son digest, les manifestes contrôlés pour leur
+complétude, les signatures de recipe contre les trust roots configurés
+maintenant, avec un rapport horodaté — depuis l'interface, l'API ou `tobby store verify`
+(depuis la v0.6.0). Voir [vérifier l'intégrité du store](../verify-store/).
 :::
+
+## Ce que le store détient, et d'où
+
+Chaque dépôt du navigateur de contenu (`/content`) porte sa **classe de
+provenance** : `recipe` — géré par des recipes vérifiées contre
+les trust roots de cette instance, nommées sur la page du dépôt, avec le
+marqueur d'assurance réduite quand un périmètre de confiance assoupli les a
+admises —, `unit-import` — un [import unitaire](../one-off-import/), ou une
+FileSet empaquetée sur cette instance (affichée comme telle) — ou `seed` —
+poussé par `/v2/` par un client standard. La page du dépôt montre aussi,
+par tag, le résultat et la date de sa dernière analyse de vulnérabilités
+avec l'âge de la base utilisée, quand cette instance l'a analysé. Les mêmes
+faits sont sur `GET /api/v1/content` (la `provenance` de chaque ligne) et
+`GET /api/v1/content/{repo}` (l'objet `provenance`, et `lastScan` sur
+chaque tag) ; les enregistrements de journal qui concernent un dépôt — un
+import, un push, un retrait — portent un champ `provenance`.
+
+`tobby_store_unmanaged_repositories{class}` compte ce qu'aucune recipe ne
+gère, par classe : une zone qui ne devrait détenir que du contenu de
+recipes alerte dès qu'elle n'est pas nulle. Pour en faire une garantie
+plutôt qu'une surveillance, activez les
+[interrupteurs de durcissement](../../security/model/#interrupteurs-de-durcissement) :
+`hardening.disableUnitImport` ferme l'import unitaire, l'import d'OCI image
+layout et l'empaquetage sur toutes les surfaces, `hardening.disableRegistryPush` met `/v2/` en lecture
+seule pour tous les clients et tous les rôles. Les deux sont signalés au
+démarrage, dans `tobby config dump`, sur les écrans qu'ils désactivent et
+dans `tobby_hardening_enabled` ; les synchronisations de recipes ne sont
+pas concernées. La dernière analyse d'un tag est lue dans les rapports de
+tâches que l'instance détient encore : `tasks.keepFinished` borne donc
+jusqu'où elle remonte.
 
 ## Monter de version
 
@@ -199,10 +245,11 @@ politique de compatibilité — ce qui est déjà stable, ce qui se fige en
   `helm.sh/resource-policy: keep`, si bien que même un `helm uninstall`
   laisse les données en place.
 
-:::note[À venir — jalon 6]
-La mise à jour de Tobby par son propre canal OCI (R-25) — la nouvelle
-release voyageant comme du contenu vérifié, entre zones et à travers
-l'air gap comme tout ce qu'il transporte — arrive avec le jalon 6.
+:::tip[Par son propre canal]
+Depuis la v0.6.0, Tobby peut aussi être mis à jour par son propre canal OCI :
+chaque release est publiée prête pour une recipe, et voyage comme
+du contenu vérifié, entre zones et à travers l'air gap, comme tout ce qu'il
+transporte. Voir [mettre à jour Tobby en zone isolée](../../air-gap/update-tobby/).
 :::
 
 ## Arrêt propre
@@ -210,14 +257,19 @@ l'air gap comme tout ce qu'il transporte — arrive avec le jalon 6.
 Sur SIGTERM ou SIGINT, l'instance cesse d'accepter du travail nouveau,
 passe `/readyz` à 503, et laisse aux transferts en cours
 `shutdown.gracePeriod` (30s par défaut, `--shutdown-grace-period`) pour
-se terminer ou se checkpointer avant de sortir en 0 (FR-093). Les
+se terminer ou se checkpointer avant de sortir en 0. Les
 transferts checkpointés reprennent au démarrage suivant. Ce qui supervise
 le processus doit attendre plus longtemps que ce délai de grâce —
 `terminationGracePeriodSeconds: 60` dans le déploiement de référence,
 `TimeoutStopSec=60` dans une unit systemd — sinon le kill final tombe en
 plein checkpoint.
 
-Cela clôt le parcours passthrough. À partir d'ici :
-[écrivez des recipes](../../recipes/write-and-publish/) pour étoffer ce
-que la zone détient, ou lisez comment la même instance prépare le travail
-des [zones isolées](../../air-gap/media-workflow/).
+Quand quelque chose casse, partez du symptôme sur la page
+[Dépannage](../../reference/troubleshooting/) ; quand il vous faut l'aide de quelqu'un d'autre,
+collectez [un bundle de diagnostic](../../passthrough/diagnostics/).
+
+Suite : contrôlez les octets que le store détient avec
+[vérifier l'intégrité du store](../../passthrough/verify-store/). Au-delà
+de cette section, [écrivez des recipes](../../recipes/write-and-publish/)
+pour étoffer ce que la zone détient, ou lisez comment la même instance
+prépare le travail des [zones isolées](../../air-gap/media-workflow/).
