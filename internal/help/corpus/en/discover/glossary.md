@@ -88,5 +88,5 @@ mentioned once as "also written".
 | **Milestone / train** | The project ships in numbered milestones. Milestone N ships as the release line (train) v0.N.x, and milestone 7 ships as v0.7.x, ahead of 1.0.0. See [Project status and release notes](../status/). |
 | **`FR-nnn` / `NFR-nnn`** | Functional and non-functional requirements of the specification (SRS), each with a stable number. See [SRS and ADRs](../../reference/srs-adr/). |
 | **`UC1` to `UC3`** | The three use cases of the SRS: passthrough promotion between connected zones, mirror synchronization into an air-gapped zone, and a substitution or seeding registry. See [SRS and ADRs](../../reference/srs-adr/). |
-| **`R-nn`** | A roadmap item added after the initial specification, listed on the [roadmap](https://tobby-fetch.github.io/tobby-fetch/roadmap.html) and cited by the SRS amendment that implements it. See [SRS and ADRs](../../reference/srs-adr/). |
+| **`R-nn`** | A roadmap item added after the initial specification, listed on the [roadmap](https://tobbyfetch.dev/roadmap.html) and cited by the SRS amendment that implements it. See [SRS and ADRs](../../reference/srs-adr/). |
 | **`B-nnn`** | A defect number, cited in the [changelog](https://github.com/tobby-fetch/tobby-fetch/blob/main/CHANGELOG.md) entries of the fixes that closed it. |

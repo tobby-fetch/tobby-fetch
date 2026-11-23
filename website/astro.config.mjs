@@ -3,7 +3,7 @@ import starlight from "@astrojs/starlight";
 import starlightLinksValidator from "starlight-links-validator";
 
 // GitHub Pages project site for the tobby-fetch/tobby-fetch repository.
-// Served at https://tobby-fetch.github.io/tobby-fetch/
+// Served at https://tobbyfetch.dev/ (GitHub Pages, custom domain)
 // If a custom domain is assigned later, set `site` to it and remove `base`.
 //
 // The documentation lives under /docs/ (Starlight, English canonical,
@@ -11,8 +11,8 @@ import starlightLinksValidator from "starlight-links-validator";
 // own layout and identity; the whole build stays static so the binary
 // can embed it (go:embed, no Node at runtime).
 export default defineConfig({
-  site: "https://tobby-fetch.github.io",
-  base: "/tobby-fetch",
+  site: "https://tobbyfetch.dev",
+  base: "/",
   integrations: [
     starlight({
       title: "Tobby",
