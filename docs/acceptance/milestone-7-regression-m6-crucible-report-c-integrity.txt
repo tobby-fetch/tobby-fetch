@@ -1,13 +1,13 @@
-# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Intel Xeon E3-1231 v3 8 threads, 32 GB RAM, Ubuntu 24.04.5 LTS (kernel 6.8.0-146), Incus 7.6 (Zabbly stable); ref milestone-7 @ 05dafee (regression of milestones 1 to 6 for v1.0.0-rc.1); node created 2026-11-16T13:55Z, destroyed 2026-11-16T16:05Z (verified)
-ok   scenario m6 started 2026-11-16T15:41:46Z
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ c3951a4; node created 2026-11-23T00:47Z, destroyed 2026-11-23T01:46Z (verified)
+ok   scenario m6 started 2026-11-23T02:19:41Z
 ok   tooling available (jq, curl, cosign)
 ok   built tobby for linux/amd64
 ok   three deliveries published: int-app and int-tool signed by A, int-old signed by B alone (cosign agrees)
 ok   the mirror store holds three recipes and a media manifest (a transportable store)
 ok   FR-057: an intact transportable store verifies clean from the API and the screen
 ok   FR-057: tobby store verify exits 0 on the intact store and leaves it byte-identical
-ok   manipulation 1 verified: docker/registry/v2/blobs/sha256/fe/fe5472579fbb8518d75f08c6cf3b9d8d4220f8c497a3cec883b70e91bd233ee7/data no longer hashes to its digest
-ok   manipulation 2 verified: sha256:14dacffa1314dd284bfb7a9a855021c5fc6470ebc49c89e45a6b198e545246b7, referenced by a manifest of int-tool, is gone from disk
+ok   manipulation 1 verified: docker/registry/v2/blobs/sha256/c5/c5b170ff8e28ecf4e44434362aad737c3d91c97a387d49751f0361484fce4a69/data no longer hashes to its digest
+ok   manipulation 2 verified: sha256:f331f20d7abc97f3843f46ffc9f28188cc8b9fa00898fa5d11251b80f6e0d7e4, referenced by a manifest of int-tool, is gone from disk
 ok   manipulation 3 verified: a well-formed orphan blob is planted at docker/registry/v2/blobs/sha256/5b/5bc9705a0994483bcdee579cc7a59e42e45de9b7c70de9c27a315db06368b62d/data
 ok   manipulation 4 verified: key B is no longer a trust root; int-old's signature is valid under B and not under A
 ok   FR-057: exit 4; the report names the truncated blob, the incomplete manifest, the refused signature and the orphan; the store is byte-identical

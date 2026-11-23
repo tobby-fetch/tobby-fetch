@@ -1,12 +1,12 @@
-# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Intel Xeon E3-1231 v3 8 threads, 32 GB RAM, Ubuntu 24.04.5 LTS (kernel 6.8.0-146), Incus 7.6 (Zabbly stable); ref milestone-7 @ 05dafee (regression of milestones 1 to 6 for v1.0.0-rc.1); node created 2026-11-16T13:55Z, destroyed 2026-11-16T16:05Z (verified)
-ok   scenario m4 started 2026-11-16T15:30:39Z
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ c3951a4; node created 2026-11-23T00:47Z, destroyed 2026-11-23T01:46Z (verified)
+ok   scenario m4 started 2026-11-23T02:04:49Z
 ok   tooling available (helm v4.2.3+g43e8b7f, cosign present, openssl, jq)
 ok   built tobby and the forward proxy for linux/amd64
 ok   instances launched (source, destination, proxy, node, sealed node)
-ok   addresses assigned (source 10.180.10.222, dest 10.180.10.183, proxy 10.180.10.199, node 10.180.10.207, sealed 10.180.30.86)
-ok   private PKI issued (root + leaf for 10.180.10.183)
+ok   addresses assigned (source 10.180.10.209, dest 10.180.10.245, proxy 10.180.10.84, node 10.180.10.228, sealed 10.180.30.147)
+ok   private PKI issued (root + leaf for 10.180.10.245)
 ok   fixtures serving: production registry, TLS zone registry (private CA), forward proxy
-ok   cookbook published and signed by the real cosign (1.0.0 → sha256:484833fccaf20538bc025fb12d39efc24344682782f721e3860a3319d1988208, 1.0.1 → sha256:79808f5332bebffabeca250c32a8efb88af46d486db2e9ca6714fdda529fd9f9)
+ok   cookbook published and signed by the real cosign (1.0.0 → sha256:1dc270f7fa590e63a979c0ef89f55b808ce33db14e3af330c5308747d1585a01, 1.0.1 → sha256:1b6e697c96d1ab46a5b65260ebbe704fb4bc06a492970a81e7504e060d8966b7)
 ok   node deployed from the reference chart (rendered config, chart-managed roots, hardening asserted)
 ok   secure by default (401 RFC 9457 + Basic challenge); the override opens access with its permanent banner
 ok   cycle 1: recipe verified and promoted, zone cookbook published, pinned digest intact at the destination
