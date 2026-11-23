@@ -25,11 +25,11 @@ keyless the way the SBOMs are:
 cosign verify-blob --new-bundle-format \
   --bundle metrics-reference.json.bundle \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity https://github.com/tobby-fetch/tobby-fetch/.github/workflows/release.yml@refs/tags/v1.0.0 \
+  --certificate-identity https://github.com/tobby-fetch/tobby-fetch/.github/workflows/release.yml@refs/tags/v0.7.0 \
   metrics-reference.json
 ```
 
-Replace `v1.0.0` with the version you verify: the identity is pinned to the release tag, because a rehearsal of the release workflow signs identical files from a branch of the same repository.
+Replace `v0.7.0` with the version you verify: the identity is pinned to the release tag, because a rehearsal of the release workflow signs identical files from a branch of the same repository.
 
 The reference is **generated from the running registry** (`go run
 ./tools/metricsref`), and a test fails if a family exists that the reference
