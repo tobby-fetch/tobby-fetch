@@ -1,11 +1,11 @@
-# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ c3951a4; node created 2026-11-23T00:47Z, destroyed 2026-11-23T01:46Z (verified)
-ok   scenario m1 started 2026-11-23T02:01:07Z
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ c8d1b13; node created 2026-11-23T10:36Z, destroyed 2026-11-23T11:56Z (verified)
+ok   scenario m1 started 2026-11-23T11:12:18Z
 ok   built tobby for linux/amd64
 ok   instances launched (connected + air-gapped)
 ok   block-device medium created (/dev/loop0) and attached to the connected node
 ok   medium formatted (ext4) and mounted on the connected node
 ok   connected instance ready (store on the medium)
-ok   embedded registry round-trip on the connected node (sha256:3f9b379238b0dfd79adaefb0bd9092cf578d54ddfba084f89a3f2248970818bb)
+ok   embedded registry round-trip on the connected node (sha256:356cb186850251e39b3c72a8322087701d454433ad85757322cd8c824652a53e)
 ok   medium unmounted and detached (transport begins)
 ok   medium re-attached and mounted on the air-gapped node
 ok   egress canary failed as required (air gap proven by construction)

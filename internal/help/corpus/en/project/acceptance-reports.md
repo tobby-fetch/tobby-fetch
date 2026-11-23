@@ -23,7 +23,7 @@ latest full replay is 2026-11-07, for the v0.5.1 maintenance release: the
 same 88 checks after the move to Go 1.27 and every dependency's latest
 release, in one report. The latest is 2026-11-12, for v0.6.0: milestones 1
 to 5 again (the same 88 checks) and the six milestone-6 scenarios (81
-checks), on commit `4d8ad1b`. The latest of all is 2026-11-16, for
+checks), on commit `4d8ad1b`. The latest of all is 2026-11-23, for
 v0.7.0: milestones 1 to 6 again and the eleven milestone-7
 scenarios, crown included.
 
@@ -162,8 +162,8 @@ synchronized, because helm omits a field the test fixtures always wrote
 
 ### Milestone 7 — finishing, documentation and acceptance (v0.7.0)
 
-Run 2026-11-16 on disposable bare-metal hosts, each created and destroyed
-in the same session. Milestones 1 to 6 replayed first on commit `05dafee`,
+Run 2026-11-23 on disposable bare-metal hosts, each created and destroyed
+in the same session. Milestones 1 to 6 replayed first on commit `c8d1b13`,
 175 checks, one report each
 ([m1](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m1-crucible-report.txt),
 [m2](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m2-crucible-report.txt),
@@ -171,7 +171,7 @@ in the same session. Milestones 1 to 6 replayed first on commit `05dafee`,
 [m4](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m4-crucible-report.txt),
 [m5](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m5-crucible-report.txt),
 and the six milestone-6 scenarios: [a-scanning](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-a-scanning.txt), [a-self-update](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-a-self-update.txt), [b-auth](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-b-auth.txt), [c-assurance](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-c-assurance.txt), [c-integrity](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-c-integrity.txt), [c-trust-scopes](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-c-trust-scopes.txt)).
-Then the eleven milestone-7 scenarios on commit `2c8aa7d`, 200 checks:
+Then the eleven milestone-7 scenarios on commit `e9ea100`, 200 checks:
 
 - [a-consumption-aids](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-crucible-report-a-consumption-aids.txt): the mapping table and the generated
   `registries.yaml`, the same from the API and the command line, byte for
@@ -193,11 +193,12 @@ Then the eleven milestone-7 scenarios on commit `2c8aa7d`, 200 checks:
   Rocky Linux 9 node, SELinux enforcing, from nothing but what Tobby
   carried across the gap, with zero packets leaving the isolated zone.
 
-All checks pass — with one disclosure. On an intermediate node, the same
-day and the same code, the two scenarios that start a virtual machine
-(b-clock and the crown) failed: the VM did not start. Both passed alone
-on a fresh node and in the full run published here; the cause was not
-established, and the scenarios now print the QEMU log should it recur.
+All checks pass — with one disclosure. On the first node of the day, the
+two scenarios that start a virtual machine (b-clock and the crown) failed:
+the VM did not start. The QEMU log the scenarios print named the cause —
+that rented host's processor addresses 36 bits of physical memory, too few
+for the virtual machines — and the eleven milestone-7 scenarios were
+replayed on a second host, whose reports are the ones published here.
 The first full milestone-7 run also exposed scenario defects only — a VM
 image needing Secure Boot off, a distribution package that does not
 exist, a digest variable overwritten, an RPM repository emptied by `dnf`

@@ -8,7 +8,7 @@
 # milestone: the milestone that delivers (or completes) the feature;
 #            omitted when the feature is fully available.
 # security: true marks rows shown on the security one-pager.
-updated: "2026-11-16"
+updated: "2026-11-23"
 version: "v0.7.0"
 features:
   # ── Milestone 1 — Foundations (delivered, v0.1.x) ──────────────────────

@@ -24,7 +24,7 @@ vérifications après le passage à Go 1.27 et à la dernière version de chaque
 dépendance, dans un seul rapport. Le plus récent date du 2026-11-12, pour la
 v0.6.0 : les jalons 1 à 5 de nouveau (les mêmes 88 vérifications) et les six
 scénarios du jalon 6 (81 vérifications), sur le commit `4d8ad1b`. Le
-dernier de tous date du 2026-11-16, pour la v0.7.0 : les jalons 1 à 6
+dernier de tous date du 2026-11-23, pour la v0.7.0 : les jalons 1 à 6
 de nouveau et les onze scénarios du jalon 7, couronne comprise.
 
 ## Les rapports
@@ -172,16 +172,16 @@ v0.6.0, chacun avec un test qui échouait avant.
 
 ### Jalon 7 — finitions, documentation et recette (v0.7.0)
 
-Exécuté le 2026-11-16 sur des hôtes bare-metal jetables, chacun créé et
+Exécuté le 2026-11-23 sur des hôtes bare-metal jetables, chacun créé et
 détruit dans la même session. Les jalons 1 à 6 rejoués d'abord sur le
-commit `05dafee`, 175 vérifications, un rapport chacun
+commit `c8d1b13`, 175 vérifications, un rapport chacun
 ([m1](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m1-crucible-report.txt),
 [m2](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m2-crucible-report.txt),
 [m3](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m3-crucible-report.txt),
 [m4](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m4-crucible-report.txt),
 [m5](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m5-crucible-report.txt),
 et les six scénarios du jalon 6: [a-scanning](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-a-scanning.txt), [a-self-update](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-a-self-update.txt), [b-auth](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-b-auth.txt), [c-assurance](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-c-assurance.txt), [c-integrity](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-c-integrity.txt), [c-trust-scopes](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-regression-m6-crucible-report-c-trust-scopes.txt)).
-Puis les onze scénarios du jalon 7 sur le commit `2c8aa7d`, 200
+Puis les onze scénarios du jalon 7 sur le commit `e9ea100`, 200
 vérifications :
 
 - [a-consumption-aids](https://github.com/tobby-fetch/tobby-fetch/blob/main/docs/acceptance/milestone-7-crucible-report-a-consumption-aids.txt) : la table de correspondance et le
@@ -207,12 +207,13 @@ vérifications :
   Rocky Linux 9 nu, SELinux en mode enforcing, uniquement avec ce que Tobby
   a fait traverser, sans aucun paquet sorti de la zone isolée.
 
-Toutes les vérifications passent, avec une précision. Sur un nœud
-intermédiaire, le même jour et sur le même code, les deux scénarios qui
-démarrent une machine virtuelle (b-clock et la couronne) ont échoué : la VM
-n'a pas démarré. Les deux sont passés seuls sur un nœud neuf et dans le
-passage complet publié ici ; la cause n'a pas été établie, et les scénarios
-affichent désormais le journal QEMU si cela se reproduit. Le premier
+Toutes les vérifications passent, avec une précision. Sur le premier nœud
+du jour, les deux scénarios qui démarrent une machine virtuelle (b-clock et
+la couronne) ont échoué : la VM n'a pas démarré. Le journal QEMU affiché par
+les scénarios en a donné la cause — le processeur de cet hôte loué n'adresse
+que 36 bits de mémoire physique, trop peu pour les machines virtuelles — et
+les onze scénarios du jalon 7 ont été rejoués sur un second hôte, dont les
+rapports sont ceux publiés ici. Le premier
 passage complet du jalon 7 n'a révélé que des défauts de scénario — une
 image de VM qui exige Secure Boot désactivé, un paquet de distribution qui
 n'existe pas, une variable de digest écrasée, un dépôt RPM vidé par `dnf` —

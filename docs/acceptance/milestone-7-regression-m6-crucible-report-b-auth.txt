@@ -1,5 +1,5 @@
-# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ c3951a4; node created 2026-11-23T00:47Z, destroyed 2026-11-23T01:46Z (verified)
-ok   scenario m6 started 2026-11-23T02:14:33Z
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ c8d1b13; node created 2026-11-23T10:36Z, destroyed 2026-11-23T11:56Z (verified)
+ok   scenario m6 started 2026-11-23T11:29:40Z
 ok   tooling available (openssl, jq)
 ok   built tobby for linux/amd64
 ok   throw-away PKI generated (CA, tbc-m6b-idp.incus tbc-m6b-tobby.incus, SP key pair)

@@ -1,13 +1,13 @@
-# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ c3951a4; node created 2026-11-23T00:47Z, destroyed 2026-11-23T01:46Z (verified)
-ok   scenario m6 started 2026-11-23T02:19:41Z
+# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ c8d1b13; node created 2026-11-23T10:36Z, destroyed 2026-11-23T11:56Z (verified)
+ok   scenario m6 started 2026-11-23T11:35:53Z
 ok   tooling available (jq, curl, cosign)
 ok   built tobby for linux/amd64
 ok   three deliveries published: int-app and int-tool signed by A, int-old signed by B alone (cosign agrees)
 ok   the mirror store holds three recipes and a media manifest (a transportable store)
 ok   FR-057: an intact transportable store verifies clean from the API and the screen
 ok   FR-057: tobby store verify exits 0 on the intact store and leaves it byte-identical
-ok   manipulation 1 verified: docker/registry/v2/blobs/sha256/c5/c5b170ff8e28ecf4e44434362aad737c3d91c97a387d49751f0361484fce4a69/data no longer hashes to its digest
-ok   manipulation 2 verified: sha256:f331f20d7abc97f3843f46ffc9f28188cc8b9fa00898fa5d11251b80f6e0d7e4, referenced by a manifest of int-tool, is gone from disk
+ok   manipulation 1 verified: docker/registry/v2/blobs/sha256/f5/f5f874cfa2a57eeb91a3e84ec6ef4237a82d9a9ae2eb03c9adcd42374c207cbd/data no longer hashes to its digest
+ok   manipulation 2 verified: sha256:b651f16ccc04e16ef33bd41ea6ceb440b2887fc9289b7703cbba0fdf5b19f427, referenced by a manifest of int-tool, is gone from disk
 ok   manipulation 3 verified: a well-formed orphan blob is planted at docker/registry/v2/blobs/sha256/5b/5bc9705a0994483bcdee579cc7a59e42e45de9b7c70de9c27a315db06368b62d/data
 ok   manipulation 4 verified: key B is no longer a trust root; int-old's signature is valid under B and not under A
 ok   FR-057: exit 4; the report names the truncated blob, the incomplete manifest, the refused signature and the orphan; the store is byte-identical

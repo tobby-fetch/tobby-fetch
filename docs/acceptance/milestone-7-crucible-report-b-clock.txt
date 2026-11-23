@@ -1,13 +1,13 @@
-# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ c3951a4; node created 2026-11-23T00:47Z, destroyed 2026-11-23T01:46Z (verified)
-ok   scenario m7 started 2026-11-23T02:21:22Z
+# Acceptance host: Scaleway Elastic Metal EM-L101X-SATA (fr-par-2, hourly), Xeon E5-1410 v2, Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ e9ea100; node created 2026-11-23T14:03Z, destroyed 2026-11-23T15:10Z (verified)
+ok   scenario m7 started 2026-11-23T14:37:09Z
 ok   tooling available (jq, curl, openssl, tar)
 ok   tooling available (jq, curl, cosign)
-ok   built tobby for linux/amd64 stamped with the build date 2026-11-23T02:21:22Z
-ok   the guest clock is set ten days before the build date and reads it (date: 2026-11-13 02:21)
+ok   built tobby for linux/amd64 stamped with the build date 2026-11-23T14:37:09Z
+ok   the guest clock is set ten days before the build date and reads it (date: 2026-11-13 14:37)
 ok   the instance is ready: a clock in doubt changes no verdict
 ok   FR-096: a clock ten days before the build shows the log record, the banner, the metric, the audit event and the API verdict (TBY-CLK-001); nothing was corrected
 ok   a clock 20 minutes behind the build (tolerance 1h) raises nothing: metric 0, no record, no banner
-ok   a medium (20261123T022208Z-97d7cd28feae2798) was produced in the connected zone, resolved at 2026-11-23T02:22:10.044130274Z, and carried to the VM
+ok   a medium (20261123T143822Z-fd52d0ceb59b2d9d) was produced in the connected zone, resolved at 2026-11-23T14:38:23.691135146Z, and carried to the VM
 ok   FR-096: a medium opened on a clock three hours behind its production — TBY-CLK-002 on stderr naming it, the audit event, the API verdict and the banner
 ok   a clock 20 minutes behind the medium's production raises nothing
 ok   scenario m7 b-clock complete — report: crucible-report-m7-b-clock.txt

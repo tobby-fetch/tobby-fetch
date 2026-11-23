@@ -1,9 +1,9 @@
-# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ c3951a4; node created 2026-11-23T00:47Z, destroyed 2026-11-23T01:46Z (verified)
-ok   scenario m7 started 2026-11-23T02:36:06Z
+# Acceptance host: Scaleway Elastic Metal EM-L101X-SATA (fr-par-2, hourly), Xeon E5-1410 v2, Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ e9ea100; node created 2026-11-23T14:03Z, destroyed 2026-11-23T15:10Z (verified)
+ok   scenario m7 started 2026-11-23T14:56:32Z
 ok   tooling available (curl, go)
 ok   built tobby for linux/amd64
 ok   built the documentation crawler (test/topology/helpcrawl)
-ok   egress canary failed as required: tbc-m7e-canary (10.180.10.61) answers the crucible host and not tbc-m7e-airgap (10.180.20.246); no route to the internet
+ok   egress canary failed as required: tbc-m7e-canary (10.180.10.104) answers the crucible host and not tbc-m7e-airgap (10.180.20.77); no route to the internet
 ok   the node holds no documentation file beside the binary; the corpus embedded in it is the published one (corpus in sync with website/src/content/docs/docs (147 files), every English page translated)
 ok   instance under test: mirror on tbc-airgap, authentication on (anonymous /help answers 303), a viewer account for the reader
 ok   /help (en): the navigation lists the 65 published pages and nothing else; the index carries every one of the 118 catalog codes, each linked and with what, cause and action

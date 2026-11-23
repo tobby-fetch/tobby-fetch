@@ -1,12 +1,12 @@
-# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ c3951a4; node created 2026-11-23T00:47Z, destroyed 2026-11-23T01:46Z (verified)
-ok   scenario m7 started 2026-11-23T02:34:16Z
+# Acceptance host: Scaleway Elastic Metal EM-L101X-SATA (fr-par-2, hourly), Xeon E5-1410 v2, Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ e9ea100; node created 2026-11-23T14:03Z, destroyed 2026-11-23T15:10Z (verified)
+ok   scenario m7 started 2026-11-23T14:53:42Z
 ok   tooling available (jq, curl, cosign, oras)
 ok   built tobby for linux/amd64
-ok   scanner fixtures: Trivy 0.76.2 checked twice (FileSet sha256:e93e32bf134f7307da2089d16b00ee1097a4b40c57375b2e4808bde26650c14f), database sha256:672a9426094117d3c69c0ed9e54834b437ad39ce86b4bf25c878150652f37ee6
+ok   scanner fixtures: Trivy 0.76.2 checked twice (FileSet sha256:e93e32bf134f7307da2089d16b00ee1097a4b40c57375b2e4808bde26650c14f), database sha256:9c15712b9389b8427cb07416ece30449c688bcc268527537a788423edcabd439
 ok   fixtures: tobby-system and prov-app signed (cosign agrees), lab-app unsigned (no signature tag, cosign refuses)
 ok   instance under test: mirror, authentication on (anonymous 401), admin token issued
 ok   1a: synchronization done with the scanner armed; prov-app and lab-app (scope lab) scanned and stored at their pinned digests (docker.io/example/prov-app, docker.io/example/prov-lab)
-ok   1b: unit import done, 10.180.10.34_8080/library/prov-imp:1.0.0 holds the source digest
+ok   1b: unit import done, 10.180.10.245_8080/library/prov-imp:1.0.0 holds the source digest
 ok   1c: FileSet packed, localhost/filesets/notes:1.0.0 holds sha256:fca7e610c31ab67a2b31fd038ad6990345808e983397d929074ac93cb6a84440
 ok   1d: seeded/app pushed by a standard client and served back by digest
 ok   FR-098: the API listing classes every repository, the five staged ones as recipe, recipe, unit-import, unit-import, seed

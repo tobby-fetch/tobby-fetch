@@ -8,7 +8,7 @@ starting with `v0.1.0`.
 
 ## [Unreleased]
 
-## [0.7.0] - 2026-11-16
+## [0.7.0] - 2026-11-23
 
 Milestone 7: finishing, documentation and acceptance. 0.7.0 is a regular
 minor release; 1.0.0 will follow once the code, maintainability and

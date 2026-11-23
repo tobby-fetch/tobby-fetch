@@ -1,15 +1,15 @@
-# Acceptance host: Scaleway Elastic Metal EM-A116X-SSD (fr-par-2, hourly), Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ c3951a4; node created 2026-11-23T00:47Z, destroyed 2026-11-23T01:46Z (verified)
-ok   scenario m7 started 2026-11-23T02:23:07Z
+# Acceptance host: Scaleway Elastic Metal EM-L101X-SATA (fr-par-2, hourly), Xeon E5-1410 v2, Ubuntu 24.04 LTS, Incus from the distribution; ref milestone-7 @ e9ea100; node created 2026-11-23T14:03Z, destroyed 2026-11-23T15:10Z (verified)
+ok   scenario m7 started 2026-11-23T14:39:28Z
 ok   tooling available (jq, curl, openssl, tar)
 ok   tooling available (jq, curl, cosign)
-ok   built tobby for linux/amd64 stamped with the build date 2026-11-23T02:23:07Z
-ok   built tobby for linux/amd64 stamped with the build date 2026-12-23T02:23:09Z
+ok   built tobby for linux/amd64 stamped with the build date 2026-11-23T14:39:28Z
+ok   built tobby for linux/amd64 stamped with the build date 2026-12-23T14:39:31Z
 ok   the kit is staged as the release stages it; cosign verifies both files and refuses an altered one
 ok   the chart lints and renders a PrometheusRule, the plain rules file and the dashboard; every expression names only families of the reference
 ok   promtool 3.16.0 (release tarball, checksum verified) accepts the rules and every alert passes its unit tests: fires on its condition, silent otherwise (2 lines of output)
 ok   openapi.yaml of the kit is byte-identical to the document the instance serves
 ok   the scrape holds every always-present family of the reference and nothing outside it; the timestamp and ingredient gauges are absent before a first run
-ok   a synchronization moves the sync families: runs, duration, ingredients; the last-success timestamp advances (1795400622 -> 1795400624)
+ok   a synchronization moves the sync families: runs, duration, ingredients; the last-success timestamp advances (1795444816 -> 1795444818)
 ok   tobby_server_certificate_expiry_timestamp_seconds equals the NotAfter of the certificate presented
 ok   TobbySyncStale: fires after 60 s without a success, inactive again on the next success
 ok   TobbySyncFailing: fires on three failed runs, inactive again once the 2-minute window has passed
